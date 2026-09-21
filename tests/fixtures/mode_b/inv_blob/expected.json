@@ -1,0 +1,27 @@
+{
+  "elements": [
+    {
+      "id": "inv_blob",
+      "kind": "MODULE",
+      "name": "inv_blob",
+      "qualname": "",
+      "module": "inv_blob",
+      "span": {"path": "tests/fixtures/mode_b/inv_blob/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "Module with a large embedded blob."
+    },
+    {
+      "id": "inv_blob::@blob#1",
+      "kind": "BLOB",
+      "name": "@blob#1",
+      "qualname": "@blob#1",
+      "module": "inv_blob",
+      "span": {"path": "tests/fixtures/mode_b/inv_blob/__init__.py", "line": 3},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "opaque",
+      "byte_size": 1048576
+    }
+  ],
+  "unresolved": []
+}

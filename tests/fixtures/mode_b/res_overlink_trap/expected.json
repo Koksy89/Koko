@@ -1,0 +1,85 @@
+{
+  "elements": [
+    {
+      "id": "res_overlink_trap",
+      "kind": "MODULE",
+      "name": "res_overlink_trap",
+      "qualname": "",
+      "module": "res_overlink_trap",
+      "span": {"path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "res_overlink_trap::ClassA",
+      "kind": "CLASS",
+      "name": "ClassA",
+      "qualname": "ClassA",
+      "module": "res_overlink_trap",
+      "span": {"path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py", "line": 4},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "res_overlink_trap::ClassA::process",
+      "kind": "METHOD",
+      "name": "process",
+      "qualname": "ClassA.process",
+      "module": "res_overlink_trap",
+      "span": {"path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py", "line": 5},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "parent_id": "res_overlink_trap::ClassA"
+    },
+    {
+      "id": "res_overlink_trap::ClassB",
+      "kind": "CLASS",
+      "name": "ClassB",
+      "qualname": "ClassB",
+      "module": "res_overlink_trap",
+      "span": {"path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py", "line": 11},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "res_overlink_trap::ClassB::process",
+      "kind": "METHOD",
+      "name": "process",
+      "qualname": "ClassB.process",
+      "module": "res_overlink_trap",
+      "span": {"path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py", "line": 12},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "parent_id": "res_overlink_trap::ClassB"
+    },
+    {
+      "id": "res_overlink_trap::caller",
+      "kind": "FUNCTION",
+      "name": "caller",
+      "qualname": "caller",
+      "module": "res_overlink_trap",
+      "span": {"path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py", "line": 18},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    }
+  ],
+  "unresolved": [],
+  "edges": [
+    {
+      "id": "edge_a_process",
+      "kind": "CALLS",
+      "source_id": "res_overlink_trap::caller",
+      "target_id": "res_overlink_trap::ClassA::process",
+      "provenance": {"method": "MRO_DISPATCH", "confidence": "PROBABLE"},
+      "call_site": {"path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py", "line": 22}
+    },
+    {
+      "id": "edge_b_process",
+      "kind": "CALLS",
+      "source_id": "res_overlink_trap::caller",
+      "target_id": "res_overlink_trap::ClassB::process",
+      "provenance": {"method": "MRO_DISPATCH", "confidence": "PROBABLE"},
+      "call_site": {"path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py", "line": 23}
+    }
+  ]
+}

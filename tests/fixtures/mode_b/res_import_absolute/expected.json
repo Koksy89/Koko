@@ -1,0 +1,35 @@
+{
+  "elements": [
+    {
+      "id": "res_import_absolute",
+      "kind": "MODULE",
+      "name": "res_import_absolute",
+      "qualname": "",
+      "module": "res_import_absolute",
+      "span": {"path": "tests/fixtures/mode_b/res_import_absolute/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "res_import_absolute::data",
+      "kind": "ASSIGNMENT",
+      "name": "data",
+      "qualname": "data",
+      "module": "res_import_absolute",
+      "span": {"path": "tests/fixtures/mode_b/res_import_absolute/__init__.py", "line": 5},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    }
+  ],
+  "unresolved": [],
+  "edges": [
+    {
+      "id": "edge_001",
+      "kind": "IMPORTS",
+      "source_id": "res_import_absolute",
+      "target_id": "json",
+      "provenance": {"method": "IMPORT_ABSOLUTE", "confidence": "RESOLVED"},
+      "call_site": {"path": "tests/fixtures/mode_b/res_import_absolute/__init__.py", "line": 3}
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "elements": [
+    {
+      "id": "inv_empty",
+      "kind": "MODULE",
+      "name": "inv_empty",
+      "qualname": "",
+      "module": "inv_empty",
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_empty/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "unresolved": []
+}

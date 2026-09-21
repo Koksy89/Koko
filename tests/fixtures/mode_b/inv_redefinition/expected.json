@@ -1,0 +1,38 @@
+{
+  "elements": [
+    {
+      "id": "inv_redefinition",
+      "kind": "MODULE",
+      "name": "inv_redefinition",
+      "qualname": "",
+      "module": "inv_redefinition",
+      "span": {"path": "tests/fixtures/mode_b/inv_redefinition/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "Module with redefined names."
+    },
+    {
+      "id": "inv_redefinition::func",
+      "kind": "FUNCTION",
+      "name": "func",
+      "qualname": "func",
+      "module": "inv_redefinition",
+      "span": {"path": "tests/fixtures/mode_b/inv_redefinition/__init__.py", "line": 5},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "First definition."
+    },
+    {
+      "id": "inv_redefinition::func#2",
+      "kind": "FUNCTION",
+      "name": "func",
+      "qualname": "func",
+      "module": "inv_redefinition",
+      "span": {"path": "tests/fixtures/mode_b/inv_redefinition/__init__.py", "line": 10},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "Redefined in conditional."
+    }
+  ],
+  "unresolved": []
+}

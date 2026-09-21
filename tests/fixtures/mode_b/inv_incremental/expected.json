@@ -1,0 +1,27 @@
+{
+  "elements": [
+    {
+      "id": "inv_incremental",
+      "kind": "MODULE",
+      "name": "inv_incremental",
+      "qualname": "",
+      "module": "inv_incremental",
+      "span": {"path": "tests/fixtures/mode_b/inv_incremental/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "Module for testing incremental analysis."
+    },
+    {
+      "id": "inv_incremental::operation",
+      "kind": "FUNCTION",
+      "name": "operation",
+      "qualname": "operation",
+      "module": "inv_incremental",
+      "span": {"path": "tests/fixtures/mode_b/inv_incremental/__init__.py", "line": 4},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "An operation."
+    }
+  ],
+  "unresolved": []
+}

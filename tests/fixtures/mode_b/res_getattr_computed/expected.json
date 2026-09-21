@@ -1,0 +1,58 @@
+{
+  "elements": [
+    {
+      "id": "res_getattr_computed",
+      "kind": "MODULE",
+      "name": "res_getattr_computed",
+      "qualname": "",
+      "module": "res_getattr_computed",
+      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "res_getattr_computed::Helper",
+      "kind": "CLASS",
+      "name": "Helper",
+      "qualname": "Helper",
+      "module": "res_getattr_computed",
+      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 6},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "res_getattr_computed::Helper::method_a",
+      "kind": "METHOD",
+      "name": "method_a",
+      "qualname": "Helper.method_a",
+      "module": "res_getattr_computed",
+      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 7},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "parent_id": "res_getattr_computed::Helper"
+    },
+    {
+      "id": "res_getattr_computed::Helper::method_b",
+      "kind": "METHOD",
+      "name": "method_b",
+      "qualname": "Helper.method_b",
+      "module": "res_getattr_computed",
+      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 10},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "parent_id": "res_getattr_computed::Helper"
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "res_getattr_computed::call_at_18",
+      "reason": "DYNAMIC_NAME",
+      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 18},
+      "description": "getattr call with computed name; cannot determine target statically",
+      "attempted": ["GETATTR_LITERAL"],
+      "candidate_ids": ["res_getattr_computed::Helper::method_a", "res_getattr_computed::Helper::method_b"],
+      "candidate_confidence": "PROBABLE"
+    }
+  ],
+  "edges": []
+}

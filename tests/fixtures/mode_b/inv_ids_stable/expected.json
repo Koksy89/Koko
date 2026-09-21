@@ -1,0 +1,38 @@
+{
+  "elements": [
+    {
+      "id": "inv_ids_stable",
+      "kind": "MODULE",
+      "name": "inv_ids_stable",
+      "qualname": "",
+      "module": "inv_ids_stable",
+      "span": {"path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "Module to test that IDs are stable across reformatting."
+    },
+    {
+      "id": "inv_ids_stable::foo",
+      "kind": "FUNCTION",
+      "name": "foo",
+      "qualname": "foo",
+      "module": "inv_ids_stable",
+      "span": {"path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py", "line": 5},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "A simple function."
+    },
+    {
+      "id": "inv_ids_stable::bar",
+      "kind": "FUNCTION",
+      "name": "bar",
+      "qualname": "bar",
+      "module": "inv_ids_stable",
+      "span": {"path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py", "line": 9},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "Another function."
+    }
+  ],
+  "unresolved": []
+}

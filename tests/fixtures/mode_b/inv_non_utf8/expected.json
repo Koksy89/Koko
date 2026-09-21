@@ -1,0 +1,11 @@
+{
+  "elements": [],
+  "unresolved": [
+    {
+      "id": "inv_non_utf8",
+      "reason": "DECODE_ERROR",
+      "span": {"path": "tests/fixtures/mode_b/inv_non_utf8/__init__.py", "line": 1},
+      "description": "Unable to decode file as UTF-8"
+    }
+  ]
+}

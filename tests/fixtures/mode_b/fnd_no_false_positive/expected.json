@@ -1,0 +1,64 @@
+{
+  "elements": [
+    {
+      "id": "fnd_no_false_positive",
+      "kind": "MODULE",
+      "name": "fnd_no_false_positive",
+      "qualname": "",
+      "module": "fnd_no_false_positive",
+      "span": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "fnd_no_false_positive::process_input",
+      "kind": "FUNCTION",
+      "name": "process_input",
+      "qualname": "process_input",
+      "module": "fnd_no_false_positive",
+      "span": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 8},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "fnd_no_false_positive::validate_result",
+      "kind": "FUNCTION",
+      "name": "validate_result",
+      "qualname": "validate_result",
+      "module": "fnd_no_false_positive",
+      "span": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 13},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "fnd_no_false_positive::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "fnd_no_false_positive",
+      "span": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 18},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    }
+  ],
+  "unresolved": [],
+  "edges": [
+    {
+      "id": "edge_main_process",
+      "kind": "CALLS",
+      "source_id": "fnd_no_false_positive::main",
+      "target_id": "fnd_no_false_positive::process_input",
+      "provenance": {"method": "SCOPE_LOOKUP", "confidence": "RESOLVED"},
+      "call_site": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 20}
+    },
+    {
+      "id": "edge_main_validate",
+      "kind": "CALLS",
+      "source_id": "fnd_no_false_positive::main",
+      "target_id": "fnd_no_false_positive::validate_result",
+      "provenance": {"method": "SCOPE_LOOKUP", "confidence": "RESOLVED"},
+      "call_site": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 21}
+    }
+  ],
+  "findings": []
+}

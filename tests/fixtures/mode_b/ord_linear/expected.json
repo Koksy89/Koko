@@ -1,0 +1,64 @@
+{
+  "elements": [
+    {
+      "id": "ord_linear",
+      "kind": "MODULE",
+      "name": "ord_linear",
+      "qualname": "",
+      "module": "ord_linear",
+      "span": {"path": "tests/fixtures/mode_b/ord_linear/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "ord_linear::first",
+      "kind": "FUNCTION",
+      "name": "first",
+      "qualname": "first",
+      "module": "ord_linear",
+      "span": {"path": "tests/fixtures/mode_b/ord_linear/__init__.py", "line": 4},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "ord_linear::second",
+      "kind": "FUNCTION",
+      "name": "second",
+      "qualname": "second",
+      "module": "ord_linear",
+      "span": {"path": "tests/fixtures/mode_b/ord_linear/__init__.py", "line": 8},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "ord_linear::third",
+      "kind": "FUNCTION",
+      "name": "third",
+      "qualname": "third",
+      "module": "ord_linear",
+      "span": {"path": "tests/fixtures/mode_b/ord_linear/__init__.py", "line": 12},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "ord_linear::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ord_linear",
+      "span": {"path": "tests/fixtures/mode_b/ord_linear/__init__.py", "line": 16},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    }
+  ],
+  "unresolved": [],
+  "order": [
+    {
+      "id": "order_linear",
+      "kind": "SEQUENCE",
+      "element_ids": ["ord_linear::first", "ord_linear::second", "ord_linear::third", "ord_linear::main"],
+      "children": [],
+      "provenance": {"method": "CFG_REACHABILITY", "confidence": "CERTAIN"}
+    }
+  ]
+}

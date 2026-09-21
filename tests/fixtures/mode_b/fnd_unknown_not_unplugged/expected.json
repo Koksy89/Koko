@@ -1,0 +1,56 @@
+{
+  "elements": [
+    {
+      "id": "fnd_unknown_not_unplugged",
+      "kind": "MODULE",
+      "name": "fnd_unknown_not_unplugged",
+      "qualname": "",
+      "module": "fnd_unknown_not_unplugged",
+      "span": {"path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "fnd_unknown_not_unplugged::Handler",
+      "kind": "CLASS",
+      "name": "Handler",
+      "qualname": "Handler",
+      "module": "fnd_unknown_not_unplugged",
+      "span": {"path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py", "line": 9},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "fnd_unknown_not_unplugged::Handler::helper",
+      "kind": "METHOD",
+      "name": "helper",
+      "qualname": "Handler.helper",
+      "module": "fnd_unknown_not_unplugged",
+      "span": {"path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py", "line": 10},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "parent_id": "fnd_unknown_not_unplugged::Handler"
+    },
+    {
+      "id": "fnd_unknown_not_unplugged::process",
+      "kind": "FUNCTION",
+      "name": "process",
+      "qualname": "process",
+      "module": "fnd_unknown_not_unplugged",
+      "span": {"path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py", "line": 19},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "getattr_call_21",
+      "reason": "DYNAMIC_NAME",
+      "span": {"path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py", "line": 21},
+      "description": "getattr with computed attribute name",
+      "candidate_ids": ["fnd_unknown_not_unplugged::Handler::helper"],
+      "candidate_confidence": "PROBABLE"
+    }
+  ],
+  "findings": []
+}

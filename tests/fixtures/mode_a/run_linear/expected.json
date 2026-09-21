@@ -1,0 +1,109 @@
+{
+  "elements": [
+    {
+      "id": "run_linear",
+      "kind": "MODULE",
+      "name": "run_linear",
+      "qualname": "",
+      "module": "run_linear",
+      "span": {"path": "tests/fixtures/mode_a/run_linear/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "run_linear::step_one",
+      "kind": "FUNCTION",
+      "name": "step_one",
+      "qualname": "step_one",
+      "module": "run_linear",
+      "span": {"path": "tests/fixtures/mode_a/run_linear/__init__.py", "line": 4},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "run_linear::step_two",
+      "kind": "FUNCTION",
+      "name": "step_two",
+      "qualname": "step_two",
+      "module": "run_linear",
+      "span": {"path": "tests/fixtures/mode_a/run_linear/__init__.py", "line": 9},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "run_linear::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "run_linear",
+      "span": {"path": "tests/fixtures/mode_a/run_linear/__init__.py", "line": 14},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_1",
+      "run_id": "run_001",
+      "kind": "CALL",
+      "element_id": "run_linear::main",
+      "sequence": 1,
+      "depth": 0,
+      "caller_event_id": ""
+    },
+    {
+      "event_id": "evt_2",
+      "run_id": "run_001",
+      "kind": "CALL",
+      "element_id": "run_linear::step_one",
+      "sequence": 2,
+      "depth": 1,
+      "caller_event_id": "evt_1"
+    },
+    {
+      "event_id": "evt_3",
+      "run_id": "run_001",
+      "kind": "RETURN",
+      "element_id": "run_linear::step_one",
+      "sequence": 3,
+      "depth": 1,
+      "caller_event_id": "evt_1",
+      "values": {
+        "return_value": {"status": "FULL", "repr_text": "1", "type_name": "int"}
+      }
+    },
+    {
+      "event_id": "evt_4",
+      "run_id": "run_001",
+      "kind": "CALL",
+      "element_id": "run_linear::step_two",
+      "sequence": 4,
+      "depth": 1,
+      "caller_event_id": "evt_1"
+    },
+    {
+      "event_id": "evt_5",
+      "run_id": "run_001",
+      "kind": "RETURN",
+      "element_id": "run_linear::step_two",
+      "sequence": 5,
+      "depth": 1,
+      "caller_event_id": "evt_1",
+      "values": {
+        "return_value": {"status": "FULL", "repr_text": "3", "type_name": "int"}
+      }
+    },
+    {
+      "event_id": "evt_6",
+      "run_id": "run_001",
+      "kind": "RETURN",
+      "element_id": "run_linear::main",
+      "sequence": 6,
+      "depth": 0,
+      "caller_event_id": "",
+      "values": {
+        "return_value": {"status": "FULL", "repr_text": "3", "type_name": "int"}
+      }
+    }
+  ]
+}

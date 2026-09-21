@@ -1,0 +1,53 @@
+{
+  "elements": [
+    {
+      "id": "lin_assign_chain",
+      "kind": "MODULE",
+      "name": "lin_assign_chain",
+      "qualname": "",
+      "module": "lin_assign_chain",
+      "span": {"path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "lin_assign_chain::process_data",
+      "kind": "FUNCTION",
+      "name": "process_data",
+      "qualname": "process_data",
+      "module": "lin_assign_chain",
+      "span": {"path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py", "line": 4},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "lin_assign_chain::augmented_example",
+      "kind": "FUNCTION",
+      "name": "augmented_example",
+      "qualname": "augmented_example",
+      "module": "lin_assign_chain",
+      "span": {"path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py", "line": 12},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    }
+  ],
+  "unresolved": [],
+  "lineage": [
+    {
+      "id": "lineage_x_y",
+      "kind": "ASSIGNS",
+      "source_id": "lin_assign_chain::process_data::x",
+      "target_id": "lin_assign_chain::process_data::y",
+      "provenance": {"method": "DATAFLOW", "confidence": "CERTAIN"},
+      "span": {"path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py", "line": 6}
+    },
+    {
+      "id": "lineage_y_z",
+      "kind": "ASSIGNS",
+      "source_id": "lin_assign_chain::process_data::y",
+      "target_id": "lin_assign_chain::process_data::z",
+      "provenance": {"method": "DATAFLOW", "confidence": "CERTAIN"},
+      "span": {"path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py", "line": 7}
+    }
+  ]
+}

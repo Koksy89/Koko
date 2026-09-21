@@ -1,0 +1,11 @@
+{
+  "elements": [],
+  "unresolved": [
+    {
+      "id": "inv_syntax_error",
+      "reason": "SYNTAX_ERROR",
+      "span": {"path": "tests/fixtures/mode_b/inv_syntax_error/__init__.py", "line": 5},
+      "description": "Syntax error: unexpected EOF while parsing"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "elements": [
+    {
+      "id": "cfg_shapes",
+      "kind": "MODULE",
+      "name": "cfg_shapes",
+      "qualname": "",
+      "module": "cfg_shapes",
+      "span": {"path": "tests/fixtures/mode_b/cfg_shapes/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "cfg_shapes::branching_code",
+      "kind": "FUNCTION",
+      "name": "branching_code",
+      "qualname": "branching_code",
+      "module": "cfg_shapes",
+      "span": {"path": "tests/fixtures/mode_b/cfg_shapes/__init__.py", "line": 4},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "cfg_shapes::loop_code",
+      "kind": "FUNCTION",
+      "name": "loop_code",
+      "qualname": "loop_code",
+      "module": "cfg_shapes",
+      "span": {"path": "tests/fixtures/mode_b/cfg_shapes/__init__.py", "line": 11},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "cfg_shapes::exception_handling",
+      "kind": "FUNCTION",
+      "name": "exception_handling",
+      "qualname": "exception_handling",
+      "module": "cfg_shapes",
+      "span": {"path": "tests/fixtures/mode_b/cfg_shapes/__init__.py", "line": 19},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "cfg_shapes::with_statement",
+      "kind": "FUNCTION",
+      "name": "with_statement",
+      "qualname": "with_statement",
+      "module": "cfg_shapes",
+      "span": {"path": "tests/fixtures/mode_b/cfg_shapes/__init__.py", "line": 28},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    }
+  ],
+  "unresolved": [],
+  "cfg_blocks": [],
+  "cfg_edges": []
+}

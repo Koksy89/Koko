@@ -1,0 +1,155 @@
+{
+  "elements": [
+    {
+      "id": "inv_kinds",
+      "kind": "MODULE",
+      "name": "inv_kinds",
+      "qualname": "",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 1},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "inv_kinds::GLOBAL_VAR",
+      "kind": "ASSIGNMENT",
+      "name": "GLOBAL_VAR",
+      "qualname": "GLOBAL_VAR",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 7},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123"
+    },
+    {
+      "id": "inv_kinds::simple_func",
+      "kind": "FUNCTION",
+      "name": "simple_func",
+      "qualname": "simple_func",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 11},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "signature": "(param: int) -> None",
+      "docstring": "A function."
+    },
+    {
+      "id": "inv_kinds::MyClass",
+      "kind": "CLASS",
+      "name": "MyClass",
+      "qualname": "MyClass",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 17},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "A class."
+    },
+    {
+      "id": "inv_kinds::MyClass::class_var",
+      "kind": "ASSIGNMENT",
+      "name": "class_var",
+      "qualname": "MyClass.class_var",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 20},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "parent_id": "inv_kinds::MyClass"
+    },
+    {
+      "id": "inv_kinds::MyClass::__init__",
+      "kind": "METHOD",
+      "name": "__init__",
+      "qualname": "MyClass.__init__",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 22},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "signature": "(self, value: str) -> None",
+      "docstring": "Initialize.",
+      "parent_id": "inv_kinds::MyClass"
+    },
+    {
+      "id": "inv_kinds::MyClass::regular_method",
+      "kind": "METHOD",
+      "name": "regular_method",
+      "qualname": "MyClass.regular_method",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 26},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "signature": "(self, x: int) -> str",
+      "docstring": "A regular method.",
+      "parent_id": "inv_kinds::MyClass"
+    },
+    {
+      "id": "inv_kinds::MyClass::my_property",
+      "kind": "PROPERTY",
+      "name": "my_property",
+      "qualname": "MyClass.my_property",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 29},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "decorators": ["property"],
+      "docstring": "A property.",
+      "parent_id": "inv_kinds::MyClass"
+    },
+    {
+      "id": "inv_kinds::outer",
+      "kind": "FUNCTION",
+      "name": "outer",
+      "qualname": "outer",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 34},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "Function with nested function."
+    },
+    {
+      "id": "inv_kinds::outer::inner",
+      "kind": "FUNCTION",
+      "name": "inner",
+      "qualname": "outer.<locals>.inner",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 36},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "parent_id": "inv_kinds::outer"
+    },
+    {
+      "id": "inv_kinds::with_closure",
+      "kind": "FUNCTION",
+      "name": "with_closure",
+      "qualname": "with_closure",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 41},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "docstring": "Create a closure."
+    },
+    {
+      "id": "inv_kinds::with_closure::closure",
+      "kind": "FUNCTION",
+      "name": "closure",
+      "qualname": "with_closure.<locals>.closure",
+      "module": "inv_kinds",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 44},
+      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
+      "content_hash": "abc123",
+      "parent_id": "inv_kinds::with_closure"
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "inv_kinds::sys",
+      "reason": "MISSING_TARGET",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 3},
+      "description": "Import 'sys' not found"
+    },
+    {
+      "id": "inv_kinds::Optional",
+      "reason": "MISSING_TARGET",
+      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 4},
+      "description": "Import 'Optional' not found (from typing)"
+    }
+  ]
+}

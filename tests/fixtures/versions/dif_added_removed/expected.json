@@ -1,0 +1,49 @@
+{
+  "changes": [
+    {
+      "id": "change_foo_unchanged",
+      "kind": "UNCHANGED",
+      "before_id": "dif_added_removed::foo",
+      "after_id": "dif_added_removed::foo",
+      "provenance": {"method": "STRUCTURAL_MATCH", "confidence": "CERTAIN"}
+    },
+    {
+      "id": "change_bar_removed",
+      "kind": "REMOVED",
+      "before_id": "dif_added_removed::bar",
+      "after_id": "",
+      "provenance": {"method": "STRUCTURAL_MATCH", "confidence": "CERTAIN"}
+    },
+    {
+      "id": "change_baz_added",
+      "kind": "ADDED",
+      "before_id": "",
+      "after_id": "dif_added_removed::baz",
+      "provenance": {"method": "STRUCTURAL_MATCH", "confidence": "CERTAIN"}
+    }
+  ],
+  "impacts": [
+    {
+      "id": "impact_bar_removed",
+      "change_id": "change_bar_removed",
+      "affected_ids": ["dif_added_removed::bar"],
+      "decision_paths_changed": false,
+      "features_changed": [],
+      "reachability_flipped": ["dif_added_removed::bar"],
+      "findings_added": [],
+      "findings_removed": [],
+      "rank": 10
+    },
+    {
+      "id": "impact_baz_added",
+      "change_id": "change_baz_added",
+      "affected_ids": ["dif_added_removed::baz"],
+      "decision_paths_changed": false,
+      "features_changed": [],
+      "reachability_flipped": ["dif_added_removed::baz"],
+      "findings_added": [],
+      "findings_removed": [],
+      "rank": 10
+    }
+  ]
+}
