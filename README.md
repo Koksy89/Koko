@@ -18,12 +18,10 @@ or modify them.
 
 ## Status
 
-**Mode B (static) is complete and gated. Mode A (runtime) is not built.**
+**Both modes are complete and gated.** 1187 tests, 0 failing.
 
-`cascade-map analyze` reads your engine and produces a map. It never executes it.
-`cascade-map trace` refuses, because the runtime half does not exist yet.
-
-See `docs/STATUS.md` to resume.
+`cascade-map analyze` reads your engine and never executes it. `cascade-map trace` runs
+it inside the safety harness and records what it did. See `docs/STATUS.md`.
 
 ## Setup
 
@@ -132,6 +130,62 @@ regression test. Do not disable it.
 To verify it is live:
 
     pytest tests/test_guard_engine.py -q
+
+## Watching it run — Mode A
+
+**Read `docs/design/ARCHITECTURE.md` under "What layer 3 does not cover" first, and run
+the first one inside a container.** The harness is a very good tripwire. It is not a wall,
+and it says so in every run record.
+
+Declare what to run, in a JSON file:
+
+    {
+      "target_root": "target_engine",
+      "scenarios": {
+        "baseline": {"module": "run_m5", "function": "main"}
+      },
+      "declared_process_names": [],
+      "env_passthrough": []
+    }
+
+Then:
+
+    cascade-map trace out/first --scenarios scenarios.json --scenario baseline --out out/run1
+    cascade-map view out/run1
+
+Mode A always builds on a completed static graph, so `analyze` must have run first. The
+harness verifies the graph still matches your engine's contents and **refuses** if it does
+not — a stale map would key runtime events onto elements that have moved.
+
+### What a run tells you
+
+    events         9
+    mapped         9/9 target events mapped (100.0%), 145 external frames skipped
+    contradictions 2   <- observation vs static claim
+    blocked        3   <- side effects the harness stopped
+
+**Contradictions are the point.** They are places where what your engine actually did
+disagrees with what the static map predicted — an edge that never fires, a call nobody
+predicted, an order that differs. The static map is never edited to match; the
+disagreement is the finding.
+
+**Unmapped events** are where the static analysis was wrong. Python's own import
+machinery is counted separately as "external" so it cannot drown that signal.
+
+**Blocked** lists side effects the harness stopped — outbound connections, writes outside
+the sandbox, process spawns. Those are findings about your engine, not noise.
+
+Every run also prints **what it could not guarantee**. Read that first.
+
+### If your scenario does not run
+
+    YOUR SCENARIO DID NOT RUN — the module could not be imported.
+      ModuleNotFoundError: No module named 'run_m5'
+
+Three distinct messages, because they send you to three different places: a wrong
+`target_root` or an engine that cannot import itself; a function name that does not exist,
+which is a typo in your scenario file; or your own code raising, with its traceback. A run
+whose scenario never executed never reads as a run whose analysis was wrong.
 
 ## Working on it
 
