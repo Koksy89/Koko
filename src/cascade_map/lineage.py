@@ -1703,6 +1703,11 @@ class _ModuleWalker:
         base_name = name.split(".")[0] if name else ""
         attr = func.attr if isinstance(func, ast.Attribute) else ""
 
+        # 0. super() is the same instance; which method it reaches is card 2's
+        #    MRO dispatch, consumed at step 4.
+        if name == "super" and not node.args:
+            return _retag(self.read_name("self"), Confidence.PROBABLE, "super(): the same instance")
+
         # 1. reflection and runtime code construction -> explicit barrier
         if name in BARRIER_BUILTINS or base_name in ("importlib", "pickle", "marshal"):
             return self._barrier_call(node, UnresolvedReason.DYNAMIC_NAME, f"flow into {name or 'a dynamic call'}")

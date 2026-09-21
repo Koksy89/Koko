@@ -14,17 +14,17 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 | Card | Scope | Subagent | Status |
 |---|---|---|---|
 | 8 | Fixture corpus | fixture-writer | **FAILED x2 — rebuilding** (escalated) |
-| 1 | Ingestion & inventory | ingestion-builder | built, under verification |
+| 1 | Ingestion & inventory | ingestion-builder | reworked, under verification |
 | 2 | Resolution & call graph | resolver-engineer | building |
 | 3 | CFG, cascade ordering, decisions | cascade-engineer | building |
 | 4 | Data/feature lineage & slicing | lineage-engineer | building |
 | 5 | Unplugged detection & hints | findings-builder | **DONE** (PASS, round 2) |
-| 6 | Version diff & impact | diff-impact-builder | building |
+| 6 | Version diff & impact | diff-impact-builder | built, awaiting verification |
 | 16 | Documentation records & completeness gate | docs-builder | **DONE** (PASS) |
-| 15 | Viewer (phase B) | viewer-builder | FAILED — reworking |
-| 11 | Safe execution harness | harness-builder | FAILED — reworking |
-| 12 | Runtime tracer & value capture | tracer-engineer | building |
-| 13 | Intent registry & alignment | alignment-engineer | built, under verification |
+| 15 | Viewer (phase B) | viewer-builder | reworked, under verification |
+| 11 | Safe execution harness | harness-builder | reworked, under verification |
+| 12 | Runtime tracer & value capture | tracer-engineer | built, awaiting verification |
+| 13 | Intent registry & alignment | alignment-engineer | **DONE** (PASS, round 2) |
 | 14 | Execution narrative | narrative-builder | reworked, awaiting verification |
 | 10 | CLI, integration & validation | the lead | not started |
 
@@ -96,5 +96,22 @@ delegated in the same step.
 - The guard hook denies any command whose head is not on its read-only allowlist when the
   command names a protected path. Add to `READ_ONLY` and say so in the report; never route
   around it.
-- Builders' self-reported numbers drift. Card 5 reported 24 tests against an actual 20;
-  card 16 reported 137 against 153. Take counts from a run, not a report.
+- **Builders' self-reported numbers drift, badly and repeatedly.** Card 5 reported 24
+  tests against an actual 20; card 16 reported 137 against 153; card 13 reported 332
+  against 397, then 658/7 against an actual 656/38 after being corrected once. Every
+  number in this project comes from a run, never from a report.
+- **The empty-return probe is the sharpest single check available.** Stub a card's entry
+  point to return nothing and run its suite: whatever still passes was never testing the
+  card. Card 1 ran it on itself and got 0 of 19. Card 13's 15 of 99 were all registry and
+  parser tests that legitimately never call `judge()` — a fair answer, not a defect. Ask
+  it of every card, and prefer the builder demonstrating it over asserting it.
+- **Writing a demanded test finds bugs bigger than the defect that prompted it.** Three
+  times so far: card 15's exhaustive link test found dangling links across the whole page,
+  not the one corner flagged; card 13's YAML test found that anchors and aliases in value
+  position were silently misread as literal text, corrupting owner intent data; card 1's
+  decode test found that DECODE_ERROR always reported line 1. Demand the general test, not
+  a fix to the specific case.
+- **Adversarial probing finds what code review does not.** Card 11's sandbox was fully
+  bypassed by `threading.Thread`, and separately by `multiprocessing` spawn, which calls
+  `_posixsubprocess.fork_exec` directly and never trips `subprocess.Popen`'s audit event.
+  Neither was visible by reading; both were found by trying to get out.
