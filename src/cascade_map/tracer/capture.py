@@ -16,6 +16,8 @@ Three rules govern every function here.
 
 from __future__ import annotations
 
+import re
+from dataclasses import replace
 from typing import Any, Mapping
 
 from cascade_map.contracts.interfaces import CaptureStatus, ValueCapture, canonical_dumps
@@ -26,8 +28,33 @@ __all__ = [
     "capture_value",
     "capture_values",
     "dropped",
+    "stable_text",
     "MISSING",
 ]
+
+_ADDRESS = re.compile(r"(?<= at )0x[0-9a-fA-F]+")
+_ADDRESS_PLACEHOLDER = "0x..."
+ADDRESS_NOTE = (
+    "memory addresses normalised to 0x...: an address is not information -- it is "
+    "different in every process and comparable to nothing -- and leaving it in would "
+    "make two runs of one scenario differ byte for byte"
+)
+
+
+def stable_text(text: str) -> str:
+    """Strip what cannot reproduce from rendered text.
+
+    CPython's default repr is ``<Thing object at 0x7f2b2c66bd80>``. The address
+    changes every run, so a trace carrying one is not replayable -- and on a
+    116k-line engine most captured objects have no custom ``__repr__``, so most
+    captured values would carry one. ``type_name`` already holds the half of
+    that repr which means anything.
+
+    Only the ``at 0x...`` form CPython itself emits is touched, so a hex
+    literal that is genuinely part of a value survives unless it follows the
+    word "at".
+    """
+    return _ADDRESS.sub(_ADDRESS_PLACEHOLDER, text)
 
 
 class _Missing:
@@ -82,7 +109,7 @@ def capture_value(
         )
 
     try:
-        return _capture(value, type_name, limits)
+        return _stabilise(_capture(value, type_name, limits))
     except BaseException as exc:  # noqa: BLE001 - capture must never raise
         return dropped(f"capture raised {type(exc).__name__}", type_name)
 
@@ -125,6 +152,16 @@ def capture_values(
 # ---------------------------------------------------------------------------
 # internals
 # ---------------------------------------------------------------------------
+
+
+def _stabilise(capture: ValueCapture) -> ValueCapture:
+    """Normalise addresses out, and say so when any were found."""
+    repr_text = stable_text(capture.repr_text)
+    shape = stable_text(capture.shape)
+    if repr_text == capture.repr_text and shape == capture.shape:
+        return capture
+    reason = f"{capture.reason}; {ADDRESS_NOTE}" if capture.reason else ADDRESS_NOTE
+    return replace(capture, repr_text=repr_text, shape=shape, reason=reason)
 
 
 def _type_name(value: Any) -> str:

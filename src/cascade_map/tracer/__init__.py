@@ -24,7 +24,7 @@ is byte-identical by construction rather than by diligence.
 
 from __future__ import annotations
 
-from .capture import MISSING, capture_value, capture_values, dropped
+from .capture import ADDRESS_NOTE, MISSING, capture_value, capture_values, dropped, stable_text
 from .collector import (
     DEFAULT_REQUIRED_CONTROLS,
     TraceCollector,
@@ -44,6 +44,7 @@ from .static_index import BranchOutcome, CodeLocation, EventMapping, StaticIndex
 from .tracer import EVENT_ID_WIDTH, MappingReport, TraceResult, Tracer, event_id_for
 
 __all__ = [
+    "ADDRESS_NOTE",
     "CaptureLimits",
     "CodeLocation",
     "Contradiction",
@@ -73,4 +74,5 @@ __all__ = [
     "dropped",
     "event_id_for",
     "refusal_reason",
+    "stable_text",
 ]

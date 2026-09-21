@@ -18,6 +18,9 @@ import ast
 import importlib
 import inspect
 import json
+import os
+import re
+import subprocess
 import posixpath
 import sys
 from pathlib import Path
@@ -50,6 +53,7 @@ from cascade_map.contracts.interfaces import (
     canonical_jsonl,
 )
 from cascade_map.tracer import (
+    ADDRESS_NOTE,
     CaptureLimits,
     CodeLocation,
     ContradictionKind,
@@ -65,6 +69,7 @@ from cascade_map.tracer import (
     capture_value,
     capture_values,
     refusal_reason,
+    stable_text,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -1671,3 +1676,180 @@ def test_a_blocked_write_is_recorded_not_raised(tmp_path: Path) -> None:
     assert json.loads(tracer.emit(result, tmp_path / "out")["mapping.json"])[
         "persist_error"
     ] == result.mapping.persist_error
+
+
+# ---------------------------------------------------------------------------
+# determinism: an address is not information
+# ---------------------------------------------------------------------------
+
+
+class Widget:
+    """No `__repr__`, so CPython renders `<Widget object at 0x...>`."""
+
+
+def test_two_objects_at_different_addresses_capture_identically() -> None:
+    first, second = Widget(), Widget()
+    assert id(first) != id(second), "two live objects cannot share an address"
+    one = capture_value("widget", first)
+    two = capture_value("widget", second)
+    assert one == two
+    assert one.repr_text.endswith("object at 0x...>")
+    assert "0x..." in one.repr_text
+    assert one.type_name == "Widget", "the useful half of the repr survives"
+    assert ADDRESS_NOTE in one.reason
+
+
+def test_addresses_are_normalised_wherever_they_are_rendered() -> None:
+    widget = Widget()
+    cases = {
+        "plain": widget,
+        "nested": {"inner": [widget]},
+        "exception": ValueError(widget),
+        "tuple": (widget, widget),
+    }
+    assert len(cases) == 4
+    for name, value in cases.items():
+        text = capture_value(name, value).repr_text
+        assert "0x" not in text or "0x..." in text, (name, text)
+        assert not re.search(r"0x[0-9a-fA-F]{6,}", text), (name, text)
+
+
+def test_a_hex_value_that_is_real_data_survives() -> None:
+    """Only CPython's own `at 0x...` form is touched."""
+    assert capture_value("digest", "0xdeadbeef").repr_text == "'0xdeadbeef'"
+    assert capture_value("digest", "0xdeadbeef").reason == ""
+    assert capture_value("ids", ["0xcafef00d"]).repr_text == "['0xcafef00d']"
+    assert stable_text("checksum 0xdeadbeef") == "checksum 0xdeadbeef"
+    assert stable_text("<X object at 0xdeadbeef>") == "<X object at 0x...>"
+
+
+#: Run in subprocesses so PYTHONHASHSEED actually differs -- and so the two
+#: runs allocate at different addresses, which is what the phase gate caught
+#: and what two in-process materialisations of one recording cannot show.
+_DETERMINISM_PROBE = '''
+import hashlib, json, sys
+sys.path.insert(0, {src!r})
+from cascade_map.contracts.interfaces import (
+    Confidence, Element, ElementKind, Method, Provenance, RunRecord, SourceSpan,
+)
+from cascade_map.tracer import StaticIndex, Tracer
+
+sys.path.insert(0, {probe_dir!r})
+import probe_module
+
+prov = Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN)
+
+
+def element(eid, qualname, path, line, end, kind=ElementKind.FUNCTION, module="m"):
+    return Element(
+        id=eid, kind=kind, name=qualname or module, qualname=qualname, module=module,
+        span=SourceSpan(path=path, line=line, end_line=end), provenance=prov,
+        content_hash="h",
+    )
+
+
+index = StaticIndex(
+    root={probe_dir!r},
+    elements=[
+        element("probe::handle", "handle", "probe_module.py", 4, 6),
+        element("probe::Widget", "Widget", "probe_module.py", 1, 2,
+                kind=ElementKind.CLASS),
+    ],
+    sink_element_ids=["probe::handle"],
+)
+run = RunRecord(
+    run_id="run_001", target_hashes={{"probe_module.py": "h"}}, graph_hash="g",
+    scenario="determinism", interpreter="cpython",
+    controls_active={{"network": True, "filesystem": True, "process": True}},
+    blocked=(),
+)
+tracer = Tracer(index, recordings_dir={out!r} + "/recordings")
+tracer.start(run)
+try:
+    probe_module.handle(probe_module.Widget(), {{"gamma", "alpha", "beta"}})
+    probe_module.handle(probe_module.Widget(), {{"delta", "epsilon"}})
+finally:
+    tracer.stop()
+
+result = tracer.result(run)
+files = tracer.emit(result, {out!r} + "/runtime/run_001")
+digests = {{
+    name: hashlib.sha256(text.encode()).hexdigest() for name, text in sorted(files.items())
+}}
+digests["recording"] = hashlib.sha256(
+    tracer.recording_path("run_001").read_bytes()
+).hexdigest()
+print(json.dumps({{
+    "digests": digests,
+    "events": len(result.events),
+    "captured": sum(len(event.values) for event in result.events),
+    "addresses": sum(
+        1
+        for event in result.events
+        for capture in event.values.values()
+        if "0x..." in capture.repr_text
+    ),
+    "rate": result.mapping.rate_text,
+    "nondet_ids": [observation.id for observation in result.nondeterminism],
+}}))
+'''
+
+_PROBE_MODULE = '''class Widget:
+    pass
+
+
+def handle(widget, names):
+    seen = sorted(names)
+    return {"widget": widget, "names": seen, "count": len(seen)}
+'''
+
+
+def test_output_is_byte_identical_across_processes_and_hash_seeds(tmp_path: Path) -> None:
+    """The phase gate's own check: same scenario, same output root, twice."""
+    probe_dir = tmp_path / "probe"
+    probe_dir.mkdir()
+    (probe_dir / "probe_module.py").write_text(_PROBE_MODULE, encoding="utf-8")
+    out = tmp_path / "out"
+    script = _DETERMINISM_PROBE.format(
+        src=str(REPO_ROOT / "src"),
+        probe_dir=str(probe_dir),
+        out=str(out),
+    )
+    results = []
+    for seed in ("0", "1", "524287"):
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            env=dict(os.environ, PYTHONHASHSEED=seed, PYTHONDONTWRITEBYTECODE="1"),
+            cwd=str(REPO_ROOT),
+            timeout=120,
+        )
+        assert completed.returncode == 0, completed.stderr
+        results.append(json.loads(completed.stdout))
+
+    assert len(results) == 3
+    assert results[0]["events"] >= 6, results[0]
+    assert results[0]["captured"] >= 8, results[0]
+    assert results[0]["addresses"] >= 2, "nothing with an address was captured"
+    empty_digest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    assert results[0]["digests"]["events.jsonl"] != empty_digest, "identical emptiness"
+    assert results[0]["digests"]["recording"] != empty_digest
+    assert set(results[0]["digests"]) == EXPECTED_ARTIFACTS | {"recording"}
+    # What must never vary: the trace itself.
+    graded = {"events.jsonl", "contradictions.jsonl", "mapping.json"}
+    for later in results[1:]:
+        for name in sorted(graded):
+            assert later["digests"][name] == results[0]["digests"][name], name
+        assert later["rate"] == results[0]["rate"]
+
+    # What legitimately varies, and only this: PYTHONHASHSEED=0 disables hash
+    # randomization, so the run genuinely has one fewer nondeterminism source.
+    # It is recorded rather than hidden, which is the whole point -- so the
+    # record differs, and the two randomized seeds agree with each other
+    # exactly, recording and all.
+    unseeded, *randomized = results
+    assert unseeded["nondet_ids"] == []
+    assert all("HASH_ORDERING" in "".join(run["nondet_ids"]) for run in randomized)
+    assert len(randomized) == 2
+    assert randomized[0]["digests"] == randomized[1]["digests"], randomized

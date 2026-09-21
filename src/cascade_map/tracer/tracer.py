@@ -29,6 +29,7 @@ from cascade_map.contracts.interfaces import (
     combine,
 )
 
+from .capture import stable_text
 from .collector import DEFAULT_REQUIRED_CONTROLS, TraceCollector, TraceRefused, refusal_reason
 from .contradictions import Contradiction, ContradictionKind
 from .limits import DEFAULT_LIMITS, CaptureLimits, RedactionPolicy
@@ -202,7 +203,7 @@ class Tracer:
         try:
             recording.write(self.recording_path(run.run_id))
         except Exception as exc:  # noqa: BLE001 - including the sandbox's own denial
-            return (
+            return stable_text(
                 f"the recording could not be persisted to {relative}: "
                 f"{type(exc).__name__}: {exc}. This run can still be materialised in "
                 "process from the held copy, but it cannot be replayed later."
