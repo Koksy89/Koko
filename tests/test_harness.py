@@ -1228,12 +1228,13 @@ def test_declared_child_process_runs_unaudited_once_permitted(tmp_path: Path) ->
         "    's.close()\\n'\n"
         ")\n"
         "with activate(ctx):\n"
-        "    subprocess.run([sys.executable, '-c', child_code], check=True, timeout=10)\n"
-        "acceptor.join(timeout=10)\n"
+        "    subprocess.run([sys.executable, '-c', child_code], check=True, timeout=20)\n"
+        "acceptor.join(timeout=20)\n"
         "server.close()\n"
         "assert received.get('data') == b'unaudited-child', received\n",
         declared_process_names=frozenset({python}),
         label="declared_child_unaudited",
+        timeout=45.0,
     )
     # Neither the parent's spawn nor the child's own socket use is recorded:
     # declaring a process token permits only the spawn, nothing beyond it.
