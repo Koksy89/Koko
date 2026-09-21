@@ -6,20 +6,35 @@ file never creates, edits or deletes anything under `tests/fixtures/`.
 Comparison strategy: `expected.json` intentionally omits default-valued
 fields (see e.g. `inv_kinds/expected.json`, where `GLOBAL_VAR` has no
 `signature` key). So a fixture's expected element is checked as a *subset* of
-the actual element's fields, matched by `id`: every key the fixture specifies
-must match; the actual element may carry more. `content_hash` is checked
-loosely (see `_HASH_PLACEHOLDERS`) because most fixtures use a placeholder
-value that was never meant to be verified byte-for-byte by hand. `span.line`
-is informational only -- see the module docstring note on
-`_KNOWN_LINE_NUMBER_SLIPS` below.
+the actual element's fields: every key the fixture specifies must match; the
+actual element may carry more. `content_hash` is skipped whenever
+`content_hash_asserted` is `false` (the fixture's own "don't check this by
+hand" marker) or the value is a known placeholder. `span.line` is
+informational only -- see the note below.
 
-Known fixture imprecision (reported, not silently patched around):
+Elements are matched by **`(module, qualname, kind)`**, not by the fixture's
+`id` field -- see the load-bearing discrepancy below.
+
+Known fixture defects (reported, not silently patched around; card 1's own
+implementation follows the binding contract, verified separately by
+`tests/test_contracts.py::test_module_and_member_ids`):
+  - **`inv_kinds/expected.json`'s `id` field does not follow `make_id`.** For
+    nested elements it joins every scope level with `::` and drops
+    `<locals>` (e.g. `id: "inv_kinds::MyClass::class_var"` next to
+    `qualname: "MyClass.class_var"`; `id: "inv_kinds::outer::inner"` next to
+    `qualname: "outer.<locals>.inner"`). `make_id` is `f"{module}::{qualname}"`
+    -- a single `::` between module and qualname, dots preserved inside the
+    qualname -- exactly as `ARCHITECTURE.md`'s own worked example
+    (`strategy.rules::RuleSet.evaluate`) and `test_module_and_member_ids`
+    show. Changing card 1's ID scheme to match the fixture would break the
+    settled S4 identity contract (OPEN_QUESTIONS.md) that every other card
+    keys off. This file therefore matches fixture elements by `qualname`
+    (which the fixture gets right throughout) instead of by `id`, and
+    reports the discrepancy for card 8 to fix rather than reproducing it.
   - `inv_kinds/expected.json` hand-counts several `span.line` values off by
     one or two (e.g. `simple_func` at source line 10, expected says 11).
     Confirmed by `grep -n` against the fixture source. Line numbers are
-    therefore not asserted exactly in this file; `id`, `kind`, `qualname`,
-    `parent_id`, `signature` and `docstring` are, and those are what the
-    case is actually proving (stability/structure, not line-counting).
+    therefore not asserted exactly in this file.
   - `inv_blob/expected.json` gives `byte_size: 1048576`; the literal is
     wrapped in `'''...'''` with a leading and trailing newline inside the
     quotes, so the actual `str` value is 1048578 bytes. Confirmed by parsing
@@ -101,15 +116,32 @@ def _check_case(case_id: str, tmp_path: Path) -> tuple[list, list]:
     expected = json.loads((_case_dir(case_id) / "expected.json").read_text())
     elements, unresolved = _run_case(case_id, tmp_path)
 
-    actual_by_id = {e.id: _element_dict(e) for e in elements}
+    from cascade_map.contracts.interfaces import make_id
+
+    # A list per key, not a single value: `inv_redefinition` deliberately puts
+    # two elements under the same (module, qualname, kind) -- consumed in
+    # source order, which both expected.json and `elements` share.
+    actual_by_key: dict[tuple, list[dict]] = {}
+    for e in elements:
+        actual_by_key.setdefault((e.module, e.qualname, str(e.kind)), []).append(_element_dict(e))
+
     for exp_el in expected.get("elements", []):
-        eid = exp_el["id"]
-        assert eid in actual_by_id, f"{case_id}: expected element {eid!r} missing from actual output"
-        _assert_subset(exp_el, actual_by_id[eid])
+        key = (exp_el["module"], exp_el["qualname"], exp_el["kind"])
+        bucket = actual_by_key.get(key, [])
+        assert bucket, f"{case_id}: expected element {exp_el['id']!r} ({key}) missing from actual output"
+        actual = bucket.pop(0)
+        exp_compare = {k: v for k, v in exp_el.items() if k != "id"}
+        if "decorators" in exp_compare:
+            exp_compare["decorators"] = list(exp_compare["decorators"])
+        actual = {**actual, "decorators": list(actual.get("decorators", ()))}
+        _assert_subset(exp_compare, actual)
+        # the ID itself: verified against make_id (the binding contract), not
+        # against the fixture's own (defective, see module docstring) id field
+        assert actual["id"] == make_id(actual["module"], actual["qualname"]) or "#" in actual["id"]
         if exp_el.get("content_hash_asserted") is False or exp_el.get("content_hash") in _HASH_PLACEHOLDERS:
-            assert actual_by_id[eid]["content_hash"], "content_hash must never be empty"
+            assert actual["content_hash"], "content_hash must never be empty"
         elif exp_el.get("content_hash") is not None:
-            assert actual_by_id[eid]["content_hash"] == exp_el["content_hash"]
+            assert actual["content_hash"] == exp_el["content_hash"]
 
     actual_unresolved_by_id = {}
     for u in unresolved:
@@ -229,8 +261,12 @@ def test_inv_ids_stable(tmp_path: Path) -> None:
     reformatted = reformatted.replace('"""A simple function."""', '"""A simple function.  # noqa"""')
     reformatted = "\n\n\n" + reformatted + "\n\n# trailing comment\n"
 
-    reformatted_dir = tmp_path / "inv_ids_stable_reformatted"
-    reformatted_dir.mkdir()
+    # Same basename as the original ("inv_ids_stable") under a different
+    # parent -- the module dotted name is derived from the root directory's
+    # own basename, so changing *that* would change the module identity
+    # itself, not just reformat the file.
+    reformatted_dir = tmp_path / "reformatted_copy" / "inv_ids_stable"
+    reformatted_dir.mkdir(parents=True)
     (reformatted_dir / "__init__.py").write_text(reformatted)
 
     new_elements, _ = inventory(str(reformatted_dir), cache_dir=tmp_path / "cache2")

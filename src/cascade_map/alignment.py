@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Protocol, Sequence
@@ -205,9 +205,10 @@ def _logical_lines(text: str) -> list[list[Any]]:
         stripped = _strip_comment(raw)
         if not stripped.strip():
             continue
-        indent = len(stripped) - len(stripped.lstrip(" "))
-        if "\t" in stripped[:indent]:
+        leading = raw[: len(raw) - len(raw.lstrip())]
+        if "\t" in leading:
             raise _ParseError("tab indentation is not supported", number)
+        indent = len(stripped) - len(stripped.lstrip(" "))
         content = stripped.strip()
         if content.startswith(("&", "*", "!", "---", "...", ">", "|")):
             raise _ParseError(f"unsupported YAML construct: {content[:16]!r}", number)
@@ -359,7 +360,9 @@ def _parse_map(lines: list[list[Any]], pos: int, indent: int) -> tuple[_Node, in
             continue
         if pos < len(lines) and int(lines[pos][0]) > indent:
             node, pos = _parse_node(lines, pos, int(lines[pos][0]))
-            fields.append((key, node))
+            # A block value is reported at its key's line: that is where the owner
+            # looks when the tool says the entry is malformed.
+            fields.append((key, replace(node, line=line)))
         else:
             fields.append((key, _Node(line=line, scalar="")))
     return _Node(line=start_line, fields=tuple(fields)), pos
@@ -2092,11 +2095,8 @@ def _flow_events(
         for event in events:
             if event.kind is not EventKind.FEATURE_WRITE:
                 continue
-            if event.element_id in names and (
-                event.caller_event_id in own_ids or event.caller_event_id == ""
-            ):
-                if event.caller_event_id in own_ids:
-                    found.add(event.event_id)
+            if event.element_id in names and event.caller_event_id in own_ids:
+                found.add(event.event_id)
             elif event.element_id == element_id and names & set(event.values):
                 found.add(event.event_id)
         return found

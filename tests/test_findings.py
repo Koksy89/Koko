@@ -35,6 +35,8 @@ from cascade_map.contracts.interfaces import (
     LineageKind,
     Method,
     Provenance,
+    Reachability,
+    ReachabilityState,
     Slice,
     SourceSpan,
     Unresolved,
@@ -45,10 +47,12 @@ from cascade_map.findings import Findings
 FIXTURES_ROOT = Path(__file__).parent / "fixtures" / "mode_b"
 
 # FIXTURES.md specifies "one case per FindingKind, plus fnd_unknown_not_unplugged
-# and fnd_no_false_positive". Card 8 had published only the latter two fixtures
-# at the time this card was built. Reported rather than silently worked around;
-# coverage for these kinds is supplied by the constructed-graph tests below
-# instead of a corpus fixture.
+# and fnd_no_false_positive". At the time this card was built (round 2), card 8
+# had created a directory and an `expected.json` for every one of these, but
+# eight of them are still stubs: a bare module docstring, one MODULE element,
+# no edges, no unresolved records -- nothing for the kind under test to
+# exercise. Reported rather than silently treated as done; coverage for these
+# kinds is supplied by the constructed-graph tests below instead.
 MISSING_FIXTURES = {
     "fnd_unreachable_element",
     "fnd_unconsumed_feature",
@@ -61,12 +65,23 @@ MISSING_FIXTURES = {
 }
 
 
+def _is_stub_fixture(name: str) -> bool:
+    path = FIXTURES_ROOT / name / "expected.json"
+    if not path.exists():
+        return True
+    data = json.loads(path.read_text())
+    # A real case needs more than the module element itself to exercise
+    # anything; every stub seen at round-2 time has exactly one.
+    return len(data.get("elements", [])) <= 1
+
+
 def test_missing_fixtures_are_reported() -> None:
-    """Confirms the gap above still holds; update this test if card 8 catches up."""
+    """Confirms the gap above still holds; update this test (and add a
+    fixture-driven case) the day card 8 fills one of these in for real."""
     for name in MISSING_FIXTURES:
-        assert not (FIXTURES_ROOT / name).exists(), (
-            f"{name} now exists in the corpus -- replace the constructed-graph "
-            "test for this kind with a fixture-driven one."
+        assert _is_stub_fixture(name), (
+            f"{name} now has real content in the corpus -- replace the "
+            "constructed-graph test for this kind with a fixture-driven one."
         )
 
 
@@ -142,17 +157,23 @@ def _load_case(name: str) -> dict:
     return json.loads(path.read_text())
 
 
-def _entry_ids_for(elements: list[Element], edges: list[Edge]) -> tuple[str, ...]:
-    """The element that no CALLS edge targets is the entry: exactly the
-    shape both fixtures use (a single `main`/`process` driver)."""
-    called = {e.target_id for e in edges if e.kind == EdgeKind.CALLS}
-    return tuple(
-        sorted(
-            e.id
-            for e in elements
-            if e.kind == ElementKind.FUNCTION and e.id not in called
-        )
-    )
+# entry_ids are an owner/TARGET_PROFILE input in the real pipeline (Q2 in
+# OPEN_QUESTIONS.md) -- card 5 never derives them from the graph itself, so a
+# fixture's `expected.json` (which only card 1/2 fields) does not carry them
+# either. Deriving "the element nothing calls" as a stand-in silently
+# produces an *empty* entry set whenever every function happens to be called
+# by something in the file (exactly what `fnd_unknown_not_unplugged` does:
+# the module calls `process`, so "no CALLS target" finds nothing) -- which
+# then makes every downstream assertion pass vacuously. Declared explicitly
+# per case instead, matching what each fixture's own edges model as its
+# entry: the module invoking `process`, and the conventional `main`.
+_FIXTURE_ENTRY_IDS: dict[str, tuple[str, ...]] = {
+    "fnd_unknown_not_unplugged": ("fnd_unknown_not_unplugged",),
+    "fnd_no_false_positive": (
+        "fnd_no_false_positive",
+        "fnd_no_false_positive::main",
+    ),
+}
 
 
 @pytest.mark.parametrize("case", ["fnd_unknown_not_unplugged", "fnd_no_false_positive"])
@@ -161,7 +182,7 @@ def test_fixture_cases(case: str) -> None:
     elements = [_element(e) for e in data["elements"]]
     unresolved = [_unresolved(u) for u in data.get("unresolved", [])]
     edges = [_edge_from_json(e) for e in data.get("edges", [])]
-    entries = _entry_ids_for(elements, edges)
+    entries = _FIXTURE_ENTRY_IDS[case]
 
     findings = Findings(
         elements=elements,
@@ -173,6 +194,28 @@ def test_fixture_cases(case: str) -> None:
     assert list(findings) == list(data["findings"]), (
         f"{case}: expected {data['findings']!r}, got {[f.kind.value for f in findings]!r}"
     )
+
+
+def test_fnd_unknown_not_unplugged_actually_exercises_the_skip() -> None:
+    """Regression guard for the vacuous-entries defect: with real entry_ids,
+    `Handler.helper` must be genuinely unreachable by plain BFS (so the test
+    is not passing by accident) and still be suppressed because it is an
+    unresolved candidate."""
+    data = _load_case("fnd_unknown_not_unplugged")
+    elements = [_element(e) for e in data["elements"]]
+    unresolved = [_unresolved(u) for u in data.get("unresolved", [])]
+    edges = [_edge_from_json(e) for e in data.get("edges", [])]
+    entries = _FIXTURE_ENTRY_IDS["fnd_unknown_not_unplugged"]
+
+    f = Findings(elements=elements, edges=edges, unresolved=unresolved, entry_ids=entries)
+    reached, _incoming = f._reachable_set()
+    helper_id = "fnd_unknown_not_unplugged::Handler::helper"
+    assert entries, "entries must be non-empty for this test to mean anything"
+    assert helper_id not in reached, "helper must be genuinely unreached by plain BFS"
+    assert helper_id in f._unresolved_candidate_ids()
+
+    findings = f.find()
+    assert not any(fi.element_id == helper_id for fi in findings)
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +293,41 @@ def test_unreachable_element() -> None:
     assert unreachable[0].evidence_ids
     assert unreachable[0].provenance.confidence == Confidence.RESOLVED
     assert not any(f.element_id == "m::live" for f in unreachable)
+
+
+def test_unreachable_module_and_class_are_reported() -> None:
+    """Round-2 defect: a genuinely unreachable MODULE and a genuinely
+    unreachable CLASS must be reported, not silently excluded by kind.
+
+    `entry` is the only live root. `dead_module` has no incoming edge of any
+    kind, is not an entry, and is not an unresolved candidate for anything --
+    a real, importable-but-never-imported module. `dead_class` is the same
+    shape for a class nothing instantiates, subclasses or references.
+    """
+    entry = _el("m::main", ElementKind.FUNCTION)
+    live_module = _el("other", ElementKind.MODULE, module="other", path="other.py")
+    dead_module = _el("dead_mod", ElementKind.MODULE, module="dead_mod", path="dead_mod.py")
+    dead_class = _el("m::DeadClass", ElementKind.CLASS, line=20)
+    edges = [_edge("e1", EdgeKind.IMPORTS, "m::main", "other")]
+
+    findings = Findings(
+        elements=[entry, live_module, dead_module, dead_class],
+        edges=edges,
+        entry_ids=["m::main"],
+    ).find()
+
+    unreachable_ids = {
+        f.element_id for f in findings if f.kind == FindingKind.UNREACHABLE_ELEMENT
+    }
+    assert "dead_mod" in unreachable_ids, (
+        f"a genuinely unreachable MODULE was not reported; got {unreachable_ids!r}"
+    )
+    assert "m::DeadClass" in unreachable_ids, (
+        f"a genuinely unreachable CLASS was not reported; got {unreachable_ids!r}"
+    )
+    assert "other" not in unreachable_ids
+    for f in findings:
+        assert f.evidence_ids
 
 
 def test_unknown_not_unplugged_constructed() -> None:
@@ -435,7 +513,9 @@ def test_unconsumed_feature() -> None:
     assert unconsumed[0].evidence_ids == ("l1",)
 
 
-def test_decision_irrelevant() -> None:
+def test_decision_irrelevant_fallback_without_reachability() -> None:
+    """No card-3 `Reachability` supplied: falls back to the slice/decision-point
+    derivation. Kept only as a graceful-degradation path."""
     entry = _el("m::main", ElementKind.FUNCTION)
     irrelevant = _el("m::side_calc", ElementKind.FUNCTION, line=4)
     relevant = _el("m::risk_calc", ElementKind.FUNCTION, line=8)
@@ -483,6 +563,89 @@ def test_decision_irrelevant() -> None:
     result = [f for f in findings if f.kind == FindingKind.DECISION_IRRELEVANT]
     assert [f.element_id for f in result] == ["m::side_calc"]
     assert not any(f.element_id == "m::risk_calc" for f in findings)
+
+
+def test_decision_irrelevant_reads_card3_reachability() -> None:
+    """Primary path: card 3's `Reachability` per element is consumed
+    directly, not recomputed -- this is the fix for the second-source-of-truth
+    defect. A MODULE and a CLASS are included here specifically, since that
+    is exactly the kind-exclusion problem this contract addition closes."""
+    entry = _el("m::main", ElementKind.FUNCTION)
+    side_module = _el("side", ElementKind.MODULE, module="side", path="side.py")
+    side_class = _el("m::SideEffect", ElementKind.CLASS, line=12)
+    relevant = _el("m::risk_calc", ElementKind.FUNCTION, line=8)
+    edges = [
+        _edge("e1", EdgeKind.IMPORTS, "m::main", "side"),
+        _edge("e2", EdgeKind.INSTANTIATES, "m::main", "m::SideEffect"),
+        _edge("e3", EdgeKind.CALLS, "m::main", "m::risk_calc"),
+    ]
+    reachability = [
+        Reachability(
+            id="r_side",
+            element_id="side",
+            state=ReachabilityState.NO_SINK_PATH,
+            provenance=Provenance(method=Method.CFG_REACHABILITY, confidence=Confidence.RESOLVED),
+            reason="imported for logging only, never read by a decision",
+        ),
+        Reachability(
+            id="r_sideclass",
+            element_id="m::SideEffect",
+            state=ReachabilityState.NO_SINK_PATH,
+            provenance=Provenance(method=Method.CFG_REACHABILITY, confidence=Confidence.RESOLVED),
+            reason="constructed but its output is discarded",
+        ),
+        Reachability(
+            id="r_risk",
+            element_id="m::risk_calc",
+            state=ReachabilityState.REACHES_SINK,
+            provenance=Provenance(method=Method.CFG_REACHABILITY, confidence=Confidence.CERTAIN),
+            sink_ids=("dp1",),
+        ),
+    ]
+
+    findings = Findings(
+        elements=[entry, side_module, side_class, relevant],
+        edges=edges,
+        reachability=reachability,
+        entry_ids=["m::main"],
+    ).find()
+
+    result = {
+        f.element_id: f for f in findings if f.kind == FindingKind.DECISION_IRRELEVANT
+    }
+    assert set(result) == {"side", "m::SideEffect"}, (
+        "a MODULE and a CLASS marked NO_SINK_PATH by card 3 must both be reported"
+    )
+    assert "m::risk_calc" not in result
+    for f in result.values():
+        assert f.evidence_ids
+        assert "r_side" in f.evidence_ids or "r_sideclass" in f.evidence_ids
+
+
+def test_decision_irrelevant_never_reports_unknown_reachability() -> None:
+    """UNKNOWN must never render as "reaches nothing": card 3 could not
+    tell, which is not a claim card 5 may make into a finding."""
+    entry = _el("m::main", ElementKind.FUNCTION)
+    uncertain = _el("m::maybe_relevant", ElementKind.FUNCTION, line=6)
+    edges = [_edge("e1", EdgeKind.CALLS, "m::main", "m::maybe_relevant")]
+    reachability = [
+        Reachability(
+            id="r1",
+            element_id="m::maybe_relevant",
+            state=ReachabilityState.UNKNOWN,
+            provenance=Provenance(method=Method.CFG_REACHABILITY, confidence=Confidence.UNKNOWN),
+            reason="reached only through an unresolved call site",
+        ),
+    ]
+
+    findings = Findings(
+        elements=[entry, uncertain],
+        edges=edges,
+        reachability=reachability,
+        entry_ids=["m::main"],
+    ).find()
+
+    assert not any(f.element_id == "m::maybe_relevant" for f in findings)
 
 
 # ---------------------------------------------------------------------------

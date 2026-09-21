@@ -133,6 +133,87 @@ def test_nar_anchored_event_backed_steps_have_both_ids() -> None:
         assert step.event_ids, f"leaf missing event_ids: {step.text!r}"
 
 
+# ---------------------------------------------------------------------------
+# The anchoring rule, exactly (see the module docstring): every step has an
+# anchor; a trace-backed step always has event_ids; it also has element_ids
+# unless it is UNMAPPED with an empty element_id -- the only exemption.
+# ---------------------------------------------------------------------------
+
+
+def test_anchoring_unmapped_with_empty_element_id_is_the_only_exemption() -> None:
+    events = [ev("evt_1", EventKind.UNMAPPED, "", 1, 0)]
+    steps = _narrate(events)
+    leaf = next(s for s in steps if not s.children)
+    assert leaf.event_ids == ("evt_1",)
+    assert leaf.element_ids == ()  # exempt: UNMAPPED cannot name an element
+
+
+def test_anchoring_unmapped_with_element_id_still_carries_it() -> None:
+    # An UNMAPPED event *can* carry an element_id (e.g. a dynamically built
+    # call the static graph almost, but did not quite, resolve); when it
+    # does, the exemption does not apply and it is anchored normally.
+    events = [ev("evt_1", EventKind.UNMAPPED, "mod::dynamic", 1, 0)]
+    steps = _narrate(events)
+    leaf = next(s for s in steps if not s.children)
+    assert leaf.event_ids == ("evt_1",)
+    assert leaf.element_ids == ("mod::dynamic",)
+
+
+def test_anchoring_call_return_branch_decision_feature_exception_all_have_both_ids() -> None:
+    events = [
+        ev("evt_1", EventKind.CALL, "mod::a", 1, 0),
+        ev("evt_2", EventKind.RETURN, "mod::a", 2, 0),
+        ev("evt_3", EventKind.BRANCH, "mod::b", 3, 0, branch_taken="left"),
+        ev("evt_4", EventKind.DECISION, "mod::c", 4, 0, branch_taken="go"),
+        ev("evt_5", EventKind.FEATURE_WRITE, "mod::d", 5, 0),
+        ev("evt_6", EventKind.EXCEPTION, "mod::e", 6, 0),
+    ]
+    steps = _narrate(events)
+    leaves = [s for s in steps if not s.children]
+    assert len(leaves) == 6
+    for step in leaves:
+        assert step.element_ids, f"missing element_ids: {step.text!r}"
+        assert step.event_ids, f"missing event_ids: {step.text!r}"
+
+
+def test_anchoring_not_entered_has_element_ids_and_no_event_ids() -> None:
+    order_nodes = (
+        OrderNode(id="on:root", kind=OrderKind.SEQUENCE, element_ids=(), children=("on:s0",)),
+        OrderNode(id="on:s0", kind=OrderKind.SEQUENCE, element_ids=("mod::skipped",)),
+    )
+    steps = _narrate([], order_nodes=order_nodes)
+    leaf = next(s for s in steps if not s.children)
+    assert leaf.element_ids == ("mod::skipped",)
+    assert leaf.event_ids == ()
+
+
+def test_anchoring_blocked_without_event_id_falls_back_to_attempt_id() -> None:
+    blocked = (
+        BlockedAttempt(id="blk:1", kind="NETWORK", detail="refused", element_id="", event_id=""),
+    )
+    steps = _narrate([], run=_run(blocked=blocked))
+    leaf = next(s for s in steps if not s.children)
+    assert leaf.element_ids == ()
+    assert leaf.event_ids == ("blk:1",)  # checkable against run.blocked
+
+
+def test_anchoring_refusal_anchors_on_run_id() -> None:
+    run = RunRecord(
+        run_id="run_003",
+        target_hashes={},
+        graph_hash="g",
+        scenario="s",
+        interpreter=".venv-target",
+        controls_active={},
+        blocked=(),
+        refused=True,
+        refusal_reason="no guarantee",
+    )
+    steps = Narrator().narrate([], (), (), run)
+    assert len(steps) == 1
+    assert steps[0].event_ids == ("run_003",)
+
+
 def test_nar_anchored_leaf_ids_trace_back_to_the_source_event() -> None:
     steps = _narrate(_linear_events())
     leaves = [s for s in steps if not s.children]
@@ -390,6 +471,13 @@ def test_nar_deterministic_same_trace_same_output() -> None:
     steps_b = _narrate(list(reversed(events)))  # order in input must not matter
     assert steps_a == steps_b
 
+    import random
+
+    shuffled = list(events)
+    random.Random(1234).shuffle(shuffled)
+    steps_c = _narrate(shuffled)
+    assert steps_a == steps_c
+
 
 def test_nar_deterministic_repeated_calls_are_stable() -> None:
     events = _loop_events(50)
@@ -475,7 +563,10 @@ def test_sink_decision_is_tagged_final_decision_phase() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_phase_grouping_uses_order_node_segments() -> None:
+def test_phase_grouping_uses_positional_segment_names_not_guessed_labels() -> None:
+    # OrderNode carries no name field. The phase label must say "segment N"
+    # -- a position card 3 actually gave us -- never a guessed cascade-stage
+    # name like "ingestion", which nothing in the data supports.
     order_nodes = (
         OrderNode(id="on:root", kind=OrderKind.SEQUENCE, element_ids=(), children=("on:s0", "on:s1")),
         OrderNode(id="on:s0", kind=OrderKind.SEQUENCE, element_ids=("mod::load",)),
@@ -487,8 +578,39 @@ def test_phase_grouping_uses_order_node_segments() -> None:
     ]
     steps = _narrate(events, order_nodes=order_nodes)
     by_event = {s.event_ids: s for s in steps if not s.children}
-    assert by_event[("evt_1",)].phase == "ingestion"
-    assert by_event[("evt_2",)].phase == "data engineering"
+    assert by_event[("evt_1",)].phase == "segment 1"
+    assert by_event[("evt_2",)].phase == "segment 2"
+    for phase in ("ingestion", "data engineering", "feature engineering"):
+        assert phase not in {s.phase for s in steps}, (
+            f"phase {phase!r} is a guessed cascade-stage name; OrderNode has no "
+            "name field to justify it"
+        )
+
+
+def test_phase_grouping_segment_summary_discloses_it_is_positional() -> None:
+    order_nodes = (
+        OrderNode(id="on:root", kind=OrderKind.SEQUENCE, element_ids=(), children=("on:s0",)),
+        OrderNode(id="on:s0", kind=OrderKind.SEQUENCE, element_ids=("mod::load",)),
+    )
+    events = [ev("evt_1", EventKind.CALL, "mod::load", 1, 0)]
+    steps = _narrate(events, order_nodes=order_nodes)
+    summary = next(s for s in steps if s.phase == "segment 1" and s.children)
+    assert "does not name it" in summary.text or "positional" in summary.text
+
+
+def test_phase_grouping_segments_ordered_before_fixed_phases() -> None:
+    order_nodes = (
+        OrderNode(id="on:root", kind=OrderKind.SEQUENCE, element_ids=(), children=("on:s0",)),
+        OrderNode(id="on:s0", kind=OrderKind.SEQUENCE, element_ids=("mod::load",)),
+    )
+    events = [
+        ev("evt_1", EventKind.CALL, "mod::load", 1, 0),
+        ev("evt_2", EventKind.FEATURE_WRITE, "mod::feat", 2, 0),
+    ]
+    steps = _narrate(events, order_nodes=order_nodes)
+    summaries = [s for s in steps if s.children]
+    phase_order = [s.phase for s in summaries]
+    assert phase_order.index("segment 1") < phase_order.index("feature engineering")
 
 
 def test_phase_grouping_unclassified_element_falls_back_honestly() -> None:

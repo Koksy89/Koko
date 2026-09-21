@@ -11,13 +11,18 @@ reason runtime evidence is an overlay rather than a second graph.
 
 * ``events`` (card 12): what ran, in what order, with what values, at each
   depth.
-* ``order_nodes`` (card 3): the cascade's structural phases. This module
-  reads the single tree root's ``children``, in order, as the run's
-  top-level segments -- e.g. ingestion, then data engineering, then feature
-  engineering -- and assigns each element the segment that contains it.
-  ``EventKind`` still wins for signals it carries directly (a feature write
-  is "feature engineering" outright; a decision or an exception is its own
-  phase) -- the segment lookup only classifies plain calls and returns.
+* ``order_nodes`` (card 3): the cascade's *structure*, not its names.
+  ``OrderNode`` carries no label field -- nothing in the data says the
+  root's first child is "ingestion" rather than "data engineering". This
+  module reads the single tree root's ``children``, in order, as the run's
+  top-level segments and assigns each element the segment that contains it,
+  but names each segment only by its position -- ``"segment 1"``,
+  ``"segment 2"``, ... -- never by a guessed cascade-stage name. A confident
+  wrong label is worse than an honest position; see ``_phase_name_for_segment``.
+  ``EventKind`` still wins for the phases it *does* let us name honestly: a
+  feature write is "feature engineering" outright, a decision or an
+  exception is its own phase -- the segment lookup only classifies plain
+  calls and returns, which carry no such signal.
 * ``decisions`` (card 3): ``DecisionPoint.condition_source``, ``reads_ids``
   and ``outcomes`` turn a bare "branch_taken" into the condition as written,
   the branches not taken, and (via ``is_sink``) which decision is the run's
@@ -27,11 +32,21 @@ reason runtime evidence is an overlay rather than a second graph.
   say plainly that nothing ran at all.
 
 Nothing here infers intent or invents causation the trace does not show
-(that is card 13). Every ``NarrativeStep`` carries at least one concrete
-anchor -- an element ID, an event ID, or both -- so a claim about something
-that *did not* happen (an element never entered, a blocked write, a run that
-refused to start) is still traceable to the record that says so, even
-without a ``TraceEvent`` behind it.
+(that is card 13).
+
+## The anchoring rule, exactly
+
+* Every step carries at least one anchor (non-empty ``element_ids`` or
+  non-empty ``event_ids``), always.
+* A step backed by a ``TraceEvent`` carries ``event_ids``, always.
+* It also carries ``element_ids`` -- **unless** its event is
+  ``EventKind.UNMAPPED`` with an empty ``element_id``. That is the only
+  exemption: forcing an element ID onto an event that maps to no static
+  element would invent the very mapping card 12 could not make.
+* Steps not backed by any ``TraceEvent`` -- "not entered", "blocked",
+  "refused" -- carry ``element_ids`` and/or a checkable identifier (a
+  ``BlockedAttempt.id`` or the run ID) in place of ``event_ids``, because no
+  event exists for them to cite.
 
 Determinism: given the same events, order_nodes, decisions and run,
 ``narrate()`` returns byte-identical ``NarrativeStep``s every time,
@@ -40,6 +55,7 @@ regardless of the input sequences' own ordering.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -61,11 +77,6 @@ __all__ = ["Narrator"]
 # Phase names.
 # ---------------------------------------------------------------------------
 
-_PHASE_ROOT_FALLBACK = ("ingestion", "data engineering", "feature engineering")
-"""Positional names for the cascade's top-level segments, taken from the
-order-node tree structure -- see ``_segment_index_by_element``. Overflow
-segments beyond this list fold into the last name."""
-
 _PHASE_FEATURE = "feature engineering"
 _PHASE_DECISION = "decision logic"
 _PHASE_FINAL = "final decision"
@@ -77,10 +88,17 @@ _PHASE_UNCLASSIFIED = "execution"
 """A call/return on an element no order-node segment claims. Honest fallback,
 not a guess: card 3 simply did not place this element in the cascade order."""
 
-_PHASE_ORDER = (
-    "ingestion",
-    "data engineering",
-    "feature engineering",
+_SEGMENT_RE = re.compile(r"^segment (\d+)$")
+"""Matches the positional segment phase names ``_phase_name_for_segment``
+produces, so ``_group_by_phase`` can order them numerically without knowing
+in advance how many segments a given order-node tree has."""
+
+# Fixed phases, in the order they are presented after the positional
+# segments. Segments always come first because they are the cascade's own
+# structural order; these five are ordered by how confidently each can be
+# named at all (justified names before honest fallbacks before anomalies).
+_FIXED_PHASE_ORDER = (
+    _PHASE_FEATURE,
     _PHASE_DECISION,
     _PHASE_FINAL,
     _PHASE_UNCLASSIFIED,
@@ -96,9 +114,10 @@ rather than narrated one step per iteration."""
 
 
 def _phase_name_for_segment(index: int) -> str:
-    if index < len(_PHASE_ROOT_FALLBACK):
-        return _PHASE_ROOT_FALLBACK[index]
-    return _PHASE_ROOT_FALLBACK[-1]
+    """Name a positional cascade segment honestly: by position, not by a
+    guessed cascade-stage label. ``OrderNode`` carries no name field, so
+    "segment 1" is the only claim this module can make and defend."""
+    return f"segment {index + 1}"
 
 
 def _segment_index_by_element(order_nodes: Sequence[OrderNode]) -> dict[str, int]:
@@ -368,13 +387,27 @@ class Narrator:
     ) -> NarrativeStep:
         phase = self._phase_for_event(event, segment_by_element, decision_by_element)
         text = self._render_text(event, decision_by_element)
+        if event.element_id:
+            element_ids: tuple[str, ...] = (event.element_id,)
+        elif event.kind is EventKind.UNMAPPED:
+            # The only exemption: an UNMAPPED event maps to no static
+            # element, so claiming one would invent the mapping card 12
+            # could not make. event_ids below is still a real anchor.
+            element_ids = ()
+        else:
+            # The contract does not produce this for any other EventKind;
+            # if it ever does, do not silently drop the anchor requirement.
+            raise ValueError(
+                f"event {event.event_id!r} of kind {event.kind!r} has no element_id "
+                "and is not UNMAPPED -- refusing to emit an unanchored step"
+            )
         return NarrativeStep(
             id=f"nar:{run_id}:{event.event_id}",
             run_id=run_id,
             sequence=0,
             phase=phase,
             text=text,
-            element_ids=(event.element_id,) if event.element_id else (),
+            element_ids=element_ids,
             event_ids=(event.event_id,),
         )
 
@@ -506,24 +539,40 @@ class Narrator:
     # -- phase grouping ---------------------------------------------------------
 
     def _group_by_phase(self, leaves: list[NarrativeStep], run_id: str) -> list[NarrativeStep]:
-        by_phase: dict[str, list[NarrativeStep]] = {phase: [] for phase in _PHASE_ORDER}
+        by_phase: dict[str, list[NarrativeStep]] = {}
         for leaf in leaves:
             by_phase.setdefault(leaf.phase, []).append(leaf)
 
+        # Positional segments first, in numeric order -- that is the
+        # cascade's own structural order. Then the fixed phases, in the
+        # order they can be named with justification.
+        segment_phases = sorted(
+            (p for p in by_phase if _SEGMENT_RE.match(p)),
+            key=lambda p: int(_SEGMENT_RE.match(p).group(1)),  # type: ignore[union-attr]
+        )
+        fixed_phases = [p for p in _FIXED_PHASE_ORDER if p in by_phase]
+        phases_present = segment_phases + fixed_phases
+
         out: list[NarrativeStep] = []
         seq = 1
-        phases_present = [p for p in _PHASE_ORDER if by_phase.get(p)]
         for phase in phases_present:
             children = by_phase[phase]
             child_ids = tuple(c.id for c in children)
             element_ids = tuple(sorted({eid for c in children for eid in c.element_ids}))
             event_ids = tuple(eid for c in children for eid in c.event_ids)
+            if _SEGMENT_RE.match(phase):
+                text = (
+                    f"Phase '{phase}' (a positional segment of the cascade order; "
+                    f"card 3 does not name it): {len(children)} step(s)."
+                )
+            else:
+                text = f"Phase '{phase}': {len(children)} step(s)."
             summary = NarrativeStep(
                 id=f"nar:{run_id}:phase:{phase.replace(' ', '_')}",
                 run_id=run_id,
                 sequence=seq,
                 phase=phase,
-                text=f"Phase '{phase}': {len(children)} step(s).",
+                text=text,
                 element_ids=element_ids,
                 event_ids=event_ids,
                 children=child_ids,

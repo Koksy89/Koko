@@ -38,6 +38,8 @@ from cascade_map.contracts.interfaces import (
     LineageKind,
     Method,
     Provenance,
+    Reachability,
+    ReachabilityState,
     Slice,
     SourceSpan,
     Unresolved,
@@ -60,27 +62,20 @@ _STRUCTURAL_EDGE_KINDS = {
     EdgeKind.IMPORTS,
 }
 
-# Element kinds worth reporting as unreachable / decision-irrelevant.
-#
-# Deliberately excludes MODULE and CLASS: a module is routinely loaded by
-# something outside the graph card 5 sees (the interpreter's own import of
-# the entry script, a package __init__), and a class is usually only ever
-# "used" through side-effecting module-level instantiation
-# (`handler = Handler()`) that card 2 may not always turn into an edge --
-# flagging the class itself on top of that gap doubles a false positive
-# rather than catching a new one. Its methods, which do get called, are
-# covered directly. This is a precision-first scope narrowing, not full
-# coverage of every ElementKind; see the card's final report.
+# Element kinds worth reporting as unreachable / decision-irrelevant. A dead
+# MODULE (nothing imports it and it is not itself an entry) and a dead CLASS
+# (nothing instantiates, subclasses or references it) are real, reportable
+# findings -- excluding whole kinds here would silently hide them from the
+# owner, which is worse than an honest evidence-bearing finding. Leaf facts
+# like PARAMETER, IMPORT or ASSIGNMENT stay out: too fine-grained to report
+# on their own, and their containing element already carries the finding.
 _REPORTABLE_KINDS = {
+    ElementKind.MODULE,
+    ElementKind.CLASS,
     ElementKind.FUNCTION,
     ElementKind.METHOD,
     ElementKind.PROPERTY,
 }
-
-# Config wiring commonly names a CLASS directly (`"class": "Handler"`), so
-# the config-specific detectors look at a wider set than plain reachability
-# does.
-_CONFIG_REPORTABLE_KINDS = _REPORTABLE_KINDS | {ElementKind.CLASS}
 
 _CONFIG_EXTENSIONS = (".json", ".yaml", ".yml", ".ini", ".cfg", ".toml")
 
@@ -122,6 +117,7 @@ class Findings:
         lineage_edges: Sequence[LineageEdge] = (),
         barriers: Sequence[Barrier] = (),
         slices: Sequence[Slice] = (),
+        reachability: Sequence[Reachability] = (),
         entry_ids: Sequence[str] = (),
     ) -> None:
         self._elements = list(elements)
@@ -134,6 +130,15 @@ class Findings:
         self._lineage_edges = list(lineage_edges)
         self._barriers = list(barriers)
         self._slices = list(slices)
+        # Card 3's canonical answer to "does this reach a decision sink".
+        # DECISION_IRRELEVANT reads this instead of deriving its own verdict
+        # from slices, per the Reachability contract added to close exactly
+        # this second-source-of-truth gap. One element may appear at most
+        # once; a duplicate is last-write-wins, which cannot happen from a
+        # well-formed card 3 output (one record per element).
+        self._reachability_by_element: Mapping[str, Reachability] = {
+            r.element_id: r for r in reachability
+        }
         # Only entries that name a real element are usable as BFS roots. An
         # entry_id naming nothing in the graph is silently useless for
         # reachability, not a crash.
@@ -322,7 +327,7 @@ class Findings:
 
         out: list[Finding] = []
         for el in self._elements:
-            if el.kind not in _CONFIG_REPORTABLE_KINDS:
+            if el.kind not in _REPORTABLE_KINDS:
                 continue
             config_in = by_config_target.get(el.id, [])
             if not config_in:
@@ -589,6 +594,72 @@ class Findings:
             return []
         reached, incoming = self._reachable_set()
 
+        if self._reachability_by_element:
+            return self._decision_irrelevant_from_reachability(reached, incoming)
+        return self._decision_irrelevant_from_slices(reached, incoming)
+
+    def _decision_irrelevant_from_reachability(
+        self, reached: set[str], incoming: dict[str, list[Edge]]
+    ) -> list[Finding]:
+        """Card 3's canonical `Reachability` record per element, not a
+        recomputed answer -- this is the one place the card contract exists
+        specifically to prevent a second source of truth.
+
+        `UNKNOWN` is never treated as "irrelevant": the contract is explicit
+        that "I could not tell" must never render the same as "this reaches
+        nothing". Only an explicit `NO_SINK_PATH` verdict is reported.
+        """
+        out: list[Finding] = []
+        for el in self._elements:
+            if el.kind not in _REPORTABLE_KINDS:
+                continue
+            if el.id not in reached:
+                continue
+            r = self._reachability_by_element.get(el.id)
+            if r is None or r.state != ReachabilityState.NO_SINK_PATH:
+                continue
+
+            touching = incoming.get(el.id, [])
+            evidence = tuple(sorted({r.id} | {e.id for e in touching}))
+            if not evidence:
+                continue
+            conf = combine(
+                r.provenance.confidence,
+                *(e.provenance.confidence for e in touching),
+            )
+            out.append(
+                Finding(
+                    id=self._fid("DECISION_IRRELEVANT", el.id),
+                    kind=FindingKind.DECISION_IRRELEVANT,
+                    element_id=el.id,
+                    span=el.span,
+                    summary=(
+                        f"{el.qualname or el.name} runs but card 3 marks it "
+                        f"NO_SINK_PATH: {r.reason or 'no path to a decision sink'}."
+                    ),
+                    hint=(
+                        "Check whether this cluster should feed a decision; if not, "
+                        "it may be safe to drop."
+                    ),
+                    evidence_ids=evidence,
+                    provenance=Provenance(
+                        method=Method.CFG_REACHABILITY,
+                        confidence=conf,
+                        span=el.span,
+                        note=f"from card 3 Reachability {r.id}",
+                    ),
+                )
+            )
+        return out
+
+    def _decision_irrelevant_from_slices(
+        self, reached: set[str], incoming: dict[str, list[Edge]]
+    ) -> list[Finding]:
+        """Fallback used only when no `Reachability` records were supplied
+        (e.g. card 3 output not wired in yet). Derives sink-relevance from
+        `DecisionPoint.reads_ids` and sink-reaching `Slice`s instead -- a
+        strictly weaker, locally-derived substitute for the same answer.
+        """
         sink_relevant: set[str] = set()
         for dp in self._decision_points:
             sink_relevant.add(dp.element_id)
@@ -646,6 +717,7 @@ class Findings:
                         method=Method.DATAFLOW,
                         confidence=conf,
                         span=el.span,
+                        note="no card 3 Reachability supplied; derived from slices/decision points",
                     ),
                 )
             )

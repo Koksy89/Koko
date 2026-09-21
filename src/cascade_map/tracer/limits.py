@@ -51,6 +51,12 @@ class CaptureLimits:
     max_depth: int = 2
     """Nesting depth rendered inside a container sample."""
 
+    capture_self: bool = False
+    """Capture the receiver of a method call. Off by default: every method call
+    in the cascade would otherwise render an engine object, which costs more
+    than it tells. When off, ``self`` is emitted as an explicit DROPPED capture
+    with that reason -- not omitted."""
+
 
 DEFAULT_LIMITS = CaptureLimits()
 
