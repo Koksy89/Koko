@@ -90,6 +90,7 @@ __all__ = [
     "FindingsCard",
     "DiffCard",
     "DocsCard",
+    "RunObserver",
     "HarnessCard",
     "TracerCard",
     "AlignmentCard",
@@ -1125,10 +1126,42 @@ class DocsCard(Protocol):
         ...
 
 
+class RunObserver(Protocol):
+    """Something the harness starts and stops around the target call.
+
+    Card 12 built `Tracer.collector()` documented as "the hook the harness
+    installs around the target call". Card 11 had nowhere to install it. Both
+    were built to the contract, the contract did not describe the handoff, and
+    the gap was invisible until card 10 tried to make them meet.
+
+    The observer has to be started **inside** the sandbox window and stopped
+    before it closes, and only the harness controls that window -- so the
+    harness owns the installation and this is the seam. Keeping it a protocol
+    rather than a concrete type means card 11 never imports card 12: the
+    harness must work with no observer at all, and a tracing run is the same
+    run with something watching.
+    """
+
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+
 class HarnessCard(Protocol):
-    def start(self, scenario: str, graph_hash: str) -> RunRecord:
+    def start(
+        self,
+        scenario: str,
+        graph_hash: str,
+        observer: RunObserver | None = None,
+    ) -> RunRecord:
         """Verify every control, then run -- or refuse and say which guarantee
-        could not be made. Constraint 7. There is no force option."""
+        could not be made. Constraint 7. There is no force option.
+
+        *observer* is started immediately before the target call and stopped
+        immediately after, inside the sandbox window and inside the `finally`
+        that tears it down -- so an observer is stopped even when the target
+        raises. A refused run never starts one: there was nothing to observe.
+        """
         ...
 
 
