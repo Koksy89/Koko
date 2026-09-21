@@ -28,6 +28,7 @@ import ast
 import hashlib
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -51,11 +52,20 @@ def _load_tool(name: str):
     `tests/fixtures/_regenerate_spans.py` and `_check_spans.py` are tooling,
     not fixtures: they read the corpus and never execute any part of it.
     """
-    spec = importlib.util.spec_from_file_location(name, FIXTURES / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    # Bytecode writing is suppressed for the duration: a __pycache__ written
+    # into tests/fixtures/ is a change to the corpus, and card 11's harness
+    # suite hashes the whole tree before and after it runs. This has already
+    # cost the build once.
+    previous = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec = importlib.util.spec_from_file_location(name, FIXTURES / f"{name}.py")
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.dont_write_bytecode = previous
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +274,18 @@ def test_unspecified_extras_are_exactly_the_seven_named() -> None:
 def test_the_corpus_holds_ninety_six_cases() -> None:
     """88 specified + 7 unspecified extras + the sentinel."""
     assert len(all_case_dirs()) == 96
+
+
+def test_the_corpus_contains_no_build_artifacts() -> None:
+    """A `__pycache__` under tests/fixtures/ is a change to the fixed point
+    every card is graded against, and card 11's suite hashes the tree before
+    and after it runs. It has already cost this build once."""
+    artifacts = [
+        p.relative_to(FIXTURES).as_posix()
+        for p in FIXTURES.rglob("*")
+        if p.name == "__pycache__" or p.suffix in {".pyc", ".pyo"}
+    ]
+    assert artifacts == [], f"build artifacts in the corpus: {artifacts}"
 
 
 # ---------------------------------------------------------------------------

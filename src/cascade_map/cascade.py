@@ -1189,7 +1189,16 @@ class CascadeAnalyzer:
         Sequence[OrderNode],
         Sequence[DecisionPoint],
         Sequence[Reachability],
+        Sequence[DetectedCandidate],
+        Sequence[Unresolved],
     ]:
+        """Everything this card knows, in one return value.
+
+        The candidates and the unresolved records ride here rather than behind
+        an accessor: a caller that has to know to ask for them is a caller that
+        can forget, and forgetting drops constraint 3 and the auto-detection
+        rule without a sound.
+        """
         self._reset()
         self._elements = {element.id: element for element in elements}
         self._edges = sorted(edges, key=lambda e: e.id)
@@ -1223,6 +1232,8 @@ class CascadeAnalyzer:
             tuple(self._order),
             tuple(self._decisions),
             tuple(self._reachability),
+            self.candidates(),
+            tuple(self._unresolved),
         )
 
     # -- accessors for facts the contract has no type for -------------------
@@ -1230,9 +1241,22 @@ class CascadeAnalyzer:
     def unresolved(self) -> Sequence[Unresolved]:
         """Everything this card could not settle. Constraint 3.
 
-        ``CascadeCard.order`` has no slot for these; card 3 requests one.
+        The same sequence :meth:`order` returns last.
         """
         return tuple(self._unresolved)
+
+    def candidates(self) -> Sequence[DetectedCandidate]:
+        """Auto-detected entry points and decision sinks, sorted by id.
+
+        The same sequence :meth:`order` returns sixth. Proposals for the owner
+        to confirm, never facts: a wrong sink mislabels the whole map.
+        """
+        return tuple(
+            sorted(
+                [*self._entry_candidates, *self._sink_candidates],
+                key=lambda candidate: candidate.id,
+            )
+        )
 
     def reachability(self) -> Sequence[Reachability]:
         """One record per inventoried element, sorted by id.
@@ -1256,13 +1280,19 @@ class CascadeAnalyzer:
         return self._sink_ids
 
     def artifacts(self) -> dict[str, str]:
-        """The five contracted artifacts, rendered exactly once, sorted."""
+        """The seven contracted artifacts, rendered exactly once, sorted.
+
+        `unresolved.jsonl` is appended to by several cards, so card 10 merges
+        this card's share into the others' rather than overwriting.
+        """
         return {
             "cfg_blocks.jsonl": canonical_jsonl(self._blocks),
             "cfg_edges.jsonl": canonical_jsonl(self._cfg_edges),
             "order.jsonl": canonical_jsonl(self._order),
             "decisions.jsonl": canonical_jsonl(self._decisions),
             "reachability.jsonl": canonical_jsonl(self._reachability),
+            "candidates.jsonl": canonical_jsonl(self.candidates()),
+            "unresolved.jsonl": canonical_jsonl(self._unresolved),
         }
 
     # -- CFG ----------------------------------------------------------------
@@ -1417,7 +1447,7 @@ class CascadeAnalyzer:
                         id=make_id("@entry", entry),
                         element_id=entry,
                         role=ROLE_ENTRY_POINT,
-                        evidence=("declared by the owner in TARGET_PROFILE.md",)
+                        evidence=("declared by the owner in TARGET_PROFILE.md",),
                         provenance=Provenance(
                             method=Method.AST_DIRECT,
                             confidence=Confidence.CERTAIN,
@@ -1431,12 +1461,14 @@ class CascadeAnalyzer:
 
     def _detect_entries(self) -> tuple[str, ...]:
         for element in sorted(self._elements.values(), key=lambda e: e.id):
-            evidence = ""
+            evidence: tuple[str, ...] = ()
             confidence = Confidence.HEURISTIC
             if element.kind is ElementKind.MODULE:
                 tree = self._source_cache.get(element.span.path)
                 if tree is not None and _has_main_guard(tree):
-                    evidence = "module has an `if __name__ == \"__main__\"` guard"
+                    evidence = (
+                        f'{element.span.path} has an `if __name__ == "__main__"` guard',
+                    )
                     confidence = Confidence.PROBABLE
             elif element.kind is ElementKind.FUNCTION and element.name in _ENTRY_NAME_HINTS:
                 stem = Path(element.span.path).stem
@@ -1444,12 +1476,17 @@ class CascadeAnalyzer:
                 guarded = tree is not None and _has_main_guard(tree)
                 if guarded:
                     evidence = (
-                        f"function named {element.name!r} in a module with a "
-                        '`if __name__ == "__main__"` guard'
+                        f"function named {element.name!r}, one of the entry-point name "
+                        f"hints {list(_ENTRY_NAME_HINTS)}",
+                        f'{element.span.path} has an `if __name__ == "__main__"` guard',
                     )
                     confidence = Confidence.PROBABLE
                 elif stem.startswith("run") or stem in {"main", "__main__"}:
-                    evidence = f"function named {element.name!r} in {element.span.path}"
+                    evidence = (
+                        f"function named {element.name!r}, one of the entry-point name "
+                        f"hints {list(_ENTRY_NAME_HINTS)}",
+                        f"in {element.span.path}, whose name looks like a launcher",
+                    )
             if not evidence:
                 continue
             self._entry_candidates.append(
@@ -1492,7 +1529,7 @@ class CascadeAnalyzer:
                         id=make_id("@sink", sink),
                         element_id=sink,
                         role=ROLE_DECISION_SINK,
-                        evidence=("declared by the owner in TARGET_PROFILE.md",)
+                        evidence=("declared by the owner in TARGET_PROFILE.md",),
                         provenance=Provenance(
                             method=Method.AST_DIRECT,
                             confidence=Confidence.CERTAIN,
@@ -1524,7 +1561,12 @@ class CascadeAnalyzer:
                     id=make_id("@sink", element.id),
                     element_id=element.id,
                     role=ROLE_DECISION_SINK,
-                    evidence=f"name matches the decision-sink hint {hit!r}",
+                    evidence=(
+                        f"{element.name!r} matches the decision-sink name hint {hit!r}",
+                        f"declared at {element.span.path}:{element.span.line}",
+                        "a name match only: TARGET_PROFILE.md left the sink blank, so this "
+                        "is a proposal for the owner to confirm",
+                    ),
                     provenance=Provenance(
                         method=Method.NAME_HEURISTIC,
                         confidence=Confidence.HEURISTIC,

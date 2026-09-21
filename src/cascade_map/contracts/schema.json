@@ -501,7 +501,7 @@
     },
     "Element": {
       "additionalProperties": false,
-      "description": "Element(id: 'str', kind: 'ElementKind', name: 'str', qualname: 'str', module: 'str', span: 'SourceSpan', provenance: 'Provenance', content_hash: 'str', decorators: 'tuple[str, ...]' = (), signature: 'str' = '', docstring: 'str' = '', parent_id: 'str' = '', byte_size: 'int' = 0)",
+      "description": "Element(id: 'str', kind: 'ElementKind', name: 'str', qualname: 'str', module: 'str', span: 'SourceSpan', provenance: 'Provenance', content_hash: 'str', decorators: 'tuple[str, ...]' = (), signature: 'str' = '', docstring: 'str' = '', parent_id: 'str' = '', byte_size: 'int' = 0, normalized_body_hash: 'str' = '', literal_value: 'str' = '')",
       "properties": {
         "byte_size": {
           "type": "integer"
@@ -539,10 +539,16 @@
           ],
           "type": "string"
         },
+        "literal_value": {
+          "type": "string"
+        },
         "module": {
           "type": "string"
         },
         "name": {
+          "type": "string"
+        },
+        "normalized_body_hash": {
           "type": "string"
         },
         "parent_id": {

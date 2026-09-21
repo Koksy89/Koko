@@ -352,6 +352,29 @@ class Element:
     byte_size: int = 0
     """Set for BLOB elements, so the owner can see where the 3.9 MB lives."""
 
+    normalized_body_hash: str = ""
+    """Hash of the body with comments, docstrings and whitespace normalized away.
+
+    `content_hash` covers the source text exactly, which is what incrementality
+    needs but not what "is this the same logic" needs: a reformat changes it.
+    Card 5 needs this to report DUPLICATED_LOGIC and card 6 to classify a
+    reformat as UNCHANGED. Card 6 already derives it with `tokenize`, so
+    without a field the same fact is computed twice, differently, in two
+    cards — and the two will drift.
+
+    Empty for elements with no body."""
+
+    literal_value: str = ""
+    """The repr of an assignment's value when it is a literal constant.
+
+    Card 5 needs it for DEAD_BRANCH: a branch guarded by a name bound to a
+    constant is decidable, and without the value the analysis cannot tell a
+    dead branch from a live one. A string rather than the object, so
+    `canonical_dumps` stays float-free and the artifact stays comparable.
+
+    Empty when the value is not a literal — which is the common case, and must
+    never be read as "the literal was empty"."""
+
 
 # ---------------------------------------------------------------------------
 # Card 2 — resolution and the call graph
