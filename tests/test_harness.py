@@ -413,6 +413,56 @@ def test_no_force_flag_exists_on_start() -> None:
 
 
 # ---------------------------------------------------------------------------
+# unguaranteed -- constraint 7's honest disclosure of what cannot be closed
+#
+# An empty ``unguaranteed`` is a claim of complete coverage. This harness
+# cannot make that claim: the direct ``_posixsubprocess.fork_exec`` escape
+# and "a declared process runs unaudited once started" are both demonstrated
+# elsewhere in this file (see the escapes section below), and both must
+# travel with *every* run record the owner actually reads -- proven once in
+# an isolated probe is not the same as disclosed in the artifact.
+# ---------------------------------------------------------------------------
+
+
+def test_unguaranteed_lists_both_known_gaps_on_a_successful_run(tmp_path: Path) -> None:
+    record, _, _ = _run_harness(
+        tmp_path,
+        source="x = 1\n",
+        module="trivial_unguaranteed",
+        label="unguaranteed_success",
+    )
+    assert record["refused"] is False
+    assert len(record["unguaranteed"]) == 2
+    assert any(
+        "low-level process-spawn primitive" in u for u in record["unguaranteed"]
+    ), record["unguaranteed"]
+    assert any(
+        "explicitly declared and permitted to spawn" in u for u in record["unguaranteed"]
+    ), record["unguaranteed"]
+
+
+def test_unguaranteed_lists_both_known_gaps_on_a_refused_run(tmp_path: Path) -> None:
+    """A refused run never executes anything, but the owner still needs to
+    know what this harness could not have guaranteed had it proceeded --
+    refusing is not an excuse to omit the disclosure."""
+    target_root = _write_target(tmp_path, "trivial", "x = 1\n")
+    out_dir = tmp_path / "out_without_a_graph"
+    out_dir.mkdir()
+    config = RunConfig(
+        target_root=target_root,
+        mode_b_out_dir=out_dir,
+        sandbox_root=tmp_path / "sandbox",
+        scenarios={"s": ScenarioSpec(name="s", module="trivial")},
+    )
+    record = _run(config, "s")
+
+    assert record.refused is True
+    assert len(record.unguaranteed) == 2
+    assert any("low-level process-spawn primitive" in u for u in record.unguaranteed)
+    assert any("explicitly declared and permitted to spawn" in u for u in record.unguaranteed)
+
+
+# ---------------------------------------------------------------------------
 # adv_network / adv_dns -- outbound sockets and DNS blocked at the socket layer
 # ---------------------------------------------------------------------------
 
@@ -556,6 +606,59 @@ def test_write_inside_sandbox_succeeds_and_is_not_blocked(tmp_path: Path) -> Non
     # necessity and recorded, not blocked).
     assert "filesystem_write" not in _blocked_kinds(record)
     assert (sandbox_root / "inside.txt").read_text() == "fine"
+
+
+def test_extra_write_roots_do_not_leak_across_contexts(tmp_path: Path) -> None:
+    """``extra_write_roots`` is the one deliberate widening of the write
+    control (a run's own Mode B output directory, alongside its sandbox),
+    and it is scoped per context, not global -- see sandbox.py's module
+    docstring. Activating context A must never make context B's roots (its
+    sandbox *or* its extra roots) reachable, and vice versa.
+    """
+    root_a = tmp_path / "sandbox_a"
+    root_a.mkdir()
+    extra_a = tmp_path / "extra_a"
+    extra_a.mkdir()
+    root_b = tmp_path / "sandbox_b"
+    root_b.mkdir()
+    extra_b = tmp_path / "extra_b"
+    extra_b.mkdir()
+
+    def _try_write(path: Path) -> str:
+        return (
+            "    try:\n"
+            f"        open({str(path)!r}, 'w').close()\n"
+            "    except Exception:\n"
+            "        pass\n"
+        )
+
+    script = (
+        "import sys, json\n"
+        f"sys.path.insert(0, {SRC_PATH!r})\n"
+        "from cascade_map.harness.sandbox import SandboxContext, activate\n"
+        f"ctx_a = SandboxContext(sandbox_root={str(root_a)!r}, "
+        f"declared_process_names=frozenset(), extra_write_roots=({str(extra_a)!r},))\n"
+        f"ctx_b = SandboxContext(sandbox_root={str(root_b)!r}, "
+        f"declared_process_names=frozenset(), extra_write_roots=({str(extra_b)!r},))\n"
+        "with activate(ctx_a):\n"
+        + _try_write(root_b / "leak.txt")
+        + _try_write(extra_b / "leak.txt")
+        + "with activate(ctx_b):\n"
+        + _try_write(root_a / "leak.txt")
+        + _try_write(extra_a / "leak.txt")
+        + "print(json.dumps({'a_blocked': len(ctx_a.blocked), 'b_blocked': len(ctx_b.blocked)}))\n"
+    )
+    result = _run_python(script)
+    assert result.returncode == 0, f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    payload = json.loads(lines[-1])
+
+    assert payload["a_blocked"] == 2, "A's writes into B's roots must both be blocked"
+    assert payload["b_blocked"] == 2, "B's writes into A's roots must both be blocked"
+    assert not (root_b / "leak.txt").exists()
+    assert not (extra_b / "leak.txt").exists()
+    assert not (root_a / "leak.txt").exists()
+    assert not (extra_a / "leak.txt").exists()
 
 
 # ---------------------------------------------------------------------------

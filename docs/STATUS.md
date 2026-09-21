@@ -13,7 +13,7 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 
 | Card | Scope | Subagent | Status |
 |---|---|---|---|
-| 8 | Fixture corpus | fixture-writer | rebuilt, awaiting verification |
+| 8 | Fixture corpus | fixture-writer | **DONE** (PASS, round 3 — escalated model) |
 | 1 | Ingestion & inventory | ingestion-builder | **DONE** (PASS, round 2) |
 | 2 | Resolution & call graph | resolver-engineer | **DONE** (PASS — precision 100%, recall 100%) |
 | 3 | CFG, cascade ordering, decisions | cascade-engineer | **DONE** (PASS, round 2) |

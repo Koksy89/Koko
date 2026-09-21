@@ -28,6 +28,7 @@ import ast
 import hashlib
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,9 @@ VERSIONS = FIXTURES / "versions"
 SENTINEL = FIXTURES / "sentinel"
 
 SENTINEL_MARKER = Path("/tmp/cascade_map_sentinel_marker.txt")
+
+#: `evt_` plus a zero-padded 8-digit ordinal -- see TraceEvent.event_id.
+_EVENT_ID = re.compile(r"evt_\d{8}")
 
 
 def _load_tool(name: str):
@@ -550,6 +554,36 @@ def test_lin_barrier_requires_a_barrier_at_the_eval_call() -> None:
 def _source_line(span: dict[str, Any]) -> str:
     text = (TESTS_DIR.parent / span["path"]).read_text().splitlines()
     return text[span["line"] - 1]
+
+
+def test_every_event_id_is_the_padded_form_and_sorts_by_execution_order() -> None:
+    """`TraceEvent.event_id` is `evt_` plus a zero-padded 8-digit ordinal.
+
+    events.jsonl sorts by this field, so an unpadded counter puts evt_10
+    before evt_2 and scrambles the one artifact whose natural reading order is
+    execution order. Card 12 mints the padded form; round 3 of this corpus
+    shipped `evt_1..evt_6` and is corrected here.
+    """
+    events_by_case = {
+        directory.name: json.loads((directory / "expected.json").read_text()).get("events", [])
+        for directory in all_case_dirs()
+    }
+    populated = {case: events for case, events in events_by_case.items() if events}
+    assert populated, "no case declares an event stream"
+
+    for case, events in sorted(populated.items()):
+        for record in events:
+            expected_id = f"evt_{record['sequence']:08d}"
+            assert record["event_id"] == expected_id, (
+                f"{case}: event_id {record['event_id']!r} must be {expected_id!r}"
+            )
+            caller = record.get("caller_event_id", "")
+            if caller:
+                assert _EVENT_ID.fullmatch(caller), f"{case}: caller {caller!r} is unpadded"
+        ids = [record["event_id"] for record in events]
+        sequences = [record["sequence"] for record in events]
+        assert ids == sorted(ids), f"{case}: sorting by event_id must give execution order"
+        assert sequences == sorted(sequences)
 
 
 # ---------------------------------------------------------------------------

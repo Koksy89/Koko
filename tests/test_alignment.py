@@ -149,6 +149,31 @@ def by_element(verdicts: Sequence[AlignmentVerdict]) -> dict[str, AlignmentVerdi
     return {verdict.element_id: verdict for verdict in verdicts}
 
 
+def event_id_of(
+    events: Sequence[TraceEvent], element_id: str, kind: EventKind, occurrence: int = 0
+) -> str:
+    """The ID of a fixture event, found by what it *is*, never written as a literal.
+
+    Event ID formatting belongs to cards 8 and 12 (`evt_` plus a zero-padded ordinal,
+    so events.jsonl sorts into execution order). Asserting the relation -- "the
+    verdict cites the RETURN of this element" -- is both the property under test and
+    immune to their formatting.
+    """
+    ordered = sorted(events, key=lambda event: event.sequence)
+    matches = [
+        event for event in ordered if event.element_id == element_id and event.kind is kind
+    ]
+    assert len(matches) > occurrence, f"fixture has no {kind.value} #{occurrence} for {element_id}"
+    return matches[occurrence].event_id
+
+
+def run_id_of(events: Sequence[TraceEvent]) -> str:
+    """The run ID the fixture declares. Also not ours to hardcode."""
+    run_ids = {event.run_id for event in events}
+    assert len(run_ids) == 1, f"fixture spans several runs: {sorted(run_ids)}"
+    return run_ids.pop()
+
+
 def load_run_linear() -> tuple[tuple[Element, ...], tuple[TraceEvent, ...]]:
     """Read the `run_linear` corpus case. Read as data; never executed."""
     path = FIXTURES / "mode_a" / "run_linear" / "expected.json"
@@ -481,8 +506,9 @@ def test_ali_aligned() -> None:
     assert verdict.verdict is Verdict.ALIGNED
     assert verdict.intent_id == confirmed.id
     assert verdict.provenance.method is Method.RUNTIME_OBSERVED
-    assert verdict.provenance.run_id == RUN
-    assert "evt_5" in verdict.evidence_ids
+    assert verdict.provenance.run_id == run_id_of(events)
+    returned = event_id_of(events, "run_linear::step_two", EventKind.RETURN)
+    assert returned in verdict.evidence_ids, "the verdict cites the RETURN it judged"
     assert verdict.provenance.event_ids
     assert verdict.provenance.confidence is Confidence.CERTAIN
 
@@ -501,10 +527,11 @@ def test_ali_misaligned_names_expectation_and_contradiction() -> None:
     assert verdict.verdict is Verdict.MISALIGNED
     assert verdict.expectation == "invariant 'returns.value == 2'"
     assert "observed value 1" in verdict.observation
-    assert "evt_3" in verdict.observation
-    assert verdict.evidence_ids == ("evt_3",)
+    contradicting = event_id_of(events, "run_linear::step_one", EventKind.RETURN)
+    assert contradicting in verdict.observation, "the contradiction names its event"
+    assert verdict.evidence_ids == (contradicting,)
     assert verdict.provenance.method is Method.RUNTIME_OBSERVED
-    assert verdict.provenance.event_ids == ("evt_3",)
+    assert verdict.provenance.event_ids == (contradicting,)
     assert verdict.provenance.model_id == ""
 
 
@@ -523,7 +550,7 @@ def test_ali_not_exercised_is_not_aligned() -> None:
     assert verdict.verdict is Verdict.NOT_EXERCISED
     assert verdict.verdict is not Verdict.ALIGNED
     assert verdict.evidence_ids == ()
-    assert "no event in run run_001" in verdict.observation
+    assert f"no event in run {run_id_of(events)}" in verdict.observation
     assert "NOT_EXERCISED is not ALIGNED" in verdict.observation
     assert verdict.intent_id == confirmed.id
 
@@ -1120,7 +1147,8 @@ def test_exactly_one_verdict_per_element_with_unique_ids() -> None:
     ids = [verdict.id for verdict in verdicts]
     assert len(ids) == len(set(ids)) == len(elements)
     assert ids == sorted(ids)
-    assert all(verdict.id.startswith("@verdict:run_001:") for verdict in verdicts)
+    prefix = f"@verdict:{run_id_of(events)}:"
+    assert all(verdict.id.startswith(prefix) for verdict in verdicts)
 
 
 def test_every_verdict_carries_intent_evidence_method_and_confidence() -> None:
@@ -1139,7 +1167,7 @@ def test_every_verdict_carries_intent_evidence_method_and_confidence() -> None:
             assert verdict.evidence_ids
             assert verdict.expectation
             assert verdict.provenance.method is Method.RUNTIME_OBSERVED
-            assert verdict.provenance.run_id == RUN
+            assert verdict.provenance.run_id == run_id_of(events)
 
 
 def test_replaying_the_same_run_twice_is_byte_identical() -> None:
@@ -1374,7 +1402,7 @@ def test_coverage_reports_what_was_checkable_and_against_what() -> None:
     engine.judge(intents, events)
     coverage: Coverage = engine.coverage()
 
-    assert coverage.run_id == RUN
+    assert coverage.run_id == run_id_of(events)
     assert coverage.intents_total == 4
     assert coverage.intents_confirmed == 3
     assert coverage.intents_proposed == 1
