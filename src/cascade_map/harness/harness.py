@@ -16,6 +16,7 @@ import importlib
 import os
 import sys
 import tempfile
+import traceback as traceback_module
 from pathlib import Path
 
 from cascade_map.contracts import (
@@ -52,6 +53,11 @@ UNGUARANTEED_LIMITS: tuple[str, ...] = (
     "reach the network, write files, spawn further processes -- happens "
     "unblocked and unrecorded by this harness.",
 )
+
+#: Same rule ``ValueCapture`` follows, for the same reason: a truncated
+#: traceback that reads as complete would send someone to the wrong frame,
+#: so the cap is explicit and disclosed in the text, not a silent cutoff.
+SCENARIO_FAILURE_TRACEBACK_CAP = 8000
 
 
 class Harness:
@@ -352,6 +358,30 @@ class Harness:
                 n for n in sys.modules if n == spec.module or n.startswith(spec.module + ".")
             ]:
                 sys.modules.pop(name, None)
+
+    @staticmethod
+    def _build_scenario_failure(exc: ScenarioStageError) -> ScenarioFailure:
+        """Turn a caught ``ScenarioStageError`` into the record the owner
+        reads. The traceback is capped explicitly, not silently truncated --
+        the same rule ``ValueCapture`` follows: a cutoff that reads as
+        complete would send someone to the wrong frame.
+        """
+        original = exc.original
+        formatted = "".join(
+            traceback_module.format_exception(type(original), original, original.__traceback__)
+        )
+        if len(formatted) > SCENARIO_FAILURE_TRACEBACK_CAP:
+            kept = formatted[:SCENARIO_FAILURE_TRACEBACK_CAP]
+            formatted = (
+                f"{kept}\n...[traceback truncated: showing "
+                f"{SCENARIO_FAILURE_TRACEBACK_CAP} of {len(formatted)} characters]"
+            )
+        return ScenarioFailure(
+            stage=exc.stage,
+            exception_type=type(original).__name__,
+            message=str(original),
+            traceback=formatted,
+        )
 
     # -- self-tests ----------------------------------------------------------
 
