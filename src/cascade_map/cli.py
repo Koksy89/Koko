@@ -439,6 +439,7 @@ def trace(
     _write(run_dir, "run.json", canonical_dumps(run) + "\n")
     _write(run_dir, "narrative.jsonl", canonical_jsonl(narrative))
 
+    failure = run.scenario_failure
     total, mapped = result.mapping.total_events, result.mapping.mapped_events
     rate = f"{100 * mapped // total}%" if total else "nothing was observed"
     lines = [
@@ -453,6 +454,40 @@ def trace(
         f"  blocked        {len(run.blocked):,}   <- side effects the harness stopped",
         "",
     ]
+    if failure is not None:
+        # Before anything else. A scenario that never ran produces a report
+        # that reads exactly like a run whose analysis was wrong, and an owner
+        # would go hunting the wrong bug.
+        if failure.stage == "import":
+            headline = (
+                "YOUR SCENARIO DID NOT RUN — the module could not be imported."
+            )
+            hint = (
+                "Either `target_root` in your scenario file points at the wrong "
+                "directory, or the target cannot import itself. The traceback "
+                "below says which."
+            )
+        elif failure.exception_type == "AttributeError":
+            headline = (
+                "YOUR SCENARIO DID NOT RUN — the module imported, but the named "
+                "function does not exist."
+            )
+            hint = "Check the `function` field in your scenario file."
+        else:
+            headline = "YOUR TARGET RAISED. The run completed; the scenario did not."
+            hint = "This is your engine's own exception, not a tool failure."
+        lines = [
+            headline,
+            "",
+            f"  {failure.exception_type}: {failure.message}",
+            "",
+            f"  {hint}",
+            "",
+            "Everything below describes a run in which that happened. Read the "
+            "event counts with that in mind.",
+            "",
+        ] + lines
+
     if run.unguaranteed:
         lines.append("WHAT THIS RUN COULD NOT GUARANTEE:")
         lines += [f"  - {item}" for item in run.unguaranteed]

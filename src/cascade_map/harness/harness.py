@@ -217,6 +217,7 @@ class Harness:
         original_tempdir = tempfile.tempdir
         original_dont_write_bytecode = sys.dont_write_bytecode
         installed_modules: dict[str, object | None] = {}
+        scenario_failure: ScenarioFailure | None = None
         try:
             os.environ.clear()
             os.environ.update(filtered_env)
@@ -280,21 +281,15 @@ class Harness:
             pass
         except HarnessRefusal:
             raise
-        except ScenarioStageError:
-            # NOT safe to discard the way BlockedOperation is: this has
-            # nowhere to go. `_run_scenario` already identifies whether the
-            # target never imported (`.stage == "import"` -- possibly a
-            # wrong `target_root` or a typo'd module name, not necessarily a
-            # target defect) or its entry point failed (`.stage == "call"`),
-            # and `.original` carries the real exception whole (type,
-            # message, `__traceback__`). RunRecord has no field yet for "the
-            # scenario itself failed", so all of that is still dropped here
-            # -- a target that never imported produces a record
-            # indistinguishable from a clean run that mapped nothing, a
-            # real, costly misreading reported upstream. Requested a field
-            # for this from the lead; wiring it in here is a small,
-            # localized change once it exists. See the build report.
-            pass
+        except ScenarioStageError as exc:
+            # The run still completes -- it is not a refusal (constraint 7's
+            # refusal is about guarantees the harness could not make; every
+            # control here was active) and not silently discarded either:
+            # `_run_scenario` already identified whether the target never
+            # imported (`.stage == "import"`) or its entry point was missing
+            # or raised (`.stage == "call"`), and that travels onward on
+            # `RunRecord.scenario_failure` instead of being dropped.
+            scenario_failure = self._build_scenario_failure(exc)
         except Exception:  # noqa: BLE001 - genuinely unexpected: not a target failure
             # Everything _run_scenario can raise from the target's own code
             # is wrapped in ScenarioStageError above; reaching this instead
@@ -324,6 +319,7 @@ class Harness:
             blocked=blocked,
             unguaranteed=UNGUARANTEED_LIMITS,
             sandbox_dir=sandbox_dir,
+            scenario_failure=scenario_failure,
             refused=False,
             refusal_reason="",
         )

@@ -1610,3 +1610,95 @@ def test_blocked_operation_and_harness_refusal_pass_through_run_scenario_unwrapp
         sys.dont_write_bytecode = original_dont_write_bytecode
         sys.modules.pop("raises_blocked", None)
         sys.modules.pop("raises_refusal", None)
+
+
+# ---------------------------------------------------------------------------
+# ScenarioFailure -- end to end, on the real RunRecord / run.json
+#
+# The internal ScenarioStageError tests above prove the stage is identified
+# correctly at the point it is produced; these prove it actually reaches the
+# artifact the owner reads. Run through _run_harness (a real Harness.start()
+# in a subprocess) rather than the lower-level _run_scenario call.
+# ---------------------------------------------------------------------------
+
+
+def test_scenario_failure_is_none_on_a_clean_run(tmp_path: Path) -> None:
+    record, _, _ = _run_harness(
+        tmp_path,
+        source="x = 1\n",
+        module="clean_run_e2e",
+        label="scenario_failure_clean",
+    )
+    assert record["refused"] is False
+    assert record["scenario_failure"] is None
+
+
+def test_scenario_failure_records_import_stage_for_a_missing_module(tmp_path: Path) -> None:
+    record, _, _ = _run_harness(
+        tmp_path,
+        source="",  # module deliberately never written: it does not exist
+        module="definitely_missing_module_e2e",
+        label="scenario_failure_import",
+    )
+    assert record["refused"] is False
+    failure = record["scenario_failure"]
+    assert failure is not None
+    assert failure["stage"] == "import"
+    assert failure["exception_type"] == "ModuleNotFoundError"
+    assert "definitely_missing_module_e2e" in failure["message"]
+    assert failure["traceback"]  # non-empty, present for the owner to act on
+
+
+def test_scenario_failure_records_call_stage_for_a_missing_entry_point(tmp_path: Path) -> None:
+    record, _, _ = _run_harness(
+        tmp_path,
+        source="x = 1\n",
+        module="importable_mod_e2e",
+        function="does_not_exist_e2e",
+        label="scenario_failure_missing_entry",
+    )
+    assert record["refused"] is False
+    failure = record["scenario_failure"]
+    assert failure is not None
+    assert failure["stage"] == "call"
+    # A clean AttributeError here is a scenario-declaration error (the
+    # module ran fine; the configured entry point name is wrong) -- a
+    # different sentence for the owner than "your function raised".
+    assert failure["exception_type"] == "AttributeError"
+
+
+def test_scenario_failure_records_call_stage_for_a_raising_entry_point(tmp_path: Path) -> None:
+    record, _, _ = _run_harness(
+        tmp_path,
+        source=(
+            "def boom():\n"
+            "    raise ValueError('the target function itself failed')\n"
+        ),
+        module="raising_entry_point_e2e",
+        function="boom",
+        label="scenario_failure_raises",
+    )
+    assert record["refused"] is False
+    failure = record["scenario_failure"]
+    assert failure is not None
+    assert failure["stage"] == "call"
+    assert failure["exception_type"] == "ValueError"
+    assert failure["message"] == "the target function itself failed"
+    assert "the target function itself failed" in failure["traceback"]
+
+
+def test_scenario_failure_is_none_on_a_refused_run(tmp_path: Path) -> None:
+    """Nothing was attempted, so there is nothing to have failed."""
+    target_root = _write_target(tmp_path, "trivial", "x = 1\n")
+    out_dir = tmp_path / "out_without_a_graph_for_scenario_failure"
+    out_dir.mkdir()
+    config = RunConfig(
+        target_root=target_root,
+        mode_b_out_dir=out_dir,
+        sandbox_root=tmp_path / "sandbox",
+        scenarios={"s": ScenarioSpec(name="s", module="trivial")},
+    )
+    record = _run(config, "s")
+
+    assert record.refused is True
+    assert record.scenario_failure is None
