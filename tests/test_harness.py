@@ -1702,3 +1702,130 @@ def test_scenario_failure_is_none_on_a_refused_run(tmp_path: Path) -> None:
 
     assert record.refused is True
     assert record.scenario_failure is None
+
+
+# ---------------------------------------------------------------------------
+# observer_failure -- the observer is not exempt from misbehaving
+#
+# The `except Exception: pass` meant for this method's own setup/teardown
+# also swallowed an exception from observer.start()/stop() -- so a bug in
+# card 12's tracer reported a run as clean, with an owner reading "my engine
+# did nothing interesting" for a fault that was ours. Fixed by catching each
+# call locally and recording which lifecycle point failed; these prove it.
+# ---------------------------------------------------------------------------
+
+_START_RAISES_OBSERVER_SOURCE = (
+    "class _StartRaisingObserver:\n"
+    "    def start(self, run):\n"
+    "        raise RuntimeError('observer start bug')\n"
+    "    def stop(self):\n"
+    "        with open('stop_was_called.marker', 'w') as f:\n"
+    "            f.write('yes')\n"
+    "OBSERVER = _StartRaisingObserver()\n"
+)
+
+_STOP_RAISES_OBSERVER_SOURCE = (
+    "class _StopRaisingObserver:\n"
+    "    def start(self, run):\n"
+    "        with open('start_was_called.marker', 'w') as f:\n"
+    "            f.write('yes')\n"
+    "    def stop(self):\n"
+    "        raise RuntimeError('observer stop bug')\n"
+    "OBSERVER = _StopRaisingObserver()\n"
+)
+
+_BOTH_RAISE_OBSERVER_SOURCE = (
+    "class _BothRaisingObserver:\n"
+    "    def start(self, run):\n"
+    "        raise RuntimeError('observer start bug')\n"
+    "    def stop(self):\n"
+    "        raise RuntimeError('observer stop bug -- must never be called')\n"
+    "OBSERVER = _BothRaisingObserver()\n"
+)
+
+
+def test_observer_failure_recorded_when_start_raises(tmp_path: Path) -> None:
+    record, sandbox_root, _ = _run_harness(
+        tmp_path,
+        source="with open('ran.txt', 'w') as f:\n    f.write('ok')\n",
+        module="observer_start_raises",
+        observer_source=_START_RAISES_OBSERVER_SOURCE,
+        label="observer_start_fails",
+    )
+    assert record["refused"] is False
+    # The run still completed: a bug in what is watching is not a reason to
+    # skip running the target.
+    assert record["scenario_failure"] is None
+    assert (sandbox_root / "ran.txt").read_text() == "ok"
+    failure = record["observer_failure"]
+    assert failure is not None
+    assert failure["stage"] == "start"
+    assert failure["exception_type"] == "RuntimeError"
+    assert failure["message"] == "observer start bug"
+    # Nothing started, so stop() must never have been attempted.
+    assert not (sandbox_root / "stop_was_called.marker").exists()
+
+
+def test_observer_failure_recorded_when_stop_raises_and_teardown_still_happens(
+    tmp_path: Path,
+) -> None:
+    record, sandbox_root, _ = _run_harness(
+        tmp_path,
+        source=(
+            "import socket\n"
+            "s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+            "s.settimeout(0.01)\n"
+            "try:\n"
+            "    s.connect(('93.184.216.34', 80))\n"
+            "except Exception:\n"
+            "    pass\n"
+            "finally:\n"
+            "    s.close()\n"
+        ),
+        module="observer_stop_raises",
+        observer_source=_STOP_RAISES_OBSERVER_SOURCE,
+        label="observer_stop_fails",
+    )
+    assert record["refused"] is False
+    assert record["scenario_failure"] is None
+    # The observer did start -- it may have observed most of the run.
+    assert (sandbox_root / "start_was_called.marker").exists()
+    failure = record["observer_failure"]
+    assert failure is not None
+    assert failure["stage"] == "stop"
+    assert failure["exception_type"] == "RuntimeError"
+    assert failure["message"] == "observer stop bug"
+    # Sandbox teardown and the target's own controls are unaffected by the
+    # observer's own bug: the blocked network attempt still landed.
+    assert "network" in _blocked_kinds(record)
+
+
+def test_observer_failure_only_records_start_when_both_would_raise(tmp_path: Path) -> None:
+    """A single field, not a list: when start() fails, stop() is never
+    attempted, so an observer whose stop() would also raise never gets the
+    chance to -- only the start failure is ever recorded."""
+    record, sandbox_root, _ = _run_harness(
+        tmp_path,
+        source="x = 1\n",
+        module="observer_both_raise",
+        observer_source=_BOTH_RAISE_OBSERVER_SOURCE,
+        label="observer_both_fail",
+    )
+    assert record["refused"] is False
+    assert record["scenario_failure"] is None
+    failure = record["observer_failure"]
+    assert failure is not None
+    assert failure["stage"] == "start"
+    assert failure["message"] == "observer start bug"
+
+
+def test_observer_failure_is_none_on_a_clean_run(tmp_path: Path) -> None:
+    record, _, _ = _run_harness(
+        tmp_path,
+        source="x = 1\n",
+        module="observer_clean_run",
+        observer_source=_OBSERVER_SOURCE,
+        label="observer_failure_clean",
+    )
+    assert record["refused"] is False
+    assert record["observer_failure"] is None

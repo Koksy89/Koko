@@ -81,6 +81,10 @@ li.order-node { margin: 0.25rem 0; padding-left: 0.5rem; }
   margin-bottom: 1rem; }
 .scenario-failure pre { white-space: pre-wrap; word-break: break-word; background: #fff;
   border: 1px solid #ccc; padding: 0.5rem; max-height: 20rem; overflow: auto; }
+.observer-failure { border: 3px dashed #31708f; background: #eef6fb; padding: 0.75rem 1rem;
+  margin-bottom: 1rem; }
+.observer-failure pre { white-space: pre-wrap; word-break: break-word; background: #fff;
+  border: 1px solid #ccc; padding: 0.5rem; max-height: 20rem; overflow: auto; }
 """
 
 
@@ -396,11 +400,36 @@ def _render_scenario_failure(sf: dict[str, Any] | None) -> str:
     )
 
 
+def _render_observer_failure(of: dict[str, Any] | None) -> str:
+    """`observer_failure` -- the opposite finding from `scenario_failure` and
+    styled deliberately unlike it (`observer-failure`, not `scenario-failure`):
+    this one says the tool may have missed the run, not that the target
+    misbehaved. Conflating the two sends an owner to the wrong codebase, which
+    is the entire reason they are rendered as two distinct blocks rather than
+    one message."""
+    if of is None:
+        return ""
+    traceback_text = of["traceback"] or "(no traceback captured)"
+    return (
+        "<div class='observer-failure'>"
+        f"<h4>The observer itself failed -- {escape(of['stage'])} stage "
+        "(this is a tool bug, not a finding about the target)</h4>"
+        f"<p>{escape(of['explanation'])}</p>"
+        f"<p>exception: <code>{escape(of['exception_type'])}</code>"
+        f"{' -- ' + escape(of['message']) if of['message'] else ''}</p>"
+        f"<pre>{escape(traceback_text)}</pre>"
+        "</div>"
+    )
+
+
 def _render_run_overview(store: ArtifactStore, rstore: RuntimeStore) -> str:
     overview = views.runtime_overview_view(rstore)
     if not overview["available"]:
         return "<p class='missing'>run.json not available for this run -- run overview cannot be shown.</p>"
-    failure_block = _render_scenario_failure(overview.get("scenario_failure"))
+    failure_block = (
+        _render_observer_failure(overview.get("observer_failure"))
+        + _render_scenario_failure(overview.get("scenario_failure"))
+    )
     unguaranteed_rows = "".join(
         f"<li>{escape(u)}</li>" for u in overview["unguaranteed"]
     ) or "<li>none disclosed by this run record</li>"

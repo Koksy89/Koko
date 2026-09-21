@@ -755,13 +755,15 @@ def _runtime_prov(*event_ids: str) -> Provenance:
 
 
 def build_runtime_fixture(
-    root: Path, run_id: str = RUN_ID, *, scenario_failure: ScenarioFailure | None = None
+    root: Path, run_id: str = RUN_ID, *,
+    scenario_failure: ScenarioFailure | None = None,
+    observer_failure: ScenarioFailure | None = None,
 ) -> None:
     """Write a small, hand-authored runtime overlay to
     ``root/runtime/<run_id>/``, keyed onto the same element IDs
-    ``build_fixture`` already wrote to *root*. *scenario_failure* lets a
-    test build a run whose scenario raised, without duplicating the whole
-    fixture."""
+    ``build_fixture`` already wrote to *root*. *scenario_failure* /
+    *observer_failure* let a test build a run whose scenario raised, or
+    whose observer itself broke, without duplicating the whole fixture."""
     rundir = root / "runtime" / run_id
     rundir.mkdir(parents=True, exist_ok=True)
 
@@ -856,6 +858,7 @@ def build_runtime_fixture(
         ),
         sandbox_dir="sandbox/run_0001",
         scenario_failure=scenario_failure,
+        observer_failure=observer_failure,
     )
 
     mapping = MappingReport(
@@ -1119,6 +1122,116 @@ def test_html_render_normal_run_has_no_scenario_failure_block(runtime_store) -> 
     html = render_site(store, rstore)
     assert 'class="scenario-failure"' not in html
     assert "did not complete" not in html
+
+
+# -- observer_failure: the tool may have missed the run, not the target's fault --
+#
+# Verification ran a deliberately broken observer through a real
+# Harness.start() and got refused=False, scenario_failure=None, blocked=(),
+# every control True -- indistinguishable from a clean run. observer_failure
+# exists so a bug in card 12 never gets attributed to the target.
+
+
+def test_runtime_overview_normal_run_has_no_observer_failure(runtime_store) -> None:
+    _store, rstore = runtime_store
+    assert runtime_overview_view(rstore)["observer_failure"] is None
+
+
+def test_runtime_overview_observer_start_failure_means_nothing_was_watched(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(
+        tmp_path,
+        observer_failure=ScenarioFailure(
+            stage="start", exception_type="RuntimeError",
+            message="collector could not attach", traceback="Traceback...\n",
+        ),
+    )
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    of = runtime_overview_view(rstore)["observer_failure"]
+    assert of["stage"] == "start"
+    assert "not watched" in of["explanation"] or "nothing was watched" in of["explanation"]
+    assert "bug in the tool" in of["explanation"]
+
+
+def test_runtime_overview_observer_stop_failure_means_tail_may_be_missing(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(
+        tmp_path,
+        observer_failure=ScenarioFailure(
+            stage="stop", exception_type="RuntimeError",
+            message="collector flush failed", traceback="Traceback...\n",
+        ),
+    )
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    of = runtime_overview_view(rstore)["observer_failure"]
+    assert of["stage"] == "stop"
+    assert "tail may be missing" in of["explanation"]
+    assert "bug in the tool" in of["explanation"]
+
+
+def test_observer_failure_and_scenario_failure_are_independently_rendered(tmp_path: Path) -> None:
+    """A target crash and a broken observer in the same run is worse than
+    either alone, and must not collapse into a single message."""
+    build_fixture(tmp_path)
+    build_runtime_fixture(
+        tmp_path,
+        scenario_failure=ScenarioFailure(
+            stage="call", exception_type="ZeroDivisionError", message="division by zero",
+        ),
+        observer_failure=ScenarioFailure(
+            stage="stop", exception_type="RuntimeError", message="collector flush failed",
+        ),
+    )
+    store = ArtifactStore.load(tmp_path)
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    html = render_site(store, rstore)
+    assert "class='observer-failure'" in html
+    assert "class='scenario-failure'" in html
+    assert "division by zero" in html
+    assert "collector flush failed" in html
+    # distinct wording -- neither block borrows the other's framing
+    assert "tool bug" in html
+    assert "target's own exception" in html or "target engine itself raised" in html
+
+
+def test_html_render_observer_failure_is_distinct_from_scenario_failure(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(
+        tmp_path,
+        observer_failure=ScenarioFailure(
+            stage="start", exception_type="RuntimeError", message="collector could not attach",
+        ),
+    )
+    store = ArtifactStore.load(tmp_path)
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    html = render_site(store, rstore)
+    assert "class='observer-failure'" in html
+    assert 'class="scenario-failure"' not in html
+    assert "not a finding about the target" in html
+
+
+def test_html_render_observer_failure_appears_before_unguaranteed_and_events(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(
+        tmp_path,
+        observer_failure=ScenarioFailure(
+            stage="start", exception_type="RuntimeError", message="collector could not attach",
+        ),
+    )
+    store = ArtifactStore.load(tmp_path)
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    html = render_site(store, rstore)
+    observer_pos = html.index("The observer itself failed")
+    unguaranteed_pos = html.index("could not close")
+    events_pos = html.index("Events and captured values")
+    assert observer_pos < unguaranteed_pos < events_pos
+
+
+def test_html_render_normal_run_has_no_observer_failure_block(runtime_store) -> None:
+    store, rstore = runtime_store
+    html = render_site(store, rstore)
+    assert "class='observer-failure'" not in html
+    assert "observer itself failed" not in html
 
 
 # -- mapping rate ---------------------------------------------------------
