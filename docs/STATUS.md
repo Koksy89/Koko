@@ -22,7 +22,7 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 | 6 | Version diff & impact | diff-impact-builder | **DONE** (PASS, 1 contract follow-up) |
 | 16 | Documentation records & completeness gate | docs-builder | **DONE** (PASS) |
 | 15 | Viewer (phase B) | viewer-builder | **DONE** (PASS, round 2, phase B only) |
-| 11 | Safe execution harness | harness-builder | architecture sound; populating `unguaranteed` |
+| 11 | Safe execution harness | harness-builder | **DONE** (PASS, round 4 — two limits disclosed) |
 | 12 | Runtime tracer & value capture | tracer-engineer | **DONE** (PASS, 3 recorded gaps) |
 | 13 | Intent registry & alignment | alignment-engineer | **DONE** (PASS, round 2) |
 | 14 | Execution narrative | narrative-builder | **DONE** (PASS, round 2) |

@@ -126,6 +126,28 @@ Constraint 1 is enforced in three places, on purpose:
 
 The sentinel fixture proves the first layer empirically on every static run.
 
+### What layer 3 does not cover
+
+Card 11's isolation is built on `sys.audit` (PEP 578), and two paths fire no audit
+event at all. Both were demonstrated, not theorised:
+
+1. **A direct call to the interpreter's low-level process-spawn primitive**, bypassing
+   `subprocess`. The child runs with no control attached and nothing recorded. Gating the
+   module's import does not work: `subprocess.py` imports it unconditionally, so the gate
+   would also break the declared-executable path that does work.
+2. **A process permitted through `declared_process_names`**, once it is running. It is a
+   separate program with none of the harness's controls attached, in both directions.
+
+Constraint 7 says a run refuses when the guarantee cannot be made. Refusing every run
+over a limit no run can avoid would make Mode A unusable, so the honest form here is
+disclosure: `RunRecord.unguaranteed` names each uncovered path in plain language, and it
+travels with every run record — successful and refused alike. An empty tuple is a claim
+of complete coverage and must never be the default for a limit that is merely unmeasured.
+
+**Closing these needs isolation underneath the harness** — a container, a sandboxed OS
+user, seccomp, or namespaces. That is outside this tool. Before Mode A is ever pointed at
+a real engine, run it inside one.
+
 ## Auto-detection
 
 Where `TARGET_PROFILE.md` leaves an owner input blank, the affected card detects
