@@ -23,23 +23,32 @@ lower confidence. _Degrades rather than blocks: 2._
 **Q4. Mode A scenarios and external systems.**
 Not needed for Mode B. Needed before card 11 starts. _Blocks: 11, 12._
 
-## Open — lead
-
-**Q5. Element ID scheme.**
-Card 1 mints the IDs every other card keys off. The scheme must survive reformatting and
-unrelated edits in the same file, and must disambiguate redefinitions, overloads and
-nested scopes. To be settled in ARCHITECTURE.md before card 1 starts. _Blocks: 1._
-
-**Q6. Confidence scale.**
-Every fact carries a confidence. An enum (EXACT / PROBABLE / HEURISTIC) is easier to keep
-consistent across 13 builders; a number composes better along a chain of inferences.
-To be settled in the contracts before card 2. _Blocks: 2._
-
-**Q7. Artifact format.**
-What cards 1-6 write to disk and card 15 reads back. Must be deterministic with sorted
-keys. To be settled in schema.json before card 1. _Blocks: 1._
-
 ## Settled
+
+**S4. Element ID scheme — was Q5.**
+`module::qualname[#n]`, with `#n` only on a genuine duplicate and only from the second
+occurrence onward, so a later redefinition never renames the first. No line numbers or
+offsets: a reformat must not change an ID, or card 6 cannot diff and card 12 cannot key
+runtime events onto the graph. Separate namespaces for features, files, config keys and
+blobs. An inseparable collision is an `ID_COLLISION` record, never a silent overwrite.
+See `make_id` in the contracts. _2026-09-21._
+
+**S5. Confidence is an ordered enum composed by minimum — was Q6.**
+`CERTAIN > RESOLVED > PROBABLE > HEURISTIC > UNKNOWN`. An enum because thirteen builders
+applying five named levels stay consistent where thirteen builders inventing floats do
+not. Minimum because it is the only rule that cannot launder a guess into a fact. See
+`combine`. _2026-09-21._
+
+**S6. Artifacts are sorted JSON Lines through one serializer — was Q7.**
+`canonical_dumps` / `canonical_jsonl`: sorted keys, sorted lines, ASCII, no insignificant
+whitespace. Determinism becomes a property of the serializer rather than of each
+builder's diligence. Floats are rejected outright — their repr varies across platforms
+and constraint 4 cannot survive it. Timestamps and absolute paths live in `run_meta.json`,
+outside the byte-identical guarantee. _2026-09-21._
+
+**S7. schema.json is generated from interfaces.py.**
+One source of truth. `python -m cascade_map.contracts._generate_schema` regenerates it,
+and `tests/test_contracts.py` fails if the committed file is stale. _2026-09-21._
 
 **S1. The guard hook denies unknown command heads that name a protected path.**
 Rather than enumerating dangerous commands, the guard keeps a read-only allowlist and

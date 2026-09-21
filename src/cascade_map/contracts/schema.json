@@ -1,0 +1,1504 @@
+{
+  "$defs": {
+    "AlignmentVerdict": {
+      "additionalProperties": false,
+      "description": "AlignmentVerdict(id: 'str', element_id: 'str', intent_id: 'str', verdict: 'Verdict', expectation: 'str', observation: 'str', evidence_ids: 'tuple[str, ...]', provenance: 'Provenance')",
+      "properties": {
+        "element_id": {
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "expectation": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "intent_id": {
+          "type": "string"
+        },
+        "observation": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "verdict": {
+          "enum": [
+            "ALIGNED",
+            "MISALIGNED",
+            "UNVERIFIABLE",
+            "NOT_EXERCISED",
+            "NO_INTENT"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "element_id",
+        "evidence_ids",
+        "expectation",
+        "id",
+        "intent_id",
+        "observation",
+        "provenance",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "Barrier": {
+      "additionalProperties": false,
+      "description": "A point where value flow stops being traceable. Recorded rather than stitched across. Reflection, `eval`-built calls and opaque third-party functions end a slice here, and the slice says so.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "element_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "DYNAMIC_NAME",
+            "MISSING_TARGET",
+            "SYNTAX_ERROR",
+            "DECODE_ERROR",
+            "TOO_LARGE",
+            "AMBIGUOUS",
+            "ID_COLLISION",
+            "THIRD_PARTY",
+            "NOT_EXERCISED"
+          ],
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/SourceSpan"
+        }
+      },
+      "required": [
+        "description",
+        "element_id",
+        "id",
+        "reason",
+        "span"
+      ],
+      "type": "object"
+    },
+    "BlockKind": {
+      "description": "",
+      "enum": [
+        "ENTRY",
+        "NORMAL",
+        "BRANCH",
+        "LOOP_HEAD",
+        "HANDLER",
+        "FINALLY",
+        "RETURN",
+        "RAISE",
+        "EXIT"
+      ],
+      "type": "string"
+    },
+    "BlockedAttempt": {
+      "additionalProperties": false,
+      "description": "A side effect the harness refused. A finding the owner wants, not noise.",
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "element_id": {
+          "type": "string"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "detail",
+        "id",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "CFGBlock": {
+      "additionalProperties": false,
+      "description": "CFGBlock(id: 'str', element_id: 'str', kind: 'BlockKind', span: 'SourceSpan', provenance: 'Provenance')",
+      "properties": {
+        "element_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ENTRY",
+            "NORMAL",
+            "BRANCH",
+            "LOOP_HEAD",
+            "HANDLER",
+            "FINALLY",
+            "RETURN",
+            "RAISE",
+            "EXIT"
+          ],
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "span": {
+          "$ref": "#/$defs/SourceSpan"
+        }
+      },
+      "required": [
+        "element_id",
+        "id",
+        "kind",
+        "provenance",
+        "span"
+      ],
+      "type": "object"
+    },
+    "CFGEdge": {
+      "additionalProperties": false,
+      "description": "CFGEdge(id: 'str', source_id: 'str', target_id: 'str', condition: 'str' = '', taken_when: 'bool | None' = None, provenance: 'Provenance | None' = None)",
+      "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Provenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "taken_when": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source_id",
+        "target_id"
+      ],
+      "type": "object"
+    },
+    "CaptureStatus": {
+      "description": "",
+      "enum": [
+        "FULL",
+        "SUMMARIZED",
+        "REDACTED",
+        "DROPPED"
+      ],
+      "type": "string"
+    },
+    "ChangeKind": {
+      "description": "",
+      "enum": [
+        "ADDED",
+        "REMOVED",
+        "RENAMED",
+        "MOVED",
+        "SIGNATURE_CHANGED",
+        "BODY_CHANGED",
+        "DECORATORS_CHANGED",
+        "UNCHANGED"
+      ],
+      "type": "string"
+    },
+    "Confidence": {
+      "description": "How much weight a fact carries. Ordered; see :func:`combine`.",
+      "enum": [
+        "CERTAIN",
+        "RESOLVED",
+        "PROBABLE",
+        "HEURISTIC",
+        "UNKNOWN"
+      ],
+      "type": "string"
+    },
+    "DecisionPoint": {
+      "additionalProperties": false,
+      "description": "DecisionPoint(id: 'str', element_id: 'str', condition_source: 'str', reads_ids: 'tuple[str, ...]', outcomes: 'tuple[tuple[str, str], ...]', is_sink: 'bool' = False, provenance: 'Provenance | None' = None)",
+      "properties": {
+        "condition_source": {
+          "type": "string"
+        },
+        "element_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "is_sink": {
+          "type": "boolean"
+        },
+        "outcomes": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Provenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reads_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "condition_source",
+        "element_id",
+        "id",
+        "outcomes",
+        "reads_ids"
+      ],
+      "type": "object"
+    },
+    "DocRecord": {
+      "additionalProperties": false,
+      "description": "One per element. The completeness gate fails the run if any is missing or has an unfilled required field. Constraint 8.",
+      "properties": {
+        "cascade_position": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "change_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "data_role": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "decision_relevance": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "element_id": {
+          "type": "string"
+        },
+        "finding_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "identity": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "model_prose": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "runtime": {
+          "additionalProperties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "cascade_position",
+        "change_ids",
+        "data_role",
+        "decision_relevance",
+        "element_id",
+        "finding_ids",
+        "id",
+        "identity",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "Edge": {
+      "additionalProperties": false,
+      "description": "Edge(id: 'str', kind: 'EdgeKind', source_id: 'str', target_id: 'str', provenance: 'Provenance', call_site: 'SourceSpan | None' = None)",
+      "properties": {
+        "call_site": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceSpan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "CALLS",
+            "IMPORTS",
+            "INHERITS",
+            "DECORATES",
+            "REGISTERS",
+            "INSTANTIATES",
+            "REFERENCES",
+            "CONFIGURES"
+          ],
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "target_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "provenance",
+        "source_id",
+        "target_id"
+      ],
+      "type": "object"
+    },
+    "EdgeKind": {
+      "description": "",
+      "enum": [
+        "CALLS",
+        "IMPORTS",
+        "INHERITS",
+        "DECORATES",
+        "REGISTERS",
+        "INSTANTIATES",
+        "REFERENCES",
+        "CONFIGURES"
+      ],
+      "type": "string"
+    },
+    "Element": {
+      "additionalProperties": false,
+      "description": "Element(id: 'str', kind: 'ElementKind', name: 'str', qualname: 'str', module: 'str', span: 'SourceSpan', provenance: 'Provenance', content_hash: 'str', decorators: 'tuple[str, ...]' = (), signature: 'str' = '', docstring: 'str' = '', parent_id: 'str' = '', byte_size: 'int' = 0)",
+      "properties": {
+        "byte_size": {
+          "type": "integer"
+        },
+        "content_hash": {
+          "type": "string"
+        },
+        "decorators": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "docstring": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "PACKAGE",
+            "MODULE",
+            "CLASS",
+            "FUNCTION",
+            "METHOD",
+            "PROPERTY",
+            "ASSIGNMENT",
+            "PARAMETER",
+            "IMPORT",
+            "DATA_FILE",
+            "CONFIG_KEY",
+            "BLOB",
+            "FEATURE"
+          ],
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "qualname": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/SourceSpan"
+        }
+      },
+      "required": [
+        "content_hash",
+        "id",
+        "kind",
+        "module",
+        "name",
+        "provenance",
+        "qualname",
+        "span"
+      ],
+      "type": "object"
+    },
+    "ElementKind": {
+      "description": "",
+      "enum": [
+        "PACKAGE",
+        "MODULE",
+        "CLASS",
+        "FUNCTION",
+        "METHOD",
+        "PROPERTY",
+        "ASSIGNMENT",
+        "PARAMETER",
+        "IMPORT",
+        "DATA_FILE",
+        "CONFIG_KEY",
+        "BLOB",
+        "FEATURE"
+      ],
+      "type": "string"
+    },
+    "EventKind": {
+      "description": "",
+      "enum": [
+        "CALL",
+        "RETURN",
+        "BRANCH",
+        "EXCEPTION",
+        "FEATURE_WRITE",
+        "DECISION",
+        "UNMAPPED"
+      ],
+      "type": "string"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "description": "Finding(id: 'str', kind: 'FindingKind', element_id: 'str', span: 'SourceSpan', summary: 'str', hint: 'str', evidence_ids: 'tuple[str, ...]', provenance: 'Provenance')",
+      "properties": {
+        "element_id": {
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "UNREACHABLE_ELEMENT",
+            "UNCONSUMED_FEATURE",
+            "DANGLING_CONFIG_REFERENCE",
+            "ORPHANED_CONFIG_ELEMENT",
+            "DEAD_BRANCH",
+            "SHADOWED_DEFINITION",
+            "DUPLICATED_LOGIC",
+            "DECISION_IRRELEVANT"
+          ],
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "span": {
+          "$ref": "#/$defs/SourceSpan"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "element_id",
+        "evidence_ids",
+        "hint",
+        "id",
+        "kind",
+        "provenance",
+        "span",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "FindingKind": {
+      "description": "",
+      "enum": [
+        "UNREACHABLE_ELEMENT",
+        "UNCONSUMED_FEATURE",
+        "DANGLING_CONFIG_REFERENCE",
+        "ORPHANED_CONFIG_ELEMENT",
+        "DEAD_BRANCH",
+        "SHADOWED_DEFINITION",
+        "DUPLICATED_LOGIC",
+        "DECISION_IRRELEVANT"
+      ],
+      "type": "string"
+    },
+    "Impact": {
+      "additionalProperties": false,
+      "description": "Impact(id: 'str', change_id: 'str', affected_ids: 'tuple[str, ...]', decision_paths_changed: 'bool', features_changed: 'tuple[str, ...]', reachability_flipped: 'tuple[str, ...]', findings_added: 'tuple[str, ...]', findings_removed: 'tuple[str, ...]', rank: 'int')",
+      "properties": {
+        "affected_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "change_id": {
+          "type": "string"
+        },
+        "decision_paths_changed": {
+          "type": "boolean"
+        },
+        "features_changed": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "findings_added": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "findings_removed": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "rank": {
+          "type": "integer"
+        },
+        "reachability_flipped": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "affected_ids",
+        "change_id",
+        "decision_paths_changed",
+        "features_changed",
+        "findings_added",
+        "findings_removed",
+        "id",
+        "rank",
+        "reachability_flipped"
+      ],
+      "type": "object"
+    },
+    "Intent": {
+      "additionalProperties": false,
+      "description": "Intent(id: 'str', element_id: 'str', status: 'IntentStatus', statement: 'str', invariants: 'tuple[str, ...]' = (), expected_reads: 'tuple[str, ...]' = (), expected_writes: 'tuple[str, ...]' = (), provenance: 'Provenance | None' = None)",
+      "properties": {
+        "element_id": {
+          "type": "string"
+        },
+        "expected_reads": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "expected_writes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "invariants": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Provenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statement": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "CONFIRMED",
+            "PROPOSED"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "element_id",
+        "id",
+        "statement",
+        "status"
+      ],
+      "type": "object"
+    },
+    "IntentStatus": {
+      "description": "",
+      "enum": [
+        "CONFIRMED",
+        "PROPOSED"
+      ],
+      "type": "string"
+    },
+    "LineageEdge": {
+      "additionalProperties": false,
+      "description": "LineageEdge(id: 'str', kind: 'LineageKind', source_id: 'str', target_id: 'str', provenance: 'Provenance', span: 'SourceSpan | None' = None)",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ASSIGNS",
+            "PARAMETER_BINDING",
+            "RETURNS",
+            "CONTAINER_WRITE",
+            "COLUMN_WRITE",
+            "ATTRIBUTE_WRITE",
+            "READS",
+            "MUTATES"
+          ],
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceSpan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "provenance",
+        "source_id",
+        "target_id"
+      ],
+      "type": "object"
+    },
+    "LineageKind": {
+      "description": "",
+      "enum": [
+        "ASSIGNS",
+        "PARAMETER_BINDING",
+        "RETURNS",
+        "CONTAINER_WRITE",
+        "COLUMN_WRITE",
+        "ATTRIBUTE_WRITE",
+        "READS",
+        "MUTATES"
+      ],
+      "type": "string"
+    },
+    "Method": {
+      "description": "How a fact was established. Always recorded next to its confidence.",
+      "enum": [
+        "AST_DIRECT",
+        "IMPORT_ABSOLUTE",
+        "IMPORT_RELATIVE",
+        "IMPORT_STAR",
+        "REEXPORT",
+        "SCOPE_LOOKUP",
+        "MRO_DISPATCH",
+        "DECORATOR_UNWRAP",
+        "GETATTR_LITERAL",
+        "GETATTR_TRACED",
+        "IMPORTLIB_LITERAL",
+        "REGISTRY_MEMBERSHIP",
+        "DECORATOR_REGISTRATION",
+        "CONFIG_STRING_MATCH",
+        "NAME_HEURISTIC",
+        "DATAFLOW",
+        "CFG_REACHABILITY",
+        "STRUCTURAL_MATCH",
+        "RUNTIME_OBSERVED",
+        "MODEL_PROPOSED"
+      ],
+      "type": "string"
+    },
+    "NarrativeStep": {
+      "additionalProperties": false,
+      "description": "One step of the execution narrative. Anchored or it does not ship.",
+      "properties": {
+        "children": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "element_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "model_prose": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "element_ids",
+        "event_ids",
+        "id",
+        "phase",
+        "run_id",
+        "sequence",
+        "text"
+      ],
+      "type": "object"
+    },
+    "OrderKind": {
+      "description": "",
+      "enum": [
+        "SEQUENCE",
+        "BRANCH",
+        "MERGE",
+        "LOOP",
+        "UNORDERED",
+        "CYCLE"
+      ],
+      "type": "string"
+    },
+    "OrderNode": {
+      "additionalProperties": false,
+      "description": "OrderNode(id: 'str', kind: 'OrderKind', element_ids: 'tuple[str, ...]', children: 'tuple[str, ...]' = (), provenance: 'Provenance | None' = None)",
+      "properties": {
+        "children": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "element_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "SEQUENCE",
+            "BRANCH",
+            "MERGE",
+            "LOOP",
+            "UNORDERED",
+            "CYCLE"
+          ],
+          "type": "string"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Provenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "element_ids",
+        "id",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "description": "Attached to every fact, edge and verdict. Constraint 2.",
+      "properties": {
+        "confidence": {
+          "enum": [
+            "CERTAIN",
+            "RESOLVED",
+            "PROBABLE",
+            "HEURISTIC",
+            "UNKNOWN"
+          ],
+          "type": "string"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "method": {
+          "enum": [
+            "AST_DIRECT",
+            "IMPORT_ABSOLUTE",
+            "IMPORT_RELATIVE",
+            "IMPORT_STAR",
+            "REEXPORT",
+            "SCOPE_LOOKUP",
+            "MRO_DISPATCH",
+            "DECORATOR_UNWRAP",
+            "GETATTR_LITERAL",
+            "GETATTR_TRACED",
+            "IMPORTLIB_LITERAL",
+            "REGISTRY_MEMBERSHIP",
+            "DECORATOR_REGISTRATION",
+            "CONFIG_STRING_MATCH",
+            "NAME_HEURISTIC",
+            "DATAFLOW",
+            "CFG_REACHABILITY",
+            "STRUCTURAL_MATCH",
+            "RUNTIME_OBSERVED",
+            "MODEL_PROPOSED"
+          ],
+          "type": "string"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceSpan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "confidence",
+        "method"
+      ],
+      "type": "object"
+    },
+    "RunRecord": {
+      "additionalProperties": false,
+      "description": "RunRecord(run_id: 'str', target_hashes: 'dict[str, str]', graph_hash: 'str', scenario: 'str', interpreter: 'str', controls_active: 'dict[str, bool]', blocked: 'tuple[BlockedAttempt, ...]', refused: 'bool' = False, refusal_reason: 'str' = '')",
+      "properties": {
+        "blocked": {
+          "items": {
+            "$ref": "#/$defs/BlockedAttempt"
+          },
+          "type": "array"
+        },
+        "controls_active": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
+        "graph_hash": {
+          "type": "string"
+        },
+        "interpreter": {
+          "type": "string"
+        },
+        "refusal_reason": {
+          "type": "string"
+        },
+        "refused": {
+          "type": "boolean"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "scenario": {
+          "type": "string"
+        },
+        "target_hashes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "blocked",
+        "controls_active",
+        "graph_hash",
+        "interpreter",
+        "run_id",
+        "scenario",
+        "target_hashes"
+      ],
+      "type": "object"
+    },
+    "Slice": {
+      "additionalProperties": false,
+      "description": "Slice(id: 'str', root_id: 'str', direction: 'str', member_ids: 'tuple[str, ...]', edge_ids: 'tuple[str, ...]', barrier_ids: 'tuple[str, ...]', reaches_sink_ids: 'tuple[str, ...]', confidence: 'Confidence')",
+      "properties": {
+        "barrier_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "CERTAIN",
+            "RESOLVED",
+            "PROBABLE",
+            "HEURISTIC",
+            "UNKNOWN"
+          ],
+          "type": "string"
+        },
+        "direction": {
+          "type": "string"
+        },
+        "edge_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "member_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reaches_sink_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "root_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "barrier_ids",
+        "confidence",
+        "direction",
+        "edge_ids",
+        "id",
+        "member_ids",
+        "reaches_sink_ids",
+        "root_id"
+      ],
+      "type": "object"
+    },
+    "SourceSpan": {
+      "additionalProperties": false,
+      "description": "Where a fact lives. Paths are POSIX and relative to the target root.",
+      "properties": {
+        "col": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "line": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "path"
+      ],
+      "type": "object"
+    },
+    "TraceEvent": {
+      "additionalProperties": false,
+      "description": "TraceEvent(event_id: 'str', run_id: 'str', kind: 'EventKind', element_id: 'str', sequence: 'int', depth: 'int', caller_event_id: 'str' = '', values: 'dict[str, ValueCapture]' = <factory>, branch_taken: 'str' = '', provenance: 'Provenance | None' = None)",
+      "properties": {
+        "branch_taken": {
+          "type": "string"
+        },
+        "caller_event_id": {
+          "type": "string"
+        },
+        "depth": {
+          "type": "integer"
+        },
+        "element_id": {
+          "type": "string"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "CALL",
+            "RETURN",
+            "BRANCH",
+            "EXCEPTION",
+            "FEATURE_WRITE",
+            "DECISION",
+            "UNMAPPED"
+          ],
+          "type": "string"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Provenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer"
+        },
+        "values": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ValueCapture"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "depth",
+        "element_id",
+        "event_id",
+        "kind",
+        "run_id",
+        "sequence"
+      ],
+      "type": "object"
+    },
+    "Unresolved": {
+      "additionalProperties": false,
+      "description": "Constraint 3: nothing is silently dropped. An unresolved record is a first-class output, not an absence. Over-linking is the failure mode to fear in card 2: an honest UNKNOWN with a candidate set is worth more to the owner than a confident wrong edge.",
+      "properties": {
+        "attempted": {
+          "items": {
+            "enum": [
+              "AST_DIRECT",
+              "IMPORT_ABSOLUTE",
+              "IMPORT_RELATIVE",
+              "IMPORT_STAR",
+              "REEXPORT",
+              "SCOPE_LOOKUP",
+              "MRO_DISPATCH",
+              "DECORATOR_UNWRAP",
+              "GETATTR_LITERAL",
+              "GETATTR_TRACED",
+              "IMPORTLIB_LITERAL",
+              "REGISTRY_MEMBERSHIP",
+              "DECORATOR_REGISTRATION",
+              "CONFIG_STRING_MATCH",
+              "NAME_HEURISTIC",
+              "DATAFLOW",
+              "CFG_REACHABILITY",
+              "STRUCTURAL_MATCH",
+              "RUNTIME_OBSERVED",
+              "MODEL_PROPOSED"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "candidate_confidence": {
+          "enum": [
+            "CERTAIN",
+            "RESOLVED",
+            "PROBABLE",
+            "HEURISTIC",
+            "UNKNOWN"
+          ],
+          "type": "string"
+        },
+        "candidate_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "DYNAMIC_NAME",
+            "MISSING_TARGET",
+            "SYNTAX_ERROR",
+            "DECODE_ERROR",
+            "TOO_LARGE",
+            "AMBIGUOUS",
+            "ID_COLLISION",
+            "THIRD_PARTY",
+            "NOT_EXERCISED"
+          ],
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/SourceSpan"
+        }
+      },
+      "required": [
+        "description",
+        "id",
+        "reason",
+        "span"
+      ],
+      "type": "object"
+    },
+    "UnresolvedReason": {
+      "description": "",
+      "enum": [
+        "DYNAMIC_NAME",
+        "MISSING_TARGET",
+        "SYNTAX_ERROR",
+        "DECODE_ERROR",
+        "TOO_LARGE",
+        "AMBIGUOUS",
+        "ID_COLLISION",
+        "THIRD_PARTY",
+        "NOT_EXERCISED"
+      ],
+      "type": "string"
+    },
+    "ValueCapture": {
+      "additionalProperties": false,
+      "description": "A captured value, or an explicit account of why it is not the whole one. The target moves multi-megabyte frames. A truncation that reads like a complete value is worse than no capture, so status is mandatory and original_size is recorded whenever the value was not kept whole.",
+      "properties": {
+        "original_size": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "repr_text": {
+          "type": "string"
+        },
+        "shape": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "FULL",
+            "SUMMARIZED",
+            "REDACTED",
+            "DROPPED"
+          ],
+          "type": "string"
+        },
+        "type_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repr_text",
+        "status"
+      ],
+      "type": "object"
+    },
+    "Verdict": {
+      "description": "",
+      "enum": [
+        "ALIGNED",
+        "MISALIGNED",
+        "UNVERIFIABLE",
+        "NOT_EXERCISED",
+        "NO_INTENT"
+      ],
+      "type": "string"
+    },
+    "VersionChange": {
+      "additionalProperties": false,
+      "description": "VersionChange(id: 'str', kind: 'ChangeKind', before_id: 'str', after_id: 'str', provenance: 'Provenance')",
+      "properties": {
+        "after_id": {
+          "type": "string"
+        },
+        "before_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ADDED",
+            "REMOVED",
+            "RENAMED",
+            "MOVED",
+            "SIGNATURE_CHANGED",
+            "BODY_CHANGED",
+            "DECORATORS_CHANGED",
+            "UNCHANGED"
+          ],
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        }
+      },
+      "required": [
+        "after_id",
+        "before_id",
+        "id",
+        "kind",
+        "provenance"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://cascade-map/schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "artifacts": {
+    "barriers.jsonl": {
+      "format": "jsonl",
+      "record": "Barrier",
+      "sortKey": "id"
+    },
+    "cfg_blocks.jsonl": {
+      "format": "jsonl",
+      "record": "CFGBlock",
+      "sortKey": "id"
+    },
+    "cfg_edges.jsonl": {
+      "format": "jsonl",
+      "record": "CFGEdge",
+      "sortKey": "id"
+    },
+    "changes.jsonl": {
+      "format": "jsonl",
+      "record": "VersionChange",
+      "sortKey": "id"
+    },
+    "decisions.jsonl": {
+      "format": "jsonl",
+      "record": "DecisionPoint",
+      "sortKey": "id"
+    },
+    "edges.jsonl": {
+      "format": "jsonl",
+      "record": "Edge",
+      "sortKey": "id"
+    },
+    "elements.jsonl": {
+      "format": "jsonl",
+      "record": "Element",
+      "sortKey": "id"
+    },
+    "findings.jsonl": {
+      "format": "jsonl",
+      "record": "Finding",
+      "sortKey": "id"
+    },
+    "impacts.jsonl": {
+      "format": "jsonl",
+      "record": "Impact",
+      "sortKey": "id"
+    },
+    "intents.jsonl": {
+      "format": "jsonl",
+      "record": "Intent",
+      "sortKey": "id"
+    },
+    "lineage.jsonl": {
+      "format": "jsonl",
+      "record": "LineageEdge",
+      "sortKey": "id"
+    },
+    "narrative.jsonl": {
+      "format": "jsonl",
+      "record": "NarrativeStep",
+      "sortKey": "id"
+    },
+    "order.jsonl": {
+      "format": "jsonl",
+      "record": "OrderNode",
+      "sortKey": "id"
+    },
+    "records.jsonl": {
+      "format": "jsonl",
+      "record": "DocRecord",
+      "sortKey": "id"
+    },
+    "runtime/events.jsonl": {
+      "format": "jsonl",
+      "record": "TraceEvent",
+      "sortKey": "event_id"
+    },
+    "runtime/run.json": {
+      "format": "json",
+      "record": "RunRecord",
+      "sortKey": "run_id"
+    },
+    "slices.jsonl": {
+      "format": "jsonl",
+      "record": "Slice",
+      "sortKey": "id"
+    },
+    "unresolved.jsonl": {
+      "format": "jsonl",
+      "record": "Unresolved",
+      "sortKey": "id"
+    },
+    "verdicts.jsonl": {
+      "format": "jsonl",
+      "record": "AlignmentVerdict",
+      "sortKey": "id"
+    }
+  },
+  "description": "Generated from cascade_map.contracts.interfaces. Do not edit by hand: run python -m cascade_map.contracts._generate_schema.",
+  "schemaVersion": "1.0.0",
+  "title": "CASCADE-MAP artifacts"
+}
