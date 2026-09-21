@@ -1,0 +1,58 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "chain"
+    },
+    "/elements/2/span": {
+      "kind": "line",
+      "line_contains": "def chain(seed):",
+      "occurrence": 1
+    },
+    "/lineage/0/span": {
+      "kind": "stmt",
+      "line_contains": "    x = seed",
+      "occurrence": 1
+    },
+    "/lineage/1/span": {
+      "kind": "stmt",
+      "line_contains": "    y = x + 1",
+      "occurrence": 1
+    },
+    "/lineage/2/span": {
+      "kind": "stmt",
+      "line_contains": "    y += 10",
+      "occurrence": 1
+    },
+    "/lineage/3/span": {
+      "kind": "stmt",
+      "line_contains": "    a, b = y, x",
+      "occurrence": 1
+    },
+    "/lineage/4/span": {
+      "kind": "stmt",
+      "line_contains": "    a, b = y, x",
+      "occurrence": 1
+    },
+    "/lineage/5/span": {
+      "kind": "stmt",
+      "line_contains": "    if (total := a + b) > 0:",
+      "occurrence": 1
+    },
+    "/lineage/6/span": {
+      "kind": "stmt",
+      "line_contains": "    if (total := a + b) > 0:",
+      "occurrence": 1
+    },
+    "/lineage/7/span": {
+      "kind": "stmt",
+      "line_contains": "        return total",
+      "occurrence": 1
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Settings"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Settings.__init__"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "build"
+    },
+    "/elements/4/span": {
+      "kind": "line",
+      "line_contains": "def build(raw, label):",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "line",
+      "line_contains": "def build(raw, label):",
+      "occurrence": 1
+    },
+    "/lineage/0/span": {
+      "kind": "stmt",
+      "line_contains": "    values[\"threshold\"] = raw * 2",
+      "occurrence": 1
+    },
+    "/lineage/1/span": {
+      "kind": "stmt",
+      "line_contains": "    values[\"mode\"] = label",
+      "occurrence": 1
+    },
+    "/lineage/2/span": {
+      "kind": "stmt",
+      "line_contains": "    settings.threshold = values[\"threshold\"]",
+      "occurrence": 1
+    },
+    "/lineage/3/span": {
+      "kind": "stmt",
+      "line_contains": "        self.mode = \"off\"",
+      "occurrence": 1
+    },
+    "/lineage/4/span": {
+      "kind": "stmt",
+      "line_contains": "        self.threshold = 0",
+      "occurrence": 1
+    },
+    "/lineage/5/span": {
+      "kind": "stmt",
+      "line_contains": "    return settings",
+      "occurrence": 1
+    }
+  }
+}

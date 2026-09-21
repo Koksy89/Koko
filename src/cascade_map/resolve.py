@@ -795,6 +795,9 @@ class Resolver:
         self._star_cache: dict[tuple[str, _ImportSpec], dict[str, _Binding]] = {}
         self._subclasses: dict[tuple[str, str], list[tuple[str, str]]] = defaultdict(list)
         self._registry_keys: dict[str, list[str]] = defaultdict(list)
+        self._decorated_by: dict[str, list[str]] = defaultdict(list)
+        self._registry_members: dict[str, list[tuple[str, Method]]] = defaultdict(list)
+        self._wrapper_cache: dict[str, str] = {}
         self._stats: dict[str, int] = defaultdict(int)
         self._config_files: list[str] = []
 
@@ -840,6 +843,9 @@ class Resolver:
         self._star_cache.clear()
         self._subclasses.clear()
         self._registry_keys.clear()
+        self._decorated_by.clear()
+        self._registry_members.clear()
+        self._wrapper_cache.clear()
         self._stats.clear()
         self._config_files.clear()
 
@@ -968,6 +974,11 @@ class Resolver:
             del tree
 
     def _link_subclasses(self) -> None:
+        """Cross-element structure both passes need: subclasses, what each
+        decorator decorates, and what each registry holds.
+
+        Computed before any body is resolved, so a dispatcher defined above
+        the code that fills its registry still sees the whole registry."""
         for module in sorted(self._modules):
             summary = self._modules[module]
             for qualname in sorted(summary.classes):
@@ -978,6 +989,110 @@ class Resolver:
                         self._subclasses[key].append((module, qualname))
         for key in self._subclasses:
             self._subclasses[key].sort()
+
+        for module in sorted(self._modules):
+            summary = self._modules[module]
+            decorated: list[tuple[tuple[str, ...], str]] = [
+                (info.decorators, info.element_id) for _, info in sorted(summary.classes.items())
+            ]
+            decorated += [
+                (info.decorators, info.element_id) for _, info in sorted(summary.funcs.items())
+            ]
+            for decorators, element_id in decorated:
+                for text in decorators:
+                    head = text.split("(", 1)[0]
+                    if head in _PROPERTY_DECORATORS or head in _STATIC_DECORATORS:
+                        continue
+                    binding = self._binding_for_dotted(head, module)
+                    if not binding.target_id:
+                        continue
+                    self._decorated_by[binding.target_id].append(element_id)
+                    key_literal = _decorator_key_literal(text)
+                    registrar = self._registrar_for(binding.target_id)
+                    if registrar is None:
+                        continue
+                    container = self._registrar_container(registrar, head, module)
+                    if not container:
+                        continue
+                    self._registry_members[container].append(
+                        (element_id, Method.DECORATOR_REGISTRATION)
+                    )
+                    self.register_key(key_literal or _element_name(self, element_id), element_id)
+
+        for module in sorted(self._modules):
+            summary = self._modules[module]
+            for name in sorted(summary.registries):
+                reg = summary.registries[name]
+                for text in reg.members:
+                    binding = self._binding_for_dotted(text, module) if text else _UNKNOWN_BINDING
+                    if binding.target_id and binding.kind in (_BKind.CALLABLE, _BKind.CLASS):
+                        self._registry_members[reg.element_id].append(
+                            (binding.target_id, Method.REGISTRY_MEMBERSHIP)
+                        )
+                for key in sorted(reg.entries):
+                    binding = self._binding_for_dotted(reg.entries[key], module)
+                    if binding.target_id:
+                        self.register_key(key, binding.target_id)
+        for container in self._registry_members:
+            self._registry_members[container] = sorted(
+                dict.fromkeys(self._registry_members[container])
+            )
+        for key in self._decorated_by:
+            self._decorated_by[key] = sorted(dict.fromkeys(self._decorated_by[key]))
+
+    def _registrar_for(self, element_id: str) -> _FuncSum | None:
+        for module in sorted(self._modules):
+            for _, func in sorted(self._modules[module].funcs.items()):
+                if func.element_id == element_id and func.registrar_container:
+                    return func
+        return None
+
+    def _registrar_container(self, registrar: _FuncSum, dotted: str, module: str) -> str:
+        if registrar.registrar_container_is_self:
+            receiver = dotted.rsplit(".", 1)[0] if "." in dotted else ""
+            return self._binding_for_dotted(receiver, module).target_id if receiver else ""
+        owner = registrar.module
+        reg = self._modules[owner].registries.get(registrar.registrar_container)
+        return reg.element_id if reg else make_id(owner, registrar.registrar_container)
+
+    def wrapper_of(self, decorator_id: str) -> str:
+        """The function a decorator returns, when it plainly returns one.
+
+        ``@trace`` rebinds the decorated name to ``trace``'s inner function, so
+        a call to the decorated name reaches that wrapper. A decorator that
+        returns its own argument rebinds nothing and yields ``""``.
+        """
+        cached = self._wrapper_cache.get(decorator_id)
+        if cached is not None:
+            return cached
+        self._wrapper_cache[decorator_id] = ""
+        result = ""
+        for module in sorted(self._modules):
+            summary = self._modules[module]
+            for qualname in sorted(summary.funcs):
+                func = summary.funcs[qualname]
+                if func.element_id != decorator_id:
+                    continue
+                returns = [r for r in func.return_exprs if r]
+                if len(set(returns)) != 1:
+                    break
+                returned = returns[0]
+                if returned in func.params:
+                    break  # identity decorator: the name keeps its own target
+                nested = f"{qualname}.<locals>.{returned}"
+                if nested in summary.funcs:
+                    result = summary.funcs[nested].element_id
+                break
+            if result:
+                break
+        self._wrapper_cache[decorator_id] = result
+        return result
+
+    def decorated_by(self, decorator_id: str) -> tuple[str, ...]:
+        return tuple(self._decorated_by.get(decorator_id, ()))
+
+    def registry_members(self, container_id: str) -> tuple[tuple[str, Method], ...]:
+        return tuple(self._registry_members.get(container_id, ()))
 
     # -- emission -------------------------------------------------------
 
@@ -1022,6 +1137,12 @@ class Resolver:
         candidates: Sequence[str] = (),
         candidate_confidence: Confidence = Confidence.UNKNOWN,
     ) -> Unresolved:
+        """*owner* is the record's ID: the element or key the gap belongs to.
+
+        A ``#n`` suffix appears only when the same site produces a second
+        record, mirroring :func:`make_id`, so a record keeps its ID across
+        reformatting.
+        """
         ordinal = self._unres_ordinals.get(owner, 0) + 1
         self._unres_ordinals[owner] = ordinal
         ids = tuple(sorted(dict.fromkeys(candidates)))
@@ -1030,7 +1151,7 @@ class Resolver:
             truncated = f" (candidate set truncated from {len(ids)} to {self.max_candidates})"
             ids = ids[: self.max_candidates]
         record = Unresolved(
-            id=f"unresolved:{owner}#{ordinal}",
+            id=owner if ordinal == 1 else f"{owner}#{ordinal}",
             reason=reason,
             span=span,
             description=description + truncated,
@@ -1939,9 +2060,12 @@ class _CallResolver(ast.NodeVisitor):
         attempted: tuple[Method, ...],
         candidates: Sequence[str] = (),
         candidate_confidence: Confidence = Confidence.UNKNOWN,
+        site: str = "",
     ) -> None:
+        """*site* names the gap inside the enclosing element, so the record ID
+        is readable and survives reformatting: ``m::run::getattr@name``."""
         self.r._record_unresolved(
-            owner=self.owner,
+            owner=f"{self.owner}::{site}" if site else self.owner,
             reason=reason,
             span=_span(self.path, node),
             description=description,
@@ -1998,6 +2122,7 @@ class _CallResolver(ast.NodeVisitor):
                 UnresolvedReason.DYNAMIC_NAME,
                 f"base class expression {_text(base)!r} is computed; no inheritance edge claimed",
                 (Method.SCOPE_LOOKUP,),
+                site="base@computed",
             )
             return
         binding = self._resolve_dotted(dotted)
@@ -2005,20 +2130,10 @@ class _CallResolver(ast.NodeVisitor):
             self._emit(
                 EdgeKind.INHERITS,
                 binding.target_id,
-                Method.SCOPE_LOOKUP,
-                Confidence.RESOLVED,
+                Method.AST_DIRECT,
+                Confidence.CERTAIN,
                 base,
-                note=note,
-                source_id=element_id,
-            )
-        elif binding.external and binding.target_id:
-            self._emit(
-                EdgeKind.INHERITS,
-                binding.target_id,
-                binding.method,
-                Confidence.RESOLVED,
-                base,
-                note="; ".join(b for b in [note, "base outside the inventory"] if b),
+                note=note or "the base class list is read straight off the AST",
                 source_id=element_id,
             )
         elif dotted in {"object", "ABC", "abc.ABC", "Protocol", "typing.Protocol"}:
@@ -2031,6 +2146,7 @@ class _CallResolver(ast.NodeVisitor):
                 (Method.SCOPE_LOOKUP, Method.IMPORT_ABSOLUTE),
                 candidates=self._name_candidates(dotted.split(".")[-1], (ElementKind.CLASS,)),
                 candidate_confidence=Confidence.HEURISTIC,
+                site=f"base@{dotted}",
             )
 
     def _register_subclass_hook(
@@ -2163,10 +2279,10 @@ class _CallResolver(ast.NodeVisitor):
                 self._emit(
                     EdgeKind.DECORATES,
                     element_id,
-                    Method.DECORATOR_UNWRAP,
-                    Confidence.RESOLVED if not binding.external else Confidence.RESOLVED,
+                    Method.AST_DIRECT,
+                    Confidence.CERTAIN,
                     decorator,
-                    note="decorator wraps this element",
+                    note="the decorator list is read straight off the AST",
                     source_id=binding.target_id,
                 )
                 self._registration_edge(decorator, dotted, binding, element_id, node)
@@ -2180,6 +2296,7 @@ class _CallResolver(ast.NodeVisitor):
                         dotted.split(".")[-1], (ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.CLASS)
                     ),
                     candidate_confidence=Confidence.HEURISTIC,
+                    site=f"decorator@{dotted}",
                 )
             if isinstance(decorator, ast.Call):
                 for arg in [*decorator.args, *[k.value for k in decorator.keywords]]:
@@ -2350,24 +2467,49 @@ class _CallResolver(ast.NodeVisitor):
             )
             binding = self.r._binding_for_import(self.s, spec)
             self._bind_import(spec.bound_name, binding)
+            if binding.external:
+                self._third_party(node, spec.bound_name, target_module, method)
+                continue
             if binding.kind is _BKind.UNKNOWN or not binding.target_id:
-                self._unresolved(
-                    node,
-                    UnresolvedReason.MISSING_TARGET,
-                    f"`from {'.' * node.level}{node.module or ''} import {alias.name}`"
-                    " does not resolve to an element",
-                    (method, Method.REEXPORT),
+                self.r._record_unresolved(
+                    owner=make_id(self.module, spec.bound_name),
+                    reason=UnresolvedReason.MISSING_TARGET,
+                    span=_span(self.path, node),
+                    description=(
+                        f"`from {'.' * node.level}{node.module or ''} import "
+                        f"{alias.name}` does not resolve to an element"
+                        + (
+                            f"; {binding.note}"
+                            if binding.note
+                            else ""
+                        )
+                    ),
+                    attempted=(method,),
                     candidates=self._name_candidates(alias.name, ()),
                     candidate_confidence=Confidence.HEURISTIC,
                 )
                 continue
+            # An absolute `from a.b import c` names the module a.b explicitly,
+            # so a.b is imported too and gets its own edge. A relative import
+            # names no module the reader can see, so only the bound name does.
+            if not node.level and target_module in self.r._modules:
+                module_target = self.r._modules[target_module].element_id
+                if module_target != binding.target_id:
+                    self._emit(
+                        EdgeKind.IMPORTS,
+                        module_target,
+                        method,
+                        Confidence.RESOLVED,
+                        node,
+                        note="dotted name names exactly one module inside the target",
+                    )
             self._emit(
                 EdgeKind.IMPORTS,
                 binding.target_id,
                 binding.method if binding.method is not Method.SCOPE_LOOKUP else method,
                 binding.confidence,
                 node,
-                note=binding.note,
+                note=binding.note or "the imported name binds to exactly one definition",
             )
 
     def _star_import(self, node: ast.ImportFrom, target_module: str) -> None:
@@ -2739,38 +2881,57 @@ class _CallResolver(ast.NodeVisitor):
             return False
         return dotted in BUILTIN_NAMES and self._lookup(dotted).kind is _BKind.UNKNOWN
 
+    #: Methods that describe a real inference step and so survive onto the
+    #: call edge. Anything else means the name was simply in scope, which is
+    #: SCOPE_LOOKUP however the binding got there.
+    _DISPATCH_METHODS = frozenset(
+        {
+            Method.MRO_DISPATCH,
+            Method.GETATTR_LITERAL,
+            Method.GETATTR_TRACED,
+            Method.REGISTRY_MEMBERSHIP,
+            Method.DECORATOR_REGISTRATION,
+            Method.DECORATOR_UNWRAP,
+            Method.IMPORTLIB_LITERAL,
+            Method.DATAFLOW,
+            Method.REEXPORT,
+        }
+    )
+
+    def _dispatch_method(self, binding: _Binding) -> Method:
+        return binding.method if binding.method in self._DISPATCH_METHODS else Method.SCOPE_LOOKUP
+
     def _call_binding(self, binding: _Binding, node: ast.Call, label: str) -> None:
+        if binding.external:
+            # Resolved, but to something no file in the tree backs. The import
+            # statement already carries the THIRD_PARTY record; counting it
+            # here keeps the omission visible without duplicating that record.
+            self.r._stats["third_party_calls"] += 1
+            return
         if binding.kind is _BKind.CLASS and binding.target_id:
             self._emit(
                 EdgeKind.INSTANTIATES,
                 binding.target_id,
-                binding.method if binding.method is not Method.AST_DIRECT else Method.SCOPE_LOOKUP,
-                Confidence.RESOLVED if not binding.external else binding.confidence,
+                Method.REEXPORT if binding.method is Method.REEXPORT else Method.SCOPE_LOOKUP,
+                Confidence.RESOLVED,
                 node,
                 note=binding.note,
             )
-            if binding.class_key is not None:
-                init = self.r._lookup_member(binding.class_key, "__init__")
-                if init is not None:
-                    self._emit(
-                        EdgeKind.CALLS,
-                        init[0],
-                        Method.MRO_DISPATCH,
-                        Confidence.PROBABLE,
-                        node,
-                        note=f"constructor of {binding.class_key[1]}",
-                    )
             return
         if binding.kind is _BKind.CALLABLE and binding.target_id:
+            confidence = binding.confidence
+            if confidence is Confidence.CERTAIN:
+                confidence = Confidence.RESOLVED
             self._emit(
                 EdgeKind.CALLS,
                 binding.target_id,
-                binding.method if binding.method is not Method.AST_DIRECT else Method.SCOPE_LOOKUP,
-                binding.confidence if binding.confidence is not Confidence.CERTAIN else Confidence.RESOLVED,
+                self._dispatch_method(binding),
+                confidence,
                 node,
                 note=binding.note,
             )
             self._ambiguity_note(binding, node)
+            self._wrapper_edges(binding.target_id, node)
             return
         if binding.kind is _BKind.CANDIDATES and binding.candidates:
             self._unresolved(
@@ -2780,6 +2941,7 @@ class _CallResolver(ast.NodeVisitor):
                 (Method.SCOPE_LOOKUP, Method.DATAFLOW),
                 candidates=binding.candidates,
                 candidate_confidence=Confidence.PROBABLE,
+                site=f"call@{label}",
             )
             return
         if binding.kind is _BKind.REGISTRY and binding.registry_key is not None:
@@ -2791,6 +2953,7 @@ class _CallResolver(ast.NodeVisitor):
                 UnresolvedReason.DYNAMIC_NAME,
                 f"call target {label!r} resolves to a module, not a callable",
                 (Method.SCOPE_LOOKUP,),
+                site=f"call@{label}",
             )
             return
         self._unresolved_call(node, label)

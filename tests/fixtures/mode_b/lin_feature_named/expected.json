@@ -1,41 +1,185 @@
 {
-  "elements": [
+  "case_id": "lin_feature_named",
+  "edges": [
     {
-      "id": "lin_feature_named",
-      "kind": "MODULE",
-      "name": "lin_feature_named",
-      "qualname": "",
-      "module": "lin_feature_named",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_feature_named/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 29,
+        "end_line": 12,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/lin_feature_named/__init__.py"
       },
+      "id": "lin_feature_named:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "lin_feature_named::build_features",
+      "target_id": "lin_feature_named::compute_volatility"
     },
     {
-      "id": "lin_feature_named::process",
-      "kind": "FUNCTION",
-      "name": "process",
-      "qualname": "process",
-      "module": "lin_feature_named",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_feature_named/__init__.py",
-        "line": 2
+      "call_site": {
+        "col": 4,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/lin_feature_named/features.json"
       },
+      "id": "lin_feature_named:e2",
+      "kind": "CONFIGURES",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "HEURISTIC",
+        "method": "CONFIG_STRING_MATCH",
+        "note": "the config string equals a feature name written in code"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "@file:tests/fixtures/mode_b/lin_feature_named/features.json::/enabled_features/0",
+      "target_id": "@feature:volatility"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_feature_named",
+      "kind": "MODULE",
+      "module": "lin_feature_named",
+      "name": "lin_feature_named",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/lin_feature_named/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Write the feature under the same name the config uses.",
+      "id": "lin_feature_named::build_features",
+      "kind": "FUNCTION",
+      "module": "lin_feature_named",
+      "name": "build_features",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "build_features",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_feature_named/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Produce the feature.",
+      "id": "lin_feature_named::compute_volatility",
+      "kind": "FUNCTION",
+      "module": "lin_feature_named",
+      "name": "compute_volatility",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "compute_volatility",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_feature_named/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/lin_feature_named/features.json",
+      "kind": "DATA_FILE",
+      "module": "",
+      "name": "features.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/lin_feature_named/features.json"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/lin_feature_named/features.json::/enabled_features/0",
+      "kind": "CONFIG_KEY",
+      "module": "",
+      "name": "0",
+      "parent_id": "@file:tests/fixtures/mode_b/lin_feature_named/features.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/lin_feature_named/features.json"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@feature:volatility",
+      "kind": "FEATURE",
+      "module": "",
+      "name": "volatility",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/lin_feature_named/__init__.py"
+      }
+    }
+  ],
+  "feature_nodes_exact": [
+    "@feature:volatility"
+  ],
+  "id_conventions": {
+    "attribute": "<module>::<qualname>.<locals>.<name>.<attr>",
+    "dict_key": "<module>::<qualname>.<locals>.<name>[<key>]",
+    "instance_attribute": "<module>::<Class>.<attr>",
+    "local_variable": "<module>::<qualname>.<locals>.<name>",
+    "named_feature": "@feature:<name>",
+    "note": "interfaces.py defines no ID for a local variable, dict key or attribute, and card 1 mints no element for them. These extend make_id's qualname space; card 8 reports the gap rather than changing the contract.",
+    "parameter": "<module>::<qualname>.<param>.<name>"
+  },
+  "lineage": [
+    {
+      "id": "lin_feature_named:l1",
+      "kind": "CONTAINER_WRITE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_feature_named::compute_volatility",
+      "span": {
+        "col": 4,
+        "end_line": 12,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/lin_feature_named/__init__.py"
+      },
+      "target_id": "@feature:volatility"
+    }
+  ],
+  "one_node_per_feature_name": true,
+  "proves": "The string 'volatility' in features.json and the dict key 'volatility' written by build_features are the same feature and must land on one node, @feature:volatility, carrying both spans as evidence. Two nodes here means the owner asking 'what feeds volatility' gets half an answer.",
+  "unresolved": []
 }

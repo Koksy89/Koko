@@ -1,0 +1,47 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "features[\"volatility\"] = compute_volatility(rows)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "line",
+      "line_contains": "\"volatility\"",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "build_features"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "compute_volatility"
+    },
+    "/elements/3/span": {
+      "kind": "module"
+    },
+    "/elements/4/span": {
+      "kind": "line",
+      "line_contains": "\"volatility\"",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "line",
+      "line_contains": "features[\"volatility\"] = compute_volatility(rows)",
+      "occurrence": 1
+    },
+    "/lineage/0/span": {
+      "kind": "stmt",
+      "line_contains": "    features[\"volatility\"] = compute_volatility(rows)",
+      "occurrence": 1
+    }
+  }
+}

@@ -1,41 +1,295 @@
 {
-  "elements": [
+  "case_id": "lin_slice_forward",
+  "declared_sink_ids": [
+    "lin_slice_forward::decide"
+  ],
+  "edges": [
     {
-      "id": "lin_slice_forward",
-      "kind": "MODULE",
-      "name": "lin_slice_forward",
-      "qualname": "",
-      "module": "lin_slice_forward",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 22,
+        "end_line": 13,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
       },
+      "id": "lin_slice_forward:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "lin_slice_forward::transform",
-      "kind": "FUNCTION",
-      "name": "transform",
-      "qualname": "transform",
-      "module": "lin_slice_forward",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "lin_slice_forward::decide",
+      "target_id": "lin_slice_forward::transform"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_slice_forward",
+      "kind": "MODULE",
+      "module": "lin_slice_forward",
+      "name": "lin_slice_forward",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Called by the caller of decide; not reachable from `raw`.",
+      "id": "lin_slice_forward::after_the_sink",
+      "kind": "FUNCTION",
+      "module": "lin_slice_forward",
+      "name": "after_the_sink",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "after_the_sink",
+      "signature": "(verdict)",
+      "span": {
+        "col": 0,
+        "end_line": 23,
+        "line": 21,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Consumes the same input but feeds nothing the sink reads.",
+      "id": "lin_slice_forward::audit",
+      "kind": "FUNCTION",
+      "module": "lin_slice_forward",
+      "name": "audit",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "audit",
+      "signature": "(raw)",
+      "span": {
+        "col": 0,
+        "end_line": 18,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "THE SINK. Nothing downstream of this is part of the forward slice.",
+      "id": "lin_slice_forward::decide",
+      "kind": "FUNCTION",
+      "module": "lin_slice_forward",
+      "name": "decide",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "decide",
+      "signature": "(raw)",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_slice_forward::decide.<param>.raw",
+      "kind": "PARAMETER",
+      "module": "lin_slice_forward",
+      "name": "raw",
+      "parent_id": "lin_slice_forward::decide",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "decide.<param>.raw",
+      "span": {
+        "col": 0,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Two hops from the input to the value the sink tests.",
+      "id": "lin_slice_forward::transform",
+      "kind": "FUNCTION",
+      "module": "lin_slice_forward",
+      "name": "transform",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "transform",
+      "signature": "(raw)",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_slice_forward::transform.<param>.raw",
+      "kind": "PARAMETER",
+      "module": "lin_slice_forward",
+      "name": "raw",
+      "parent_id": "lin_slice_forward::transform",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "transform.<param>.raw",
+      "span": {
+        "col": 0,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      }
+    }
+  ],
+  "id_conventions": {
+    "attribute": "<module>::<qualname>.<locals>.<name>.<attr>",
+    "dict_key": "<module>::<qualname>.<locals>.<name>[<key>]",
+    "instance_attribute": "<module>::<Class>.<attr>",
+    "local_variable": "<module>::<qualname>.<locals>.<name>",
+    "named_feature": "@feature:<name>",
+    "note": "interfaces.py defines no ID for a local variable, dict key or attribute, and card 1 mints no element for them. These extend make_id's qualname space; card 8 reports the gap rather than changing the contract.",
+    "parameter": "<module>::<qualname>.<param>.<name>"
+  },
+  "lineage": [
+    {
+      "id": "lin_slice_forward:l1",
+      "kind": "PARAMETER_BINDING",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_forward::decide.<param>.raw",
+      "span": {
+        "col": 4,
+        "end_line": 13,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      },
+      "target_id": "lin_slice_forward::transform.<param>.raw"
+    },
+    {
+      "id": "lin_slice_forward:l2",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_forward::transform.<param>.raw",
+      "span": {
+        "col": 4,
+        "end_line": 6,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      },
+      "target_id": "lin_slice_forward::transform.<locals>.doubled"
+    },
+    {
+      "id": "lin_slice_forward:l3",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_forward::transform.<locals>.doubled",
+      "span": {
+        "col": 4,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      },
+      "target_id": "lin_slice_forward::transform.<locals>.shifted"
+    },
+    {
+      "id": "lin_slice_forward:l4",
+      "kind": "RETURNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_forward::transform.<locals>.shifted",
+      "span": {
+        "col": 4,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      },
+      "target_id": "lin_slice_forward::transform"
+    },
+    {
+      "id": "lin_slice_forward:l5",
+      "kind": "READS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_forward::transform",
+      "span": {
+        "col": 4,
+        "end_line": 13,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py"
+      },
+      "target_id": "lin_slice_forward::decide"
+    }
+  ],
+  "must_not_be_in_slice": {
+    "lin_slice_forward:s1": [
+      "lin_slice_forward::after_the_sink",
+      "lin_slice_forward::audit"
+    ]
+  },
+  "notes": [
+    "The slice stops at the sink: `after_the_sink` runs later but receives no value derived from `raw` within this graph, and following control flow past a sink is how a forward slice grows to cover everything."
+  ],
+  "proves": "The forward slice of `decide`'s `raw` runs raw -> doubled -> shifted -> the decision and stops at the sink. `after_the_sink` is downstream in time but not in data flow from `raw`, and `audit` consumes `raw` in a different call -- neither belongs to this slice.",
+  "slice_members_exact": true,
+  "slices": [
+    {
+      "barrier_ids": [],
+      "confidence": "RESOLVED",
+      "direction": "forward",
+      "edge_ids": [
+        "lin_slice_forward:l1",
+        "lin_slice_forward:l2",
+        "lin_slice_forward:l3",
+        "lin_slice_forward:l4",
+        "lin_slice_forward:l5"
+      ],
+      "id": "lin_slice_forward:s1",
+      "member_ids": [
+        "lin_slice_forward::decide",
+        "lin_slice_forward::decide.<param>.raw",
+        "lin_slice_forward::transform",
+        "lin_slice_forward::transform.<locals>.doubled",
+        "lin_slice_forward::transform.<locals>.shifted",
+        "lin_slice_forward::transform.<param>.raw"
+      ],
+      "reaches_sink_ids": [
+        "lin_slice_forward::decide"
+      ],
+      "root_id": "lin_slice_forward::decide.<param>.raw"
+    }
+  ],
+  "unresolved": []
 }

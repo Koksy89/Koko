@@ -1,86 +1,210 @@
 {
+  "case_id": "lin_assign_chain",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "lin_assign_chain",
       "kind": "MODULE",
+      "module": "lin_assign_chain",
       "name": "lin_assign_chain",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
       "qualname": "",
-      "module": "lin_assign_chain",
       "span": {
-        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+        "line": 1,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      }
     },
     {
-      "id": "lin_assign_chain::process_data",
-      "kind": "FUNCTION",
-      "name": "process_data",
-      "qualname": "process_data",
-      "module": "lin_assign_chain",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py",
-        "line": 4
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "Every binding form that moves a value from one name to another.",
+      "id": "lin_assign_chain::chain",
+      "kind": "FUNCTION",
+      "module": "lin_assign_chain",
+      "name": "chain",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "chain",
+      "signature": "(seed)",
+      "span": {
+        "col": 0,
+        "end_line": 12,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      }
     },
     {
-      "id": "lin_assign_chain::augmented_example",
-      "kind": "FUNCTION",
-      "name": "augmented_example",
-      "qualname": "augmented_example",
-      "module": "lin_assign_chain",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py",
-        "line": 13
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "id": "lin_assign_chain::chain.<param>.seed",
+      "kind": "PARAMETER",
+      "module": "lin_assign_chain",
+      "name": "seed",
+      "parent_id": "lin_assign_chain::chain",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "chain.<param>.seed",
+      "span": {
+        "col": 0,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      }
     }
   ],
-  "unresolved": [],
+  "id_conventions": {
+    "attribute": "<module>::<qualname>.<locals>.<name>.<attr>",
+    "dict_key": "<module>::<qualname>.<locals>.<name>[<key>]",
+    "instance_attribute": "<module>::<Class>.<attr>",
+    "local_variable": "<module>::<qualname>.<locals>.<name>",
+    "named_feature": "@feature:<name>",
+    "note": "interfaces.py defines no ID for a local variable, dict key or attribute, and card 1 mints no element for them. These extend make_id's qualname space; card 8 reports the gap rather than changing the contract.",
+    "parameter": "<module>::<qualname>.<param>.<name>"
+  },
   "lineage": [
     {
-      "id": "lineage_x_y",
+      "id": "lin_assign_chain:l1",
       "kind": "ASSIGNS",
-      "source_id": "lin_assign_chain::process_data::x",
-      "target_id": "lin_assign_chain::process_data::y",
       "provenance": {
-        "method": "DATAFLOW",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
       },
+      "source_id": "lin_assign_chain::chain.<param>.seed",
       "span": {
-        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py",
-        "line": 6
-      }
+        "col": 4,
+        "end_line": 6,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      },
+      "target_id": "lin_assign_chain::chain.<locals>.x"
     },
     {
-      "id": "lineage_y_z",
+      "id": "lin_assign_chain:l2",
       "kind": "ASSIGNS",
-      "source_id": "lin_assign_chain::process_data::y",
-      "target_id": "lin_assign_chain::process_data::z",
       "provenance": {
-        "method": "DATAFLOW",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
       },
+      "source_id": "lin_assign_chain::chain.<locals>.x",
       "span": {
-        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py",
-        "line": 7
-      }
+        "col": 4,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      },
+      "target_id": "lin_assign_chain::chain.<locals>.y"
+    },
+    {
+      "id": "lin_assign_chain:l3",
+      "kind": "MUTATES",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_assign_chain::chain.<locals>.y",
+      "span": {
+        "col": 4,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      },
+      "target_id": "lin_assign_chain::chain.<locals>.y"
+    },
+    {
+      "id": "lin_assign_chain:l4",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_assign_chain::chain.<locals>.x",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      },
+      "target_id": "lin_assign_chain::chain.<locals>.b"
+    },
+    {
+      "id": "lin_assign_chain:l5",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_assign_chain::chain.<locals>.y",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      },
+      "target_id": "lin_assign_chain::chain.<locals>.a"
+    },
+    {
+      "id": "lin_assign_chain:l6",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_assign_chain::chain.<locals>.a",
+      "span": {
+        "col": 4,
+        "end_line": 11,
+        "line": 10,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      },
+      "target_id": "lin_assign_chain::chain.<locals>.total"
+    },
+    {
+      "id": "lin_assign_chain:l7",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_assign_chain::chain.<locals>.b",
+      "span": {
+        "col": 4,
+        "end_line": 11,
+        "line": 10,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      },
+      "target_id": "lin_assign_chain::chain.<locals>.total"
+    },
+    {
+      "id": "lin_assign_chain:l8",
+      "kind": "RETURNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_assign_chain::chain.<locals>.total",
+      "span": {
+        "col": 8,
+        "end_line": 11,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/lin_assign_chain/__init__.py"
+      },
+      "target_id": "lin_assign_chain::chain"
     }
-  ]
+  ],
+  "must_not_contain_lineage": [
+    {
+      "source_id": "lin_assign_chain::chain.<locals>.y",
+      "target_id": "lin_assign_chain::chain.<locals>.b",
+      "why": "`a, b = y, x` binds b from x, not from y; pairing the targets with the wrong sources is the classic unpacking error"
+    }
+  ],
+  "proves": "Plain assignment, augmented assignment (which both reads and writes the same name), tuple unpacking (two targets, two distinct sources) and the walrus operator each produce lineage. `y += 10` is a MUTATES edge from y to itself: treating it as a fresh assignment would cut the chain back to `seed`.",
+  "unresolved": []
 }

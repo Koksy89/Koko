@@ -1,41 +1,265 @@
 {
+  "case_id": "lin_slice_backward",
+  "declared_sink_ids": [
+    "lin_slice_backward::decide"
+  ],
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "lin_slice_backward",
       "kind": "MODULE",
-      "name": "lin_slice_backward",
-      "qualname": "",
       "module": "lin_slice_backward",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py",
-        "line": 1
-      },
+      "name": "lin_slice_backward",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "`noise` never reaches `z`.",
       "id": "lin_slice_backward::compute",
       "kind": "FUNCTION",
-      "name": "compute",
-      "qualname": "compute",
       "module": "lin_slice_backward",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py",
-        "line": 2
-      },
+      "name": "compute",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
+      "qualname": "compute",
+      "signature": "(a, b, noise)",
+      "span": {
+        "col": 0,
+        "end_line": 10,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      }
+    },
+    {
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "id": "lin_slice_backward::compute.<param>.a",
+      "kind": "PARAMETER",
+      "module": "lin_slice_backward",
+      "name": "a",
+      "parent_id": "lin_slice_backward::compute",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "compute.<param>.a",
+      "span": {
+        "col": 0,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_slice_backward::compute.<param>.b",
+      "kind": "PARAMETER",
+      "module": "lin_slice_backward",
+      "name": "b",
+      "parent_id": "lin_slice_backward::compute",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "compute.<param>.b",
+      "span": {
+        "col": 0,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_slice_backward::compute.<param>.noise",
+      "kind": "PARAMETER",
+      "module": "lin_slice_backward",
+      "name": "noise",
+      "parent_id": "lin_slice_backward::compute",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "compute.<param>.noise",
+      "span": {
+        "col": 0,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "THE SINK.",
+      "id": "lin_slice_backward::decide",
+      "kind": "FUNCTION",
+      "module": "lin_slice_backward",
+      "name": "decide",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "decide",
+      "signature": "(a, b, noise)",
+      "span": {
+        "col": 0,
+        "end_line": 15,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      }
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "id_conventions": {
+    "attribute": "<module>::<qualname>.<locals>.<name>.<attr>",
+    "dict_key": "<module>::<qualname>.<locals>.<name>[<key>]",
+    "instance_attribute": "<module>::<Class>.<attr>",
+    "local_variable": "<module>::<qualname>.<locals>.<name>",
+    "named_feature": "@feature:<name>",
+    "note": "interfaces.py defines no ID for a local variable, dict key or attribute, and card 1 mints no element for them. These extend make_id's qualname space; card 8 reports the gap rather than changing the contract.",
+    "parameter": "<module>::<qualname>.<param>.<name>"
+  },
+  "lineage": [
+    {
+      "id": "lin_slice_backward:l1",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_backward::compute.<param>.a",
+      "span": {
+        "col": 4,
+        "end_line": 6,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      },
+      "target_id": "lin_slice_backward::compute.<locals>.x"
+    },
+    {
+      "id": "lin_slice_backward:l2",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_backward::compute.<param>.b",
+      "span": {
+        "col": 4,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      },
+      "target_id": "lin_slice_backward::compute.<locals>.y"
+    },
+    {
+      "id": "lin_slice_backward:l3",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_backward::compute.<param>.noise",
+      "span": {
+        "col": 4,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      },
+      "target_id": "lin_slice_backward::compute.<locals>.unused"
+    },
+    {
+      "id": "lin_slice_backward:l4",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_backward::compute.<locals>.x",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      },
+      "target_id": "lin_slice_backward::compute.<locals>.z"
+    },
+    {
+      "id": "lin_slice_backward:l5",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_backward::compute.<locals>.y",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      },
+      "target_id": "lin_slice_backward::compute.<locals>.z"
+    },
+    {
+      "id": "lin_slice_backward:l6",
+      "kind": "RETURNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_slice_backward::compute.<locals>.z",
+      "span": {
+        "col": 4,
+        "end_line": 10,
+        "line": 10,
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py"
+      },
+      "target_id": "lin_slice_backward::compute"
+    }
+  ],
+  "must_not_be_in_slice": {
+    "lin_slice_backward:s1": [
+      "lin_slice_backward::compute.<locals>.unused",
+      "lin_slice_backward::compute.<param>.noise"
+    ]
+  },
+  "proves": "The backward slice of `z` is exactly {a, b, x, y}. `noise` and `unused` are computed in the same function and are not in it. An over-broad slice ('everything in the function') would pass a sloppy test and tell the owner that changing `noise` changes the decision.",
+  "slice_members_exact": true,
+  "slices": [
+    {
+      "barrier_ids": [],
+      "confidence": "RESOLVED",
+      "direction": "backward",
+      "edge_ids": [
+        "lin_slice_backward:l1",
+        "lin_slice_backward:l2",
+        "lin_slice_backward:l4",
+        "lin_slice_backward:l5"
+      ],
+      "id": "lin_slice_backward:s1",
+      "member_ids": [
+        "lin_slice_backward::compute.<locals>.x",
+        "lin_slice_backward::compute.<locals>.y",
+        "lin_slice_backward::compute.<locals>.z",
+        "lin_slice_backward::compute.<param>.a",
+        "lin_slice_backward::compute.<param>.b"
+      ],
+      "reaches_sink_ids": [
+        "lin_slice_backward::decide"
+      ],
+      "root_id": "lin_slice_backward::compute.<locals>.z"
+    }
+  ],
+  "unresolved": []
 }

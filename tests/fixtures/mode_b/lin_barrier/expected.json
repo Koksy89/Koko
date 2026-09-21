@@ -1,58 +1,256 @@
 {
-  "elements": [
-    {
-      "id": "lin_barrier",
-      "kind": "MODULE",
-      "name": "lin_barrier",
-      "qualname": "",
-      "module": "lin_barrier",
-      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 1},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "lin_barrier::compute_expression",
-      "kind": "FUNCTION",
-      "name": "compute_expression",
-      "qualname": "compute_expression",
-      "module": "lin_barrier",
-      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 9},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "lin_barrier::evaluate",
-      "kind": "FUNCTION",
-      "name": "evaluate",
-      "qualname": "evaluate",
-      "module": "lin_barrier",
-      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 16},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "lin_barrier::process",
-      "kind": "FUNCTION",
-      "name": "process",
-      "qualname": "process",
-      "module": "lin_barrier",
-      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 23},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": null,
-      "content_hash_asserted": false
-    }
-  ],
-  "unresolved": [],
+  "barrier_count_exact": 1,
   "barriers": [
     {
-      "id": "barrier_eval_19",
+      "description": "eval() executes a string assembled at runtime; what it reads and writes cannot be determined statically, so value flow ends here rather than being stitched across to `result`",
       "element_id": "lin_barrier::evaluate",
-      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 19},
+      "id": "lin_barrier:b1",
       "reason": "DYNAMIC_NAME",
-      "description": "eval() call; dynamically executed code is not statically traceable"
+      "span": {
+        "col": 13,
+        "end_line": 11,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      }
     }
-  ]
+  ],
+  "case_id": "lin_barrier",
+  "edges": [
+    {
+      "call_site": {
+        "col": 17,
+        "end_line": 17,
+        "line": 17,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      },
+      "id": "lin_barrier:e1",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "lin_barrier::process",
+      "target_id": "lin_barrier::build_expression"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 18,
+        "line": 18,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      },
+      "id": "lin_barrier:e2",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "lin_barrier::process",
+      "target_id": "lin_barrier::evaluate"
+    }
+  ],
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_barrier",
+      "kind": "MODULE",
+      "module": "lin_barrier",
+      "name": "lin_barrier",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Assemble an expression from a runtime value.",
+      "id": "lin_barrier::build_expression",
+      "kind": "FUNCTION",
+      "module": "lin_barrier",
+      "name": "build_expression",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "build_expression",
+      "signature": "(multiplier)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Whatever this returns, nothing static can say it came from `value`.",
+      "id": "lin_barrier::evaluate",
+      "kind": "FUNCTION",
+      "module": "lin_barrier",
+      "name": "evaluate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "evaluate",
+      "signature": "(expression, value)",
+      "span": {
+        "col": 0,
+        "end_line": 12,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_barrier::evaluate.<param>.expression",
+      "kind": "PARAMETER",
+      "module": "lin_barrier",
+      "name": "expression",
+      "parent_id": "lin_barrier::evaluate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "evaluate.<param>.expression",
+      "span": {
+        "col": 0,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_barrier::evaluate.<param>.value",
+      "kind": "PARAMETER",
+      "module": "lin_barrier",
+      "name": "value",
+      "parent_id": "lin_barrier::evaluate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "evaluate.<param>.value",
+      "span": {
+        "col": 0,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The flow the slice must stop inside.",
+      "id": "lin_barrier::process",
+      "kind": "FUNCTION",
+      "module": "lin_barrier",
+      "name": "process",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "process",
+      "signature": "(multiplier, value)",
+      "span": {
+        "col": 0,
+        "end_line": 18,
+        "line": 15,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      }
+    }
+  ],
+  "id_conventions": {
+    "attribute": "<module>::<qualname>.<locals>.<name>.<attr>",
+    "dict_key": "<module>::<qualname>.<locals>.<name>[<key>]",
+    "instance_attribute": "<module>::<Class>.<attr>",
+    "local_variable": "<module>::<qualname>.<locals>.<name>",
+    "named_feature": "@feature:<name>",
+    "note": "interfaces.py defines no ID for a local variable, dict key or attribute, and card 1 mints no element for them. These extend make_id's qualname space; card 8 reports the gap rather than changing the contract.",
+    "parameter": "<module>::<qualname>.<param>.<name>"
+  },
+  "lineage": [
+    {
+      "id": "lin_barrier:l1",
+      "kind": "PARAMETER_BINDING",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_barrier::process.<param>.multiplier",
+      "span": {
+        "col": 4,
+        "end_line": 17,
+        "line": 17,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      },
+      "target_id": "lin_barrier::build_expression.<param>.multiplier"
+    },
+    {
+      "id": "lin_barrier:l2",
+      "kind": "PARAMETER_BINDING",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_barrier::process.<locals>.expression",
+      "span": {
+        "col": 4,
+        "end_line": 18,
+        "line": 18,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      },
+      "target_id": "lin_barrier::evaluate.<param>.expression"
+    },
+    {
+      "id": "lin_barrier:l3",
+      "kind": "PARAMETER_BINDING",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_barrier::process.<param>.value",
+      "span": {
+        "col": 4,
+        "end_line": 18,
+        "line": 18,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      },
+      "target_id": "lin_barrier::evaluate.<param>.value"
+    },
+    {
+      "id": "lin_barrier:l4",
+      "kind": "READS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_barrier::evaluate.<param>.expression",
+      "span": {
+        "col": 4,
+        "end_line": 11,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      },
+      "target_id": "lin_barrier:b1"
+    }
+  ],
+  "must_not_contain_lineage": [
+    {
+      "source_id": "lin_barrier::evaluate.<param>.value",
+      "target_id": "lin_barrier::evaluate.<locals>.result",
+      "why": "the only path runs through eval; asserting it would be a dependency the analysis cannot see"
+    }
+  ],
+  "proves": "`eval(expression)` is where value flow stops being traceable. The analysis must emit a Barrier at that call with reason DYNAMIC_NAME and end the slice there -- not stitch an edge from `value` to `result`, which would claim a dependency it cannot see, nor drop the flow silently, which would claim there is none.",
+  "unresolved": []
 }

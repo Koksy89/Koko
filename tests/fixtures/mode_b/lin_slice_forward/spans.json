@@ -1,0 +1,69 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "    return \"enter\" if transform(raw) > 5 else \"hold\"",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "after_the_sink"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "audit"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "decide"
+    },
+    "/elements/4/span": {
+      "kind": "line",
+      "line_contains": "def decide(raw):",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "transform"
+    },
+    "/elements/6/span": {
+      "kind": "line",
+      "line_contains": "def transform(raw):",
+      "occurrence": 1
+    },
+    "/lineage/0/span": {
+      "kind": "stmt",
+      "line_contains": "    return \"enter\" if transform(raw) > 5 else \"hold\"",
+      "occurrence": 1
+    },
+    "/lineage/1/span": {
+      "kind": "stmt",
+      "line_contains": "    doubled = raw * 2",
+      "occurrence": 1
+    },
+    "/lineage/2/span": {
+      "kind": "stmt",
+      "line_contains": "    shifted = doubled + 1",
+      "occurrence": 1
+    },
+    "/lineage/3/span": {
+      "kind": "stmt",
+      "line_contains": "    return shifted",
+      "occurrence": 1
+    },
+    "/lineage/4/span": {
+      "kind": "stmt",
+      "line_contains": "    return \"enter\" if transform(raw) > 5 else \"hold\"",
+      "occurrence": 1
+    }
+  }
+}

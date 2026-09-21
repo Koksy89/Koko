@@ -1,0 +1,98 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "import pandas as pd",
+      "occurrence": 1
+    },
+    "/elements/10/span": {
+      "kind": "line",
+      "line_contains": "merged = frame.merge(reference, on=\"symbol\")",
+      "occurrence": 1
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "engineer"
+    },
+    "/elements/3/span": {
+      "kind": "line",
+      "line_contains": "def engineer(trades, reference):",
+      "occurrence": 1
+    },
+    "/elements/4/span": {
+      "kind": "line",
+      "line_contains": "def engineer(trades, reference):",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "line",
+      "line_contains": "frame[\"spread\"] = frame[\"ask\"] - frame[\"bid\"]",
+      "occurrence": 1
+    },
+    "/elements/6/span": {
+      "kind": "line",
+      "line_contains": "frame[\"spread\"] = frame[\"ask\"] - frame[\"bid\"]",
+      "occurrence": 1
+    },
+    "/elements/7/span": {
+      "kind": "line",
+      "line_contains": "frame = frame.assign(mid=",
+      "occurrence": 1
+    },
+    "/elements/8/span": {
+      "kind": "line",
+      "line_contains": "merged[\"rank\"] =",
+      "occurrence": 1
+    },
+    "/elements/9/span": {
+      "kind": "line",
+      "line_contains": "frame[\"spread\"] =",
+      "occurrence": 1
+    },
+    "/lineage/0/span": {
+      "kind": "stmt",
+      "line_contains": "    frame[\"spread\"] = frame[\"ask\"] - frame[\"bid\"]",
+      "occurrence": 1
+    },
+    "/lineage/1/span": {
+      "kind": "stmt",
+      "line_contains": "    frame[\"spread\"] = frame[\"ask\"] - frame[\"bid\"]",
+      "occurrence": 1
+    },
+    "/lineage/2/span": {
+      "kind": "stmt",
+      "line_contains": "    frame = frame.assign(mid=frame[\"ask\"] + frame[\"bid\"])",
+      "occurrence": 1
+    },
+    "/lineage/3/span": {
+      "kind": "stmt",
+      "line_contains": "    frame = frame.assign(mid=frame[\"ask\"] + frame[\"bid\"])",
+      "occurrence": 1
+    },
+    "/lineage/4/span": {
+      "kind": "stmt",
+      "line_contains": "    merged = frame.merge(reference, on=\"symbol\")",
+      "occurrence": 1
+    },
+    "/lineage/5/span": {
+      "kind": "stmt",
+      "line_contains": "    merged[\"rank\"] = merged[\"spread\"].apply(",
+      "occurrence": 1
+    },
+    "/lineage/6/span": {
+      "kind": "stmt",
+      "line_contains": "    per_symbol = merged.groupby(\"symbol\")[\"spread\"].max()",
+      "occurrence": 1
+    },
+    "/lineage/7/span": {
+      "kind": "stmt",
+      "line_contains": "    per_symbol = merged.groupby(\"symbol\")[\"spread\"].max()",
+      "occurrence": 1
+    }
+  }
+}

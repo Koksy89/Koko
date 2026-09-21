@@ -1,41 +1,373 @@
 {
+  "case_id": "lin_dataframe",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "lin_dataframe",
       "kind": "MODULE",
-      "name": "lin_dataframe",
-      "qualname": "",
       "module": "lin_dataframe",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py",
-        "line": 1
-      },
+      "name": "lin_dataframe",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
     },
     {
-      "id": "lin_dataframe::transform",
-      "kind": "FUNCTION",
-      "name": "transform",
-      "qualname": "transform",
-      "module": "lin_dataframe",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py",
-        "line": 3
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "id": "lin_dataframe::pd",
+      "kind": "IMPORT",
+      "module": "lin_dataframe",
+      "name": "pd",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "pd",
+      "signature": "import pandas as pd",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Every column written here is its own node.",
+      "id": "lin_dataframe::engineer",
+      "kind": "FUNCTION",
+      "module": "lin_dataframe",
+      "name": "engineer",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "engineer",
+      "signature": "(trades, reference)",
+      "span": {
+        "col": 0,
+        "end_line": 14,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_dataframe::engineer.<param>.reference",
+      "kind": "PARAMETER",
+      "module": "lin_dataframe",
+      "name": "reference",
+      "parent_id": "lin_dataframe::engineer",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "engineer.<param>.reference",
+      "span": {
+        "col": 0,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_dataframe::engineer.<param>.trades",
+      "kind": "PARAMETER",
+      "module": "lin_dataframe",
+      "name": "trades",
+      "parent_id": "lin_dataframe::engineer",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "engineer.<param>.trades",
+      "span": {
+        "col": 0,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@feature:ask",
+      "kind": "FEATURE",
+      "module": "",
+      "name": "ask",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@feature:bid",
+      "kind": "FEATURE",
+      "module": "",
+      "name": "bid",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@feature:mid",
+      "kind": "FEATURE",
+      "module": "",
+      "name": "mid",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 10,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@feature:rank",
+      "kind": "FEATURE",
+      "module": "",
+      "name": "rank",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@feature:spread",
+      "kind": "FEATURE",
+      "module": "",
+      "name": "spread",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@feature:symbol",
+      "kind": "FEATURE",
+      "module": "",
+      "name": "symbol",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      }
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "feature_nodes_exact": [
+    "@feature:ask",
+    "@feature:bid",
+    "@feature:mid",
+    "@feature:rank",
+    "@feature:spread",
+    "@feature:symbol"
+  ],
+  "id_conventions": {
+    "attribute": "<module>::<qualname>.<locals>.<name>.<attr>",
+    "dict_key": "<module>::<qualname>.<locals>.<name>[<key>]",
+    "instance_attribute": "<module>::<Class>.<attr>",
+    "local_variable": "<module>::<qualname>.<locals>.<name>",
+    "named_feature": "@feature:<name>",
+    "note": "interfaces.py defines no ID for a local variable, dict key or attribute, and card 1 mints no element for them. These extend make_id's qualname space; card 8 reports the gap rather than changing the contract.",
+    "parameter": "<module>::<qualname>.<param>.<name>"
+  },
+  "lineage": [
+    {
+      "id": "lin_dataframe:l01",
+      "kind": "COLUMN_WRITE",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "source_id": "@feature:ask",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      },
+      "target_id": "@feature:spread"
+    },
+    {
+      "id": "lin_dataframe:l02",
+      "kind": "COLUMN_WRITE",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "source_id": "@feature:bid",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      },
+      "target_id": "@feature:spread"
+    },
+    {
+      "id": "lin_dataframe:l03",
+      "kind": "COLUMN_WRITE",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "source_id": "@feature:ask",
+      "span": {
+        "col": 4,
+        "end_line": 10,
+        "line": 10,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      },
+      "target_id": "@feature:mid"
+    },
+    {
+      "id": "lin_dataframe:l04",
+      "kind": "COLUMN_WRITE",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "source_id": "@feature:bid",
+      "span": {
+        "col": 4,
+        "end_line": 10,
+        "line": 10,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      },
+      "target_id": "@feature:mid"
+    },
+    {
+      "id": "lin_dataframe:l05",
+      "kind": "READS",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "source_id": "@feature:symbol",
+      "span": {
+        "col": 4,
+        "end_line": 11,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      },
+      "target_id": "lin_dataframe::engineer.<locals>.merged"
+    },
+    {
+      "id": "lin_dataframe:l06",
+      "kind": "COLUMN_WRITE",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "source_id": "@feature:spread",
+      "span": {
+        "col": 4,
+        "end_line": 12,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      },
+      "target_id": "@feature:rank"
+    },
+    {
+      "id": "lin_dataframe:l07",
+      "kind": "READS",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "source_id": "@feature:spread",
+      "span": {
+        "col": 4,
+        "end_line": 13,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      },
+      "target_id": "lin_dataframe::engineer.<locals>.per_symbol"
+    },
+    {
+      "id": "lin_dataframe:l08",
+      "kind": "READS",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "source_id": "@feature:symbol",
+      "span": {
+        "col": 4,
+        "end_line": 13,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py"
+      },
+      "target_id": "lin_dataframe::engineer.<locals>.per_symbol"
+    }
+  ],
+  "must_not_contain_lineage": [
+    {
+      "source_id": "@feature:mid",
+      "target_id": "@feature:rank",
+      "why": "rank is computed from spread alone; joining it to mid is what happens when the frame, not the column, is the node"
+    },
+    {
+      "source_id": "@feature:rank",
+      "target_id": "@feature:spread",
+      "why": "the direction is spread -> rank; reversing it inverts every slice"
+    }
+  ],
+  "notes": [
+    "pandas is an optional adapter: with pandas absent the analysis still reads these calls off the AST. The confidence is PROBABLE throughout because `frame` is only known to be a dataframe by how it is used."
+  ],
+  "proves": "Each column is its own lineage node in the feature namespace. `spread` is fed by `ask` and `bid`; `mid` by the same two through `assign`; `rank` by `spread` through `apply`; `symbol` is read as a merge and groupby key without being written. Tracking the *frame* instead of the columns would make every column an input to every other one -- which is the same as having no lineage at all.",
+  "unresolved": []
 }

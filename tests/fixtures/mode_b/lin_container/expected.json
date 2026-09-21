@@ -1,41 +1,243 @@
 {
+  "case_id": "lin_container",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "lin_container",
       "kind": "MODULE",
-      "name": "lin_container",
-      "qualname": "",
       "module": "lin_container",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_container/__init__.py",
-        "line": 1
-      },
+      "name": "lin_container",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      }
     },
     {
-      "id": "lin_container::setup",
-      "kind": "FUNCTION",
-      "name": "setup",
-      "qualname": "setup",
-      "module": "lin_container",
-      "span": {
-        "path": "tests/fixtures/mode_b/lin_container/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "Two attributes written independently.",
+      "id": "lin_container::Settings",
+      "kind": "CLASS",
+      "module": "lin_container",
+      "name": "Settings",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Settings",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_container::Settings.__init__",
+      "kind": "METHOD",
+      "module": "lin_container",
+      "name": "__init__",
+      "parent_id": "lin_container::Settings",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Settings.__init__",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Two keys of one dict, then two attributes of one object.",
+      "id": "lin_container::build",
+      "kind": "FUNCTION",
+      "module": "lin_container",
+      "name": "build",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "build",
+      "signature": "(raw, label)",
+      "span": {
+        "col": 0,
+        "end_line": 19,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_container::build.<param>.label",
+      "kind": "PARAMETER",
+      "module": "lin_container",
+      "name": "label",
+      "parent_id": "lin_container::build",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "build.<param>.label",
+      "span": {
+        "col": 0,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "lin_container::build.<param>.raw",
+      "kind": "PARAMETER",
+      "module": "lin_container",
+      "name": "raw",
+      "parent_id": "lin_container::build",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "build.<param>.raw",
+      "span": {
+        "col": 0,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      }
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "id_conventions": {
+    "attribute": "<module>::<qualname>.<locals>.<name>.<attr>",
+    "dict_key": "<module>::<qualname>.<locals>.<name>[<key>]",
+    "instance_attribute": "<module>::<Class>.<attr>",
+    "local_variable": "<module>::<qualname>.<locals>.<name>",
+    "named_feature": "@feature:<name>",
+    "note": "interfaces.py defines no ID for a local variable, dict key or attribute, and card 1 mints no element for them. These extend make_id's qualname space; card 8 reports the gap rather than changing the contract.",
+    "parameter": "<module>::<qualname>.<param>.<name>"
+  },
+  "lineage": [
+    {
+      "id": "lin_container:l1",
+      "kind": "CONTAINER_WRITE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_container::build.<param>.raw",
+      "span": {
+        "col": 4,
+        "end_line": 15,
+        "line": 15,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      },
+      "target_id": "lin_container::build.<locals>.values[threshold]"
+    },
+    {
+      "id": "lin_container:l2",
+      "kind": "CONTAINER_WRITE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_container::build.<param>.label",
+      "span": {
+        "col": 4,
+        "end_line": 16,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      },
+      "target_id": "lin_container::build.<locals>.values[mode]"
+    },
+    {
+      "id": "lin_container:l3",
+      "kind": "ATTRIBUTE_WRITE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_container::build.<locals>.values[threshold]",
+      "span": {
+        "col": 4,
+        "end_line": 18,
+        "line": 18,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      },
+      "target_id": "lin_container::build.<locals>.settings.threshold"
+    },
+    {
+      "id": "lin_container:l4",
+      "kind": "ATTRIBUTE_WRITE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_container::Settings.__init__",
+      "span": {
+        "col": 8,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      },
+      "target_id": "lin_container::Settings.mode"
+    },
+    {
+      "id": "lin_container:l5",
+      "kind": "ATTRIBUTE_WRITE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_container::Settings.__init__",
+      "span": {
+        "col": 8,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      },
+      "target_id": "lin_container::Settings.threshold"
+    },
+    {
+      "id": "lin_container:l6",
+      "kind": "RETURNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_container::build.<locals>.settings",
+      "span": {
+        "col": 4,
+        "end_line": 19,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py"
+      },
+      "target_id": "lin_container::build"
+    }
+  ],
+  "must_not_contain_lineage": [
+    {
+      "source_id": "lin_container::build.<param>.label",
+      "target_id": "lin_container::build.<locals>.values[threshold]",
+      "why": "label is written to the `mode` key only; a per-container model would join them"
+    },
+    {
+      "source_id": "lin_container::build.<param>.raw",
+      "target_id": "lin_container::build.<locals>.settings.mode",
+      "why": "settings.mode is never written in build"
+    }
+  ],
+  "proves": "`values['threshold']` and `values['mode']` are separate nodes fed by separate sources: collapsing them into one `values` node would make `label` look like an input to the threshold, which is the exact false edge that ruins a backward slice. The same holds for `settings.threshold` versus `settings.mode`.",
+  "unresolved": []
 }

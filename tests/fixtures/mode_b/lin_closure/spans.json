@@ -1,0 +1,58 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "make_counter"
+    },
+    "/elements/2/span": {
+      "kind": "line",
+      "line_contains": "def make_counter(start):",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "make_counter.<locals>.bump"
+    },
+    "/elements/4/span": {
+      "kind": "line",
+      "line_contains": "    def bump(step):",
+      "occurrence": 1
+    },
+    "/lineage/0/span": {
+      "kind": "stmt",
+      "line_contains": "    state = {\"count\": start}",
+      "occurrence": 1
+    },
+    "/lineage/1/span": {
+      "kind": "stmt",
+      "line_contains": "        state[\"count\"] = state[\"count\"] + step",
+      "occurrence": 1
+    },
+    "/lineage/2/span": {
+      "kind": "stmt",
+      "line_contains": "        state[\"count\"] = state[\"count\"] + step",
+      "occurrence": 1
+    },
+    "/lineage/3/span": {
+      "kind": "stmt",
+      "line_contains": "    alias = state",
+      "occurrence": 1
+    },
+    "/lineage/4/span": {
+      "kind": "stmt",
+      "line_contains": "    alias[\"count\"] = 0",
+      "occurrence": 1
+    },
+    "/lineage/5/span": {
+      "kind": "stmt",
+      "line_contains": "        return state[\"count\"]",
+      "occurrence": 1
+    }
+  }
+}

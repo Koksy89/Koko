@@ -1,27 +1,18 @@
-"""
-Fixture proving that flow into eval-built code ends in a Barrier.
-
-The variable `computed` is built dynamically and passed to eval.
-Lineage must stop at the Barrier, not stitch across to what eval might do.
-"""
+"""Flow into eval-built code ends at a Barrier, never stitched across."""
 
 
-def compute_expression():
-    """Return a dynamic expression."""
-    x = 10
-    computed = f"x + {5}"  # Built from runtime values
-    return computed
+def build_expression(multiplier):
+    """Assemble an expression from a runtime value."""
+    return "value * " + str(multiplier)
 
 
-def evaluate(expr):
-    """Execute dynamically built expression."""
-    x = 42
-    result = eval(expr)  # Lineage stops here (Barrier)
+def evaluate(expression, value):
+    """Whatever this returns, nothing static can say it came from `value`."""
+    result = eval(expression)
     return result
 
 
-def process():
-    """Main flow."""
-    expr = compute_expression()
-    answer = evaluate(expr)
-    return answer
+def process(multiplier, value):
+    """The flow the slice must stop inside."""
+    expression = build_expression(multiplier)
+    return evaluate(expression, value)

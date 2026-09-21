@@ -1,0 +1,63 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "compute"
+    },
+    "/elements/2/span": {
+      "kind": "line",
+      "line_contains": "def compute(a, b, noise):",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "line",
+      "line_contains": "def compute(a, b, noise):",
+      "occurrence": 1
+    },
+    "/elements/4/span": {
+      "kind": "line",
+      "line_contains": "def compute(a, b, noise):",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "decide"
+    },
+    "/lineage/0/span": {
+      "kind": "stmt",
+      "line_contains": "    x = a + 1",
+      "occurrence": 1
+    },
+    "/lineage/1/span": {
+      "kind": "stmt",
+      "line_contains": "    y = b * 2",
+      "occurrence": 1
+    },
+    "/lineage/2/span": {
+      "kind": "stmt",
+      "line_contains": "    unused = noise * 99",
+      "occurrence": 1
+    },
+    "/lineage/3/span": {
+      "kind": "stmt",
+      "line_contains": "    z = x + y",
+      "occurrence": 1
+    },
+    "/lineage/4/span": {
+      "kind": "stmt",
+      "line_contains": "    z = x + y",
+      "occurrence": 1
+    },
+    "/lineage/5/span": {
+      "kind": "stmt",
+      "line_contains": "    return z",
+      "occurrence": 1
+    }
+  }
+}

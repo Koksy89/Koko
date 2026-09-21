@@ -1,0 +1,84 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "scaled = scale(raw, factor=3, offset=5)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "caller"
+    },
+    "/elements/2/span": {
+      "kind": "line",
+      "line_contains": "def caller(raw):",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "scale"
+    },
+    "/elements/4/span": {
+      "kind": "line",
+      "line_contains": "def scale(value, factor=2, **options):",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "line",
+      "line_contains": "def scale(value, factor=2, **options):",
+      "occurrence": 1
+    },
+    "/elements/6/span": {
+      "kind": "line",
+      "line_contains": "def scale(value, factor=2, **options):",
+      "occurrence": 1
+    },
+    "/lineage/0/span": {
+      "kind": "stmt",
+      "line_contains": "    scaled = scale(raw, factor=3, offset=5)",
+      "occurrence": 1
+    },
+    "/lineage/1/span": {
+      "kind": "stmt",
+      "line_contains": "    scaled = scale(raw, factor=3, offset=5)",
+      "occurrence": 1
+    },
+    "/lineage/2/span": {
+      "kind": "stmt",
+      "line_contains": "    scaled = scale(raw, factor=3, offset=5)",
+      "occurrence": 1
+    },
+    "/lineage/3/span": {
+      "kind": "stmt",
+      "line_contains": "    bumped = value * factor",
+      "occurrence": 1
+    },
+    "/lineage/4/span": {
+      "kind": "stmt",
+      "line_contains": "    bumped = value * factor",
+      "occurrence": 1
+    },
+    "/lineage/5/span": {
+      "kind": "stmt",
+      "line_contains": "        bumped = bumped + options[\"offset\"]",
+      "occurrence": 1
+    },
+    "/lineage/6/span": {
+      "kind": "stmt",
+      "line_contains": "    return bumped",
+      "occurrence": 1
+    },
+    "/lineage/7/span": {
+      "kind": "stmt",
+      "line_contains": "    scaled = scale(raw, factor=3, offset=5)",
+      "occurrence": 1
+    }
+  }
+}
