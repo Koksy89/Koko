@@ -1,39 +1,148 @@
 {
+  "case_id": "ali_not_exercised",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "ali_not_exercised",
       "kind": "MODULE",
-      "name": "ali_not_exercised",
-      "qualname": "",
       "module": "ali_not_exercised",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_not_exercised/__init__.py",
-        "line": 1
-      },
+      "name": "ali_not_exercised",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/ali_not_exercised/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "main calls this.",
+      "id": "ali_not_exercised::exercised",
+      "kind": "FUNCTION",
+      "module": "ali_not_exercised",
+      "name": "exercised",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "exercised",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/ali_not_exercised/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "No scenario in this case calls it. It is not thereby correct.",
+      "id": "ali_not_exercised::never_called",
+      "kind": "FUNCTION",
+      "module": "ali_not_exercised",
+      "name": "never_called",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "never_called",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/ali_not_exercised/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Calls only `exercised`.",
       "id": "ali_not_exercised::main",
       "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
       "module": "ali_not_exercised",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_not_exercised/__init__.py",
-        "line": 2
-      },
+      "name": "main",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_a/ali_not_exercised/__init__.py"
+      }
     }
   ],
-  "events": []
+  "evidence_ids_must_be_empty_for": [
+    "ali_not_exercised::never_called"
+  ],
+  "forbidden_verdicts": {
+    "ali_not_exercised::never_called": [
+      "ALIGNED",
+      "MISALIGNED"
+    ]
+  },
+  "intents": [
+    {
+      "element_id": "ali_not_exercised::exercised",
+      "id": "@intent:ali_not_exercised::exercised",
+      "invariants": [
+        "returns.value == 2"
+      ],
+      "statement": "Adds one to its argument.",
+      "status": "CONFIRMED"
+    },
+    {
+      "element_id": "ali_not_exercised::never_called",
+      "id": "@intent:ali_not_exercised::never_called",
+      "invariants": [
+        "returns.value == 0"
+      ],
+      "statement": "Subtracts one from its argument.",
+      "status": "CONFIRMED"
+    }
+  ],
+  "proves": "`never_called` has a CONFIRMED intent and no scenario runs it. Its verdict is NOT_EXERCISED, which is distinct from ALIGNED: 'unverified' and 'verified correct' are different answers, and rendering the first as the second is the most misleading thing this card could do.",
+  "scenario": {
+    "function": "main",
+    "module": "ali_not_exercised"
+  },
+  "verdict_count_exact": 2,
+  "verdicts": [
+    {
+      "element_id": "ali_not_exercised::exercised",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value == 2'",
+      "id": "@verdict:ali_not_exercised::exercised",
+      "intent_id": "@intent:ali_not_exercised::exercised",
+      "observation": "observed return value 2",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "ALIGNED"
+    },
+    {
+      "element_id": "ali_not_exercised::never_called",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value == 0'",
+      "id": "@verdict:ali_not_exercised::never_called",
+      "intent_id": "@intent:ali_not_exercised::never_called",
+      "observation": "no event in this run names the element; NOT_EXERCISED is not ALIGNED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "NOT_EXERCISED"
+    }
+  ]
 }

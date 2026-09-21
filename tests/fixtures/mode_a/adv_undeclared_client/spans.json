@@ -1,0 +1,43 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "BrokerClient"
+    },
+    "/elements/2/span": {
+      "kind": "stmt",
+      "line_contains": "    endpoint =",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "BrokerClient.submit_order"
+    },
+    "/elements/4/span": {
+      "kind": "stmt",
+      "line_contains": "MARKER_PATH =",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "environment_mutation"
+    },
+    "/elements/6/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "main"
+    },
+    "/elements/7/span": {
+      "kind": "stmt",
+      "line_contains": "import os",
+      "occurrence": 1
+    }
+  }
+}

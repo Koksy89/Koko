@@ -126,6 +126,7 @@ def test_dif_added_removed() -> None:
     changes, _ = diff_snapshots(before, after)
     k = kinds_of(changes)
 
+    assert len(changes) == 3, changes
     assert k[("m::a", "m::a")] == ChangeKind.UNCHANGED
     assert k[("m::b", "")] == ChangeKind.REMOVED
     assert k[("", "m::c")] == ChangeKind.ADDED
@@ -160,8 +161,10 @@ def test_dif_rename() -> None:
 def test_dif_rename_ambiguous_is_not_resolved_arbitrarily() -> None:
     """Two before-elements and two after-elements, all with identical bodies
     and signatures, so every cross-pair scores equally. Neither side may be
-    resolved to a specific match: both become ADDED/REMOVED with UNKNOWN
-    confidence and the tied candidates on record."""
+    resolved to a specific match: all four become `AMBIGUOUS`, at UNKNOWN
+    confidence, and -- critically -- every one of them carries the *same*
+    `candidate_ids` (the full tied group), so an owner looking up any single
+    element sees the whole ambiguity, not just their own half of it."""
     before = snap(
         "before",
         (
@@ -178,19 +181,52 @@ def test_dif_rename_ambiguous_is_not_resolved_arbitrarily() -> None:
     )
 
     changes, _ = diff_snapshots(before, after)
+    assert len(changes) == 4, changes
+
     k = kinds_of(changes)
-    assert k[("m::helper_a", "")] == ChangeKind.REMOVED
-    assert k[("m::helper_b", "")] == ChangeKind.REMOVED
-    assert k[("", "m::helper_x")] == ChangeKind.ADDED
-    assert k[("", "m::helper_y")] == ChangeKind.ADDED
+    assert k[("m::helper_a", "")] == ChangeKind.AMBIGUOUS
+    assert k[("m::helper_b", "")] == ChangeKind.AMBIGUOUS
+    assert k[("", "m::helper_x")] == ChangeKind.AMBIGUOUS
+    assert k[("", "m::helper_y")] == ChangeKind.AMBIGUOUS
+
+    expected_candidates = ("m::helper_a", "m::helper_b", "m::helper_x", "m::helper_y")
     for c in changes:
         assert c.provenance.confidence == Confidence.UNKNOWN
         assert "ambiguous" in c.provenance.note
+        # the whole tied group, identical on every member -- not just the
+        # candidates on the *other* side, and not just this element's own id.
+        assert c.candidate_ids == expected_candidates
 
 
 # ---------------------------------------------------------------------------
 # dif_move
 # ---------------------------------------------------------------------------
+
+
+def test_dif_rename_ambiguity_visible_from_the_narrow_side_too() -> None:
+    """Regression for the bug verification found: one before-element (`worker`)
+    ties equally against two after-elements (`worker_v1`, `worker_v2`). From
+    `worker_v1`'s own narrow perspective it has only one rival (`worker`), so
+    a check that only asked "does *this* element have more than one tied
+    candidate?" would call it unambiguous and emit a plain CERTAIN ADDED with
+    no back-reference. It must still come out AMBIGUOUS, because it belongs
+    to the same tied component as `worker_v2`."""
+    before = snap("before", (elem("m::worker", content_hash="SAME", signature="(x)"),))
+    after = snap(
+        "after",
+        (
+            elem("m::worker_v1", content_hash="SAME", signature="(x)"),
+            elem("m::worker_v2", content_hash="SAME", signature="(x)"),
+        ),
+    )
+
+    changes, _ = diff_snapshots(before, after)
+    assert len(changes) == 3, changes
+    assert all(c.kind == ChangeKind.AMBIGUOUS for c in changes)
+
+    expected_candidates = ("m::worker", "m::worker_v1", "m::worker_v2")
+    for c in changes:
+        assert c.candidate_ids == expected_candidates
 
 
 def test_dif_move() -> None:

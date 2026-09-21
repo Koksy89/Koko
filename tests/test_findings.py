@@ -120,7 +120,11 @@ def _element(d: dict) -> Element:
         module=d["module"],
         span=_span(d["span"]),
         provenance=_provenance(d["provenance"]),
-        content_hash=d["content_hash"],
+        # The corpus stores `null` for a case where content_hash was not
+        # hand-computed by whoever wrote the fixture ("content_hash_asserted":
+        # false); Element.content_hash is a required str, so treat that as
+        # "not provided" rather than crash the loader.
+        content_hash=d.get("content_hash") or "",
         decorators=tuple(d.get("decorators", ())),
         signature=d.get("signature", ""),
         docstring=d.get("docstring", ""),

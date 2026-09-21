@@ -1,39 +1,105 @@
 {
+  "case_id": "ali_proposed_not_binding",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "ali_proposed_not_binding",
       "kind": "MODULE",
-      "name": "ali_proposed_not_binding",
-      "qualname": "",
       "module": "ali_proposed_not_binding",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_proposed_not_binding/__init__.py",
-        "line": 1
-      },
+      "name": "ali_proposed_not_binding",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/ali_proposed_not_binding/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Docstring claims it halves the amount. It does not: it subtracts one.",
+      "id": "ali_proposed_not_binding::rebate",
+      "kind": "FUNCTION",
+      "module": "ali_proposed_not_binding",
+      "name": "rebate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "rebate",
+      "signature": "(amount)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/ali_proposed_not_binding/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "rebate(10) returns 9, not 5.",
       "id": "ali_proposed_not_binding::main",
       "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
       "module": "ali_proposed_not_binding",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_proposed_not_binding/__init__.py",
-        "line": 2
-      },
+      "name": "main",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/ali_proposed_not_binding/__init__.py"
+      }
     }
   ],
-  "events": []
+  "forbidden_verdicts": {
+    "ali_proposed_not_binding::rebate": [
+      "ALIGNED",
+      "MISALIGNED"
+    ]
+  },
+  "intents": [
+    {
+      "element_id": "ali_proposed_not_binding::rebate",
+      "id": "@intent:ali_proposed_not_binding::rebate",
+      "invariants": [
+        "returns.value == 5"
+      ],
+      "statement": "Halves the amount.",
+      "status": "PROPOSED"
+    }
+  ],
+  "notes": [
+    "The contradiction is still surfaced in `observation`: suppressing it entirely would waste the one piece of evidence that would make the owner want to confirm the intent."
+  ],
+  "proves": "The intent is derived from the docstring, so its status is PROPOSED. The observation contradicts it outright -- rebate(10) returns 9, not 5 -- and the verdict is still UNVERIFIABLE, not MISALIGNED. Only an owner-confirmed intent may ground ALIGNED or MISALIGNED; a model or a docstring reading is not authority.",
+  "scenario": {
+    "function": "main",
+    "module": "ali_proposed_not_binding"
+  },
+  "verdict_count_exact": 1,
+  "verdicts": [
+    {
+      "element_id": "ali_proposed_not_binding::rebate",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value == 5' (PROPOSED, not binding)",
+      "id": "@verdict:ali_proposed_not_binding::rebate",
+      "intent_id": "@intent:ali_proposed_not_binding::rebate",
+      "observation": "observed return value 9, which contradicts the proposed invariant; a PROPOSED intent cannot ground a verdict, so this is reported as unverifiable and offered to the owner for confirmation",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "UNVERIFIABLE"
+    }
+  ]
 }

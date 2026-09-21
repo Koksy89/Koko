@@ -1,39 +1,104 @@
 {
+  "case_id": "ali_misaligned",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "ali_misaligned",
       "kind": "MODULE",
-      "name": "ali_misaligned",
-      "qualname": "",
       "module": "ali_misaligned",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_misaligned/__init__.py",
-        "line": 1
-      },
+      "name": "ali_misaligned",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/ali_misaligned/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Says it floors at zero. It does not: the floor is missing.",
+      "id": "ali_misaligned::apply_fee",
+      "kind": "FUNCTION",
+      "module": "ali_misaligned",
+      "name": "apply_fee",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "apply_fee",
+      "signature": "(amount)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/ali_misaligned/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The second call returns -1, which the intent forbids.",
       "id": "ali_misaligned::main",
       "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
       "module": "ali_misaligned",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_misaligned/__init__.py",
-        "line": 2
-      },
+      "name": "main",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/ali_misaligned/__init__.py"
+      }
     }
   ],
-  "events": []
+  "expectation_must_name_one_invariant": "returns.value >= 0",
+  "intents": [
+    {
+      "element_id": "ali_misaligned::apply_fee",
+      "id": "@intent:ali_misaligned::apply_fee",
+      "invariants": [
+        "returns.value >= 0",
+        "apply_fee(10) == 8"
+      ],
+      "statement": "Subtracts a flat fee of 2 and never returns a negative amount.",
+      "status": "CONFIRMED"
+    }
+  ],
+  "must_not_cite_as_contradiction": [
+    "apply_fee(10) == 8"
+  ],
+  "observation_must_contain": [
+    "-1"
+  ],
+  "proves": "The intent says the result is never negative. apply_fee(1) returns -1. The verdict must be MISALIGNED and must name **which** invariant failed and **which** observation contradicted it -- 'does not match its intent' is not an actionable verdict. The first call, apply_fee(10) == 8, satisfies the other invariant and must not be cited as the contradiction.",
+  "scenario": {
+    "function": "main",
+    "module": "ali_misaligned"
+  },
+  "verdict_count_exact": 1,
+  "verdicts": [
+    {
+      "element_id": "ali_misaligned::apply_fee",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value >= 0'",
+      "id": "@verdict:ali_misaligned::apply_fee",
+      "intent_id": "@intent:ali_misaligned::apply_fee",
+      "observation": "observed value -1 returned by apply_fee(1)",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "MISALIGNED"
+    }
+  ]
 }

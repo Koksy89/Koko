@@ -1,39 +1,134 @@
 {
-  "elements": [
+  "case_id": "run_contradiction",
+  "contradiction_count_exact": 1,
+  "contradictions": [
     {
-      "id": "run_contradiction",
-      "kind": "MODULE",
-      "name": "run_contradiction",
-      "qualname": "",
-      "module": "run_contradiction",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_contradiction/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "run_contradiction::func",
-      "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
-      "module": "run_contradiction",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_contradiction/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "claim": "the static graph asserts a CALLS edge run_contradiction::dispatch -> run_contradiction::fallback_path",
+      "element_id": "run_contradiction::fallback_path",
+      "observation": "the edge never fired: dispatch ran once, with use_fallback False, and called primary_path",
+      "provenance_method": "RUNTIME_OBSERVED"
     }
   ],
-  "events": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "run_contradiction",
+      "kind": "MODULE",
+      "module": "run_contradiction",
+      "name": "run_contradiction",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/run_contradiction/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Statically reachable from dispatch; never called in this scenario.",
+      "id": "run_contradiction::fallback_path",
+      "kind": "FUNCTION",
+      "module": "run_contradiction",
+      "name": "fallback_path",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "fallback_path",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/run_contradiction/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The arm this scenario actually takes.",
+      "id": "run_contradiction::primary_path",
+      "kind": "FUNCTION",
+      "module": "run_contradiction",
+      "name": "primary_path",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "primary_path",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/run_contradiction/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Both arms are live to static analysis.",
+      "id": "run_contradiction::dispatch",
+      "kind": "FUNCTION",
+      "module": "run_contradiction",
+      "name": "dispatch",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "dispatch",
+      "signature": "(value, use_fallback=False)",
+      "span": {
+        "col": 0,
+        "end_line": 18,
+        "line": 14,
+        "path": "tests/fixtures/mode_a/run_contradiction/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Never passes use_fallback=True.",
+      "id": "run_contradiction::main",
+      "kind": "FUNCTION",
+      "module": "run_contradiction",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 23,
+        "line": 21,
+        "path": "tests/fixtures/mode_a/run_contradiction/__init__.py"
+      }
+    }
+  ],
+  "notes": [
+    "A contradiction is not proof the static edge is wrong. It is proof this scenario did not exercise it, which is equally worth knowing and is the owner's call to interpret."
+  ],
+  "proves": "Static analysis correctly predicts both dispatch -> fallback_path and dispatch -> primary_path. This scenario takes only the second. The unfired edge becomes a Contradiction record carrying the run and event IDs, and the static graph is **not** edited to match: the disagreement is the finding, and it may simply mean the scenario does not cover that path.",
+  "scenario": {
+    "function": "main",
+    "module": "run_contradiction"
+  },
+  "static_edges_predicted": [
+    {
+      "source_id": "run_contradiction::dispatch",
+      "target_id": "run_contradiction::fallback_path"
+    },
+    {
+      "source_id": "run_contradiction::dispatch",
+      "target_id": "run_contradiction::primary_path"
+    }
+  ],
+  "static_graph_must_be_unchanged": true
 }

@@ -1,39 +1,136 @@
 {
+  "case_id": "nar_drill_down",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "nar_drill_down",
       "kind": "MODULE",
-      "name": "nar_drill_down",
-      "qualname": "",
       "module": "nar_drill_down",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_drill_down/__init__.py",
-        "line": 1
-      },
+      "name": "nar_drill_down",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/nar_drill_down/__init__.py"
+      }
     },
     {
-      "id": "nar_drill_down::process",
-      "kind": "FUNCTION",
-      "name": "process",
-      "qualname": "process",
-      "module": "nar_drill_down",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_drill_down/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "Depth 3.",
+      "id": "nar_drill_down::inner",
+      "kind": "FUNCTION",
+      "module": "nar_drill_down",
+      "name": "inner",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "inner",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/nar_drill_down/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Depth 2.",
+      "id": "nar_drill_down::middle",
+      "kind": "FUNCTION",
+      "module": "nar_drill_down",
+      "name": "middle",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "middle",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/nar_drill_down/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Depth 1.",
+      "id": "nar_drill_down::outer",
+      "kind": "FUNCTION",
+      "module": "nar_drill_down",
+      "name": "outer",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "outer",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_a/nar_drill_down/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Depth 0. (1 + 1) * 2 + 10 = 14.",
+      "id": "nar_drill_down::main",
+      "kind": "FUNCTION",
+      "module": "nar_drill_down",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 21,
+        "line": 19,
+        "path": "tests/fixtures/mode_a/nar_drill_down/__init__.py"
+      }
     }
   ],
-  "events": []
+  "expected_nesting": [
+    {
+      "child": "nar_drill_down::outer",
+      "depth": 0,
+      "element_id": "nar_drill_down::main"
+    },
+    {
+      "child": "nar_drill_down::middle",
+      "depth": 1,
+      "element_id": "nar_drill_down::outer"
+    },
+    {
+      "child": "nar_drill_down::inner",
+      "depth": 2,
+      "element_id": "nar_drill_down::middle"
+    },
+    {
+      "child": null,
+      "depth": 3,
+      "element_id": "nar_drill_down::inner"
+    }
+  ],
+  "is_extra_not_in_fixtures_md": true,
+  "main_return_value": "14",
+  "must_not_flatten_nesting": true,
+  "proves": "Call depth 0 through 3 becomes nested narrative steps: main's step has outer as a child, which has middle, which has inner. A flat list of four steps loses the containment, which is the thing a drill-down view is for.",
+  "scenario": {
+    "function": "main",
+    "module": "nar_drill_down"
+  }
 }

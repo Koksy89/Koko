@@ -1,39 +1,112 @@
 {
-  "elements": [
+  "branch_event_count_exact": 5,
+  "branch_sequence": [
     {
-      "id": "run_branching",
-      "kind": "MODULE",
-      "name": "run_branching",
-      "qualname": "",
-      "module": "run_branching",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_branching/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "argument": 50,
+      "call": 1,
+      "condition": "value > 10",
+      "outcome": "high",
+      "taken": true
     },
     {
-      "id": "run_branching::func",
-      "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
-      "module": "run_branching",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_branching/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "argument": 5,
+      "call": 2,
+      "condition": "value > 10",
+      "outcome": null,
+      "taken": false
+    },
+    {
+      "argument": 5,
+      "call": 2,
+      "condition": "value > 0",
+      "outcome": "low",
+      "taken": true
+    },
+    {
+      "argument": -1,
+      "call": 3,
+      "condition": "value > 10",
+      "outcome": null,
+      "taken": false
+    },
+    {
+      "argument": -1,
+      "call": 3,
+      "condition": "value > 0",
+      "outcome": "negative",
+      "taken": false
     }
   ],
-  "events": []
+  "case_id": "run_branching",
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "run_branching",
+      "kind": "MODULE",
+      "module": "run_branching",
+      "name": "run_branching",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/run_branching/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Two conditions; which arm runs is decided by the argument.",
+      "id": "run_branching::classify",
+      "kind": "FUNCTION",
+      "module": "run_branching",
+      "name": "classify",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "classify",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 10,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/run_branching/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Three calls, exercising all three arms in a known order.",
+      "id": "run_branching::main",
+      "kind": "FUNCTION",
+      "module": "run_branching",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 15,
+        "line": 13,
+        "path": "tests/fixtures/mode_a/run_branching/__init__.py"
+      }
+    }
+  ],
+  "proves": "classify is called with 50, then 5, then -1. The branch taken at each decision is fixed by those arguments, so the recorded sequence of outcomes is known by construction. Recording only the calls, without which arm ran, loses the thing the owner is asking about.",
+  "returns_in_order": [
+    "high",
+    "low",
+    "negative"
+  ],
+  "scenario": {
+    "function": "main",
+    "module": "run_branching"
+  }
 }

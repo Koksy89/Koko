@@ -407,6 +407,20 @@ class Unresolved:
     attempted: tuple[Method, ...] = ()
     candidate_ids: tuple[str, ...] = ()
     candidate_confidence: Confidence = Confidence.UNKNOWN
+    """How sure we are that the true target is **somewhere in this set** — not
+    that any particular candidate is right.
+
+    * `UNKNOWN` — the set may not contain the target at all. A name computed at
+      runtime could resolve to anything, so an enumeration of plausible
+      matches is a starting point, not a bound.
+    * `HEURISTIC` — the set was enumerated from something real and probably
+      contains the target, but which member is a guess. A star import
+      resolved through a module's `__all__` is this.
+    * `PROBABLE` — the set definitely contains the target and only runtime
+      type decides which. MRO candidates for an overridden method are this.
+
+    Card 2 reported the rule was unstated and that it had matched each fixture
+    case individually; it was right that the contract was silent."""
 
 
 # ---------------------------------------------------------------------------

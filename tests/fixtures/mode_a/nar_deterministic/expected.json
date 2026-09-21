@@ -1,39 +1,101 @@
 {
+  "case_id": "nar_deterministic",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "nar_deterministic",
       "kind": "MODULE",
-      "name": "nar_deterministic",
-      "qualname": "",
       "module": "nar_deterministic",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_deterministic/__init__.py",
-        "line": 1
-      },
+      "name": "nar_deterministic",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/nar_deterministic/__init__.py"
+      }
     },
     {
-      "id": "nar_deterministic::process",
-      "kind": "FUNCTION",
-      "name": "process",
-      "qualname": "process",
-      "module": "nar_deterministic",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_deterministic/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "First.",
+      "id": "nar_deterministic::step_a",
+      "kind": "FUNCTION",
+      "module": "nar_deterministic",
+      "name": "step_a",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "step_a",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/nar_deterministic/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Second.",
+      "id": "nar_deterministic::step_b",
+      "kind": "FUNCTION",
+      "module": "nar_deterministic",
+      "name": "step_b",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "step_b",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/nar_deterministic/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "(1 + 1) * 2 = 4, every time.",
+      "id": "nar_deterministic::main",
+      "kind": "FUNCTION",
+      "module": "nar_deterministic",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_a/nar_deterministic/__init__.py"
+      }
     }
   ],
-  "events": []
+  "main_return_value": "4",
+  "notes": [
+    "Timestamps belong in run_meta.json, which sits outside the byte-identical guarantee on purpose."
+  ],
+  "proves": "The same trace rendered twice gives byte-identical text. No timestamps, no elapsed times, no absolute paths, no set iteration order, no dict ordering that depends on insertion from a set. The narrative is an artifact under constraint 4 like every other.",
+  "scenario": {
+    "function": "main",
+    "module": "nar_deterministic"
+  },
+  "text_must_not_contain": [
+    "a wall-clock timestamp",
+    "an elapsed duration",
+    "an absolute filesystem path outside the target root",
+    "a memory address"
+  ],
+  "two_renders_must_be_byte_identical": true
 }

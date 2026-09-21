@@ -1,39 +1,97 @@
 {
+  "calls_to_accumulate_exact": 1000,
+  "case_id": "nar_loop_summary",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "nar_loop_summary",
       "kind": "MODULE",
-      "name": "nar_loop_summary",
-      "qualname": "",
       "module": "nar_loop_summary",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_loop_summary/__init__.py",
-        "line": 1
-      },
+      "name": "nar_loop_summary",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/nar_loop_summary/__init__.py"
+      }
     },
     {
-      "id": "nar_loop_summary::process",
-      "kind": "FUNCTION",
-      "name": "process",
-      "qualname": "process",
-      "module": "nar_loop_summary",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_loop_summary/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "id": "nar_loop_summary::ITERATIONS",
+      "kind": "ASSIGNMENT",
+      "module": "nar_loop_summary",
+      "name": "ITERATIONS",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ITERATIONS",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_a/nar_loop_summary/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Called once per iteration.",
+      "id": "nar_loop_summary::accumulate",
+      "kind": "FUNCTION",
+      "module": "nar_loop_summary",
+      "name": "accumulate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "accumulate",
+      "signature": "(total, value)",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 6,
+        "path": "tests/fixtures/mode_a/nar_loop_summary/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "1000 iterations; the total is 0+1+...+999 = 499500.",
+      "id": "nar_loop_summary::main",
+      "kind": "FUNCTION",
+      "module": "nar_loop_summary",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 11,
+        "path": "tests/fixtures/mode_a/nar_loop_summary/__init__.py"
+      }
     }
   ],
-  "events": []
+  "iterations_exact": 1000,
+  "loop_step_must_state": [
+    "iteration count 1000",
+    "final total 499500"
+  ],
+  "main_return_value": "499500",
+  "max_narrative_steps_for_the_loop": 1,
+  "must_not_transcribe_every_iteration": true,
+  "proves": "The loop runs 1000 times and calls `accumulate` 1000 times. The narrative must render that as one summarised step naming the iteration count and the aggregate result, not 1000 steps. A transcript of a 1000-iteration loop is unreadable, which makes it the same as no narrative.",
+  "scenario": {
+    "function": "main",
+    "module": "nar_loop_summary"
+  }
 }

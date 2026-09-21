@@ -1,39 +1,120 @@
 {
+  "case_id": "ali_multiple_intents",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "ali_multiple_intents",
       "kind": "MODULE",
-      "name": "ali_multiple_intents",
-      "qualname": "",
       "module": "ali_multiple_intents",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_multiple_intents/__init__.py",
-        "line": 1
-      },
+      "name": "ali_multiple_intents",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/ali_multiple_intents/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Should clamp into 0..100. The upper bound is missing.",
+      "id": "ali_multiple_intents::clamp",
+      "kind": "FUNCTION",
+      "module": "ali_multiple_intents",
+      "name": "clamp",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "clamp",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/ali_multiple_intents/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "clamp(-5) is 0 (lower bound holds); clamp(500) is 500 (upper bound fails).",
       "id": "ali_multiple_intents::main",
       "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
       "module": "ali_multiple_intents",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_multiple_intents/__init__.py",
-        "line": 2
-      },
+      "name": "main",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/ali_multiple_intents/__init__.py"
+      }
     }
   ],
-  "events": []
+  "intents": [
+    {
+      "element_id": "ali_multiple_intents::clamp",
+      "id": "@intent:ali_multiple_intents::clamp#lower",
+      "invariants": [
+        "returns.value >= 0"
+      ],
+      "statement": "Never returns below 0.",
+      "status": "CONFIRMED"
+    },
+    {
+      "element_id": "ali_multiple_intents::clamp",
+      "id": "@intent:ali_multiple_intents::clamp#upper",
+      "invariants": [
+        "returns.value <= 100"
+      ],
+      "statement": "Never returns above 100.",
+      "status": "CONFIRMED"
+    }
+  ],
+  "is_extra_not_in_fixtures_md": true,
+  "one_verdict_per_intent": true,
+  "proves": "One element carries two CONFIRMED intents. The lower bound holds and the upper bound does not, so there are two verdicts, not one merged verdict: an ALIGNED that hides a broken invariant is worse than no verdict, and a MISALIGNED that hides a met one wastes the owner's time.",
+  "scenario": {
+    "function": "main",
+    "module": "ali_multiple_intents"
+  },
+  "verdict_count_exact": 2,
+  "verdicts": [
+    {
+      "element_id": "ali_multiple_intents::clamp",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value >= 0'",
+      "id": "@verdict:ali_multiple_intents::clamp#lower",
+      "intent_id": "@intent:ali_multiple_intents::clamp#lower",
+      "observation": "observed 0 and 500; neither is below 0",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "ALIGNED"
+    },
+    {
+      "element_id": "ali_multiple_intents::clamp",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value <= 100'",
+      "id": "@verdict:ali_multiple_intents::clamp#upper",
+      "intent_id": "@intent:ali_multiple_intents::clamp#upper",
+      "observation": "observed value 500 returned by clamp(500)",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "MISALIGNED"
+    }
+  ]
 }

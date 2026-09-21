@@ -1,39 +1,92 @@
 {
+  "case_id": "run_redaction",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "run_redaction",
       "kind": "MODULE",
-      "name": "run_redaction",
-      "qualname": "",
       "module": "run_redaction",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_redaction/__init__.py",
-        "line": 1
-      },
+      "name": "run_redaction",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/run_redaction/__init__.py"
+      }
     },
     {
-      "id": "run_redaction::func",
-      "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
-      "module": "run_redaction",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_redaction/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "`password` must never appear in any artifact.",
+      "id": "run_redaction::authenticate",
+      "kind": "FUNCTION",
+      "module": "run_redaction",
+      "name": "authenticate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "authenticate",
+      "signature": "(username, password)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/run_redaction/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The literal below is the thing that must not be recorded.",
+      "id": "run_redaction::main",
+      "kind": "FUNCTION",
+      "module": "run_redaction",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/run_redaction/__init__.py"
+      }
     }
   ],
-  "events": []
+  "expected_captures": [
+    {
+      "element_id": "run_redaction::authenticate",
+      "repr_text": "'alice'",
+      "slot": "username",
+      "status": "FULL",
+      "type_name": "str"
+    },
+    {
+      "element_id": "run_redaction::authenticate",
+      "reason_must_be_non_empty": true,
+      "slot": "password",
+      "status": "REDACTED",
+      "type_name": "str"
+    }
+  ],
+  "notes": [
+    "Redaction happens at capture, not at render: a value that reaches an artifact and is masked later has already been written to disk."
+  ],
+  "proves": "With `password` declared sensitive, its capture is REDACTED at the moment of capture: the literal 'hunter2-do-not-record' must appear in no event, no artifact and no narrative. `username` is not sensitive and is captured in full -- redacting everything would be safe and useless.",
+  "scenario": {
+    "function": "main",
+    "module": "run_redaction"
+  },
+  "sensitive_parameter_names": [
+    "password"
+  ],
+  "string_must_not_appear_anywhere_in_output": "hunter2-do-not-record"
 }

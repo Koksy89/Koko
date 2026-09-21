@@ -1,0 +1,58 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "COMMAND =",
+      "occurrence": 1
+    },
+    "/elements/10/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "via_subprocess_run"
+    },
+    "/elements/2/span": {
+      "kind": "stmt",
+      "line_contains": "MARKER_PATH =",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "main"
+    },
+    "/elements/4/span": {
+      "kind": "stmt",
+      "line_contains": "import os",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "stmt",
+      "line_contains": "import subprocess",
+      "occurrence": 1
+    },
+    "/elements/6/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "via_os_fork"
+    },
+    "/elements/7/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "via_os_system"
+    },
+    "/elements/8/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "via_popen"
+    },
+    "/elements/9/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "via_popen2"
+    }
+  }
+}

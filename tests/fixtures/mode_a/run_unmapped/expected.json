@@ -1,39 +1,106 @@
 {
+  "case_id": "run_unmapped",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "run_unmapped",
       "kind": "MODULE",
-      "name": "run_unmapped",
-      "qualname": "",
       "module": "run_unmapped",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_unmapped/__init__.py",
-        "line": 1
-      },
+      "name": "run_unmapped",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/run_unmapped/__init__.py"
+      }
     },
     {
-      "id": "run_unmapped::func",
-      "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
-      "module": "run_unmapped",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_unmapped/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "id": "run_unmapped::SOURCE",
+      "kind": "ASSIGNMENT",
+      "module": "run_unmapped",
+      "name": "SOURCE",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "SOURCE",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/run_unmapped/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Compile a function from a string.",
+      "id": "run_unmapped::build",
+      "kind": "FUNCTION",
+      "module": "run_unmapped",
+      "name": "build",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "build",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 12,
+        "path": "tests/fixtures/mode_a/run_unmapped/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Call the statically invisible function.",
+      "id": "run_unmapped::main",
+      "kind": "FUNCTION",
+      "module": "run_unmapped",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 22,
+        "line": 19,
+        "path": "tests/fixtures/mode_a/run_unmapped/__init__.py"
+      }
     }
   ],
-  "events": []
+  "expected_unmapped": [
+    {
+      "kinds": [
+        "CALL",
+        "RETURN"
+      ],
+      "reason": "compiled from a string at runtime; no static element exists",
+      "runtime_name": "generated"
+    }
+  ],
+  "main_return_value": "12",
+  "mapping_report": {
+    "mapped_events_at_least": 4,
+    "unmapped_by_reason_must_be_non_empty": true,
+    "unmapped_events_at_least": 2
+  },
+  "min_unmapped_events": 2,
+  "must_not_drop_unmapped_events": true,
+  "proves": "`generated` exists only at runtime. Its CALL and RETURN events map to no static element and must be emitted as UNMAPPED with a reason, plus a MappingReport whose unmapped_events is non-zero. Dropping them would make the trace look complete while hiding the gap.",
+  "scenario": {
+    "function": "main",
+    "module": "run_unmapped"
+  }
 }

@@ -1,39 +1,170 @@
 {
+  "branch_taken": "settle",
+  "case_id": "nar_absence",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "nar_absence",
       "kind": "MODULE",
-      "name": "nar_absence",
-      "qualname": "",
       "module": "nar_absence",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_absence/__init__.py",
-        "line": 1
-      },
+      "name": "nar_absence",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/nar_absence/__init__.py"
+      }
     },
     {
-      "id": "nar_absence::process",
-      "kind": "FUNCTION",
-      "name": "process",
-      "qualname": "process",
-      "module": "nar_absence",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_absence/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "id": "nar_absence::BLOCKED_PATH",
+      "kind": "ASSIGNMENT",
+      "module": "nar_absence",
+      "name": "BLOCKED_PATH",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "BLOCKED_PATH",
+      "span": {
+        "col": 0,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_a/nar_absence/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The branch this scenario never takes.",
+      "id": "nar_absence::escalate",
+      "kind": "FUNCTION",
+      "module": "nar_absence",
+      "name": "escalate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "escalate",
+      "signature": "(score)",
+      "span": {
+        "col": 0,
+        "end_line": 12,
+        "line": 10,
+        "path": "tests/fixtures/mode_a/nar_absence/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Route, then try to persist.",
+      "id": "nar_absence::main",
+      "kind": "FUNCTION",
+      "module": "nar_absence",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 41,
+        "line": 34,
+        "path": "tests/fixtures/mode_a/nar_absence/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Attempts a write outside the sandbox. It must be blocked.",
+      "id": "nar_absence::persist",
+      "kind": "FUNCTION",
+      "module": "nar_absence",
+      "name": "persist",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "persist",
+      "signature": "(verdict)",
+      "span": {
+        "col": 0,
+        "end_line": 31,
+        "line": 27,
+        "path": "tests/fixtures/mode_a/nar_absence/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "score is 1 in this scenario, so the escalate arm never runs.",
+      "id": "nar_absence::route",
+      "kind": "FUNCTION",
+      "module": "nar_absence",
+      "name": "route",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "route",
+      "signature": "(score)",
+      "span": {
+        "col": 0,
+        "end_line": 24,
+        "line": 20,
+        "path": "tests/fixtures/mode_a/nar_absence/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The branch this scenario always takes.",
+      "id": "nar_absence::settle",
+      "kind": "FUNCTION",
+      "module": "nar_absence",
+      "name": "settle",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "settle",
+      "signature": "(score)",
+      "span": {
+        "col": 0,
+        "end_line": 17,
+        "line": 15,
+        "path": "tests/fixtures/mode_a/nar_absence/__init__.py"
+      }
     }
   ],
-  "events": []
+  "marker_must_be_absent_after_the_run": true,
+  "marker_path": "/tmp/cascade_map_nar_absence_marker.txt",
+  "narrative_must_report_blocked": [
+    {
+      "detail_contains": "cascade_map_nar_absence_marker",
+      "kind": "filesystem_write"
+    }
+  ],
+  "narrative_must_report_skipped": [
+    {
+      "condition": "score > 100",
+      "element_id": "nar_absence::escalate",
+      "why_not_taken": "score was 1"
+    }
+  ],
+  "notes": [
+    "DecisionPoint.outcomes is the only record of the arm that did not run, and RunRecord.blocked is the only record of the write that did not happen. Neither lives on a TraceEvent, which is why card 14 takes both as parameters."
+  ],
+  "proves": "The narrative must report the branch that was skipped (`escalate`, because score was 1) and the side effect that was blocked (the write to /tmp). Both are absences: neither appears in the event stream as something that happened, and a narrative built only from events that fired would omit both.",
+  "scenario": {
+    "function": "main",
+    "module": "nar_absence"
+  }
 }

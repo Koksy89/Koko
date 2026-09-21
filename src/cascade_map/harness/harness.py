@@ -23,7 +23,7 @@ from cascade_map.contracts import BlockedAttempt, RunRecord, canonical_dumps
 from .config import RunConfig, ScenarioSpec
 from .errors import BlockedOperation, HarnessRefusal
 from .hashing import compute_graph_hash, compute_run_id, compute_target_hashes, config_fingerprint
-from .sandbox import SandboxContext, activate, register_trusted_root
+from .sandbox import SandboxContext, activate
 
 __all__ = ["Harness"]
 
@@ -44,14 +44,6 @@ class Harness:
         current_graph_hash = compute_graph_hash(target_hashes)
         run_id = compute_run_id(scenario, graph_hash, self._config_fingerprint())
         sandbox_dir = str(self.config.sandbox_root)
-
-        # Registered unconditionally, before anything else: the harness's own
-        # bookkeeping (creating this directory, writing run.json once the run
-        # is over) must never be at the mercy of whichever sandbox a *prior*
-        # run in this process left active -- see sandbox.py's module
-        # docstring for why enforcement does not clear itself automatically.
-        register_trusted_root(str(self.config.sandbox_root))
-        register_trusted_root(str(self.config.mode_b_out_dir))
 
         controls = {
             "network": False,
@@ -113,6 +105,12 @@ class Harness:
         ctx = SandboxContext(
             sandbox_root=str(self.config.sandbox_root.resolve()),
             declared_process_names=self.config.declared_process_names,
+            # The harness's own post-run bookkeeping (run.json) writes here,
+            # not into the target's sandbox -- both belong to this same run,
+            # so both are this context's own write area. See sandbox.py's
+            # module docstring for why this is scoped to the context rather
+            # than a standing, process-wide exemption.
+            extra_write_roots=(str(self.config.mode_b_out_dir.resolve()),),
         )
         if not self._selftest_audit_hook(ctx):
             return refuse(

@@ -1,39 +1,215 @@
 {
+  "case_id": "ali_coverage",
+  "coverage_counts": {
+    "elements_exercised": 3,
+    "elements_total": 5,
+    "elements_with_confirmed_intent": 2,
+    "elements_with_intent_and_exercised": 1
+  },
+  "coverage_must_not_be_a_percentage": "canonical_dumps rejects floats; report counts and let the reader divide",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "ali_coverage",
       "kind": "MODULE",
-      "name": "ali_coverage",
-      "qualname": "",
       "module": "ali_coverage",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_coverage/__init__.py",
-        "line": 1
-      },
+      "name": "ali_coverage",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/ali_coverage/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Confirmed intent; exercised.",
+      "id": "ali_coverage::alpha",
+      "kind": "FUNCTION",
+      "module": "ali_coverage",
+      "name": "alpha",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "alpha",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/ali_coverage/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Confirmed intent; never exercised.",
+      "id": "ali_coverage::beta",
+      "kind": "FUNCTION",
+      "module": "ali_coverage",
+      "name": "beta",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "beta",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/ali_coverage/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "No intent; exercised.",
+      "id": "ali_coverage::gamma",
+      "kind": "FUNCTION",
+      "module": "ali_coverage",
+      "name": "gamma",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "gamma",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_a/ali_coverage/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "No intent; never exercised.",
+      "id": "ali_coverage::delta",
+      "kind": "FUNCTION",
+      "module": "ali_coverage",
+      "name": "delta",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "delta",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 21,
+        "line": 19,
+        "path": "tests/fixtures/mode_a/ali_coverage/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Runs alpha and gamma only.",
       "id": "ali_coverage::main",
       "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
       "module": "ali_coverage",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_coverage/__init__.py",
-        "line": 2
-      },
+      "name": "main",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 26,
+        "line": 24,
+        "path": "tests/fixtures/mode_a/ali_coverage/__init__.py"
+      }
     }
   ],
-  "events": []
+  "every_element_gets_a_verdict": true,
+  "intents": [
+    {
+      "element_id": "ali_coverage::alpha",
+      "id": "@intent:ali_coverage::alpha",
+      "invariants": [
+        "returns.value == 2"
+      ],
+      "statement": "Adds one.",
+      "status": "CONFIRMED"
+    },
+    {
+      "element_id": "ali_coverage::beta",
+      "id": "@intent:ali_coverage::beta",
+      "invariants": [
+        "returns.value == 3"
+      ],
+      "statement": "Adds two.",
+      "status": "CONFIRMED"
+    }
+  ],
+  "is_extra_not_in_fixtures_md": true,
+  "proves": "Coverage is reported as counts, not a percentage: 4 elements, 2 with a confirmed intent, 2 exercised, and exactly 1 both. Every element gets a verdict, so the four Verdict values that can apply here each appear once and none is left implicit.",
+  "scenario": {
+    "function": "main",
+    "module": "ali_coverage"
+  },
+  "verdicts": [
+    {
+      "element_id": "ali_coverage::alpha",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value == 2'",
+      "id": "@verdict:ali_coverage::alpha",
+      "intent_id": "@intent:ali_coverage::alpha",
+      "observation": "observed return value 2",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "ALIGNED"
+    },
+    {
+      "element_id": "ali_coverage::beta",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value == 3'",
+      "id": "@verdict:ali_coverage::beta",
+      "intent_id": "@intent:ali_coverage::beta",
+      "observation": "no event in this run names the element",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "NOT_EXERCISED"
+    },
+    {
+      "element_id": "ali_coverage::delta",
+      "evidence_ids": [],
+      "expectation": "",
+      "id": "@verdict:ali_coverage::delta",
+      "intent_id": "",
+      "observation": "no intent is registered for this element",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "NO_INTENT"
+    },
+    {
+      "element_id": "ali_coverage::gamma",
+      "evidence_ids": [],
+      "expectation": "",
+      "id": "@verdict:ali_coverage::gamma",
+      "intent_id": "",
+      "observation": "no intent is registered for this element",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "NO_INTENT"
+    }
+  ]
 }

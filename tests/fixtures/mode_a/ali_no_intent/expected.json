@@ -1,39 +1,136 @@
 {
+  "case_id": "ali_no_intent",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "ali_no_intent",
       "kind": "MODULE",
-      "name": "ali_no_intent",
-      "qualname": "",
       "module": "ali_no_intent",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_no_intent/__init__.py",
-        "line": 1
-      },
+      "name": "ali_no_intent",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/ali_no_intent/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Has a confirmed intent.",
+      "id": "ali_no_intent::documented",
+      "kind": "FUNCTION",
+      "module": "ali_no_intent",
+      "name": "documented",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "documented",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/ali_no_intent/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "No intent exists for this element, confirmed or proposed.",
+      "id": "ali_no_intent::undocumented",
+      "kind": "FUNCTION",
+      "module": "ali_no_intent",
+      "name": "undocumented",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "undocumented",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/ali_no_intent/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Runs both.",
       "id": "ali_no_intent::main",
       "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
       "module": "ali_no_intent",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_no_intent/__init__.py",
-        "line": 2
-      },
+      "name": "main",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_a/ali_no_intent/__init__.py"
+      }
     }
   ],
-  "events": []
+  "forbidden_verdicts": {
+    "ali_no_intent::undocumented": [
+      "MISALIGNED",
+      "UNVERIFIABLE"
+    ]
+  },
+  "intents": [
+    {
+      "element_id": "ali_no_intent::documented",
+      "id": "@intent:ali_no_intent::documented",
+      "invariants": [
+        "returns.value == 4"
+      ],
+      "statement": "Doubles its argument.",
+      "status": "CONFIRMED"
+    }
+  ],
+  "proves": "`undocumented` runs and behaves fine; no intent exists for it. The verdict is NO_INTENT, not MISALIGNED and not UNVERIFIABLE. A tool that reports every undocumented element as a failure produces a report nobody reads.",
+  "scenario": {
+    "function": "main",
+    "module": "ali_no_intent"
+  },
+  "verdict_count_exact": 2,
+  "verdicts": [
+    {
+      "element_id": "ali_no_intent::documented",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value == 4'",
+      "id": "@verdict:ali_no_intent::documented",
+      "intent_id": "@intent:ali_no_intent::documented",
+      "observation": "observed return value 4",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "ALIGNED"
+    },
+    {
+      "element_id": "ali_no_intent::undocumented",
+      "evidence_ids": [],
+      "expectation": "",
+      "id": "@verdict:ali_no_intent::undocumented",
+      "intent_id": "",
+      "observation": "no intent is registered for this element",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "NO_INTENT"
+    }
+  ]
 }

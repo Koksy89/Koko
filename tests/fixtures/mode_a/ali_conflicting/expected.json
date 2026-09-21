@@ -1,39 +1,130 @@
 {
-  "elements": [
+  "case_id": "ali_conflicting",
+  "conflicting_intents_must_be_reported": [
     {
-      "id": "ali_conflicting",
-      "kind": "MODULE",
-      "name": "ali_conflicting",
-      "qualname": "",
-      "module": "ali_conflicting",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_conflicting/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "ali_conflicting::main",
-      "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
-      "module": "ali_conflicting",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_conflicting/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "element_id": "ali_conflicting::round_trip",
+      "intent_ids": [
+        "@intent:ali_conflicting::round_trip#double",
+        "@intent:ali_conflicting::round_trip#identity"
+      ],
+      "why": "no value satisfies both 'returns.value == 3' and 'returns.value == 6'; the spec is inconsistent"
     }
   ],
-  "events": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "ali_conflicting",
+      "kind": "MODULE",
+      "module": "ali_conflicting",
+      "name": "ali_conflicting",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/ali_conflicting/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "No implementation can satisfy both registered intents at once.",
+      "id": "ali_conflicting::round_trip",
+      "kind": "FUNCTION",
+      "module": "ali_conflicting",
+      "name": "round_trip",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "round_trip",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/ali_conflicting/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "round_trip(3) returns 6.",
+      "id": "ali_conflicting::main",
+      "kind": "FUNCTION",
+      "module": "ali_conflicting",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/ali_conflicting/__init__.py"
+      }
+    }
+  ],
+  "intents": [
+    {
+      "element_id": "ali_conflicting::round_trip",
+      "id": "@intent:ali_conflicting::round_trip#identity",
+      "invariants": [
+        "returns.value == 3"
+      ],
+      "statement": "Returns its argument unchanged.",
+      "status": "CONFIRMED"
+    },
+    {
+      "element_id": "ali_conflicting::round_trip",
+      "id": "@intent:ali_conflicting::round_trip#double",
+      "invariants": [
+        "returns.value == 6"
+      ],
+      "statement": "Returns twice its argument.",
+      "status": "CONFIRMED"
+    }
+  ],
+  "is_extra_not_in_fixtures_md": true,
+  "must_not_silently_pick_one": true,
+  "proves": "The registry holds two CONFIRMED intents whose invariants are mutually exclusive: the result cannot equal both the argument and twice the argument for a non-zero argument. This is a defect in the intent spec, not in the code, and must be reported as such rather than silently resolved by picking one.",
+  "scenario": {
+    "function": "main",
+    "module": "ali_conflicting"
+  },
+  "verdict_count_exact": 2,
+  "verdicts": [
+    {
+      "element_id": "ali_conflicting::round_trip",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value == 6'",
+      "id": "@verdict:ali_conflicting::round_trip#double",
+      "intent_id": "@intent:ali_conflicting::round_trip#double",
+      "observation": "observed return value 6",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "ALIGNED"
+    },
+    {
+      "element_id": "ali_conflicting::round_trip",
+      "evidence_ids": [],
+      "expectation": "invariant 'returns.value == 3'",
+      "id": "@verdict:ali_conflicting::round_trip#identity",
+      "intent_id": "@intent:ali_conflicting::round_trip#identity",
+      "observation": "observed return value 6",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "MISALIGNED"
+    }
+  ]
 }

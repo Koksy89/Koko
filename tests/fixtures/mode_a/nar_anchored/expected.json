@@ -1,39 +1,125 @@
 {
+  "case_id": "nar_anchored",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "nar_anchored",
       "kind": "MODULE",
-      "name": "nar_anchored",
-      "qualname": "",
       "module": "nar_anchored",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_anchored/__init__.py",
-        "line": 1
-      },
+      "name": "nar_anchored",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/nar_anchored/__init__.py"
+      }
     },
     {
-      "id": "nar_anchored::process",
-      "kind": "FUNCTION",
-      "name": "process",
-      "qualname": "process",
-      "module": "nar_anchored",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_anchored/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "Ingestion phase.",
+      "id": "nar_anchored::load",
+      "kind": "FUNCTION",
+      "module": "nar_anchored",
+      "name": "load",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "load",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/nar_anchored/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Feature phase.",
+      "id": "nar_anchored::featurize",
+      "kind": "FUNCTION",
+      "module": "nar_anchored",
+      "name": "featurize",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "featurize",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/nar_anchored/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Decision phase.",
+      "id": "nar_anchored::decide",
+      "kind": "FUNCTION",
+      "module": "nar_anchored",
+      "name": "decide",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "decide",
+      "signature": "(score)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_a/nar_anchored/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Three phases, in order.",
+      "id": "nar_anchored::main",
+      "kind": "FUNCTION",
+      "module": "nar_anchored",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 21,
+        "line": 19,
+        "path": "tests/fixtures/mode_a/nar_anchored/__init__.py"
+      }
     }
   ],
-  "events": []
+  "every_step_must_have_non_empty": [
+    "element_ids",
+    "event_ids"
+  ],
+  "expected_step_elements_in_order": [
+    "nar_anchored::main",
+    "nar_anchored::load",
+    "nar_anchored::featurize",
+    "nar_anchored::decide"
+  ],
+  "main_return_value": "'enter'",
+  "notes": [
+    "load returns [1, 2, 3]; featurize returns 6; 6 > 5, so decide returns 'enter'. The narrative's claims are checkable against those."
+  ],
+  "proves": "Every narrative step carries at least one element ID and at least one event ID. A step with no anchors is prose the owner cannot check against anything, and it does not ship.",
+  "scenario": {
+    "function": "main",
+    "module": "nar_anchored"
+  }
 }

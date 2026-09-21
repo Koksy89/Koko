@@ -29,20 +29,34 @@ formatting-invariant) and, failing that, is reported as changed rather than
 silently claimed unchanged (UNKNOWN confidence) -- an honest gap outranks a
 confident wrong answer, per the project's own stated principle.
 
-Known contract gaps (reported, not worked around -- see the final report)
+Ambiguous matches (`ChangeKind.AMBIGUOUS`)
+---------------------------------------------
+Rename/move candidates are grouped into connected components by tied top
+score (see `_match_renames_moves`): an edge joins a removed element to an
+added one whenever the pair is the *best* available match for either side.
+A component containing exactly one removed and one added element is a clean
+match (RENAMED/MOVED). Any other component -- one element tied against
+several, or several tied against several -- emits one `VersionChange` per
+member with `kind=AMBIGUOUS`, and **every member of the component carries the
+same `candidate_ids`: the full sorted set of every ID in the component,
+including its own**. This is deliberate, not an oversight: an earlier version
+that gave only the many-candidates side an UNKNOWN-confidence ADDED/REMOVED
+pair let the *other* side of the same tie render as a plain CERTAIN ADDED
+with no back-reference -- half the ambiguity was invisible from that end.
+Attaching the identical candidate set to every member means the doubt reads
+the same regardless of which element the owner looked up first.
+
+Known contract gap (reported, not worked around -- see the final report)
 ---------------------------------------------------------------------------
-* `ChangeKind` has no AMBIGUOUS member and `VersionChange` has no
-  `candidate_ids` field (unlike `Unresolved`). An ambiguous rename/move match
-  is therefore emitted as a plain ADDED + REMOVED pair with
-  `Confidence.UNKNOWN` and the tied candidate IDs recorded in
-  `Provenance.note` -- never resolved arbitrarily, but not distinguishable
-  from an honest add/remove by `kind` alone.
-* There is no ChangeKind for wiring-only changes (a CONFIGURES edge
-  repointed, a call edge gained/lost with no accompanying element change).
-  A config key repoint is reported via the existing element-level kinds on
-  the affected CONFIG_KEY element (SIGNATURE_CHANGED when its target value
-  changes); edge-level gains/losses feed `Impact` instead of a `VersionChange`
-  of their own.
+There is no `ChangeKind` for wiring-only changes (a CONFIGURES edge
+repointed, a call edge gained/lost with no accompanying element change). A
+config key repoint is reported via the existing element-level kinds on the
+affected CONFIG_KEY element (SIGNATURE_CHANGED when its target value
+changes); edge-level gains/losses feed `Impact` instead of a `VersionChange`
+of their own. Unlike the ambiguity gap above, this is not a false claim --
+the config key's value did change, and interpreting any `VersionChange`
+already requires looking up the element's `kind` -- so it is reported as a
+weaker request in the card's report, not re-asserted as a blocker.
 """
 
 from __future__ import annotations
@@ -418,17 +432,43 @@ def _score_pair(
     return score, kind, confidence, note
 
 
+def _find(parent: dict[str, str], x: str) -> str:
+    while parent[x] != x:
+        parent[x] = parent[parent[x]]
+        x = parent[x]
+    return x
+
+
+def _union(parent: dict[str, str], x: str, y: str) -> None:
+    rx, ry = _find(parent, x), _find(parent, y)
+    if rx != ry:
+        # union by the smaller root ID -- deterministic and symmetric under
+        # relabeling before/after, since it depends only on the IDs involved.
+        if rx < ry:
+            parent[ry] = rx
+        else:
+            parent[rx] = ry
+
+
 def _match_renames_moves(
     before_ids: Sequence[str], after_ids: Sequence[str], before: GraphSnapshot, after: GraphSnapshot
-) -> tuple[list[VersionChange], dict[str, tuple[str, ...]], dict[str, tuple[str, ...]]]:
-    """Greedy, globally-sorted bipartite match. Deterministic and symmetric:
-    the score of a pair does not depend on which side is called "before", and
-    ties are broken by the pair's IDs sorted independent of role, so diffing
-    A->B and B->A produce the same matches with before/after swapped.
+) -> tuple[list[VersionChange], set[str], set[str], set[str]]:
+    """Match removed elements to added ones on body structure, signature and
+    call-neighbourhood, grouped into connected components by tied top score:
+    an edge joins a removed element to an added one whenever the pair is the
+    best available match for *either* side. Deterministic and symmetric --
+    the score of a pair and the union-find tie-break both depend only on the
+    IDs involved, never on which snapshot is called "before" -- so diffing
+    A->B and B->A produce the same components with roles swapped.
 
-    Returns (changes, ambiguous_before, ambiguous_after) where the latter two
-    map an unmatched element ID to the tied candidate IDs on the other side
-    -- an ambiguous match reported as ambiguous, never resolved arbitrarily.
+    A component with exactly one removed and one added element is a clean
+    match (RENAMED/MOVED). Any other component is ambiguous: every member
+    gets its own AMBIGUOUS `VersionChange`, and all of them carry the same
+    `candidate_ids` -- the full sorted component -- so the doubt is visible
+    from every element in the tie, not just the many-candidates side. See the
+    module docstring.
+
+    Returns (changes, matched_before, matched_after, ambiguous_ids).
     """
     before_elems = before.elements_by_id()
     after_elems = after.elements_by_id()
@@ -448,55 +488,76 @@ def _match_renames_moves(
             score, kind, confidence, note = scored
             candidates.append((b_id, a_id, score, kind, confidence, note))
 
-    candidates.sort(key=lambda c: (-c[2], min(c[0], c[1]), max(c[0], c[1])))
-
-    by_before: dict[str, list] = defaultdict(list)
-    by_after: dict[str, list] = defaultdict(list)
-    for cand in candidates:
-        by_before[cand[0]].append(cand)
-        by_after[cand[1]].append(cand)
-
-    used_before: set[str] = set()
-    used_after: set[str] = set()
     changes: list[VersionChange] = []
-    ambiguous_before: dict[str, tuple[str, ...]] = {}
-    ambiguous_after: dict[str, tuple[str, ...]] = {}
+    matched_before: set[str] = set()
+    matched_after: set[str] = set()
+    ambiguous_ids: set[str] = set()
 
+    if not candidates:
+        return changes, matched_before, matched_after, ambiguous_ids
+
+    best_for_before: dict[str, int] = {}
+    best_for_after: dict[str, int] = {}
+    for b_id, a_id, score, *_ in candidates:
+        best_for_before[b_id] = max(best_for_before.get(b_id, score), score)
+        best_for_after[a_id] = max(best_for_after.get(a_id, score), score)
+
+    parent: dict[str, str] = {}
+    for b_id, a_id, *_ in candidates:
+        parent.setdefault(b_id, b_id)
+        parent.setdefault(a_id, a_id)
+
+    top_edges: list[tuple[str, str, int, ChangeKind, Confidence, str]] = []
     for cand in candidates:
-        b_id, a_id, score, kind, confidence, note = cand
-        if b_id in used_before or b_id in ambiguous_before:
-            continue
-        if a_id in used_after or a_id in ambiguous_after:
-            continue
+        b_id, a_id, score, *_ = cand
+        if score == best_for_before[b_id] or score == best_for_after[a_id]:
+            _union(parent, b_id, a_id)
+            top_edges.append(cand)
 
-        rivals_for_b = [c for c in by_before[b_id] if c[1] not in used_after]
-        top_for_b = max(c[2] for c in rivals_for_b)
-        tied_a_ids = sorted({c[1] for c in rivals_for_b if c[2] == top_for_b})
+    components: dict[str, set[str]] = defaultdict(set)
+    for b_id, a_id, *_ in top_edges:
+        components[_find(parent, b_id)].add(b_id)
+        components[_find(parent, a_id)].add(a_id)
 
-        rivals_for_a = [c for c in by_after[a_id] if c[0] not in used_before]
-        top_for_a = max(c[2] for c in rivals_for_a)
-        tied_b_ids = sorted({c[0] for c in rivals_for_a if c[2] == top_for_a})
+    for root in sorted(components):
+        members = components[root]
+        b_members = sorted(m for m in members if m in before_elems)
+        a_members = sorted(m for m in members if m in after_elems)
 
-        if len(tied_a_ids) > 1 or len(tied_b_ids) > 1:
-            if len(tied_a_ids) > 1:
-                ambiguous_before[b_id] = tuple(tied_a_ids)
-            if len(tied_b_ids) > 1:
-                ambiguous_after[a_id] = tuple(tied_b_ids)
-            continue
-
-        used_before.add(b_id)
-        used_after.add(a_id)
-        changes.append(
-            VersionChange(
-                id=_change_id(kind, b_id, a_id),
-                kind=kind,
-                before_id=b_id,
-                after_id=a_id,
-                provenance=Provenance(method=Method.STRUCTURAL_MATCH, confidence=confidence, note=note),
+        if len(b_members) == 1 and len(a_members) == 1:
+            b_id, a_id = b_members[0], a_members[0]
+            match = next(c for c in top_edges if c[0] == b_id and c[1] == a_id)
+            _, _, _score, kind, confidence, note = match
+            changes.append(
+                VersionChange(
+                    id=_change_id(kind, b_id, a_id),
+                    kind=kind,
+                    before_id=b_id,
+                    after_id=a_id,
+                    provenance=Provenance(method=Method.STRUCTURAL_MATCH, confidence=confidence, note=note),
+                )
             )
-        )
+            matched_before.add(b_id)
+            matched_after.add(a_id)
+            continue
 
-    return changes, ambiguous_before, ambiguous_after
+        candidate_ids = tuple(sorted(members))
+        note = f"ambiguous structural match: tied candidates {list(candidate_ids)}"
+        for m in candidate_ids:
+            ambiguous_ids.add(m)
+            is_before = m in before_elems
+            changes.append(
+                VersionChange(
+                    id=_change_id(ChangeKind.AMBIGUOUS, m if is_before else "", "" if is_before else m),
+                    kind=ChangeKind.AMBIGUOUS,
+                    before_id=m if is_before else "",
+                    after_id="" if is_before else m,
+                    provenance=Provenance(method=Method.STRUCTURAL_MATCH, confidence=Confidence.UNKNOWN, note=note),
+                    candidate_ids=candidate_ids,
+                )
+            )
+
+    return changes, matched_before, matched_after, ambiguous_ids
 
 
 # ---------------------------------------------------------------------------
@@ -525,59 +586,37 @@ def _diff_elements(
         changes.append(vc)
         match_map[eid] = eid
 
-    renamed_moved, ambiguous_before, ambiguous_after = _match_renames_moves(
+    renamed_moved, matched_before, matched_after, ambiguous_ids = _match_renames_moves(
         only_before, only_after, before, after
     )
     changes.extend(renamed_moved)
     for vc in renamed_moved:
-        match_map[vc.before_id] = vc.after_id
-
-    matched_before = {vc.before_id for vc in renamed_moved}
-    matched_after = {vc.after_id for vc in renamed_moved}
+        if vc.kind in (ChangeKind.RENAMED, ChangeKind.MOVED):
+            match_map[vc.before_id] = vc.after_id
 
     for eid in only_before:
-        if eid in matched_before:
+        if eid in matched_before or eid in ambiguous_ids:
             continue
-        if eid in ambiguous_before:
-            candidates = ambiguous_before[eid]
-            note = (
-                "ambiguous match: tied candidates in after-version "
-                f"{list(candidates)}; not resolved, reported as REMOVED"
-            )
-            confidence = Confidence.UNKNOWN
-        else:
-            note = ""
-            confidence = Confidence.CERTAIN
         changes.append(
             VersionChange(
                 id=_change_id(ChangeKind.REMOVED, eid, ""),
                 kind=ChangeKind.REMOVED,
                 before_id=eid,
                 after_id="",
-                provenance=Provenance(method=Method.AST_DIRECT, confidence=confidence, note=note),
+                provenance=Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN),
             )
         )
 
     for eid in only_after:
-        if eid in matched_after:
+        if eid in matched_after or eid in ambiguous_ids:
             continue
-        if eid in ambiguous_after:
-            candidates = ambiguous_after[eid]
-            note = (
-                "ambiguous match: tied candidates in before-version "
-                f"{list(candidates)}; not resolved, reported as ADDED"
-            )
-            confidence = Confidence.UNKNOWN
-        else:
-            note = ""
-            confidence = Confidence.CERTAIN
         changes.append(
             VersionChange(
                 id=_change_id(ChangeKind.ADDED, "", eid),
                 kind=ChangeKind.ADDED,
                 before_id="",
                 after_id=eid,
-                provenance=Provenance(method=Method.AST_DIRECT, confidence=confidence, note=note),
+                provenance=Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN),
             )
         )
 

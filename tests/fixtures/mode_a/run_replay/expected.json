@@ -1,39 +1,73 @@
 {
+  "case_id": "run_replay",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "run_replay",
       "kind": "MODULE",
-      "name": "run_replay",
-      "qualname": "",
       "module": "run_replay",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_replay/__init__.py",
-        "line": 1
-      },
+      "name": "run_replay",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/run_replay/__init__.py"
+      }
     },
     {
-      "id": "run_replay::func",
-      "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
-      "module": "run_replay",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_replay/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "Pure function of its argument.",
+      "id": "run_replay::tally",
+      "kind": "FUNCTION",
+      "module": "run_replay",
+      "name": "tally",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "tally",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/run_replay/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "No clock, no RNG, no I/O, no environment.",
+      "id": "run_replay::main",
+      "kind": "FUNCTION",
+      "module": "run_replay",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 14,
+        "line": 12,
+        "path": "tests/fixtures/mode_a/run_replay/__init__.py"
+      }
     }
   ],
-  "events": []
+  "loop_iterations": 4,
+  "main_return_value": "10",
+  "nondeterminism_count_exact": 0,
+  "proves": "Nothing here reads the clock, the RNG, the environment or the filesystem, so recording the run and replaying it must produce a byte-identical trace. Any difference between the two is a defect in the tracer, not in the target.",
+  "replay_must_be_byte_identical": true,
+  "scenario": {
+    "function": "main",
+    "module": "run_replay"
+  }
 }

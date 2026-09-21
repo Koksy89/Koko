@@ -39,6 +39,7 @@ REPO_ROOT = FIXTURES_ROOT.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from cascade_map.contracts.interfaces import (  # noqa: E402
+    CaptureStatus,
     ChangeKind,
     Confidence,
     EdgeKind,
@@ -66,7 +67,9 @@ ENUM_FIELDS: dict[str, Any] = {
     "method": Method,
     "confidence": Confidence,
     "state": ReachabilityState,
-    "status": IntentStatus,
+    # `status` is an IntentStatus on Intent and a CaptureStatus on ValueCapture;
+    # a value that is a member of either is valid.
+    "status": (IntentStatus, CaptureStatus),
     "verdict": Verdict,
     "candidate_confidence": Confidence,
 }
@@ -239,6 +242,14 @@ def check_case(case_dir: Path) -> tuple[int, list[str]]:
     return checked, problems
 
 
+def _is_member(enum: Any, value: str) -> bool:
+    try:
+        enum(value)
+    except ValueError:
+        return False
+    return True
+
+
 def audit_case(case_dir: Path) -> list[str]:
     """Checks the generator has no opinion about: ids, enums, sorting, floats."""
     expected_file = case_dir / "expected.json"
@@ -292,12 +303,10 @@ def audit_case(case_dir: Path) -> list[str]:
             for key, value in node.items():
                 enum = ENUM_FIELDS.get(key)
                 if enum is not None and isinstance(value, str):
-                    try:
-                        enum(value)
-                    except ValueError:
-                        problems.append(
-                            f"{rel}{where}/{key}: {value!r} is not a {enum.__name__}"
-                        )
+                    options = enum if isinstance(enum, tuple) else (enum,)
+                    if not any(_is_member(option, value) for option in options):
+                        names = "/".join(option.__name__ for option in options)
+                        problems.append(f"{rel}{where}/{key}: {value!r} is not a {names}")
                 walk_enums(value, f"{where}/{key}")
         elif isinstance(node, list):
             for index, value in enumerate(node):

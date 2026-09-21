@@ -1,39 +1,107 @@
 {
+  "case_id": "run_exception",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "run_exception",
       "kind": "MODULE",
-      "name": "run_exception",
-      "qualname": "",
       "module": "run_exception",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_exception/__init__.py",
-        "line": 1
-      },
+      "name": "run_exception",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/run_exception/__init__.py"
+      }
     },
     {
-      "id": "run_exception::func",
-      "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
-      "module": "run_exception",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_exception/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "Raises for negative input.",
+      "id": "run_exception::risky",
+      "kind": "FUNCTION",
+      "module": "run_exception",
+      "name": "risky",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "risky",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/run_exception/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Swallows the ValueError and returns a default.",
+      "id": "run_exception::guarded",
+      "kind": "FUNCTION",
+      "module": "run_exception",
+      "name": "guarded",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "guarded",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 11,
+        "path": "tests/fixtures/mode_a/run_exception/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "One swallowed exception, then one clean call.",
+      "id": "run_exception::main",
+      "kind": "FUNCTION",
+      "module": "run_exception",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 21,
+        "line": 19,
+        "path": "tests/fixtures/mode_a/run_exception/__init__.py"
+      }
     }
   ],
-  "events": []
+  "exception_event_count_exact": 1,
+  "expected_exceptions": [
+    {
+      "element_id": "run_exception::risky",
+      "escaped_the_run": false,
+      "message": "negative input",
+      "swallowed_by": "run_exception::guarded",
+      "type_name": "ValueError"
+    }
+  ],
+  "notes": [
+    "The run itself completes normally. An exception count of zero here means the tracer only sees exceptions that escape, which is the less useful half."
+  ],
+  "proves": "guarded(-1) raises ValueError inside risky and the handler swallows it. The exception must still be recorded: a swallowed exception is invisible in the return value and is exactly the thing an owner cannot see any other way. guarded(7) raises nothing.",
+  "returns_in_order": [
+    "0",
+    "7"
+  ],
+  "scenario": {
+    "function": "main",
+    "module": "run_exception"
+  }
 }

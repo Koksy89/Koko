@@ -1,39 +1,149 @@
 {
+  "captures_of_nondeterministic_values": {
+    "reason_must_name_the_nondeterminism": true,
+    "status": "SUMMARIZED",
+    "why": "writing the raw clock or RNG value into events.jsonl would break constraint 4 for every downstream comparison"
+  },
+  "case_id": "run_nondeterministic",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "run_nondeterministic",
       "kind": "MODULE",
-      "name": "run_nondeterministic",
-      "qualname": "",
       "module": "run_nondeterministic",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_nondeterministic/__init__.py",
-        "line": 1
-      },
+      "name": "run_nondeterministic",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/run_nondeterministic/__init__.py"
+      }
     },
     {
-      "id": "run_nondeterministic::func",
-      "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
-      "module": "run_nondeterministic",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_nondeterministic/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "id": "run_nondeterministic::random",
+      "kind": "IMPORT",
+      "module": "run_nondeterministic",
+      "name": "random",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "random",
+      "signature": "import random",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_a/run_nondeterministic/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "run_nondeterministic::time",
+      "kind": "IMPORT",
+      "module": "run_nondeterministic",
+      "name": "time",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "time",
+      "signature": "import time",
+      "span": {
+        "col": 0,
+        "end_line": 4,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/run_nondeterministic/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Reads the RNG: a different answer on every run.",
+      "id": "run_nondeterministic::jitter",
+      "kind": "FUNCTION",
+      "module": "run_nondeterministic",
+      "name": "jitter",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "jitter",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 14,
+        "line": 12,
+        "path": "tests/fixtures/mode_a/run_nondeterministic/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Two sources of nondeterminism, in a fixed order.",
+      "id": "run_nondeterministic::main",
+      "kind": "FUNCTION",
+      "module": "run_nondeterministic",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 19,
+        "line": 17,
+        "path": "tests/fixtures/mode_a/run_nondeterministic/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Reads the wall clock: a different answer on every run.",
+      "id": "run_nondeterministic::stamp",
+      "kind": "FUNCTION",
+      "module": "run_nondeterministic",
+      "name": "stamp",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "stamp",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 7,
+        "path": "tests/fixtures/mode_a/run_nondeterministic/__init__.py"
+      }
     }
   ],
-  "events": []
+  "nondeterminism": [
+    {
+      "detail": "time.time() is read and returned; the value differs on every run",
+      "element_id": "run_nondeterministic::stamp",
+      "kind": "clock"
+    },
+    {
+      "detail": "random.random() is read and returned; the value differs on every run",
+      "element_id": "run_nondeterministic::jitter",
+      "kind": "randomness"
+    }
+  ],
+  "nondeterminism_count_exact": 2,
+  "proves": "The *target* is nondeterministic: stamp reads the clock and jitter reads the RNG. Both must be recorded as observed nondeterminism with the element that caused them. The *tool's* output stays byte-identical across runs, which means these two values are never written verbatim into an artifact.",
+  "scenario": {
+    "function": "main",
+    "module": "run_nondeterministic"
+  },
+  "tool_output_must_be_byte_identical_across_runs": true
 }

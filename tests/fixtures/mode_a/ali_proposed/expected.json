@@ -1,39 +1,112 @@
 {
+  "case_id": "ali_proposed",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "ali_proposed",
       "kind": "MODULE",
-      "name": "ali_proposed",
-      "qualname": "",
       "module": "ali_proposed",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_proposed/__init__.py",
-        "line": 1
-      },
+      "name": "ali_proposed",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/ali_proposed/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Lowercases the text and strips surrounding whitespace.",
+      "id": "ali_proposed::normalise",
+      "kind": "FUNCTION",
+      "module": "ali_proposed",
+      "name": "normalise",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "normalise",
+      "signature": "(text)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/ali_proposed/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "normalise('  ABC  ') returns 'abc'.",
       "id": "ali_proposed::main",
       "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
       "module": "ali_proposed",
-      "span": {
-        "path": "tests/fixtures/mode_a/ali_proposed/__init__.py",
-        "line": 2
-      },
+      "name": "main",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/ali_proposed/__init__.py"
+      }
     }
   ],
-  "events": []
+  "forbidden_verdicts": {
+    "ali_proposed::normalise": [
+      "ALIGNED",
+      "MISALIGNED"
+    ]
+  },
+  "intents": [
+    {
+      "element_id": "ali_proposed::normalise",
+      "id": "@intent:ali_proposed::normalise",
+      "invariants": [
+        "returns.value == 'abc'"
+      ],
+      "provenance": {
+        "confidence": "HEURISTIC",
+        "method": "AST_DIRECT",
+        "note": "derived from the element's own docstring"
+      },
+      "statement": "Lowercases the text and strips surrounding whitespace.",
+      "status": "PROPOSED"
+    }
+  ],
+  "is_extra_not_in_fixtures_md": true,
+  "model_written_text_must_be_labelled": true,
+  "notes": [
+    "Matching observation does not promote a PROPOSED intent. The point of the status is that nobody has agreed the statement is what the element is *for*."
+  ],
+  "proves": "An intent proposed from the docstring carries status PROPOSED and provenance naming where it came from. When a model writes it, method is MODEL_PROPOSED and model_id is set. It is offered to the owner for confirmation and grounds nothing until they confirm it.",
+  "scenario": {
+    "function": "main",
+    "module": "ali_proposed"
+  },
+  "verdict_count_exact": 1,
+  "verdicts": [
+    {
+      "element_id": "ali_proposed::normalise",
+      "evidence_ids": [],
+      "expectation": "invariant \"returns.value == 'abc'\" (PROPOSED, not binding)",
+      "id": "@verdict:ali_proposed::normalise",
+      "intent_id": "@intent:ali_proposed::normalise",
+      "observation": "observed return value 'abc', which matches -- but a PROPOSED intent cannot ground ALIGNED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "RUNTIME_OBSERVED"
+      },
+      "verdict": "UNVERIFIABLE"
+    }
+  ]
 }

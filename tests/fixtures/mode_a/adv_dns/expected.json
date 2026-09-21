@@ -1,22 +1,153 @@
 {
-  "elements": [
+  "blocked_attempts_required": [
     {
-      "id": "adv_dns",
-      "kind": "MODULE",
-      "name": "adv_dns",
-      "qualname": "",
-      "module": "adv_dns",
-      "span": {
-        "path": "tests/fixtures/mode_a/adv_dns/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "detail_contains": "example.com",
+      "kind": "network"
+    },
+    {
+      "detail_contains": "example.com",
+      "kind": "network"
+    },
+    {
+      "detail_contains": "93.184.216.34",
+      "kind": "network"
     }
   ],
-  "events": []
+  "case_id": "adv_dns",
+  "controls_active_required": {
+    "network": true
+  },
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_dns",
+      "kind": "MODULE",
+      "module": "adv_dns",
+      "name": "adv_dns",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/adv_dns/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_dns::MARKER_PATH",
+      "kind": "ASSIGNMENT",
+      "module": "adv_dns",
+      "name": "MARKER_PATH",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "MARKER_PATH",
+      "span": {
+        "col": 0,
+        "end_line": 10,
+        "line": 10,
+        "path": "tests/fixtures/mode_a/adv_dns/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The modern route, which the stdlib itself uses.",
+      "id": "adv_dns::getaddrinfo",
+      "kind": "FUNCTION",
+      "module": "adv_dns",
+      "name": "getaddrinfo",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "getaddrinfo",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 20,
+        "line": 18,
+        "path": "tests/fixtures/mode_a/adv_dns/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The oldest route.",
+      "id": "adv_dns::gethostbyname",
+      "kind": "FUNCTION",
+      "module": "adv_dns",
+      "name": "gethostbyname",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "gethostbyname",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 15,
+        "line": 13,
+        "path": "tests/fixtures/mode_a/adv_dns/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Three lookups. None may reach a resolver.",
+      "id": "adv_dns::main",
+      "kind": "FUNCTION",
+      "module": "adv_dns",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 43,
+        "line": 28,
+        "path": "tests/fixtures/mode_a/adv_dns/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Reverse resolution is still resolution.",
+      "id": "adv_dns::reverse_lookup",
+      "kind": "FUNCTION",
+      "module": "adv_dns",
+      "name": "reverse_lookup",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "reverse_lookup",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 25,
+        "line": 23,
+        "path": "tests/fixtures/mode_a/adv_dns/__init__.py"
+      }
+    }
+  ],
+  "marker_must_be_absent_after_the_run": true,
+  "marker_path": "/tmp/cascade_map_adv_dns_marker.txt",
+  "min_blocked_of_kind": {
+    "network": 3
+  },
+  "proves": "gethostbyname, getaddrinfo and gethostbyaddr are each blocked and recorded. A lookup that is allowed 'because nothing connects afterwards' still tells an external resolver the run happened.",
+  "run_must_not_refuse": true,
+  "scenario": {
+    "function": "main",
+    "module": "adv_dns"
+  }
 }

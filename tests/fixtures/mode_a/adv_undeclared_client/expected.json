@@ -1,22 +1,196 @@
 {
-  "elements": [
+  "blocked_attempts_required": [
     {
-      "id": "adv_undeclared_client",
-      "kind": "MODULE",
-      "name": "adv_undeclared_client",
-      "qualname": "",
-      "module": "adv_undeclared_client",
-      "span": {
-        "path": "tests/fixtures/mode_a/adv_undeclared_client/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "detail_contains": "BrokerClient",
+      "kind": "external_clients"
+    },
+    {
+      "detail_contains": "CASCADE_MAP_ADV_ENV",
+      "kind": "environment"
     }
   ],
-  "events": []
+  "case_id": "adv_undeclared_client",
+  "declared_external_clients": [],
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_undeclared_client",
+      "kind": "MODULE",
+      "module": "adv_undeclared_client",
+      "name": "adv_undeclared_client",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/adv_undeclared_client/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "An undeclared external system.",
+      "id": "adv_undeclared_client::BrokerClient",
+      "kind": "CLASS",
+      "module": "adv_undeclared_client",
+      "name": "BrokerClient",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "BrokerClient",
+      "span": {
+        "col": 0,
+        "end_line": 25,
+        "line": 16,
+        "path": "tests/fixtures/mode_a/adv_undeclared_client/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_undeclared_client::BrokerClient.endpoint",
+      "kind": "ASSIGNMENT",
+      "module": "adv_undeclared_client",
+      "name": "endpoint",
+      "parent_id": "adv_undeclared_client::BrokerClient",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "BrokerClient.endpoint",
+      "span": {
+        "col": 4,
+        "end_line": 19,
+        "line": 19,
+        "path": "tests/fixtures/mode_a/adv_undeclared_client/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Would place a real order.",
+      "id": "adv_undeclared_client::BrokerClient.submit_order",
+      "kind": "METHOD",
+      "module": "adv_undeclared_client",
+      "name": "submit_order",
+      "parent_id": "adv_undeclared_client::BrokerClient",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "BrokerClient.submit_order",
+      "signature": "(self, symbol, quantity)",
+      "span": {
+        "col": 4,
+        "end_line": 25,
+        "line": 21,
+        "path": "tests/fixtures/mode_a/adv_undeclared_client/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_undeclared_client::MARKER_PATH",
+      "kind": "ASSIGNMENT",
+      "module": "adv_undeclared_client",
+      "name": "MARKER_PATH",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "MARKER_PATH",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 13,
+        "path": "tests/fixtures/mode_a/adv_undeclared_client/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Changing the ambient environment is a side effect too.",
+      "id": "adv_undeclared_client::environment_mutation",
+      "kind": "FUNCTION",
+      "module": "adv_undeclared_client",
+      "name": "environment_mutation",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "environment_mutation",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 31,
+        "line": 28,
+        "path": "tests/fixtures/mode_a/adv_undeclared_client/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Touch the undeclared client, then mutate the environment.",
+      "id": "adv_undeclared_client::main",
+      "kind": "FUNCTION",
+      "module": "adv_undeclared_client",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 38,
+        "line": 34,
+        "path": "tests/fixtures/mode_a/adv_undeclared_client/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_undeclared_client::os",
+      "kind": "IMPORT",
+      "module": "adv_undeclared_client",
+      "name": "os",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "os",
+      "signature": "import os",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 11,
+        "path": "tests/fixtures/mode_a/adv_undeclared_client/__init__.py"
+      }
+    }
+  ],
+  "environment_must_be_unchanged_after_the_run": [
+    "CASCADE_MAP_ADV_ENV"
+  ],
+  "forbidden_outcomes": [
+    "pass_through: the call reaches the real endpoint",
+    "silent_no_op: the call returns a fabricated success the trace records"
+  ],
+  "marker_must_be_absent_after_the_run": true,
+  "marker_path": "/tmp/cascade_map_adv_undeclared_client_marker.txt",
+  "proves": "BrokerClient is an external system with no declared stub or replay. Reaching it is a hard stop: the run ends with a refusal naming the guarantee that could not be made. A pass-through is wrong because the order might leave; a silent no-op is worse, because the trace would then record a submitted order that never existed. The environment mutation on the next line must also be blocked and recorded.",
+  "refusal_reason_must_name": [
+    "external",
+    "BrokerClient"
+  ],
+  "required_outcome": "hard_stop",
+  "run_must_refuse_or_abort": true,
+  "scenario": {
+    "function": "main",
+    "module": "adv_undeclared_client"
+  }
 }

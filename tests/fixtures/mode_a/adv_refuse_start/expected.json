@@ -1,22 +1,85 @@
 {
+  "case_id": "adv_refuse_start",
+  "controls_to_disable_one_at_a_time": [
+    "network",
+    "filesystem",
+    "process",
+    "environment",
+    "external_clients"
+  ],
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "adv_refuse_start",
       "kind": "MODULE",
-      "name": "adv_refuse_start",
-      "qualname": "",
       "module": "adv_refuse_start",
-      "span": {
-        "path": "tests/fixtures/mode_a/adv_refuse_start/__init__.py",
-        "line": 1
-      },
+      "name": "adv_refuse_start",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/adv_refuse_start/__init__.py"
+      }
+    },
+    {
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "id": "adv_refuse_start::MARKER_PATH",
+      "kind": "ASSIGNMENT",
+      "module": "adv_refuse_start",
+      "name": "MARKER_PATH",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "MARKER_PATH",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/adv_refuse_start/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "If this ever executes, the harness started when it should not have.",
+      "id": "adv_refuse_start::main",
+      "kind": "FUNCTION",
+      "module": "adv_refuse_start",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 12,
+        "path": "tests/fixtures/mode_a/adv_refuse_start/__init__.py"
+      }
     }
   ],
-  "events": []
+  "event_count_exact": 0,
+  "marker_must_be_absent_after_the_run": true,
+  "marker_path": "/tmp/cascade_map_adv_refuse_start_marker.txt",
+  "must_not_exist": [
+    "a flag, option or environment variable that overrides the refusal"
+  ],
+  "proves": "With any one control unavailable, the run refuses to start: RunRecord.refused is true, refusal_reason names the guarantee that could not be made, and no trace events exist. There is no force option and a refusal is a correct outcome, not a warning to proceed past. The marker distinguishes 'refused' from 'started and did nothing' -- the second would be a control failure dressed as a pass.",
+  "required_run_record": {
+    "refusal_reason_must_be_non_empty": true,
+    "refusal_reason_must_name_the_control": true,
+    "refused": true
+  },
+  "scenario": {
+    "function": "main",
+    "module": "adv_refuse_start"
+  }
 }

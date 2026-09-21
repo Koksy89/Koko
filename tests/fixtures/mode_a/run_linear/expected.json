@@ -1,149 +1,169 @@
 {
+  "case_id": "run_linear",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "run_linear",
       "kind": "MODULE",
-      "name": "run_linear",
-      "qualname": "",
       "module": "run_linear",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_linear/__init__.py",
-        "line": 1
-      },
+      "name": "run_linear",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/run_linear/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "First step.",
       "id": "run_linear::step_one",
       "kind": "FUNCTION",
-      "name": "step_one",
-      "qualname": "step_one",
       "module": "run_linear",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_linear/__init__.py",
-        "line": 4
-      },
+      "name": "step_one",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "step_one",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/run_linear/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Second step.",
       "id": "run_linear::step_two",
       "kind": "FUNCTION",
-      "name": "step_two",
-      "qualname": "step_two",
       "module": "run_linear",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_linear/__init__.py",
-        "line": 9
-      },
+      "name": "step_two",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "step_two",
+      "signature": "(x)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/run_linear/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Main entry - linear flow.",
       "id": "run_linear::main",
       "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
       "module": "run_linear",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_linear/__init__.py",
-        "line": 14
-      },
+      "name": "main",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 18,
+        "line": 14,
+        "path": "tests/fixtures/mode_a/run_linear/__init__.py"
+      }
     }
   ],
   "events": [
     {
-      "event_id": "evt_1",
-      "run_id": "run_001",
-      "kind": "CALL",
-      "element_id": "run_linear::main",
-      "sequence": 1,
-      "depth": 0,
-      "caller_event_id": ""
-    },
-    {
-      "event_id": "evt_2",
-      "run_id": "run_001",
-      "kind": "CALL",
-      "element_id": "run_linear::step_one",
-      "sequence": 2,
-      "depth": 1,
-      "caller_event_id": "evt_1"
-    },
-    {
-      "event_id": "evt_3",
-      "run_id": "run_001",
-      "kind": "RETURN",
-      "element_id": "run_linear::step_one",
-      "sequence": 3,
-      "depth": 1,
-      "caller_event_id": "evt_1",
-      "values": {
-        "return_value": {
-          "status": "FULL",
-          "repr_text": "1",
-          "type_name": "int"
-        }
-      }
-    },
-    {
-      "event_id": "evt_4",
-      "run_id": "run_001",
-      "kind": "CALL",
-      "element_id": "run_linear::step_two",
-      "sequence": 4,
-      "depth": 1,
-      "caller_event_id": "evt_1"
-    },
-    {
-      "event_id": "evt_5",
-      "run_id": "run_001",
-      "kind": "RETURN",
-      "element_id": "run_linear::step_two",
-      "sequence": 5,
-      "depth": 1,
-      "caller_event_id": "evt_1",
-      "values": {
-        "return_value": {
-          "status": "FULL",
-          "repr_text": "3",
-          "type_name": "int"
-        }
-      }
-    },
-    {
-      "event_id": "evt_6",
-      "run_id": "run_001",
-      "kind": "RETURN",
-      "element_id": "run_linear::main",
-      "sequence": 6,
-      "depth": 0,
       "caller_event_id": "",
+      "depth": 0,
+      "element_id": "run_linear::main",
+      "event_id": "evt_1",
+      "kind": "CALL",
+      "run_id": "run_001",
+      "sequence": 1
+    },
+    {
+      "caller_event_id": "evt_1",
+      "depth": 1,
+      "element_id": "run_linear::step_one",
+      "event_id": "evt_2",
+      "kind": "CALL",
+      "run_id": "run_001",
+      "sequence": 2
+    },
+    {
+      "caller_event_id": "evt_1",
+      "depth": 1,
+      "element_id": "run_linear::step_one",
+      "event_id": "evt_3",
+      "kind": "RETURN",
+      "run_id": "run_001",
+      "sequence": 3,
       "values": {
         "return_value": {
+          "repr_text": "1",
           "status": "FULL",
+          "type_name": "int"
+        }
+      }
+    },
+    {
+      "caller_event_id": "evt_1",
+      "depth": 1,
+      "element_id": "run_linear::step_two",
+      "event_id": "evt_4",
+      "kind": "CALL",
+      "run_id": "run_001",
+      "sequence": 4
+    },
+    {
+      "caller_event_id": "evt_1",
+      "depth": 1,
+      "element_id": "run_linear::step_two",
+      "event_id": "evt_5",
+      "kind": "RETURN",
+      "run_id": "run_001",
+      "sequence": 5,
+      "values": {
+        "return_value": {
           "repr_text": "3",
+          "status": "FULL",
+          "type_name": "int"
+        }
+      }
+    },
+    {
+      "caller_event_id": "",
+      "depth": 0,
+      "element_id": "run_linear::main",
+      "event_id": "evt_6",
+      "kind": "RETURN",
+      "run_id": "run_001",
+      "sequence": 6,
+      "values": {
+        "return_value": {
+          "repr_text": "3",
+          "status": "FULL",
           "type_name": "int"
         }
       }
     }
-  ]
+  ],
+  "every_event_maps_to_a_static_id": true,
+  "proves": "Execution order is known by construction -- main, step_one, step_two -- and every event maps to a static element ID. step_one returns 1 and step_two returns 3; both are fixed by the source, not by a recording.",
+  "scenario": {
+    "function": "main",
+    "module": "run_linear"
+  },
+  "unmapped_events_expected": 0
 }

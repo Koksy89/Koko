@@ -1,39 +1,148 @@
 {
+  "case_id": "nar_summary_report",
+  "checkable_claims": [
+    "ingest returned [2, 4, 6]",
+    "clean returned [4, 6]",
+    "featurize returned {'total': 10, 'count': 2}",
+    "decide returned 'enter' because 10 > 8"
+  ],
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "nar_summary_report",
       "kind": "MODULE",
-      "name": "nar_summary_report",
-      "qualname": "",
       "module": "nar_summary_report",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_summary_report/__init__.py",
-        "line": 1
-      },
+      "name": "nar_summary_report",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/nar_summary_report/__init__.py"
+      }
     },
     {
-      "id": "nar_summary_report::process",
-      "kind": "FUNCTION",
-      "name": "process",
-      "qualname": "process",
-      "module": "nar_summary_report",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_summary_report/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "Stage 1.",
+      "id": "nar_summary_report::ingest",
+      "kind": "FUNCTION",
+      "module": "nar_summary_report",
+      "name": "ingest",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ingest",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/nar_summary_report/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Stage 2.",
+      "id": "nar_summary_report::clean",
+      "kind": "FUNCTION",
+      "module": "nar_summary_report",
+      "name": "clean",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "clean",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/nar_summary_report/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Stage 3.",
+      "id": "nar_summary_report::featurize",
+      "kind": "FUNCTION",
+      "module": "nar_summary_report",
+      "name": "featurize",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "featurize",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_a/nar_summary_report/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Stage 4: the decision.",
+      "id": "nar_summary_report::decide",
+      "kind": "FUNCTION",
+      "module": "nar_summary_report",
+      "name": "decide",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "decide",
+      "signature": "(features)",
+      "span": {
+        "col": 0,
+        "end_line": 21,
+        "line": 19,
+        "path": "tests/fixtures/mode_a/nar_summary_report/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "clean drops the 2; total is 10; 10 > 8, so the answer is 'enter'.",
+      "id": "nar_summary_report::main",
+      "kind": "FUNCTION",
+      "module": "nar_summary_report",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 26,
+        "line": 24,
+        "path": "tests/fixtures/mode_a/nar_summary_report/__init__.py"
+      }
     }
   ],
-  "events": []
+  "every_claim_must_carry_event_ids": true,
+  "is_extra_not_in_fixtures_md": true,
+  "main_return_value": "'enter'",
+  "proves": "The summary states the four stages in order, the final decision, and the values that produced it -- all anchored to element and event IDs. Every claim in it is checkable: clean drops the 2, the total is 10, 10 > 8, the answer is 'enter'.",
+  "scenario": {
+    "function": "main",
+    "module": "nar_summary_report"
+  },
+  "stage_order": [
+    "nar_summary_report::ingest",
+    "nar_summary_report::clean",
+    "nar_summary_report::featurize",
+    "nar_summary_report::decide"
+  ],
+  "summary_must_name_the_decision": "enter"
 }

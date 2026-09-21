@@ -52,22 +52,32 @@ whichever comes first -- never at block exit. An over-long window costs a
 spurious block (a refusal, the safe direction); a short one costs the
 real-world side effect this card exists to prevent.
 
-This has one real consequence worth naming: the harness's own bookkeeping
-(creating the sandbox directory, writing ``run.json`` after the scenario
-returns) happens *after* a window that may never close, and would otherwise
-be judged against a stale run's sandbox the moment a second run starts in
-the same process. It is not exempted by tracking *who* is asking (that is
-the same mistake in a new place) -- it is exempted by directory, via
-``register_trusted_root``: the harness's own sandbox root and its Mode B
-output directory are always-writable regardless of which run (if any) is
-currently active, because they are tool-owned locations the scenario is
-never told the path to, not real-world side-effect targets. In production
-this whole question is close to moot: one ``cascade-map trace`` invocation
-is one process that exits once its run record is written, so "ends at
-process exit" costs nothing there. It only bites inside a single process
-that runs the harness many times in a row, which is exactly what this
-module's own test suite does -- deliberately, to prove the escapes are
-closed.
+This has two consequences, and they get different treatment on purpose.
+
+First: the harness's own bookkeeping (creating the sandbox directory,
+writing ``run.json`` once the scenario returns) is part of *this run*, not a
+separate concern -- so a ``SandboxContext``'s write area is not just its
+sandbox root but every directory this run legitimately owns (see
+``SandboxContext.write_roots``). This is not an exemption reachable
+regardless of which run is active; it only ever applies while *this*
+context is the active one, exactly like ``sandbox_root`` itself always has.
+
+Second: because the pointer never clears, *any other* code that runs in the
+same process after a run has started -- an unrelated test, pytest's own
+housekeeping, a second run's own pre-flight steps before its own
+``activate`` call -- is judged against whatever the previous run left
+behind, which is almost never what that code needs. Widening what counts as
+"this run's own area" cannot fix that, because the code being swept in does
+not belong to any run at all. The only correct fix is to keep that code out
+of this process. In production this is already true: one ``cascade-map
+trace`` invocation is one process that exits once its run record is
+written, so there is no "after" for anything to be judged against. Inside
+this module's own test suite, which deliberately runs the harness many
+times in one process to prove the escapes stay closed, the fix is the same
+one production gets for free: ``tests/test_harness.py`` runs every scenario
+that touches ``activate`` in a genuinely separate interpreter, so this
+process's own ``_active_ctx`` is never touched by a test at all, and nothing
+this module does needs to know that its tests exist.
 """
 
 from __future__ import annotations
@@ -278,26 +288,26 @@ def _extract_executable(event: str, args: tuple[object, ...]) -> str | None:
     return None
 
 
-def within_sandbox(path: str, sandbox_root: str) -> bool:
-    """True when *path*, fully resolved, lands inside *sandbox_root* -- or
-    inside a directory ``register_trusted_root`` has marked as the harness's
-    own (see there for why that check belongs here too: it is the same
-    "is this write somewhere we control" question, just answered by path
-    instead of by which run happens to be current).
+def within_sandbox(path: str, root: str) -> bool:
+    """True when *path*, fully resolved, lands inside *root*.
 
     ``realpath`` resolves ``..`` segments and symlinks along the way, so an
     absolute-path escape, a ``..`` escape and a symlink escape are all caught
     by the same check: whatever the path claims to be, this is where it
     actually points.
     """
-    if _is_trusted(path):
-        return True
     try:
         real = os.path.realpath(path)
-        root = os.path.realpath(sandbox_root)
+        real_root = os.path.realpath(root)
     except (OSError, ValueError):
         return False
-    return real == root or real.startswith(root + os.sep)
+    return real == real_root or real.startswith(real_root + os.sep)
+
+
+def within_any(path: str, roots: tuple[str, ...]) -> bool:
+    """True when *path* lands inside any of *roots* -- a context's full
+    ``write_roots``, not just its sandbox."""
+    return any(within_sandbox(path, root) for root in roots)
 
 
 # ---------------------------------------------------------------------------
@@ -306,10 +316,24 @@ def within_sandbox(path: str, sandbox_root: str) -> bool:
 
 
 class SandboxContext:
-    """State for one harness run: what is allowed, and what has been blocked."""
+    """State for one harness run: what is allowed, and what has been blocked.
 
-    def __init__(self, sandbox_root: str, declared_process_names: frozenset[str]) -> None:
+    ``write_roots`` is every directory *this run* may write to -- its
+    sandbox, plus any other directory the harness itself legitimately owns
+    for this same run (its Mode B output directory, where ``run.json``
+    lands). This is not a standing exemption: it only applies while this
+    context is the one ``activate`` has made current, the same as
+    ``sandbox_root`` on its own always has.
+    """
+
+    def __init__(
+        self,
+        sandbox_root: str,
+        declared_process_names: frozenset[str],
+        extra_write_roots: tuple[str, ...] = (),
+    ) -> None:
         self.sandbox_root = sandbox_root
+        self.write_roots: tuple[str, ...] = (sandbox_root, *extra_write_roots)
         self.declared_process_names = declared_process_names
         self.blocked: list[BlockedAttempt] = []
         self.reads_outside_sandbox: list[BlockedAttempt] = []
@@ -392,16 +416,16 @@ class SandboxContext:
         if path is None:
             return
         if is_write:
-            if not within_sandbox(path, self.sandbox_root):
+            if not within_any(path, self.write_roots):
                 detail = f"{event} write to {path!r}, outside the sandbox"
                 self._record_blocked("filesystem_write", detail)
                 raise BlockedOperation(f"filesystem write blocked, outside sandbox: {path!r}")
-        elif not within_sandbox(path, self.sandbox_root):
+        elif not within_any(path, self.write_roots):
             self._record_read_outside(f"{event} read {path!r}, outside the sandbox")
 
     def _handle_mutation(self, event: str, args: tuple[object, ...]) -> None:
         for path in _extract_write_paths(event, args):
-            if not within_sandbox(path, self.sandbox_root):
+            if not within_any(path, self.write_roots):
                 detail = f"{event} on {path!r}, outside the sandbox"
                 self._record_blocked("filesystem_write", detail)
                 raise BlockedOperation(f"filesystem mutation blocked, outside sandbox: {path!r}")
@@ -422,58 +446,6 @@ _active_ctx: SandboxContext | None = None
 _state_lock = threading.Lock()
 
 _hook_installed = False
-
-#: Directories the harness's own code may always write to, regardless of
-#: which run (if any) is currently active, or whether enforcement has ever
-#: cleared at all. Populated by ``register_trusted_root`` -- a run's sandbox
-#: root and its Mode B output directory (where ``run.json`` lands). These are
-#: exempted *by path*, not by tracking who is asking (the caller's identity
-#: is exactly what this module stopped trying to know): the scenario is never
-#: told either path, so widening trust for them does not widen what the
-#: scenario itself can reach.
-_trusted_roots: set[str] = set()
-_trusted_roots_lock = threading.Lock()
-
-
-def register_trusted_root(path: str) -> None:
-    """Mark *path* as always-writable by the harness's own bookkeeping.
-
-    Call this once per directory, before anything might write to it. Safe to
-    call before the directory exists -- resolution is lexical, matching
-    ``within_sandbox``.
-    """
-    with _trusted_roots_lock:
-        _trusted_roots.add(os.path.realpath(path))
-
-
-def _is_trusted(path: str) -> bool:
-    try:
-        real = os.path.realpath(path)
-    except (OSError, ValueError):
-        return False
-    return any(real == root or real.startswith(root + os.sep) for root in _trusted_roots)
-
-
-def _reset_for_tests() -> None:
-    """Return to the same "no run has ever started in this process" state a
-    fresh interpreter has.
-
-    Not called anywhere in ``Harness`` or ``__init__.py``'s public surface --
-    this is not a force flag, and no production code path reaches it. It
-    exists because enforcement deliberately never clears itself (see the
-    module docstring), which is correct for a real ``cascade-map trace``
-    invocation, exiting as one process per run, and is friction for this
-    module's own test suite, which runs many runs in one process on purpose
-    to prove the escapes stay closed. Test files call this between tests --
-    see ``tests/test_harness.py`` -- so each test's own setup code gets the
-    same clean slate a fresh process would have, instead of being judged
-    against whatever a previous, unrelated test left active.
-    """
-    global _active_ctx
-    with _state_lock:
-        _active_ctx = None
-    with _trusted_roots_lock:
-        _trusted_roots.clear()
 
 
 def _dispatch(event: str, args: tuple[object, ...]) -> None:

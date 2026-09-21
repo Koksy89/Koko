@@ -1,39 +1,102 @@
 {
+  "case_id": "run_large_frame",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "run_large_frame",
       "kind": "MODULE",
-      "name": "run_large_frame",
-      "qualname": "",
       "module": "run_large_frame",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_large_frame/__init__.py",
-        "line": 1
-      },
+      "name": "run_large_frame",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/run_large_frame/__init__.py"
+      }
     },
     {
-      "id": "run_large_frame::func",
-      "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
-      "module": "run_large_frame",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_large_frame/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "id": "run_large_frame::PAYLOAD_LENGTH",
+      "kind": "ASSIGNMENT",
+      "module": "run_large_frame",
+      "name": "PAYLOAD_LENGTH",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "PAYLOAD_LENGTH",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_a/run_large_frame/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Return a 200,000-character ASCII string.",
+      "id": "run_large_frame::build_payload",
+      "kind": "FUNCTION",
+      "module": "run_large_frame",
+      "name": "build_payload",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "build_payload",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 6,
+        "path": "tests/fixtures/mode_a/run_large_frame/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Hand the large value across a call boundary.",
+      "id": "run_large_frame::main",
+      "kind": "FUNCTION",
+      "module": "run_large_frame",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 14,
+        "line": 11,
+        "path": "tests/fixtures/mode_a/run_large_frame/__init__.py"
+      }
     }
   ],
-  "events": []
+  "expected_capture": {
+    "element_id": "run_large_frame::build_payload",
+    "original_size": 200000,
+    "reason_must_be_non_empty": true,
+    "repr_text_must_not_equal_full_value": true,
+    "slot": "return_value",
+    "status": "SUMMARIZED",
+    "type_name": "str"
+  },
+  "main_return_value": "200000",
+  "notes": [
+    "original_size is the length of the str. Every character is ASCII, so it equals the UTF-8 byte length.",
+    "The whole-value string is never written to any artifact: that is the same 3.9 MB problem the target has, in miniature."
+  ],
+  "proves": "build_payload returns a 200,000-character string. The capture must be SUMMARIZED with original_size 200000 and a reason -- not a silent truncation that reads like the whole value. A truncated capture presented as complete is worse than no capture at all.",
+  "scenario": {
+    "function": "main",
+    "module": "run_large_frame"
+  }
 }

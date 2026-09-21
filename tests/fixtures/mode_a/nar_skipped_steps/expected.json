@@ -1,39 +1,127 @@
 {
+  "case_id": "nar_skipped_steps",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "nar_skipped_steps",
       "kind": "MODULE",
-      "name": "nar_skipped_steps",
-      "qualname": "",
       "module": "nar_skipped_steps",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_skipped_steps/__init__.py",
-        "line": 1
-      },
+      "name": "nar_skipped_steps",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/nar_skipped_steps/__init__.py"
+      }
     },
     {
-      "id": "nar_skipped_steps::process",
-      "kind": "FUNCTION",
-      "name": "process",
-      "qualname": "process",
-      "module": "nar_skipped_steps",
-      "span": {
-        "path": "tests/fixtures/mode_a/nar_skipped_steps/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "Returns None for an empty payload, which short-circuits the pipeline.",
+      "id": "nar_skipped_steps::validate",
+      "kind": "FUNCTION",
+      "module": "nar_skipped_steps",
+      "name": "validate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "validate",
+      "signature": "(payload)",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/nar_skipped_steps/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Skipped in this scenario.",
+      "id": "nar_skipped_steps::enrich",
+      "kind": "FUNCTION",
+      "module": "nar_skipped_steps",
+      "name": "enrich",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "enrich",
+      "signature": "(payload)",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 11,
+        "path": "tests/fixtures/mode_a/nar_skipped_steps/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Skipped in this scenario.",
+      "id": "nar_skipped_steps::score",
+      "kind": "FUNCTION",
+      "module": "nar_skipped_steps",
+      "name": "score",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "score",
+      "signature": "(payload)",
+      "span": {
+        "col": 0,
+        "end_line": 18,
+        "line": 16,
+        "path": "tests/fixtures/mode_a/nar_skipped_steps/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "An empty payload stops the pipeline at the first stage.",
+      "id": "nar_skipped_steps::main",
+      "kind": "FUNCTION",
+      "module": "nar_skipped_steps",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 26,
+        "line": 21,
+        "path": "tests/fixtures/mode_a/nar_skipped_steps/__init__.py"
+      }
     }
   ],
-  "events": []
+  "executed_elements_exact": [
+    "nar_skipped_steps::main",
+    "nar_skipped_steps::validate"
+  ],
+  "is_extra_not_in_fixtures_md": true,
+  "main_return_value": "'rejected'",
+  "proves": "`enrich` and `score` are on the cascade and never ran, because validate rejected the payload. The narrative must say they were skipped and why -- a narrative that just stops after validate reads as if the pipeline has one stage.",
+  "scenario": {
+    "function": "main",
+    "module": "nar_skipped_steps"
+  },
+  "skipped_steps_must_be_reported": [
+    {
+      "element_id": "nar_skipped_steps::enrich",
+      "why": "validate returned None for the empty payload, so main returned 'rejected' before reaching it"
+    },
+    {
+      "element_id": "nar_skipped_steps::score",
+      "why": "downstream of enrich, which never ran"
+    }
+  ]
 }

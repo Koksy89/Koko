@@ -1,39 +1,126 @@
 {
+  "all_captures_status": "FULL",
+  "case_id": "run_values",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "run_values",
       "kind": "MODULE",
-      "name": "run_values",
-      "qualname": "",
       "module": "run_values",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_values/__init__.py",
-        "line": 1
-      },
+      "name": "run_values",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/run_values/__init__.py"
+      }
     },
     {
-      "id": "run_values::func",
-      "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
-      "module": "run_values",
-      "span": {
-        "path": "tests/fixtures/mode_a/run_values/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "Sum two numbers.",
+      "id": "run_values::add",
+      "kind": "FUNCTION",
+      "module": "run_values",
+      "name": "add",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "add",
+      "signature": "(a, b)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/run_values/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Multiply.",
+      "id": "run_values::scale",
+      "kind": "FUNCTION",
+      "module": "run_values",
+      "name": "scale",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "scale",
+      "signature": "(value, factor)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_a/run_values/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "2 + 3 = 5; 5 * 4 = 20; 20 + 1 = 21.",
+      "id": "run_values::main",
+      "kind": "FUNCTION",
+      "module": "run_values",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 18,
+        "line": 14,
+        "path": "tests/fixtures/mode_a/run_values/__init__.py"
+      }
     }
   ],
-  "events": []
+  "expected_calls": [
+    {
+      "arguments": {
+        "a": "2",
+        "b": "3"
+      },
+      "element_id": "run_values::add",
+      "return_value": "5",
+      "type_name": "int"
+    },
+    {
+      "arguments": {
+        "factor": "4",
+        "value": "5"
+      },
+      "element_id": "run_values::scale",
+      "return_value": "20",
+      "type_name": "int"
+    },
+    {
+      "arguments": {
+        "a": "20",
+        "b": "1"
+      },
+      "element_id": "run_values::add",
+      "return_value": "21",
+      "type_name": "int"
+    },
+    {
+      "arguments": {},
+      "element_id": "run_values::main",
+      "return_value": "21",
+      "type_name": "int"
+    }
+  ],
+  "proves": "Captured values match values known by construction: add(2, 3) is 5, scale(5, 4) is 20, add(20, 1) is 21. Arguments are captured as well as returns, because a return value with no arguments beside it does not explain itself.",
+  "scenario": {
+    "function": "main",
+    "module": "run_values"
+  }
 }

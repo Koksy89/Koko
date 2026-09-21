@@ -95,6 +95,37 @@ def expectation(case: str) -> dict[str, Any]:
     return json.loads((MODE_B / case / "expected.json").read_text())
 
 
+GRADED_SECTIONS = (
+    "cfg_requirements",
+    "min_branch_blocks_per_element",
+    "call_must_be_conditional",
+    "order",
+    "forbidden_order_kinds_over_elements",
+    "cycle_count_exact",
+    "decisions",
+    "decision_count_exact",
+    "reachability",
+    "forbidden_reachability_states",
+)
+
+
+def cases_with(section: str) -> tuple[str, ...]:
+    """Cases whose expectation declares *section*, for parametrisation.
+
+    Parametrising on this rather than skipping inside the test means a case
+    that gains a section starts being graded on it with no test change, and an
+    expectation nobody grades shows up as an empty parameter list rather than
+    as a green run.
+    """
+    return tuple(case for case in CARD3_CASES if section in expectation(case))
+
+
+def test_every_graded_section_is_claimed_by_a_case() -> None:
+    """No section may quietly stop being graded."""
+    unclaimed = [section for section in GRADED_SECTIONS if not cases_with(section)]
+    assert unclaimed == [], f"no fixture declares {unclaimed}; those assertions grade nothing"
+
+
 def _span(payload: dict[str, Any] | None) -> SourceSpan | None:
     if not payload:
         return None
@@ -470,12 +501,10 @@ def test_case_exists_and_analyses(case: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("case", CARD3_CASES)
+@pytest.mark.parametrize("case", cases_with("cfg_requirements"))
 def test_cfg_requirements(case: str) -> None:
     run = result(case)
-    requirements = run.expected.get("cfg_requirements")
-    if not requirements:
-        pytest.skip(f"{case} declares no cfg_requirements")
+    requirements = run.expected["cfg_requirements"]
     for requirement in requirements:
         element_id = requirement["element_id"]
         kinds = run.kinds_of(element_id)
@@ -500,33 +529,30 @@ def test_cfg_requirements(case: str) -> None:
             )
 
 
-@pytest.mark.parametrize("case", CARD3_CASES)
+@pytest.mark.parametrize("case", cases_with("min_branch_blocks_per_element"))
 def test_min_branch_blocks_per_element(case: str) -> None:
     run = result(case)
-    minimums = run.expected.get("min_branch_blocks_per_element")
-    if not minimums:
-        pytest.skip(f"{case} declares no branch-block minimums")
+    minimums = run.expected["min_branch_blocks_per_element"]
     for element_id, minimum in sorted(minimums.items()):
         found = [b for b in run.blocks_of(element_id) if b.kind is BlockKind.BRANCH]
         assert len(found) >= minimum, f"{case}: {element_id} has {len(found)} branch blocks"
 
 
-@pytest.mark.parametrize("case", CARD3_CASES)
+@pytest.mark.parametrize("case", cases_with("call_must_be_conditional"))
 def test_call_must_be_conditional(case: str) -> None:
     """A call gated by a short circuit sits under a branch arm, not beside it."""
     run = result(case)
-    claims = run.expected.get("call_must_be_conditional")
-    if not claims:
-        pytest.skip(f"{case} declares no conditional calls")
+    claims = run.expected["call_must_be_conditional"]
     edges = {edge.id: edge for edge in run.edges}
     for claim in claims:
         edge = edges[claim["edge_id"]]
         holders = [n for n in run.order if n.element_ids == (edge.target_id,)]
         assert holders, f"{case}: no order node schedules {edge.target_id}"
         for holder in holders:
-            kinds = {ancestor.kind for ancestor in run.ancestors(holder.id)}
+            kinds = {holder.kind} | {ancestor.kind for ancestor in run.ancestors(holder.id)}
             assert OrderKind.BRANCH in kinds, (
-                f"{case}: {edge.target_id} is not under a branch -- {claim['why']}"
+                f"{case}: {holder.id} schedules {edge.target_id} unconditionally -- "
+                f"{claim['why']}"
             )
 
 
@@ -569,7 +595,7 @@ def test_short_circuit_decisions_name_the_gate() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("case", CARD3_CASES)
+@pytest.mark.parametrize("case", cases_with("order"))
 def test_expected_order_nodes(case: str) -> None:
     """Every order node the case declares exists, by kind and element set.
 
@@ -577,9 +603,7 @@ def test_expected_order_nodes(case: str) -> None:
     the expectations are fixture-local labels and real ids come from `make_id`.
     """
     run = result(case)
-    expected_nodes = run.expected.get("order")
-    if not expected_nodes:
-        pytest.skip(f"{case} declares no order nodes")
+    expected_nodes = run.expected["order"]
     for expected_node in expected_nodes:
         kind = OrderKind(expected_node["kind"])
         element_ids = tuple(expected_node["element_ids"])
@@ -603,13 +627,11 @@ def test_expected_order_nodes(case: str) -> None:
                 assert match.provenance.method is Method(provenance["method"])
 
 
-@pytest.mark.parametrize("case", CARD3_CASES)
+@pytest.mark.parametrize("case", cases_with("forbidden_order_kinds_over_elements"))
 def test_forbidden_order_kinds_over_elements(case: str) -> None:
     """Flattening a real branch, or inventing an order, is a defect."""
     run = result(case)
-    forbidden = run.expected.get("forbidden_order_kinds_over_elements")
-    if not forbidden:
-        pytest.skip(f"{case} forbids no order kinds")
+    forbidden = run.expected["forbidden_order_kinds_over_elements"]
     for claim in forbidden:
         kind = OrderKind(claim["kind"])
         members = set(claim["element_ids"])
@@ -621,12 +643,10 @@ def test_forbidden_order_kinds_over_elements(case: str) -> None:
         assert not offenders, f"{case}: {[n.id for n in offenders]} -- {claim['why']}"
 
 
-@pytest.mark.parametrize("case", CARD3_CASES)
+@pytest.mark.parametrize("case", cases_with("cycle_count_exact"))
 def test_cycle_count_exact(case: str) -> None:
     run = result(case)
-    expected_count = run.expected.get("cycle_count_exact")
-    if expected_count is None:
-        pytest.skip(f"{case} declares no cycle count")
+    expected_count = run.expected["cycle_count_exact"]
     cycles = [n for n in run.order if n.kind is OrderKind.CYCLE]
     assert len(cycles) == expected_count, [n.element_ids for n in cycles]
     for cycle in cycles:
@@ -699,12 +719,10 @@ def test_ord_cycle_members_are_named() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("case", CARD3_CASES)
+@pytest.mark.parametrize("case", cases_with("decisions"))
 def test_expected_decisions(case: str) -> None:
     run = result(case)
-    expected_decisions = run.expected.get("decisions")
-    if not expected_decisions:
-        pytest.skip(f"{case} declares no decisions")
+    expected_decisions = run.expected["decisions"]
     for expected_decision in expected_decisions:
         element_id = expected_decision["element_id"]
         matches = [
@@ -744,12 +762,10 @@ def test_expected_decisions(case: str) -> None:
                 assert actual.end_line == expected_span["end_line"]
 
 
-@pytest.mark.parametrize("case", CARD3_CASES)
+@pytest.mark.parametrize("case", cases_with("decision_count_exact"))
 def test_decision_count_exact(case: str) -> None:
     run = result(case)
-    expected_count = run.expected.get("decision_count_exact")
-    if expected_count is None:
-        pytest.skip(f"{case} declares no decision count")
+    expected_count = run.expected["decision_count_exact"]
     assert len(run.decisions) == expected_count, [d.condition_source for d in run.decisions]
 
 
@@ -791,12 +807,10 @@ def test_dec_guard_clause_guards_are_marked_and_leave() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("case", CARD3_CASES)
+@pytest.mark.parametrize("case", cases_with("reachability"))
 def test_expected_reachability(case: str) -> None:
     run = result(case)
-    expected_records = run.expected.get("reachability")
-    if not expected_records:
-        pytest.skip(f"{case} declares no reachability")
+    expected_records = run.expected["reachability"]
     for expected_record in expected_records:
         record = run.reach_of(expected_record["element_id"])
         assert record.state is ReachabilityState(expected_record["state"]), (
@@ -813,12 +827,10 @@ def test_expected_reachability(case: str) -> None:
             assert record.provenance.method is Method(provenance["method"])
 
 
-@pytest.mark.parametrize("case", CARD3_CASES)
+@pytest.mark.parametrize("case", cases_with("forbidden_reachability_states"))
 def test_forbidden_reachability_states(case: str) -> None:
     run = result(case)
-    forbidden = run.expected.get("forbidden_reachability_states")
-    if not forbidden:
-        pytest.skip(f"{case} forbids no reachability states")
+    forbidden = run.expected["forbidden_reachability_states"]
     for element_id, states in sorted(forbidden.items()):
         record = run.reach_of(element_id)
         assert record.state.value not in states, f"{case}: {element_id} -- {record.reason}"
@@ -849,6 +861,10 @@ def test_dec_sink_separates_no_path_from_unknown() -> None:
     run = result("dec_sink")
     assert run.reach_of("dec_sink::log_metrics").state is ReachabilityState.NO_SINK_PATH
     assert run.reach_of("dec_sink::load").state is ReachabilityState.REACHES_SINK
+    assert run.reach_of("dec_sink").state is ReachabilityState.REACHES_SINK, (
+        "the module holds the sink; card 1 leaves parent_id empty for top-level "
+        "members, so containment is found by module name"
+    )
     states = {r.element_id: r.state for r in run.reach}
     assert ReachabilityState.UNKNOWN not in states.values(), (
         "with a declared sink and fully resolved edges, nothing here is unknown"
@@ -1268,6 +1284,8 @@ def test_an_unresolved_call_site_makes_its_order_node_unknown(tmp_path: Path) ->
 @pytest.mark.parametrize("case", CARD3_CASES)
 def test_every_emitted_fact_carries_provenance(case: str) -> None:
     run = result(case)
+    assert run.blocks and run.cfg_edges and run.order and run.reach
+    assert run.decisions or not run.expected.get("decisions")
     for block in run.blocks:
         assert block.provenance.method is Method.AST_DIRECT
         assert block.provenance.confidence is Confidence.CERTAIN

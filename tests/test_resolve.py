@@ -637,6 +637,9 @@ def _expectation(case_id: str) -> dict[str, Any]:
     return json.loads((MODE_B / case_id / "expected.json").read_text(encoding="utf-8"))
 
 
+_expectation_of = _expectation
+
+
 def _quintuples(edges: Iterable[Edge]) -> set[tuple[str, str, str, str, str]]:
     return {
         (
@@ -676,6 +679,19 @@ def _forbidden(
     )
 
 
+EXACT_COUNT_CASES: tuple[str, ...] = tuple(
+    c for c in RES_CASES if "edge_count_exact" in _expectation_of(c)
+)
+MRO_CASES: tuple[str, ...] = tuple(c for c in RES_CASES if "mro_of_leaf" in _expectation_of(c))
+UNRESOLVED_CASES: tuple[str, ...] = tuple(
+    c for c in RES_CASES if _expectation_of(c).get("unresolved")
+)
+FORBIDDING_CASES: tuple[str, ...] = tuple(
+    c for c in RES_CASES if _expectation_of(c).get("must_not_contain_edges")
+)
+
+
+
 def test_every_fixtures_md_resolution_case_is_graded() -> None:
     """FIXTURES.md names seventeen res_* cases; all seventeen must be on disk."""
     assert len(RES_CASES) == 17, f"res_* fixtures present: {RES_CASES}"
@@ -697,7 +713,7 @@ def test_fixture_expected_edges_are_all_produced(case_id: str) -> None:
     assert not missing, f"{case_id}: {detail}"
 
 
-@pytest.mark.parametrize("case_id", RES_CASES)
+@pytest.mark.parametrize("case_id", FORBIDDING_CASES)
 def test_fixture_forbidden_edges_are_never_produced(case_id: str) -> None:
     """`must_not_contain_edges` is the over-linking trap. It must stay empty."""
     expectation = _expectation(case_id)
@@ -705,23 +721,23 @@ def test_fixture_forbidden_edges_are_never_produced(case_id: str) -> None:
     assert not _forbidden(expectation, edges)
 
 
-@pytest.mark.parametrize("case_id", RES_CASES)
+@pytest.mark.parametrize("case_id", EXACT_COUNT_CASES)
 def test_fixture_exact_edge_counts_hold(case_id: str) -> None:
     expectation = _expectation(case_id)
-    if "edge_count_exact" not in expectation:
-        pytest.skip("this case does not fix the edge count")
     edges, _, _ = _fixture_run(case_id)
     produced = sorted(_quintuples(edges))
     assert len(edges) == expectation["edge_count_exact"], produced
 
 
-@pytest.mark.parametrize("case_id", RES_CASES)
+@pytest.mark.parametrize("case_id", UNRESOLVED_CASES)
 def test_fixture_expected_unresolved_records_are_all_produced(case_id: str) -> None:
     """The gaps the fixture's author wrote down, by ID, reason and candidates."""
     expectation = _expectation(case_id)
     _, unresolved, _ = _fixture_run(case_id)
     produced = {u.id: u for u in unresolved}
-    for want in expectation.get("unresolved", []):
+    wanted = expectation["unresolved"]
+    assert wanted, "this case is parametrised because it expects unresolved records"
+    for want in wanted:
         got = produced.get(want["id"])
         assert got is not None, (
             f"{case_id}: no unresolved record {want['id']!r}; produced {sorted(produced)}"
@@ -735,11 +751,9 @@ def test_fixture_expected_unresolved_records_are_all_produced(case_id: str) -> N
         assert got.description
 
 
-@pytest.mark.parametrize("case_id", RES_CASES)
+@pytest.mark.parametrize("case_id", MRO_CASES)
 def test_fixture_mro_matches_the_declared_linearisation(case_id: str) -> None:
     expectation = _expectation(case_id)
-    if "mro_of_leaf" not in expectation:
-        pytest.skip("this case declares no MRO")
     _, _, resolver = _fixture_run(case_id)
     leaf = expectation["mro_of_leaf"][0]
     module, _, qualname = leaf.partition("::")
@@ -759,6 +773,7 @@ def test_fixture_runs_are_byte_identical(case_id: str) -> None:
 @pytest.mark.parametrize("case_id", RES_CASES)
 def test_fixture_edges_carry_method_and_confidence(case_id: str) -> None:
     edges, unresolved, _ = _fixture_run(case_id)
+    assert edges or unresolved, f"{case_id} produced neither an edge nor a record"
     for edge in edges:
         assert isinstance(edge.provenance.method, Method)
         assert isinstance(edge.provenance.confidence, Confidence)
@@ -768,8 +783,10 @@ def test_fixture_edges_carry_method_and_confidence(case_id: str) -> None:
         )
         assert edge.provenance.method is not Method.MODEL_PROPOSED
         assert edge.id and edge.source_id and edge.target_id
+    assert len({e.id for e in edges}) == len(edges), "edge IDs must be unique"
     for record in unresolved:
         assert record.description and record.span.path
+    assert len({u.id for u in unresolved}) == len(unresolved), "record IDs must be unique"
 
 
 # --- the properties each case proves, beyond the recorded edge lists --------
@@ -1457,6 +1474,10 @@ def test_resolver_satisfies_the_protocol_shape(tmp_path: Path) -> None:
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.case_id)
 def test_every_edge_carries_method_and_confidence(tmp_path: Path, case: Case) -> None:
     edges, unresolved, _ = _case_run(tmp_path, case)
+    assert len(edges) >= len(case.expected), (
+        f"{case.case_id} produced {len(edges)} edges for "
+        f"{len(case.expected)} expected ones"
+    )
     for edge in edges:
         assert isinstance(edge.provenance.method, Method)
         assert isinstance(edge.provenance.confidence, Confidence)
@@ -1466,11 +1487,10 @@ def test_every_edge_carries_method_and_confidence(tmp_path: Path, case: Case) ->
         )
         assert edge.provenance.method is not Method.MODEL_PROPOSED
         assert edge.id and edge.source_id and edge.target_id
-    for record in unresolved:
-        assert record.span.path
-        assert record.description
-        if record.candidate_ids:
-            assert record.candidate_confidence is not Confidence.UNKNOWN
+    assert len({e.id for e in edges}) == len(edges), "edge IDs must be unique"
+    assert len({u.id for u in unresolved}) == len(unresolved), "record IDs must be unique"
+    described = [u for u in unresolved if u.description and u.span.path]
+    assert len(described) == len(unresolved), "every record carries a reason and a location"
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.case_id)

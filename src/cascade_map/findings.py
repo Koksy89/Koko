@@ -230,16 +230,30 @@ class Findings:
                 continue
 
             touching = incoming.get(el_id, [])
-            evidence = tuple(sorted({e.id for e in touching} | set(self._entry_ids)))
+            reachability = self._reachability_by_element.get(el_id)
+            evidence_parts = {e.id for e in touching}
+            if reachability is not None:
+                # Card 3's own record for this element is the strongest, most
+                # specific citation available -- prefer it over the coarser
+                # entry_ids fallback.
+                evidence_parts.add(reachability.id)
+            if not evidence_parts:
+                evidence_parts = set(self._entry_ids)
+            evidence = tuple(sorted(evidence_parts))
             if not evidence:
                 # No edge chain to cite: contract says a finding with an
                 # empty evidence chain does not ship.
                 continue
-            if touching:
-                conf = combine(*(e.provenance.confidence for e in touching))
+
+            confidences = [e.provenance.confidence for e in touching]
+            if reachability is not None:
+                confidences.append(reachability.provenance.confidence)
+            if confidences:
+                conf = combine(*confidences)
                 note = (
-                    "all incoming edges originate from other unreachable "
-                    "elements"
+                    reachability.reason
+                    if reachability is not None and reachability.reason
+                    else "all incoming edges originate from other unreachable elements"
                 )
             else:
                 # Absence of any edge at all is itself a fact resting on
@@ -313,61 +327,73 @@ class Findings:
     # -- ORPHANED_CONFIG_ELEMENT ------------------------------------------
 
     def _orphaned_config_elements(self) -> list[Finding]:
-        if not self._entry_ids:
-            return []
-        reached, incoming = self._reachable_set()
+        """A component-shaped element in a family config demonstrably wires,
+        that no config key names.
 
-        by_config_target: dict[str, list[Edge]] = defaultdict(list)
-        by_other_target: dict[str, list[Edge]] = defaultdict(list)
+        "Demonstrably wires" is load-bearing: absence of a CONFIGURES edge
+        means nothing on its own (most classes are never named by config at
+        all). It only means something once at least one sibling under the
+        same base class *is* named by a config key -- that is what makes the
+        family a config-driven registry rather than an ordinary class
+        hierarchy. `Stage` itself (the base) is never flagged: it is reached
+        by inheritance, not by wiring. `WiredStage` (has its own CONFIGURES
+        edge) is never flagged either.
+        """
+        inherits_by_base: dict[str, list[Edge]] = defaultdict(list)
+        for e in self._edges:
+            if e.kind == EdgeKind.INHERITS:
+                inherits_by_base[e.target_id].append(e)
+
+        configures_by_target: dict[str, list[Edge]] = defaultdict(list)
         for e in self._edges:
             if e.kind == EdgeKind.CONFIGURES:
-                by_config_target[e.target_id].append(e)
-            elif e.kind in _STRUCTURAL_EDGE_KINDS:
-                by_other_target[e.target_id].append(e)
+                configures_by_target[e.target_id].append(e)
 
-        out: list[Finding] = []
-        for el in self._elements:
-            if el.kind not in _REPORTABLE_KINDS:
+        out: dict[str, Finding] = {}
+        for family_edges in inherits_by_base.values():
+            wired_siblings = [
+                e for e in family_edges if configures_by_target.get(e.source_id)
+            ]
+            if not wired_siblings:
+                # This hierarchy shows no sign of being config-driven at
+                # all: nothing to compare an absence against.
                 continue
-            config_in = by_config_target.get(el.id, [])
-            if not config_in:
-                continue
-            if by_other_target.get(el.id):
-                # Reached some other way too: not orphaned.
-                continue
+            wiring_edge = configures_by_target[wired_siblings[0].source_id][0]
 
-            live = any(
-                edge.source_id in reached or bool(incoming.get(edge.source_id))
-                for edge in config_in
-            )
-            if live:
-                continue
+            for child_edge in family_edges:
+                child_id = child_edge.source_id
+                if configures_by_target.get(child_id):
+                    continue  # this sibling is itself named by config
+                child = self._by_id.get(child_id)
+                if child is None or child.kind not in _REPORTABLE_KINDS:
+                    continue
 
-            evidence = tuple(sorted(e.id for e in config_in))
-            conf = combine(*(e.provenance.confidence for e in config_in))
-            out.append(
-                Finding(
-                    id=self._fid("ORPHANED_CONFIG_ELEMENT", el.id),
+                evidence = tuple(sorted({wiring_edge.id, child_edge.id}))
+                conf = combine(
+                    wiring_edge.provenance.confidence,
+                    child_edge.provenance.confidence,
+                )
+                out[child_id] = Finding(
+                    id=self._fid("ORPHANED_CONFIG_ELEMENT", child_id),
                     kind=FindingKind.ORPHANED_CONFIG_ELEMENT,
-                    element_id=el.id,
-                    span=el.span,
+                    element_id=child_id,
+                    span=child.span,
                     summary=(
-                        f"{el.qualname or el.name} is reachable only through a "
-                        "config key that no live config appears to set."
+                        f"{child.qualname or child.name} is in a family a config "
+                        "file wires, and no config key names it."
                     ),
                     hint=(
-                        "Check whether any loaded config actually sets this key; "
-                        "if none does, this element never runs."
+                        "Either add it to the wiring config or delete it; check "
+                        "other deployments' configs before removing."
                     ),
                     evidence_ids=evidence,
                     provenance=Provenance(
                         method=Method.CONFIG_STRING_MATCH,
                         confidence=conf,
-                        span=el.span,
+                        span=child.span,
                     ),
                 )
-            )
-        return out
+        return list(out.values())
 
     # -- DEAD_BRANCH -------------------------------------------------------
 

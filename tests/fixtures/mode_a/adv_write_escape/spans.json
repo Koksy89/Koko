@@ -1,0 +1,53 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "ABSOLUTE_MARKER =",
+      "occurrence": 1
+    },
+    "/elements/2/span": {
+      "kind": "stmt",
+      "line_contains": "SYMLINK_NAME =",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "stmt",
+      "line_contains": "SYMLINK_TARGET =",
+      "occurrence": 1
+    },
+    "/elements/4/span": {
+      "kind": "stmt",
+      "line_contains": "TRAVERSAL_MARKER =",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "main"
+    },
+    "/elements/6/span": {
+      "kind": "stmt",
+      "line_contains": "import os",
+      "occurrence": 1
+    },
+    "/elements/7/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "write_absolute"
+    },
+    "/elements/8/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "write_through_symlink"
+    },
+    "/elements/9/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "write_traversal"
+    }
+  }
+}

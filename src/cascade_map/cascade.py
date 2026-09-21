@@ -1188,6 +1188,7 @@ class CascadeAnalyzer:
         self._edges_by_source: dict[str, list[Edge]] = {}
         self._positioned_edge_ids: set[str] = set()
         self._children: dict[str, list[str]] = {}
+        self._by_module: dict[str, list[str]] = {}
         self._discarded_cache: dict[str, set[tuple[int, int]]] = {}
         self._side_effect_cache: dict[str, bool] = {}
 
@@ -1216,6 +1217,8 @@ class CascadeAnalyzer:
         for element in sorted(self._elements.values(), key=lambda e: e.id):
             if element.parent_id:
                 self._children.setdefault(element.parent_id, []).append(element.id)
+            if element.kind is not ElementKind.MODULE:
+                self._by_module.setdefault(make_id(element.module), []).append(element.id)
 
         self._build_cfgs()
         self._entry_ids = self._resolve_entries(entry_ids)
@@ -2608,7 +2611,14 @@ class CascadeAnalyzer:
                 continue
             if element.id in best:
                 continue
-            contained = [child for child in self._children.get(element.id, []) if child in best]
+            # Card 1 leaves parent_id empty for a module's own top-level
+            # members, so a module's contents are found by module name too --
+            # otherwise the module holding the sink comes back NO_SINK_PATH,
+            # which is the false negative this card exists to avoid.
+            held = list(self._children.get(element.id, []))
+            if element.kind in {ElementKind.MODULE, ElementKind.PACKAGE}:
+                held.extend(self._by_module.get(element.id, []))
+            contained = [child for child in sorted(set(held)) if child in best]
             if not contained:
                 continue
             winner_id = max(contained, key=lambda c: (_RANK[best[c]], c))

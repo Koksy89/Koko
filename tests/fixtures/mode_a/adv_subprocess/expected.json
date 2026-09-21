@@ -1,22 +1,263 @@
 {
-  "elements": [
+  "blocked_attempts_required": [
     {
-      "id": "adv_subprocess",
-      "kind": "MODULE",
-      "name": "adv_subprocess",
-      "qualname": "",
-      "module": "adv_subprocess",
-      "span": {
-        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "detail_contains": "touch",
+      "kind": "process"
+    },
+    {
+      "detail_contains": "touch",
+      "kind": "process"
+    },
+    {
+      "detail_contains": "touch",
+      "kind": "process"
+    },
+    {
+      "detail_contains": "touch",
+      "kind": "process"
+    },
+    {
+      "detail_contains": "fork",
+      "kind": "process"
     }
   ],
-  "events": []
+  "case_id": "adv_subprocess",
+  "controls_active_required": {
+    "process": true
+  },
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_subprocess",
+      "kind": "MODULE",
+      "module": "adv_subprocess",
+      "name": "adv_subprocess",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_subprocess::COMMAND",
+      "kind": "ASSIGNMENT",
+      "module": "adv_subprocess",
+      "name": "COMMAND",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "COMMAND",
+      "span": {
+        "col": 0,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_subprocess::MARKER_PATH",
+      "kind": "ASSIGNMENT",
+      "module": "adv_subprocess",
+      "name": "MARKER_PATH",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "MARKER_PATH",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 6,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Five attempts. Every one must be blocked and recorded.",
+      "id": "adv_subprocess::main",
+      "kind": "FUNCTION",
+      "module": "adv_subprocess",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 53,
+        "line": 39,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_subprocess::os",
+      "kind": "IMPORT",
+      "module": "adv_subprocess",
+      "name": "os",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "os",
+      "signature": "import os",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "adv_subprocess::subprocess",
+      "kind": "IMPORT",
+      "module": "adv_subprocess",
+      "name": "subprocess",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "subprocess",
+      "signature": "import subprocess",
+      "span": {
+        "col": 0,
+        "end_line": 4,
+        "line": 4,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "No exec needed: a fork alone doubles the process.",
+      "id": "adv_subprocess::via_os_fork",
+      "kind": "FUNCTION",
+      "module": "adv_subprocess",
+      "name": "via_os_fork",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "via_os_fork",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 30,
+        "line": 25,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "A shell, which can do anything the shell can do.",
+      "id": "adv_subprocess::via_os_system",
+      "kind": "FUNCTION",
+      "module": "adv_subprocess",
+      "name": "via_os_system",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "via_os_system",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 22,
+        "line": 20,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The lower-level route subprocess.run itself uses.",
+      "id": "adv_subprocess::via_popen",
+      "kind": "FUNCTION",
+      "module": "adv_subprocess",
+      "name": "via_popen",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "via_popen",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 17,
+        "line": 15,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "os.popen is a third door into the same room.",
+      "id": "adv_subprocess::via_popen2",
+      "kind": "FUNCTION",
+      "module": "adv_subprocess",
+      "name": "via_popen2",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "via_popen2",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 36,
+        "line": 33,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The documented route.",
+      "id": "adv_subprocess::via_subprocess_run",
+      "kind": "FUNCTION",
+      "module": "adv_subprocess",
+      "name": "via_subprocess_run",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "via_subprocess_run",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 12,
+        "line": 10,
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py"
+      }
+    }
+  ],
+  "marker_must_be_absent_after_the_run": true,
+  "marker_path": "/tmp/cascade_map_adv_subprocess_marker.txt",
+  "min_blocked_of_kind": {
+    "process": 5
+  },
+  "process_count_must_not_increase": true,
+  "proves": "subprocess.run, subprocess.Popen, os.system, os.popen and os.fork are five distinct doors to a second process, and each is blocked and recorded. os.fork matters on its own: it needs no command line and a control that only inspects argv misses it entirely. The commands would create the marker below; it must not exist.",
+  "run_must_not_refuse": true,
+  "scenario": {
+    "function": "main",
+    "module": "adv_subprocess"
+  }
 }
