@@ -52,6 +52,7 @@ from cascade_map.contracts.interfaces import (
     DecisionPoint,
     Edge,
     EdgeKind,
+    DetectedCandidate,
     Element,
     ElementKind,
     Method,
@@ -207,6 +208,8 @@ class Result:
             self.order,
             self.decisions,
             self.reach,
+            self.candidates,
+            self.unresolved,
         ) = (list(part) for part in self.analyzer.order(self.elements, self.edges, self.entry_ids))
 
     # -- lookups ------------------------------------------------------------
@@ -468,6 +471,8 @@ class Program:
             self.order,
             self.decisions,
             self.reach,
+            self.candidates,
+            self.unresolved,
         ) = (list(part) for part in self.analyzer.order(self.elements, self.edges, entry))
 
     blocks_of = Result.blocks_of
@@ -977,7 +982,7 @@ def test_no_sink_means_unknown_everywhere_never_unreachable(tmp_path: Path) -> N
     assert all("no decision sink" in r.reason for r in run.reach)
     assert any(
         u.reason is UnresolvedReason.MISSING_TARGET and "decision sink" in u.description
-        for u in run.analyzer.unresolved()
+        for u in run.unresolved
     )
 
 
@@ -1016,7 +1021,7 @@ def final_decision():
     return "BUY"
 '''
     run = Program(tmp_path, source, sinks=["m::final_decision"])
-    assert any(u.id.endswith("@read:numpy.isnan") for u in run.analyzer.unresolved())
+    assert any(u.id.endswith("@read:numpy.isnan") for u in run.unresolved)
     assert run.reach_of("m::orphan").state is ReachabilityState.NO_SINK_PATH
 
 
@@ -1142,7 +1147,7 @@ def helper():
     return 1
 '''
     run = Program(tmp_path, source, entry=["m::main"])
-    ambiguous = [u for u in run.analyzer.unresolved() if u.reason is UnresolvedReason.AMBIGUOUS]
+    ambiguous = [u for u in run.unresolved if u.reason is UnresolvedReason.AMBIGUOUS]
     assert len(ambiguous) == 1 and "lambda" in ambiguous[0].description
     deferred = run.node(make_id("@order", "m::main/deferred"))
     assert deferred.kind is OrderKind.UNORDERED
@@ -1203,31 +1208,46 @@ if __name__ == "__main__":
     main()
 '''
     run = Program(tmp_path, source, name="run_m5.py")
-    candidates = run.analyzer.entry_point_candidates()
+    candidates = [c for c in run.candidates if c.role == C.ROLE_ENTRY_POINT]
     assert [c.element_id for c in candidates] == ["run_m5", "run_m5::main"]
     for candidate in candidates:
-        assert candidate.role == "ENTRY_POINT"
-        assert candidate.evidence
+        assert isinstance(candidate, DetectedCandidate)
+        assert candidate.evidence and all(isinstance(line, str) for line in candidate.evidence)
         assert candidate.provenance.confidence is Confidence.PROBABLE
         assert "auto-detected" in candidate.provenance.note
+    assert any('__main__" guard' in line for line in candidates[0].evidence)
     assert run.analyzer.entry_ids() == ("run_m5", "run_m5::main")
+    assert list(run.candidates) == list(run.analyzer.candidates()), (
+        "the accessor and the return value must not be able to disagree"
+    )
 
 
 def test_sink_is_auto_detected_and_reported_not_adopted_silently() -> None:
     run = Result("dec_sink", sinks=[])
-    candidates = run.analyzer.sink_candidates()
+    candidates = [c for c in run.candidates if c.role == C.ROLE_DECISION_SINK]
     assert [c.element_id for c in candidates] == ["dec_sink::final_decision"]
     for candidate in candidates:
-        assert candidate.role == "DECISION_SINK"
+        assert candidate.id and candidate.role == "decision_sink"
         assert candidate.provenance.method is Method.NAME_HEURISTIC
-        assert candidate.provenance.confidence is Confidence.HEURISTIC
+        assert candidate.provenance.confidence is Confidence.HEURISTIC, (
+            "a name match is a weak signal and must say so"
+        )
         assert "not adopted as fact" in candidate.provenance.note
-        assert "hint" in candidate.evidence
+        assert any("name hint" in line for line in candidate.evidence)
+        assert any("proposal for the owner to confirm" in line for line in candidate.evidence)
+
+
+def test_a_declared_sink_is_reported_as_owner_declared_not_detected() -> None:
+    run = result("dec_sink")
+    declared = [c for c in run.candidates if c.role == C.ROLE_DECISION_SINK]
+    assert [c.element_id for c in declared] == ["dec_sink::final_decision"]
+    assert declared[0].provenance.confidence is Confidence.CERTAIN
+    assert declared[0].evidence == ("declared by the owner in TARGET_PROFILE.md",)
 
 
 def test_declared_entry_that_is_not_inventoried_is_reported(tmp_path: Path) -> None:
     run = Program(tmp_path, "def main():\n    return 1\n", entry=["m::nope"])
-    residue = [u for u in run.analyzer.unresolved() if "nope" in u.description]
+    residue = [u for u in run.unresolved if "nope" in u.description]
     assert len(residue) == 1 and residue[0].reason is UnresolvedReason.MISSING_TARGET
 
 
@@ -1246,7 +1266,7 @@ def test_an_unparsable_file_is_reported_and_the_run_continues(tmp_path: Path) ->
         )
     ]
     analyzer = C.CascadeAnalyzer(tmp_path)
-    blocks, _e, _o, _d, reach = analyzer.order(elements, [], [])
+    blocks, _e, _o, _d, reach, _c, _u = analyzer.order(elements, [], [])
     assert blocks == ()
     assert any(u.reason is UnresolvedReason.SYNTAX_ERROR for u in analyzer.unresolved())
     assert len(reach) == 1, "an unparsable module still gets a reachability record"
@@ -1411,7 +1431,7 @@ def test_sentinel_is_never_executed() -> None:
     assert (REPO_ROOT / rel).is_file()
     elements = inventory(REPO_ROOT, rel, module="sentinel")
     analyzer = C.CascadeAnalyzer(REPO_ROOT)
-    blocks, _e, _o, _d, reach = analyzer.order(elements, [], [])
+    blocks, _e, _o, _d, reach, _c, _u = analyzer.order(elements, [], [])
     assert blocks, "the sentinel was parsed as text"
     assert reach
     assert not SENTINEL_MARKER.exists(), "the sentinel ran: constraint 1 is broken"
@@ -1429,7 +1449,7 @@ def test_the_whole_mode_b_corpus_analyses_without_raising() -> None:
         except (SyntaxError, UnicodeDecodeError):
             continue  # inv_syntax_error and inv_non_utf8 are meant to be unreadable
         analyzer = C.CascadeAnalyzer(REPO_ROOT)
-        blocks, edges, order, decisions, reach = analyzer.order(elements, [], [])
+        blocks, edges, order, decisions, reach, _c, _u = analyzer.order(elements, [], [])
         assert len(reach) == len(elements), case
         assert {e.source_id for e in edges} <= {b.id for b in blocks}, case
         assert all(n.provenance is not None for n in order), case

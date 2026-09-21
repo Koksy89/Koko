@@ -1035,20 +1035,48 @@ def test_declared_multiprocessing_is_allowed(tmp_path: Path) -> None:
     assert result["blocked"] == []
 
 
-def test_direct_posixsubprocess_fork_exec_is_unverified() -> None:
-    """``multiprocessing``'s spawn path calls ``_posixsubprocess.fork_exec``
-    directly (see the section docstring above) -- undocumented, with a
-    23-argument positional C signature that varies across patch versions.
-    Constructing a *minimal, correct* direct call to it to probe in
-    isolation was attempted and abandoned: every attempt either raised
-    ``TypeError`` on argument count/type before reaching the audit hook, or
-    would have required pinning to this exact interpreter's private ABI.
-    This is recorded here as a known, honestly unverified path -- covered
-    indirectly by ``test_multiprocessing_spawn_is_blocked`` (the only
-    production caller of this function this codebase relies on), not
-    independently. See the build report.
+def test_direct_posixsubprocess_fork_exec_is_a_verified_known_gap(tmp_path: Path) -> None:
+    """Not merely unverified: constructed and reproduced. ``subprocess.Popen``
+    fires the "subprocess.Popen" audit event from its own Python-level
+    ``__init__`` *before* calling ``_posixsubprocess.fork_exec`` -- that call
+    itself raises no audit event of any kind (confirmed by installing a hook
+    that logs every event PEP 578 fires and finding zero for this call, see
+    the build report). Code that imports ``_posixsubprocess`` directly and
+    calls ``fork_exec`` itself, bypassing ``subprocess.Popen`` entirely, is
+    therefore invisible to every control in this module: this probe launches
+    a real child process (``/bin/true``) with zero blocked attempts.
+
+    This is not closed. Gating the ``import`` of ``_posixsubprocess`` the way
+    ``multiprocessing``'s spawn backend is gated does not work here:
+    ``subprocess.py`` imports ``_posixsubprocess`` unconditionally at
+    ``import subprocess`` time, not at ``Popen()`` call time, so the same
+    gate would block importing ``subprocess`` at all -- including the
+    already-working, already-tested "declared executable" path -- rather
+    than just this bypass. No fix was found that closes this without
+    breaking that. It is a real, disclosed limit of an audit-hook-based
+    harness: PEP 578 only fires where CPython's own C code calls
+    ``PySys_Audit``, and there is no way to intercept a call that does not.
+    Closing it requires OS-level sandboxing (seccomp-bpf, a container, a
+    namespace) underneath this harness, not a change to this module. See the
+    build report.
     """
-    pytest.skip(
-        "direct _posixsubprocess.fork_exec probing abandoned: undocumented, "
-        "version-dependent C signature; see docstring and build report"
+    result = _probe(
+        tmp_path,
+        "import os, _posixsubprocess\n"
+        "executable = b'/bin/true'\n"
+        "errpipe_read, errpipe_write = os.pipe()\n"
+        "with activate(ctx):\n"
+        "    pid = _posixsubprocess.fork_exec(\n"
+        "        [executable], (executable,), True, (), None, None,\n"
+        "        -1, -1, -1, -1, -1, -1, errpipe_read, errpipe_write,\n"
+        "        False, False, 0, -1, None, -1, -1, None, False,\n"
+        "    )\n"
+        "    os.waitpid(pid, 0)\n"
+        "os.close(errpipe_read)\n"
+        "os.close(errpipe_write)\n",
+        label="direct_fork_exec",
     )
+    # Documents the gap rather than hiding it: this is what "not closed"
+    # looks like. A future fix that closes it should change this assertion,
+    # not delete the test.
+    assert result["blocked"] == []
