@@ -18,7 +18,7 @@ from typing import Any
 
 from cascade_map.contracts.interfaces import Confidence
 
-from .loader import ArtifactStore
+from .loader import ArtifactStore, RuntimeStore
 
 # Confidence declares CERTAIN first, UNKNOWN last. Rank 0 is the strongest,
 # read directly off the enum so this cannot drift from the contract.
@@ -543,4 +543,256 @@ def element_detail(store: ArtifactStore, element_id: str) -> dict[str, Any]:
         "intent_ids": sorted(
             i["id"] for i in store.intents_by_element.get(element_id, []) if "id" in i
         ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase A -- the runtime overlay
+#
+# Every function below renders a run's already-emitted records verbatim.
+# Nothing here traces, aligns, narrates or judges mapping quality -- that is
+# cards 11-14's job. The one arithmetic exception is the mapping rate, which
+# MappingReport carries as two counts rather than a ratio; dividing them for
+# display is presentation of a fact card 12 already computed, not a new one.
+# ---------------------------------------------------------------------------
+
+
+def runtime_overview_view(rstore: RuntimeStore) -> dict[str, Any]:
+    """`RunRecord` verbatim, `unguaranteed` and `blocked` first -- the owner
+    needs to see what a run could not guarantee before what it observed."""
+    run = rstore.run_record
+    if run is None:
+        return {"available": False, "run_id": rstore.run_id}
+    return {
+        "available": True,
+        "run_id": run.get("run_id", rstore.run_id),
+        "unguaranteed": list(run.get("unguaranteed") or ()),
+        "blocked": [dict(b) for b in run.get("blocked") or ()],
+        "refused": run.get("refused", False),
+        "refusal_reason": run.get("refusal_reason", ""),
+        "scenario": run.get("scenario", ""),
+        "interpreter": run.get("interpreter", ""),
+        "controls_active": dict(run.get("controls_active") or {}),
+        "sandbox_dir": run.get("sandbox_dir", ""),
+        "graph_hash": run.get("graph_hash", ""),
+        "target_hashes": dict(run.get("target_hashes") or {}),
+    }
+
+
+def mapping_view(rstore: RuntimeStore) -> dict[str, Any]:
+    """`MappingReport` verbatim, plus the rate computed from its own two
+    counts (``mapped_events / total_events``) -- never derived elsewhere."""
+    m = rstore.mapping_report
+    if m is None:
+        return {"available": False, "run_id": rstore.run_id}
+    total = m.get("total_events", 0) or 0
+    mapped = m.get("mapped_events", 0) or 0
+    rate = (mapped / total) if total else None
+    return {
+        "available": True,
+        "run_id": m.get("run_id", rstore.run_id),
+        "total_events": total,
+        "mapped_events": mapped,
+        "unmapped_events": m.get("unmapped_events", 0),
+        "unmapped_by_reason": dict(m.get("unmapped_by_reason") or {}),
+        "mapping_rate": rate,
+    }
+
+
+def _event_summary(rstore: RuntimeStore, event: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "event_id": event.get("event_id"),
+        "run_id": event.get("run_id") or rstore.run_id,
+        "kind": event.get("kind"),
+        "element_id": event.get("element_id"),
+        "sequence": event.get("sequence"),
+        "depth": event.get("depth"),
+        "caller_event_id": event.get("caller_event_id", ""),
+        "branch_taken": event.get("branch_taken", ""),
+    }
+
+
+def observed_order_view(rstore: RuntimeStore) -> list[dict[str, Any]]:
+    """Events in observed execution order (`TraceEvent.sequence`) -- the
+    runtime counterpart to :func:`cascade_view`'s static order, rendered
+    separately rather than merged into it."""
+    return [_event_summary(rstore, e) for e in rstore.events_ordered]
+
+
+def event_detail_view(rstore: RuntimeStore, event_id: str) -> dict[str, Any] | None:
+    """One event's captured values, each with its `CaptureStatus` and
+    `original_size` visible -- a summarised/redacted/dropped value must
+    never read as a complete one."""
+    event = rstore.events_by_id.get(event_id)
+    if event is None:
+        return None
+    values: dict[str, dict[str, Any]] = {}
+    for name, vc in (event.get("values") or {}).items():
+        values[name] = {
+            "status": vc.get("status"),
+            "repr_text": vc.get("repr_text", ""),
+            "type_name": vc.get("type_name", ""),
+            "shape": vc.get("shape", ""),
+            "original_size": vc.get("original_size", 0),
+            "reason": vc.get("reason", ""),
+        }
+    prov = event.get("provenance") or {}
+    detail = _event_summary(rstore, event)
+    detail["values"] = values
+    detail["method"] = prov.get("method")
+    detail["confidence"] = prov.get("confidence")
+    detail["note"] = prov.get("note", "")
+    detail["span"] = prov.get("span")
+    return detail
+
+
+def unmapped_events_view(rstore: RuntimeStore) -> list[dict[str, Any]]:
+    """`UNMAPPED` events with their location and reason -- read from
+    `Provenance.span` / `Provenance.note`, the fields card 12's
+    `Contradiction` docstring identifies as where a runtime record must
+    carry its evidence. Never dropped: these mark where Mode B was wrong."""
+    out = []
+    for event in rstore.unmapped_events:
+        prov = event.get("provenance") or {}
+        row = _event_summary(rstore, event)
+        row["location"] = prov.get("span")
+        row["reason"] = prov.get("note", "")
+        out.append(row)
+    out.sort(key=lambda r: r["event_id"] or "")
+    return out
+
+
+def nondeterminism_view(rstore: RuntimeStore) -> list[dict[str, Any]]:
+    out = []
+    for n in rstore.raw.get("nondeterminism", []):
+        prov = n.get("provenance") or {}
+        out.append(
+            {
+                "id": n.get("id"),
+                "element_id": n.get("element_id"),
+                "kind": n.get("kind"),
+                "detail": n.get("detail"),
+                "run_id": prov.get("run_id") or rstore.run_id,
+                "event_ids": list(prov.get("event_ids") or ()),
+            }
+        )
+    out.sort(key=lambda r: r["id"] or "")
+    return out
+
+
+def contradictions_view(rstore: RuntimeStore) -> list[dict[str, Any]]:
+    """Static claim and runtime observation, side by side. Never merged: a
+    contradiction is a finding in its own right, not a correction applied
+    to the static graph."""
+    out = []
+    for c in rstore.raw.get("contradictions", []):
+        prov = c.get("provenance") or {}
+        out.append(
+            {
+                "id": c.get("id"),
+                "element_id": c.get("element_id"),
+                "claim": c.get("claim"),
+                "observation": c.get("observation"),
+                "run_id": prov.get("run_id") or rstore.run_id,
+                "event_ids": list(prov.get("event_ids") or ()),
+                "static_evidence_ids": list(c.get("static_evidence_ids") or ()),
+            }
+        )
+    out.sort(key=lambda r: r["id"] or "")
+    return out
+
+
+def verdicts_view(rstore: RuntimeStore, *, element_id: str | None = None) -> list[dict[str, Any]]:
+    """`AlignmentVerdict` records verbatim. `NOT_EXERCISED` is not filtered
+    or relabelled here -- it must render as distinct from `ALIGNED` as the
+    contract requires, and that distinction is made by the caller reading
+    `verdict` directly, never collapsed in this view."""
+    verdicts = (
+        rstore.verdicts_by_element.get(element_id, [])
+        if element_id is not None
+        else rstore.raw.get("verdicts", [])
+    )
+    out = []
+    for v in verdicts:
+        prov = v.get("provenance") or {}
+        out.append(
+            {
+                "id": v.get("id"),
+                "element_id": v.get("element_id"),
+                "intent_id": v.get("intent_id"),
+                "verdict": v.get("verdict"),
+                "expectation": v.get("expectation"),
+                "observation": v.get("observation"),
+                "evidence_ids": list(v.get("evidence_ids") or ()),
+                "run_id": prov.get("run_id") or rstore.run_id,
+                "event_ids": list(prov.get("event_ids") or ()),
+            }
+        )
+    out.sort(key=lambda r: r["id"] or "")
+    return out
+
+
+def narrative_view(rstore: RuntimeStore) -> list[dict[str, Any]]:
+    """`NarrativeStep` records in sequence, each carrying the element and
+    event IDs it is anchored to; model-written prose kept in its own,
+    separately labelled field."""
+    out = []
+    for s in rstore.narrative_steps:
+        out.append(
+            {
+                "id": s.get("id"),
+                "run_id": s.get("run_id") or rstore.run_id,
+                "sequence": s.get("sequence"),
+                "phase": s.get("phase"),
+                "text": s.get("text"),
+                "element_ids": list(s.get("element_ids") or ()),
+                "event_ids": list(s.get("event_ids") or ()),
+                "children": list(s.get("children") or ()),
+                "model_prose": s.get("model_prose", ""),
+                "model_id": s.get("model_id", ""),
+            }
+        )
+    return out
+
+
+def decision_branch_view(
+    store: ArtifactStore, rstore: RuntimeStore, decision_id: str
+) -> dict[str, Any] | None:
+    """The branch(es) observed at one `DecisionPoint`, against the branches
+    that were declared but never observed there.
+
+    `outcomes` is card 3's own static list of (label, target) pairs; "not
+    observed" is its complement against the labels seen in this run's
+    events at the decision's element -- a set difference over two
+    already-emitted fields, not an inferred fact.
+    """
+    decision = store.decisions_by_id.get(decision_id)
+    if decision is None:
+        return None
+    element_id = decision.get("element_id", "")
+    outcomes = [tuple(o) for o in decision.get("outcomes") or ()]
+    labels = [label for label, _target in outcomes]
+    observed = []
+    for event in rstore.events_by_element.get(element_id, ()):
+        if event.get("kind") not in ("BRANCH", "DECISION"):
+            continue
+        taken = event.get("branch_taken")
+        if not taken:
+            continue
+        prov = event.get("provenance") or {}
+        observed.append(
+            {
+                "event_id": event.get("event_id"),
+                "branch_taken": taken,
+                "run_id": prov.get("run_id") or rstore.run_id,
+            }
+        )
+    observed.sort(key=lambda o: o["event_id"] or "")
+    observed_labels = {o["branch_taken"] for o in observed}
+    return {
+        "decision_id": decision_id,
+        "element_id": element_id,
+        "declared_outcomes": outcomes,
+        "observed": observed,
+        "not_observed_labels": [label for label in labels if label not in observed_labels],
     }

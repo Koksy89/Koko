@@ -172,6 +172,7 @@ def _run_harness(
     declared_process_names: frozenset[str] = frozenset(),
     env_passthrough: frozenset[str] = frozenset(),
     client_stub_source: str = "",
+    observer_source: str = "",
     target_root: Path | None = None,
     sandbox_root: Path | None = None,
     graph_hash: str | None = None,
@@ -211,6 +212,7 @@ def _run_harness(
         f"out_dir = Path({str(out_dir)!r})\n"
         f"sandbox_root = Path({str(sandbox_root)!r})\n"
         + client_stub_source
+        + observer_source
         + "\nconfig = RunConfig(\n"
         "    target_root=target_root,\n"
         "    mode_b_out_dir=out_dir,\n"
@@ -222,7 +224,11 @@ def _run_harness(
         + ("    client_stubs=CLIENT_STUBS,\n" if client_stub_source else "")
         + ")\n"
         + graph_hash_line
-        + f"Harness(config).start({scenario!r}, graph_hash)\n"
+        + (
+            f"Harness(config).start({scenario!r}, graph_hash, observer=OBSERVER)\n"
+            if observer_source
+            else f"Harness(config).start({scenario!r}, graph_hash)\n"
+        )
     )
     run_env = dict(os.environ) if env is None else env
     result = _run_python(script, timeout=timeout, env=run_env)
@@ -408,9 +414,13 @@ def test_refuses_when_audit_hook_cannot_be_verified(tmp_path: Path, monkeypatch)
 
 
 def test_no_force_flag_exists_on_start() -> None:
-    """There is no override. A regression that adds one is a defect on its own."""
+    """There is no override. ``observer`` is the one contract-mandated
+    addition (card 12's seam, ``RunObserver``); anything beyond these four
+    parameters is a regression worth catching on its own."""
     params = list(inspect.signature(Harness.start).parameters)
-    assert params == ["self", "scenario", "graph_hash"]
+    assert params == ["self", "scenario", "graph_hash", "observer"]
+    observer_param = inspect.signature(Harness.start).parameters["observer"]
+    assert observer_param.default is None
 
 
 # ---------------------------------------------------------------------------
@@ -1239,3 +1249,217 @@ def test_declared_child_process_runs_unaudited_once_permitted(tmp_path: Path) ->
     # Neither the parent's spawn nor the child's own socket use is recorded:
     # declaring a process token permits only the spawn, nothing beyond it.
     assert result["blocked"] == []
+
+
+# ---------------------------------------------------------------------------
+# RunObserver -- card 12's seam (contracts.RunObserver / HarnessCard.start)
+#
+# The contract left the handoff between card 11 and card 12 unspecified;
+# `Tracer.collector(run)` (card 12) had nowhere to install, since
+# `Harness.start` took no parameter to install it through. `RunObserver` is a
+# `start()`/`stop()` protocol so this module never imports card 12 -- the
+# harness must keep working with no observer at all, and a tracing run is
+# the same run with something watching, not a different code path.
+# ---------------------------------------------------------------------------
+
+_OBSERVER_SOURCE = (
+    "class _RecordingObserver:\n"
+    "    def __init__(self):\n"
+    "        self.calls = []\n"
+    "    def start(self):\n"
+    "        self.calls.append('start')\n"
+    "        with open('observer_events.log', 'a') as f:\n"
+    "            f.write('start\\n')\n"
+    "    def stop(self):\n"
+    "        self.calls.append('stop')\n"
+    "        with open('observer_events.log', 'a') as f:\n"
+    "            f.write('stop\\n')\n"
+    "OBSERVER = _RecordingObserver()\n"
+)
+
+
+def test_observer_started_and_stopped_exactly_once_around_a_successful_run(
+    tmp_path: Path,
+) -> None:
+    record, sandbox_root, _ = _run_harness(
+        tmp_path,
+        source="with open('ran.txt', 'w') as f:\n    f.write('ok')\n",
+        module="observed_success",
+        observer_source=_OBSERVER_SOURCE,
+        label="observer_success",
+    )
+    assert record["refused"] is False
+    log = (sandbox_root / "observer_events.log").read_text()
+    assert log == "start\nstop\n"
+    # The observed call itself still ran normally, inside the same window.
+    assert (sandbox_root / "ran.txt").read_text() == "ok"
+
+
+def test_observer_is_stopped_when_the_target_raises(tmp_path: Path) -> None:
+    record, sandbox_root, _ = _run_harness(
+        tmp_path,
+        source="raise RuntimeError('the target blew up')\n",
+        module="observed_crash",
+        observer_source=_OBSERVER_SOURCE,
+        label="observer_crash",
+    )
+    # The scenario crashing is still a completed run, not a refusal.
+    assert record["refused"] is False
+    log = (sandbox_root / "observer_events.log").read_text()
+    assert log == "start\nstop\n"
+
+
+def test_observer_is_started_inside_the_sandbox_window(tmp_path: Path) -> None:
+    """observer.start() itself runs inside the activated sandbox -- proven
+    by having it perform a network attempt from within start(), which must
+    be blocked and recorded exactly like anything the target itself does."""
+    observer_source = (
+        "class _NetworkAttemptingObserver:\n"
+        "    def start(self):\n"
+        "        import socket\n"
+        "        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+        "        s.settimeout(0.01)\n"
+        "        try:\n"
+        "            s.connect(('93.184.216.34', 80))\n"
+        "        except Exception:\n"
+        "            pass\n"
+        "        finally:\n"
+        "            s.close()\n"
+        "    def stop(self):\n"
+        "        pass\n"
+        "OBSERVER = _NetworkAttemptingObserver()\n"
+    )
+    record, _, _ = _run_harness(
+        tmp_path,
+        source="x = 1\n",
+        module="observer_network_probe",
+        observer_source=observer_source,
+        label="observer_window",
+    )
+    assert record["refused"] is False
+    assert "network" in _blocked_kinds(record)
+
+
+class _CountingObserver:
+    def __init__(self) -> None:
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def start(self) -> None:
+        self.start_calls += 1
+
+    def stop(self) -> None:
+        self.stop_calls += 1
+
+
+def test_observer_none_is_the_default_and_behaves_identically(tmp_path: Path) -> None:
+    """A run with ``observer=None`` (explicit or omitted) behaves exactly as
+    it did before the parameter existed. Runs both through ``_run_harness``
+    (subprocess) rather than in-process: this is a real, successful
+    ``activate()``-touching run, and an in-process call here would leave
+    ``_active_ctx`` set for the rest of this module's own tests -- exactly
+    the contamination the module docstring explains why to avoid.
+    """
+    target_root = tmp_path / "target_observer_none"
+    target_root.mkdir()
+    (target_root / "trivial_observer_none.py").write_text("x = 1\n")
+    graph_hash = _graph_hash_for(target_root)
+
+    record_omitted, _, _ = _run_harness(
+        tmp_path,
+        source="",
+        module="trivial_observer_none",
+        target_root=target_root,
+        graph_hash=graph_hash,
+        label="observer_omitted",
+    )
+    record_explicit_none, _, _ = _run_harness(
+        tmp_path,
+        source="",
+        module="trivial_observer_none",
+        target_root=target_root,
+        graph_hash=graph_hash,
+        observer_source="OBSERVER = None\n",
+        label="observer_explicit_none",
+    )
+
+    for record in (record_omitted, record_explicit_none):
+        assert record["refused"] is False
+        # Only informational reads of stdlib/interpreter internals may
+        # appear -- nothing was blocked (same pattern as run_linear's test).
+        assert set(_blocked_kinds(record)) <= {"filesystem_read_outside_sandbox"}
+        assert record["controls_active"] == {
+            "network": True,
+            "filesystem": True,
+            "process": True,
+            "environment": True,
+            "external_clients": True,
+        }
+    # Same target, same graph hash: the omitted and explicit-None runs
+    # blocked (and read outside the sandbox) exactly the same things.
+    assert _blocked_kinds(record_omitted) == _blocked_kinds(record_explicit_none)
+
+
+def test_observer_never_started_when_no_mode_b_graph_exists(tmp_path: Path) -> None:
+    observer = _CountingObserver()
+    target_root = _write_target(tmp_path, "trivial", "x = 1\n")
+    out_dir = tmp_path / "out_without_a_graph"
+    out_dir.mkdir()
+    config = RunConfig(
+        target_root=target_root,
+        mode_b_out_dir=out_dir,
+        sandbox_root=tmp_path / "sandbox",
+        scenarios={"s": ScenarioSpec(name="s", module="trivial")},
+    )
+    record = Harness(config).start("s", _graph_hash_for(target_root), observer=observer)
+
+    assert record.refused is True
+    assert observer.start_calls == 0
+    assert observer.stop_calls == 0
+
+
+def test_observer_never_started_when_graph_is_stale(tmp_path: Path) -> None:
+    observer = _CountingObserver()
+    target_root = _write_target(tmp_path, "trivial", "x = 1\n")
+    config = _config(tmp_path, target_root, "s", "trivial")
+
+    record = Harness(config).start("s", "0" * 64, observer=observer)
+
+    assert record.refused is True
+    assert observer.start_calls == 0
+    assert observer.stop_calls == 0
+
+
+def test_observer_never_started_when_scenario_not_declared(tmp_path: Path) -> None:
+    observer = _CountingObserver()
+    target_root = _write_target(tmp_path, "trivial", "x = 1\n")
+    config = _config(tmp_path, target_root, "declared_scenario", "trivial")
+
+    record = Harness(config).start(
+        "not_the_declared_one", _graph_hash_for(target_root), observer=observer
+    )
+
+    assert record.refused is True
+    assert observer.start_calls == 0
+    assert observer.stop_calls == 0
+
+
+def test_observer_never_started_when_audit_hook_cannot_be_verified(
+    tmp_path: Path, monkeypatch
+) -> None:
+    observer = _CountingObserver()
+    target_root = _write_target(tmp_path, "trivial", "x = 1\n")
+    config = _config(tmp_path, target_root, "s", "trivial")
+
+    import cascade_map.harness.sandbox as sandbox_module
+
+    def _broken_install_hook() -> None:
+        raise RuntimeError("simulated: audit hook installation failed")
+
+    monkeypatch.setattr(sandbox_module, "install_hook", _broken_install_hook)
+
+    record = Harness(config).start("s", _graph_hash_for(target_root), observer=observer)
+
+    assert record.refused is True
+    assert observer.start_calls == 0
+    assert observer.stop_calls == 0

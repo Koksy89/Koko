@@ -25,7 +25,7 @@ from html import escape
 from typing import Any, Iterable
 
 from . import views
-from .loader import ArtifactStore
+from .loader import ArtifactStore, RuntimeStore, list_runs
 
 _STYLE = """
 body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; color: #1a1a1a; }
@@ -60,6 +60,23 @@ th { background: #f4f4f4; }
 li.order-node { margin: 0.25rem 0; padding-left: 0.5rem; }
 .missing { color: #a94442; font-style: italic; }
 .element-detail { border: 1px solid #ccc; padding: 0.75rem; margin-bottom: 1rem; }
+.runtime-section { border-top: 4px double #6a3fa0; margin-top: 2.5rem; padding-top: 1rem; }
+.run-tag { display: inline-block; background: #efe3fb; color: #5b2c86; border: 1px solid #8a5cc7;
+  font-size: 0.7rem; padding: 0 0.4rem; border-radius: 3px; margin-left: 0.35rem; }
+.runtime-evidence { background: #f7f1fc; }
+.status-FULL { background: #cdebd4; }
+.status-SUMMARIZED { background: #fff3cd; }
+.status-REDACTED { background: #ffe0b2; }
+.status-DROPPED { background: #f5c6cb; }
+.verdict-ALIGNED { background: #cdebd4; }
+.verdict-MISALIGNED { background: #f5c6cb; }
+.verdict-NOT_EXERCISED { background: #d9edf7; border: 1px dashed #2e6da4; }
+.verdict-UNVERIFIABLE { background: #eee; }
+.verdict-NO_INTENT { background: #eee; }
+.contradiction-row { background: #fdf2f2; }
+.contradiction-row td { border-color: #d9534f; }
+.unguaranteed-block { border: 2px solid #d9534f; background: #fff5f5; padding: 0.75rem 1rem;
+  margin-bottom: 1rem; }
 """
 
 

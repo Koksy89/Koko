@@ -18,7 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from cascade_map.contracts import BlockedAttempt, RunRecord, canonical_dumps
+from cascade_map.contracts import BlockedAttempt, RunObserver, RunRecord, canonical_dumps
 
 from .config import RunConfig, ScenarioSpec
 from .errors import BlockedOperation, HarnessRefusal
@@ -56,9 +56,22 @@ class Harness:
 
     # -- HarnessCard -----------------------------------------------------
 
-    def start(self, scenario: str, graph_hash: str) -> RunRecord:
+    def start(
+        self, scenario: str, graph_hash: str, observer: RunObserver | None = None
+    ) -> RunRecord:
         """Verify every control, then run -- or refuse and say which
         guarantee could not be made. Constraint 7. There is no force option.
+
+        *observer* -- card 12's seam, never imported here (this module only
+        ever sees the protocol; see ``RunObserver`` in the contract). Started
+        immediately before the target call, inside the sandbox window this
+        method alone controls, and stopped immediately after -- including
+        when the target raises. A refused run never constructs, starts or
+        even sees one: there is nothing to observe, and this method returns
+        before any of the code paths below that touch *observer* run at all.
+        With ``observer=None`` this method behaves exactly as it did before
+        the parameter existed; a tracing run is the same run with something
+        watching, not a different code path.
         """
         target_hashes = compute_target_hashes(self.config.target_root)
         current_graph_hash = compute_graph_hash(target_hashes)
@@ -158,7 +171,16 @@ class Harness:
 
         # 5. Execute, inside the sandbox, with everything above in force.
         record = self._execute(
-            run_id, target_hashes, graph_hash, scenario, spec, ctx, controls, filtered_env, sandbox_dir
+            run_id,
+            target_hashes,
+            graph_hash,
+            scenario,
+            spec,
+            ctx,
+            controls,
+            filtered_env,
+            sandbox_dir,
+            observer,
         )
         self._write_run_record(record)
         return record
@@ -176,6 +198,7 @@ class Harness:
         controls: dict[str, bool],
         filtered_env: dict[str, str],
         sandbox_dir: str,
+        observer: RunObserver | None,
     ) -> RunRecord:
         original_env = dict(os.environ)
         original_cwd = os.getcwd()
@@ -203,7 +226,21 @@ class Harness:
                 installed_modules[name] = sys.modules.get(name)
                 sys.modules[name] = factory()
             with activate(ctx):
-                self._run_scenario(spec)
+                # Started only once the sandbox window is open, stopped
+                # before it closes -- an observer started outside this
+                # `with` would watch a process that is not yet contained.
+                # The inner try/finally is what makes "stopped even when
+                # the target raises" true rather than aspirational: if
+                # observer.start() itself never ran, there is nothing to
+                # stop, so it is only entered once start() has succeeded.
+                if observer is not None:
+                    observer.start()
+                    try:
+                        self._run_scenario(spec)
+                    finally:
+                        observer.stop()
+                else:
+                    self._run_scenario(spec)
         except BlockedOperation:
             pass  # already recorded on ctx; a blocked attempt, not a failed run
         except HarnessRefusal:

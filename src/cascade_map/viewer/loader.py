@@ -20,8 +20,9 @@ from typing import Any
 
 # name -> filename, relative to the artifact root. Matches every top-level
 # file in ARCHITECTURE.md's output layout except the files that live under
-# runtime/<run_id>/ (run.json, events.jsonl, verdicts.jsonl, narrative.jsonl):
-# those need a run_id and belong to phase A of this card, not phase B.
+# runtime/<run_id>/ (run.json, events.jsonl, contradictions.jsonl,
+# nondeterminism.jsonl, mapping.json, verdicts.jsonl, narrative.jsonl):
+# those need a run_id and are loaded by RuntimeStore, phase A of this card.
 ARTIFACT_FILES: dict[str, str] = {
     "elements": "elements.jsonl",
     "unresolved": "unresolved.jsonl",
@@ -93,6 +94,32 @@ def _multi_index_many(records: list[dict[str, Any]], key: str) -> dict[str, list
             if isinstance(value, str) and value:
                 index[value].append(record)
     return dict(index)
+
+
+def _read_json_object(
+    path: Path, file_label: str, errors: list[LoadError]
+) -> dict[str, Any] | None:
+    """Parse a single-object JSON artifact (``run.json``, ``mapping.json``).
+
+    Line number 0 marks a whole-file error, matching how ``manifest.json``
+    (not a per-line artifact either) already reports a parse failure.
+    """
+    text = path.read_text(encoding="utf-8")
+    try:
+        record = json.loads(text)
+    except json.JSONDecodeError as exc:
+        errors.append(LoadError(file=file_label, line_number=0, reason=str(exc)))
+        return None
+    if not isinstance(record, dict):
+        errors.append(
+            LoadError(
+                file=file_label,
+                line_number=0,
+                reason=f"expected a JSON object, got {type(record).__name__}",
+            )
+        )
+        return None
+    return record
 
 
 @dataclass
@@ -252,6 +279,148 @@ class ArtifactStore:
         ids.update(self.impacts_by_change)
         for name in ("unresolved", "cfg_blocks", "cfg_edges", "reachability", "lineage",
                       "barriers", "slices", "findings", "changes", "records", "intents"):
+            for record in self.raw.get(name, ()):
+                rid = record.get("id")
+                if isinstance(rid, str):
+                    ids.add(rid)
+        return ids
+
+
+# ---------------------------------------------------------------------------
+# Phase A -- the runtime overlay, keyed by run_id
+# ---------------------------------------------------------------------------
+
+# Single-object JSON artifacts under runtime/<run_id>/.
+RUNTIME_JSON_FILES: dict[str, str] = {
+    "run": "run.json",
+    "mapping": "mapping.json",
+}
+
+# JSONL artifacts under runtime/<run_id>/.
+RUNTIME_JSONL_FILES: dict[str, str] = {
+    "events": "events.jsonl",
+    "contradictions": "contradictions.jsonl",
+    "nondeterminism": "nondeterminism.jsonl",
+    "verdicts": "verdicts.jsonl",
+    "narrative": "narrative.jsonl",
+}
+
+
+def list_runs(root: str | Path) -> list[str]:
+    """Every run_id with a directory under ``root/runtime/``, sorted.
+
+    A directory listing only -- it does not validate contents or pick a
+    "latest" run (the contract carries no reliable, non-clock signal for
+    that; ``run_meta.json`` is explicitly not byte-compared). The reader --
+    a human or card 10 -- picks which run to load with
+    :meth:`RuntimeStore.load`.
+    """
+    runtime_dir = Path(root) / "runtime"
+    if not runtime_dir.is_dir():
+        return []
+    return sorted(p.name for p in runtime_dir.iterdir() if p.is_dir())
+
+
+@dataclass
+class RuntimeStore:
+    """One run's overlay -- ``runtime/<run_id>/*``, loaded and indexed.
+
+    Mirrors :class:`ArtifactStore` exactly: every field is read directly
+    off disk, every index is a lookup over records already emitted by
+    cards 11-14 (never a new fact), a missing file degrades
+    (``available[name] = False``) rather than raising, and a malformed
+    line is reported as a :class:`LoadError`, never silently dropped.
+    """
+
+    root: Path
+    run_id: str
+    available: dict[str, bool] = field(default_factory=dict)
+    errors: list[LoadError] = field(default_factory=list)
+    raw: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    run_record: dict[str, Any] | None = None
+    mapping_report: dict[str, Any] | None = None
+
+    events_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    events_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    events_ordered: list[dict[str, Any]] = field(default_factory=list)
+    unmapped_events: list[dict[str, Any]] = field(default_factory=list)
+    contradictions_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    nondeterminism_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    verdicts_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    verdicts_by_intent: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    narrative_steps: list[dict[str, Any]] = field(default_factory=list)
+    narrative_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    narrative_by_event: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+
+    @classmethod
+    def load(cls, root: str | Path, run_id: str) -> "RuntimeStore":
+        root = Path(root)
+        rstore = cls(root=root, run_id=run_id)
+        rundir = root / "runtime" / run_id
+        errors: list[LoadError] = []
+
+        for name, filename in RUNTIME_JSON_FILES.items():
+            path = rundir / filename
+            label = f"runtime/{run_id}/{filename}"
+            if path.exists():
+                rstore.available[name] = True
+                obj = _read_json_object(path, label, errors)
+                if name == "run":
+                    rstore.run_record = obj
+                else:
+                    rstore.mapping_report = obj
+            else:
+                rstore.available[name] = False
+
+        for name, filename in RUNTIME_JSONL_FILES.items():
+            path = rundir / filename
+            label = f"runtime/{run_id}/{filename}"
+            if path.exists():
+                rstore.available[name] = True
+                rstore.raw[name] = _read_jsonl(path, label, errors)
+            else:
+                rstore.available[name] = False
+                rstore.raw[name] = []
+
+        rstore.errors = errors
+        rstore._build_indices()
+        return rstore
+
+    def _build_indices(self) -> None:
+        events = self.raw.get("events", [])
+        self.events_by_id = {e["event_id"]: e for e in events if "event_id" in e}
+        self.events_by_element = _multi_index(events, "element_id")
+        # Observed execution order is sequence, not event_id -- the two are
+        # expected to agree (card 12 mints event_id in trace order) but
+        # sequence is the field the contract defines as the order.
+        self.events_ordered = sorted(
+            events, key=lambda e: (e.get("sequence", 0), e.get("event_id", ""))
+        )
+        self.unmapped_events = [e for e in events if e.get("kind") == "UNMAPPED"]
+
+        self.contradictions_by_element = _multi_index(
+            self.raw.get("contradictions", []), "element_id"
+        )
+        self.nondeterminism_by_element = _multi_index(
+            self.raw.get("nondeterminism", []), "element_id"
+        )
+
+        verdicts = self.raw.get("verdicts", [])
+        self.verdicts_by_element = _multi_index(verdicts, "element_id")
+        self.verdicts_by_intent = _multi_index(verdicts, "intent_id")
+
+        narrative = self.raw.get("narrative", [])
+        self.narrative_steps = sorted(
+            narrative, key=lambda s: (s.get("sequence", 0), s.get("id", ""))
+        )
+        self.narrative_by_element = _multi_index_many(narrative, "element_ids")
+        self.narrative_by_event = _multi_index_many(narrative, "event_ids")
+
+    def known_ids(self) -> set[str]:
+        """Every ID this run's overlay has ever seen -- used the same way
+        :meth:`ArtifactStore.known_ids` is, to check drill-down targets."""
+        ids: set[str] = set(self.events_by_id)
+        for name in ("contradictions", "nondeterminism", "verdicts", "narrative"):
             for record in self.raw.get(name, ()):
                 rid = record.get("id")
                 if isinstance(rid, str):
