@@ -552,3 +552,173 @@ def test_malformed_json_is_unresolved_not_a_crash(tmp_path: Path) -> None:
     elements, unresolved = inventory(str(root), cache_dir=tmp_path / "cache")
     assert any(e.kind == ElementKind.DATA_FILE for e in elements)
     assert any(u.reason == UnresolvedReason.SYNTAX_ERROR for u in unresolved)
+
+
+# ---------------------------------------------------------------------------
+# normalized_body_hash -- "is this the same logic", not "is this the same
+# bytes". Requested by card 5 (DUPLICATED_LOGIC) and card 6 (UNCHANGED).
+# ---------------------------------------------------------------------------
+
+
+def test_normalized_body_hash_ignores_comments_and_whitespace_but_not_logic(tmp_path: Path) -> None:
+    root = tmp_path / "dup"
+    root.mkdir()
+    (root / "__init__.py").write_text(
+        '"""m."""\n\n\n'
+        "def a():\n"
+        "    # a comment\n"
+        "    x = 1\n"
+        "    return x + 2\n\n\n"
+        "def b():\n"
+        '    """A docstring b lacks in a -- also normalized away."""\n'
+        "    x    =     1\n\n"
+        "    return    x+2\n\n\n"
+        "def c():\n"
+        "    x = 1\n"
+        "    return x + 99\n"
+    )
+    elements, _ = inventory(str(root), cache_dir=tmp_path / "cache")
+    by_name = {e.name: e for e in elements if e.kind == ElementKind.FUNCTION}
+    assert by_name["a"].normalized_body_hash
+    assert by_name["a"].normalized_body_hash == by_name["b"].normalized_body_hash, (
+        "same logic, different comments/whitespace/docstring/name -- must hash equal"
+    )
+    assert by_name["a"].normalized_body_hash != by_name["c"].normalized_body_hash, (
+        "different logic must not collide"
+    )
+
+
+def test_normalized_body_hash_survives_reformatting(tmp_path: Path) -> None:
+    """The same reformat-invariance property as inv_ids_stable's IDs, applied
+    to normalized_body_hash specifically."""
+    original = tmp_path / "orig" / "m"
+    original.mkdir(parents=True)
+    (original / "__init__.py").write_text(
+        '"""m."""\n\n\ndef foo():\n    """doc."""\n    return 1\n'
+    )
+    reformatted = tmp_path / "reformatted" / "m"
+    reformatted.mkdir(parents=True)
+    (reformatted / "__init__.py").write_text(
+        "\n\n"
+        '"""m."""\n\n\ndef foo():\n\n\n    """doc.  # noqa"""\n\n    return    1  # trailing comment\n'
+    )
+    original_els, _ = inventory(str(original), cache_dir=tmp_path / "cache1")
+    reformatted_els, _ = inventory(str(reformatted), cache_dir=tmp_path / "cache2")
+    orig_foo = next(e for e in original_els if e.name == "foo")
+    reformatted_foo = next(e for e in reformatted_els if e.name == "foo")
+    assert orig_foo.normalized_body_hash == reformatted_foo.normalized_body_hash
+    assert orig_foo.content_hash != reformatted_foo.content_hash, (
+        "content_hash, unlike normalized_body_hash, must still change on reformat "
+        "-- it is what incrementality is keyed on"
+    )
+
+
+def test_normalized_body_hash_empty_for_bodyless_kinds(tmp_path: Path) -> None:
+    root = tmp_path / "bodyless"
+    root.mkdir()
+    (root / "__init__.py").write_text('"""m."""\n\nimport os\n\nX = 1\n')
+    elements, _ = inventory(str(root), cache_dir=tmp_path / "cache")
+    for e in elements:
+        if e.kind in (ElementKind.IMPORT, ElementKind.ASSIGNMENT):
+            assert e.normalized_body_hash == ""
+
+
+# ---------------------------------------------------------------------------
+# literal_value -- decidability for card 5's DEAD_BRANCH.
+# ---------------------------------------------------------------------------
+
+
+def test_literal_value_populated_for_scalar_literals(tmp_path: Path) -> None:
+    root = tmp_path / "lit"
+    root.mkdir()
+    (root / "__init__.py").write_text(
+        "A = 42\n"
+        'B = "hello"\n'
+        "C = None\n"
+        "D = True\n"
+        "E = -5\n"
+        "F = 3.14\n"
+        'G = ""\n'  # the not-empty-vs-empty-string distinction
+    )
+    elements, _ = inventory(str(root), cache_dir=tmp_path / "cache")
+    by_name = {e.name: e for e in elements if e.kind == ElementKind.ASSIGNMENT}
+    assert by_name["A"].literal_value == "42"
+    assert by_name["B"].literal_value == "'hello'"
+    assert by_name["C"].literal_value == "None"
+    assert by_name["D"].literal_value == "True"
+    assert by_name["E"].literal_value == "-5"
+    assert by_name["F"].literal_value == "3.14"  # a string -- canonical_dumps stays float-free
+    assert by_name["G"].literal_value == "''"
+    assert by_name["G"].literal_value != "", (
+        "an empty string literal's repr is \"''\", never the empty string -- "
+        "so 'not a literal' and 'literal is empty' can never be confused"
+    )
+
+
+def test_literal_value_empty_for_non_literals(tmp_path: Path) -> None:
+    root = tmp_path / "nonlit"
+    root.mkdir()
+    (root / "__init__.py").write_text(
+        "import os\n\n"
+        "A = some_call()\n"
+        "B = [1, 2, 3]\n"
+        "C = os.environ\n"
+        "D, E = 1, 2\n"  # tuple-unpacking: ambiguous, deliberately not populated
+    )
+    elements, _ = inventory(str(root), cache_dir=tmp_path / "cache")
+    by_name = {e.name: e for e in elements if e.kind == ElementKind.ASSIGNMENT}
+    for name in ("A", "B", "C", "D", "E"):
+        assert by_name[name].literal_value == "", name
+        assert not by_name[name].provenance.note, (
+            f"{name}: not-a-literal is the common case and must carry no note"
+        )
+
+
+def test_literal_value_capped_for_near_blob_sized_strings(tmp_path: Path) -> None:
+    root = tmp_path / "capped"
+    root.mkdir()
+    just_under = "y" * 900  # under BLOB_THRESHOLD_BYTES: real ASSIGNMENT, literal kept
+    at_cap = "z" * 1500  # over BLOB_THRESHOLD_BYTES: absorbed into BLOB instead
+    (root / "__init__.py").write_text(f'H = "{just_under}"\nI = "{at_cap}"\n')
+    elements, _ = inventory(str(root), cache_dir=tmp_path / "cache")
+
+    h = next(e for e in elements if e.name == "H")
+    assert h.literal_value.startswith("'yyy")
+    assert "BLOB_THRESHOLD_BYTES" in h.provenance.note
+
+    # I is over the blob threshold: absorbed into an opaque BLOB, never an
+    # ASSIGNMENT -- literal_value has no path to smuggle blob content out.
+    assert not [e for e in elements if e.name == "I" and e.kind == ElementKind.ASSIGNMENT]
+    blobs = [e for e in elements if e.kind == ElementKind.BLOB]
+    assert len(blobs) == 1
+    assert "zzz" not in blobs[0].name and "zzz" not in blobs[0].qualname
+    assert not hasattr(blobs[0], "literal_value") or blobs[0].literal_value == ""
+
+
+def test_literal_value_not_in_cache_key(tmp_path: Path) -> None:
+    """content_hash alone drives incrementality; literal_value and
+    normalized_body_hash are derived facts carried in the cached record, not
+    part of what decides a cache hit."""
+    root = tmp_path / "cachecheck"
+    root.mkdir()
+    src = root / "__init__.py"
+    src.write_text("A = 1\n")
+    cache_dir = tmp_path / "cache"
+
+    elements1, _ = inventory(str(root), cache_dir=cache_dir)
+    cache_file = next(cache_dir.glob("*.json"))
+    cached = json.loads(cache_file.read_text())
+    relkey = next(iter(cached))
+    assert set(cached[relkey].keys()) == {"hash", "elements", "unresolved"}
+    module_el = next(e for e in elements1 if e.kind == ElementKind.MODULE)
+    assert cached[relkey]["hash"] == module_el.content_hash, (
+        "the cache key is the whole file's content_hash, not a derived field"
+    )
+
+    # touch only: warm run must reuse the cached record verbatim, including
+    # the derived fields, without re-deriving them.
+    os.utime(src, None)
+    elements2, _ = inventory(str(root), cache_dir=cache_dir)
+    a1 = next(e for e in elements1 if e.name == "A")
+    a2 = next(e for e in elements2 if e.name == "A")
+    assert a1.literal_value == a2.literal_value == "1"

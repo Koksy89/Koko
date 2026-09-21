@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ast
 import io
+import textwrap
 import tokenize
 from dataclasses import dataclass, field
 
@@ -92,7 +93,7 @@ def parse_python_file(
         provenance=_certain_prov(ctx, 1, note=module_docstring_note),
         content_hash=sha256_hex(raw_bytes),
         docstring=module_docstring,
-        normalized_body_hash=_normalized_body_hash(ctx, tree, segment_override=source),
+        normalized_body_hash=_normalized_body_hash(ctx, tree),
     )
     ctx.elements.append(module_el)
 
@@ -134,36 +135,49 @@ def _content_hash(ctx: _Ctx, node: ast.AST) -> str:
     return sha256_text(segment)
 
 
-def _normalized_body_hash(ctx: _Ctx, node: ast.AST, segment_override: str | None = None) -> str:
+def _normalized_body_hash(ctx: _Ctx, node: ast.AST) -> str:
     """Hash of `node`'s body with comments, docstrings and whitespace
     normalized away -- "is this the same logic", distinct from
     `content_hash`'s "is this the same bytes". Uses `tokenize` only, never
     `ast.parse`/`compile` on target source (constraint 1 applies to every
     reparse, not just the first one).
 
+    Deliberately excludes the `def name(...):`/`class Name(...):` header:
+    two identically-bodied functions with different names or signatures are
+    exactly the DUPLICATED_LOGIC case card 5 needs this for, and a header
+    difference must not hide that. Built from each body statement's own
+    source segment (skipping a leading docstring statement), not the node's
+    whole segment.
+
     Empty string for elements with no body (anything but MODULE/CLASS/
-    FUNCTION/METHOD/PROPERTY). `segment_override` is for `ast.Module`, which
-    (unlike every other body-having node) carries no position info of its
-    own to feed `ast.get_source_segment`."""
-    if not hasattr(node, "body"):
-        return ""
-    segment = segment_override if segment_override is not None else ast.get_source_segment(ctx.source, node)
-    if segment is None:
+    FUNCTION/METHOD/PROPERTY), or an empty body."""
+    body = getattr(node, "body", None)
+    if not body:
         return ""
 
-    body = getattr(node, "body", None) or []
-    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
-            and isinstance(body[0].value.value, str):
-        doc_segment = ast.get_source_segment(ctx.source, body[0])
-        if doc_segment:
-            segment = segment.replace(doc_segment, "", 1)
+    statements = body
+    first = statements[0]
+    if (
+        isinstance(first, ast.Expr)
+        and isinstance(first.value, ast.Constant)
+        and isinstance(first.value.value, str)
+    ):
+        statements = statements[1:]
+    if not statements:
+        return ""
+
+    segments = [ast.get_source_segment(ctx.source, s) for s in statements]
+    segments = [s for s in segments if s is not None]
+    if not segments:
+        return ""
+    segment = textwrap.dedent("\n".join(segments))
 
     try:
         tokens = tokenize.generate_tokens(io.StringIO(segment).readline)
         normalized = [
             (tok.type, tok.string) for tok in tokens if tok.type not in _FORMATTING_TOKENS
         ]
-    except (tokenize.TokenizeError, IndentationError, SyntaxError, ValueError):
+    except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
         # Tokenizing an extracted segment in isolation can occasionally fail
         # on code that only parses in its original context (e.g. a `match`
         # soft keyword edge case). Fall back to the docstring-stripped
