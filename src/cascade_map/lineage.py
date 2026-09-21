@@ -1372,6 +1372,8 @@ class _ModuleWalker:
                 self.t._dict_defs.add(target_id)
 
     def _kind_into(self, source_id: str, target_id: str, value: ast.expr | None) -> LineageKind:
+        if source_id.endswith(".@return"):
+            return LineageKind.RETURNS
         if source_id.startswith("@feature:") and isinstance(value, (ast.Dict, ast.DictComp, ast.Call)):
             if target_id in self.t._frame_defs:
                 return LineageKind.COLUMN_WRITE

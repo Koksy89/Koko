@@ -11,19 +11,45 @@ Python's part) -- so a run that can install one has a guarantee that persists
 for as long as the process does, and no code path, including a bug in this
 module, can later switch it back off.
 
-Because the hook is process-wide but a test process runs many harness
-sessions one after another, enforcement is scoped through a ``ContextVar``:
-the hook itself is installed once and forever, but it only *acts* while a
-``SandboxContext`` is the active one for the current context, via
-``activate``. Outside an active run the hook observes and does nothing.
+Enforcement is scoped to "is a run currently active", not to any logical flow
+within one -- deliberately **not** a ``ContextVar``. A ``ContextVar`` is
+designed to scope a value to one flow of control, and a plain
+``threading.Thread`` starts with a fresh default context, so a value set in
+the parent is invisible to it: the earlier version of this module used a
+``ContextVar`` and a target thread escaped every control as a result (a
+``threading.Thread`` that opened a socket saw no active context and was never
+blocked, silently -- caught in verification, not by this module's own tests).
+``asyncio`` tasks *are* visible to a ``ContextVar`` (they copy the creating
+context), which is exactly backwards: the case that already worked is the one
+``ContextVar`` was built for, and the case that mattered -- a plain thread,
+the ordinary shape of an ingestion or broker client -- is the one it does not
+cover.
+
+The fix is a plain module-level flag, guarded by a lock for the transitions
+into and out of it. A module global is visible to every thread in the
+process without cooperation from whatever created it, which is exactly the
+property "a new thread cannot escape enforcement" needs.
+
+Fail-closed at the boundary: tearing down at the end of a run cannot simply
+flip the flag back to "inactive" the instant the scenario function returns,
+because a daemon thread the scenario spawned and never joined may still be
+running and may still act after that instant. ``activate`` snapshots the
+threads alive before the run, joins every new *non-daemon* thread (the
+process cannot exit until it finishes anyway, so this costs nothing beyond
+latency already owed), and registers every new thread still alive after that
+-- almost always a daemon -- against this run's context by thread identity,
+so its later operations are still judged and still recorded rather than
+falling through once the flag clears. Code that was never part of any run
+(the harness's own bookkeeping, an unrelated test) is not swept in: only
+threads this run is known to have spawned are tracked this way.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import threading
 from contextlib import contextmanager
-from contextvars import ContextVar
 from typing import Iterator
 
 from cascade_map.contracts import BlockedAttempt
@@ -318,14 +344,37 @@ class SandboxContext:
 # Process-wide installation, run-scoped activation
 # ---------------------------------------------------------------------------
 
-_active: "ContextVar[SandboxContext | None]" = ContextVar("cascade_map_sandbox", default=None)
+#: The currently active run, or ``None``. A plain module global, not a
+#: ``ContextVar``: every thread in the process reads the same object with no
+#: cooperation required from whatever created the thread. Reads in the hot
+#: path (``_dispatch``) are lock-free -- a bare reference read/write is
+#: atomic under the GIL -- and are correct under concurrent mutation because
+#: every transition below only ever narrows *which* context a given event is
+#: judged against, never removes judgement entirely for a thread this run
+#: spawned. See ``_lingering`` for the one case that needs more care.
+_active_ctx: SandboxContext | None = None
+_state_lock = threading.Lock()
+
+#: Thread identities a run's teardown found still alive after joining every
+#: non-daemon one -- almost always a daemon thread. Judged against that run's
+#: context even after ``_active_ctx`` has moved on, so a late action from a
+#: thread a run spawned is still blocked and still recorded instead of
+#: silently passing through once enforcement "ends" for the run that spawned
+#: it. Idents are pruned once the thread is no longer alive, since Python (and
+#: the OS underneath it) reuses thread identities and an unpruned entry could
+#: misattribute a later, unrelated thread's actions to a long-finished run --
+#: itself a fail-*closed* mistake (an extra block), never a fail-open one.
+_lingering: dict[int, SandboxContext] = {}
+
 _hook_installed = False
 
 
 def _dispatch(event: str, args: tuple[object, ...]) -> None:
-    ctx = _active.get()
+    ctx = _active_ctx
     if ctx is None:
-        return
+        ctx = _lingering.get(threading.get_ident())
+        if ctx is None:
+            return
     ctx.handle_event(event, args)
 
 
@@ -339,12 +388,43 @@ def install_hook() -> None:
     _hook_installed = True
 
 
+def _prune_lingering() -> None:
+    alive = {t.ident for t in threading.enumerate() if t.ident is not None}
+    for ident in [i for i in _lingering if i not in alive]:
+        _lingering.pop(ident, None)
+
+
 @contextmanager
 def activate(ctx: SandboxContext) -> Iterator[SandboxContext]:
-    """Make *ctx* the context the process-wide hook enforces, for this block."""
+    """Make *ctx* the context the process-wide hook enforces, for this block
+    -- and, fail-closed, for any thread the block spawns and does not clean
+    up after itself, for as long as that thread remains alive.
+    """
+    global _active_ctx
     install_hook()
-    token = _active.set(ctx)
+    _prune_lingering()
+    before = {t.ident for t in threading.enumerate() if t.ident is not None}
+    with _state_lock:
+        previous = _active_ctx
+        _active_ctx = ctx
     try:
         yield ctx
     finally:
-        _active.reset(token)
+        current = threading.current_thread()
+        spawned = [
+            t
+            for t in threading.enumerate()
+            if t.ident is not None and t.ident not in before and t is not current
+        ]
+        # The process cannot exit while a non-daemon thread is alive, so
+        # waiting for one here adds no latency the caller was not already
+        # going to pay -- it only moves that wait inside the enforced window
+        # instead of after it, which is the point.
+        for t in spawned:
+            if not t.daemon:
+                t.join(timeout=5.0)
+        with _state_lock:
+            for t in spawned:
+                if t.is_alive():
+                    _lingering[t.ident] = ctx  # type: ignore[index]
+            _active_ctx = previous

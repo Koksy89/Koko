@@ -479,7 +479,7 @@ def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
     # equality alone would hold vacuously if inventory() returned nothing;
     # anchor it to real content from the corpus first.
     assert len(elements1) > 20, "the mode_b corpus must yield a substantial element set"
-    assert any(e.id == "inv_kinds" for e in elements1)
+    assert any(e.id == "mode_b.inv_kinds" for e in elements1)
     assert any(u.reason == UnresolvedReason.SYNTAX_ERROR for u in unresolved1)
     assert canonical_jsonl(elements1) == canonical_jsonl(elements2)
     assert canonical_jsonl(unresolved1) == canonical_jsonl(unresolved2)
@@ -489,7 +489,7 @@ def test_cold_cache_matches_warm_cache_on_whole_corpus(tmp_path: Path) -> None:
     cold_elements, cold_unresolved = inventory(str(MODE_B), cache_dir=tmp_path / "cache_a")
     warm_elements, warm_unresolved = inventory(str(MODE_B), cache_dir=tmp_path / "cache_a")
     assert len(cold_elements) > 20
-    assert any(e.id == "inv_kinds" for e in cold_elements)
+    assert any(e.id == "mode_b.inv_kinds" for e in cold_elements)
     assert canonical_jsonl(cold_elements) == canonical_jsonl(warm_elements)
     assert canonical_jsonl(cold_unresolved) == canonical_jsonl(warm_unresolved)
 

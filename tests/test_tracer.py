@@ -14,6 +14,7 @@ Two kinds of test live here, deliberately.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import json
 import posixpath
@@ -277,6 +278,7 @@ def load_case(case: Path) -> tuple[dict[str, Any], StaticIndex]:
 
 
 def import_case(case: Path) -> Any:
+    sys.dont_write_bytecode = True  # never write into tests/fixtures/
     parent = str(case.parent)
     if parent not in sys.path:
         sys.path.insert(0, parent)
@@ -514,23 +516,55 @@ def test_tracer_refuses_instead_of_inventing_a_run(tmp_path: Path) -> None:
 
 
 def test_the_tracer_cannot_start_a_process() -> None:
-    forbidden = (
+    """The card says the tracer never starts a process. This proves it.
+
+    Checked on the parse tree, not on the text: the word "subprocess" appears
+    all over this package as the *name of a harness control the tracer demands*,
+    and a text search would either miss the real thing or flag the prose.
+    """
+    forbidden_imports = {
         "subprocess",
-        "os.system",
-        "os.fork",
-        "os.exec",
-        "os.spawn",
-        "popen",
         "multiprocessing",
-        "pty.spawn",
-    )
+        "pty",
+        "ctypes",
+        "socket",
+        "asyncio",
+        "concurrent",
+    }
+    forbidden_attributes = {
+        "system",
+        "fork",
+        "forkpty",
+        "popen",
+        "execv",
+        "execve",
+        "execvp",
+        "spawnv",
+        "spawnl",
+        "posix_spawn",
+        "startfile",
+    }
+    forbidden_builtins = {"eval", "exec", "compile", "__import__"}
     for source in sorted(TRACER_PKG.glob("*.py")):
-        text = source.read_text(encoding="utf-8")
-        body = "\n".join(
-            line for line in text.splitlines() if not line.strip().startswith(("#", "*"))
-        )
-        for token in forbidden:
-            assert token not in body.replace('"""', "\n"), f"{source.name} names {token}"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    root = alias.name.split(".")[0]
+                    assert root not in forbidden_imports, f"{source.name} imports {alias.name}"
+            elif isinstance(node, ast.ImportFrom):
+                root = (node.module or "").split(".")[0]
+                assert root not in forbidden_imports, f"{source.name} imports from {root}"
+            elif isinstance(node, ast.Call):
+                target = node.func
+                if isinstance(target, ast.Attribute):
+                    assert (
+                        target.attr not in forbidden_attributes
+                    ), f"{source.name} calls {target.attr}"
+                elif isinstance(target, ast.Name):
+                    assert (
+                        target.id not in forbidden_builtins
+                    ), f"{source.name} calls the builtin {target.id}"
 
 
 # ---------------------------------------------------------------------------
@@ -576,7 +610,10 @@ def assert_expected_events(expected: dict[str, Any], actual: Iterable[Any]) -> N
 def test_mode_a_fixture_matches_its_expectation(case: Path) -> None:
     expected, index = load_case(case)
     if not expected.get("events"):
-        pytest.skip(f"{case.name} declares no expected events")
+        pytest.skip(
+            f"{case.name} is a placeholder: it declares no expected events, so there is "
+            "nothing to grade against (card 8 gap)"
+        )
     tracer, run, _ = run_case(case, index)
     result = tracer.result(run)
     assert_expected_events(expected, result.events)

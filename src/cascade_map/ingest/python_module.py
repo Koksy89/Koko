@@ -63,7 +63,7 @@ def parse_python_file(
 ) -> tuple[list[Element], list[Unresolved]]:
     ctx = _Ctx(module=module, path=path_str, source=source)
 
-    module_docstring = _capped_docstring(tree)
+    module_docstring, module_docstring_note = _capped_docstring(tree)
     module_el = Element(
         id=module,
         kind=ElementKind.MODULE,
@@ -71,7 +71,7 @@ def parse_python_file(
         qualname="",
         module=module,
         span=SourceSpan(path=path_str, line=1),
-        provenance=_certain_prov(ctx, 1),
+        provenance=_certain_prov(ctx, 1, note=module_docstring_note),
         content_hash=sha256_hex(raw_bytes),
         docstring=module_docstring,
     )
@@ -101,8 +101,8 @@ def _span(ctx: _Ctx, node: ast.AST | int) -> SourceSpan:
     )
 
 
-def _certain_prov(ctx: _Ctx, node: ast.AST | int) -> Provenance:
-    return Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN, span=_span(ctx, node))
+def _certain_prov(ctx: _Ctx, node: ast.AST | int, note: str = "") -> Provenance:
+    return Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN, span=_span(ctx, node), note=note)
 
 
 def _content_hash(ctx: _Ctx, node: ast.AST) -> str:
@@ -115,16 +115,47 @@ def _content_hash(ctx: _Ctx, node: ast.AST) -> str:
     return sha256_text(segment)
 
 
-def _capped_docstring(node: ast.AST) -> str:
+def _capped_docstring(node: ast.AST) -> tuple[str, str]:
+    """The docstring, capped, plus a note to attach to the element's own
+    Provenance whenever the cap actually did something -- a threshold that
+    silently shapes an emitted record is invisible to whoever has to trust
+    it, so the omission itself becomes part of the record."""
     try:
         ds = ast.get_docstring(node, clean=True)
     except TypeError:
         ds = None
     if not ds:
+        return "", ""
+    size = len(ds.encode("utf-8", errors="surrogateescape"))
+    if size > DOCSTRING_INLINE_CAP:
+        return "", (
+            f"docstring omitted: {size} bytes exceeds DOCSTRING_INLINE_CAP="
+            f"{DOCSTRING_INLINE_CAP}; the underlying literal is still visited "
+            "by blob detection separately"
+        )
+    return ds, ""
+
+
+def _blob_threshold_note(value_node: ast.AST | None) -> str:
+    """A note for elements whose value is a string/bytes literal that was
+    evaluated against BLOB_THRESHOLD_BYTES but did *not* clear it -- so the
+    threshold's effect (or non-effect) is visible on the record either way,
+    not only when it fires."""
+    if not isinstance(value_node, ast.Constant):
         return ""
-    if len(ds.encode("utf-8", errors="surrogateescape")) > DOCSTRING_INLINE_CAP:
+    value = value_node.value
+    if isinstance(value, str):
+        size = len(value.encode("utf-8", errors="surrogateescape"))
+    elif isinstance(value, bytes):
+        size = len(value)
+    else:
         return ""
-    return ds
+    if size >= BLOB_THRESHOLD_BYTES:
+        return ""  # absorbed into a BLOB element instead -- see _emit_blobs
+    return (
+        f"literal value is {size} bytes (< BLOB_THRESHOLD_BYTES="
+        f"{BLOB_THRESHOLD_BYTES}; not recorded as an opaque BLOB)"
+    )
 
 
 def _child_qualname(scope: _Scope, name: str) -> str:
@@ -240,6 +271,7 @@ def _handle_def(stmt, scope: _Scope, ctx: _Ctx, local_top_names: frozenset[str])
     kind = _classify_function_kind(stmt, scope)
     decorators = tuple(_safe_unparse(d) for d in stmt.decorator_list)
     eid = ctx.mint_id(qualname)
+    docstring, docstring_note = _capped_docstring(stmt)
     element = Element(
         id=eid,
         kind=kind,
@@ -247,11 +279,11 @@ def _handle_def(stmt, scope: _Scope, ctx: _Ctx, local_top_names: frozenset[str])
         qualname=qualname,
         module=ctx.module,
         span=_span(ctx, stmt),
-        provenance=_certain_prov(ctx, stmt),
+        provenance=_certain_prov(ctx, stmt, note=docstring_note),
         content_hash=_content_hash(ctx, stmt),
         decorators=decorators,
         signature=_signature_text(stmt),
-        docstring=_capped_docstring(stmt),
+        docstring=docstring,
         parent_id=scope.element_id,
     )
     ctx.elements.append(element)
@@ -286,6 +318,7 @@ def _handle_class(stmt: ast.ClassDef, scope: _Scope, ctx: _Ctx, local_top_names:
     kwargs = [f"{kw.arg}={_safe_unparse(kw.value)}" for kw in stmt.keywords]
     signature = f"({', '.join(bases + kwargs)})" if (bases or kwargs) else ""
     decorators = tuple(_safe_unparse(d) for d in stmt.decorator_list)
+    docstring, docstring_note = _capped_docstring(stmt)
     element = Element(
         id=eid,
         kind=ElementKind.CLASS,
@@ -293,11 +326,11 @@ def _handle_class(stmt: ast.ClassDef, scope: _Scope, ctx: _Ctx, local_top_names:
         qualname=qualname,
         module=ctx.module,
         span=_span(ctx, stmt),
-        provenance=_certain_prov(ctx, stmt),
+        provenance=_certain_prov(ctx, stmt, note=docstring_note),
         content_hash=_content_hash(ctx, stmt),
         decorators=decorators,
         signature=signature,
-        docstring=_capped_docstring(stmt),
+        docstring=docstring,
         parent_id=scope.element_id,
     )
     ctx.elements.append(element)
@@ -332,6 +365,7 @@ def _emit_assignment(ctx: _Ctx, scope: _Scope, name: str, stmt: ast.AST, annotat
         return
     qualname = _child_qualname(scope, name)
     eid = ctx.mint_id(qualname)
+    note = _blob_threshold_note(getattr(stmt, "value", None))
     ctx.elements.append(
         Element(
             id=eid,
@@ -340,7 +374,7 @@ def _emit_assignment(ctx: _Ctx, scope: _Scope, name: str, stmt: ast.AST, annotat
             qualname=qualname,
             module=ctx.module,
             span=_span(ctx, stmt),
-            provenance=_certain_prov(ctx, stmt),
+            provenance=_certain_prov(ctx, stmt, note=note),
             content_hash=_content_hash(ctx, stmt),
             signature=_safe_unparse(annotation) if annotation is not None else "",
             parent_id=scope.element_id,
@@ -477,7 +511,10 @@ def _emit_blobs(ctx: _Ctx, tree: ast.Module) -> None:
                     method=Method.AST_DIRECT,
                     confidence=Confidence.CERTAIN,
                     span=_span(ctx, span_node),
-                    note=f"opaque {literal_kind} literal, never decoded",
+                    note=(
+                        f"opaque {literal_kind} literal, never decoded; "
+                        f"{len(raw)} bytes >= BLOB_THRESHOLD_BYTES={BLOB_THRESHOLD_BYTES}"
+                    ),
                 ),
                 content_hash=sha256_hex(raw),
                 byte_size=len(raw),

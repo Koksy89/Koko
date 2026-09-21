@@ -2193,8 +2193,155 @@ class CascadeAnalyzer:
 
     # -- reachability -------------------------------------------------------
 
-    def _build_reachability(self) -> None:
-        best, via = self._solve_reachability()
+    _POS_SINK = (10**9, 10**9)
+
+    def _call_sites(
+        self,
+    ) -> tuple[
+        dict[str, list[tuple[tuple[int, int], str, Edge]]],
+        dict[str, list[tuple[str, tuple[int, int], Edge]]],
+        dict[str, list[tuple[tuple[int, int], str]]],
+    ]:
+        """Wiring edges indexed by the position they fire at inside their caller."""
+        sites: dict[str, list[tuple[tuple[int, int], str, Edge]]] = {}
+        callers: dict[str, list[tuple[str, tuple[int, int], Edge]]] = {}
+        for edge in self._edges:
+            if edge.kind not in WIRING_EDGE_KINDS:
+                continue
+            if edge.call_site is None:
+                # No position: it could fire anywhere in the caller, so it is
+                # treated as firing first. Biased toward reachable on purpose.
+                position = (-1, -1)
+            else:
+                position = (edge.call_site.line, edge.call_site.col or 0)
+            sites.setdefault(edge.source_id, []).append((position, edge.target_id, edge))
+            callers.setdefault(edge.target_id, []).append((edge.source_id, position, edge))
+        sink_sites: dict[str, list[tuple[tuple[int, int], str]]] = {}
+        for sink_id in self._sink_ids:
+            sink = self._elements.get(sink_id)
+            if sink is None or sink.kind in CFG_ELEMENT_KINDS:
+                continue
+            # A sink that is a variable (``FINAL_DECISION = ...``) is a position
+            # inside whatever element holds it, not something anybody calls.
+            owner = sink.parent_id or make_id(sink.module)
+            end = sink.span.end_line or sink.span.line
+            sink_sites.setdefault(owner, []).append(((end, self._POS_SINK[1]), sink_id))
+        for bucket in (*sites.values(), *callers.values(), *sink_sites.values()):
+            bucket.sort(key=lambda row: (row[0], str(row[1])))
+        return sites, callers, sink_sites
+
+    def _solve_reachability(
+        self,
+    ) -> tuple[dict[str, Confidence], dict[str, tuple[str, ...]]]:
+        """Can the sink still run, from the moment this element starts?
+
+        Pure call-graph reachability answers the wrong question. In a cascade
+        ``main`` calls ``ingest`` and then ``final_decision``; ``ingest`` never
+        calls the sink, yet the decision plainly runs after it, and calling
+        ``ingest`` unreachable would be exactly the false "unreachable" the
+        workplan forbids. So two quantities are solved together:
+
+        ``R(E)``    the sink runs at or after ``E`` starts, and
+        ``Cont(E)`` the sink runs after ``E`` returns to its callers.
+
+        Both are monotone in a four-level lattice, so the fixpoint terminates.
+        Positions inside a caller are compared by source order, which
+        over-approximates across branches -- a call in the ``then`` arm is
+        treated as preceding a sink call in the ``else`` arm. That direction is
+        chosen deliberately: it can only mark something reachable that is not.
+        """
+        sites, callers, sink_sites = self._call_sites()
+        best: dict[str, Confidence] = {}
+        via: dict[str, tuple[str, ...]] = {}
+        cont: dict[str, Confidence] = {}
+        cont_via: dict[str, tuple[str, ...]] = {}
+        for sink_id in self._sink_ids:
+            best[sink_id] = Confidence.CERTAIN
+            via[sink_id] = (sink_id,)
+
+        def better(
+            current: tuple[Confidence, tuple[str, ...]] | None,
+            candidate: tuple[Confidence, tuple[str, ...]],
+        ) -> bool:
+            if current is None:
+                return True
+            if _RANK[candidate[0]] != _RANK[current[0]]:
+                return _RANK[candidate[0]] > _RANK[current[0]]
+            return candidate[1] < current[1]
+
+        def after(caller: str, position: tuple[int, int]) -> tuple[Confidence, tuple[str, ...]]:
+            """The sink still runs, once control is back in *caller* at *position*."""
+            winner: tuple[Confidence, tuple[str, ...]] | None = None
+            for sink_position, sink_id in sink_sites.get(caller, []):
+                if sink_position >= position:
+                    candidate = (Confidence.CERTAIN, (caller, sink_id))
+                    if better(winner, candidate):
+                        winner = candidate
+            for site_position, target, edge in sites.get(caller, []):
+                if site_position < position or target not in best:
+                    continue
+                candidate = (
+                    combine(best[target], edge.provenance.confidence),
+                    (caller, *via[target]),
+                )
+                if better(winner, candidate):
+                    winner = candidate
+            if caller in cont:
+                candidate = (cont[caller], (caller, *cont_via[caller][1:]))
+                if better(winner, candidate):
+                    winner = candidate
+            return winner or (Confidence.UNKNOWN, ())
+
+        element_ids = sorted(
+            {*self._elements, *sites, *callers, *sink_sites}
+        )
+        changed = True
+        while changed:
+            changed = False
+            for element_id in element_ids:
+                # Cont(E): what happens after E hands control back.
+                winner: tuple[Confidence, tuple[str, ...]] | None = None
+                for caller, position, edge in callers.get(element_id, []):
+                    confidence, path = after(caller, position)
+                    if not path:
+                        continue
+                    candidate = (combine(confidence, edge.provenance.confidence), path)
+                    if better(winner, candidate):
+                        winner = candidate
+                if winner is not None and better(
+                    (cont[element_id], cont_via[element_id]) if element_id in cont else None,
+                    winner,
+                ):
+                    cont[element_id] = winner[0]
+                    cont_via[element_id] = winner[1]
+                    changed = True
+
+                # R(E): the sink at or after E.
+                reach: tuple[Confidence, tuple[str, ...]] | None = None
+                for _position, target, edge in sites.get(element_id, []):
+                    if target not in best:
+                        continue
+                    candidate = (
+                        combine(best[target], edge.provenance.confidence),
+                        (element_id, *via[target]),
+                    )
+                    if better(reach, candidate):
+                        reach = candidate
+                for _sink_position, sink_id in sink_sites.get(element_id, []):
+                    candidate = (Confidence.CERTAIN, (element_id, sink_id))
+                    if better(reach, candidate):
+                        reach = candidate
+                if element_id in cont:
+                    candidate = (cont[element_id], (element_id, *cont_via[element_id]))
+                    if better(reach, candidate):
+                        reach = candidate
+                if reach is not None and better(
+                    (best[element_id], via[element_id]) if element_id in best else None,
+                    reach,
+                ):
+                    best[element_id] = reach[0]
+                    via[element_id] = reach[1]
+                    changed = True
 
         # An element contained in something that reaches the sink reaches it too:
         # a parameter of a live function is live. Applied once, downwards only,
@@ -2211,10 +2358,7 @@ class CascadeAnalyzer:
                     ElementKind.PACKAGE,
                 }:
                     best[element.id] = direct[ancestor.id]
-                    via[element.id] = (
-                        (*hops, *via[ancestor.id][0]),
-                        via[ancestor.id][1],
-                    )
+                    via[element.id] = (*hops, *via[ancestor.id])
                     break
                 hops.append(ancestor.id)
                 ancestor = self._elements.get(ancestor.parent_id) if ancestor.parent_id else None
@@ -2225,30 +2369,33 @@ class CascadeAnalyzer:
                 continue
             if element.id in best:
                 continue
-            descendants = [
-                child for child in self._children.get(element.id, []) if child in best
-            ]
-            if not descendants:
+            contained = [child for child in self._children.get(element.id, []) if child in best]
+            if not contained:
                 continue
-            winner = max(descendants, key=lambda c: (_RANK[best[c]], c))
-            best[element.id] = best[winner]
-            via[element.id] = ((element.id, *via[winner][0]), via[winner][1])
+            winner_id = max(contained, key=lambda c: (_RANK[best[c]], c))
+            best[element.id] = best[winner_id]
+            via[element.id] = (element.id, *via[winner_id])
+        return best, via
 
+    def _build_reachability(self) -> None:
+        """One :class:`Reachability` per inventoried element. No exceptions:
+        cards 5 and 15 read this file as the canonical answer, so an element
+        missing from it is a hole in both."""
+        best, via = self._solve_reachability()
         behind_unknown = self._behind_unresolved()
         sinks = tuple(self._sink_ids)
         for element in sorted(self._elements.values(), key=lambda e: e.id):
             record_id = make_id("@reach", element.id)
             if element.id in best:
                 confidence = best[element.id]
-                path, edge_ids = via[element.id]
+                path = via[element.id]
                 if confidence is Confidence.CERTAIN:
                     reason = "reaches a decision sink along a path of CERTAIN edges"
                 else:
                     reason = (
-                        "reaches a decision sink along a path whose weakest edge is "
-                        f"{confidence}"
-                        + (f" ({edge_ids[0]})" if edge_ids else "")
-                        + ". Biased toward REACHES_SINK and kept at that edge's confidence "
+                        "reaches a decision sink along "
+                        f"{' -> '.join(path)}, whose weakest link is {confidence}"
+                        + ". Biased toward REACHES_SINK and kept at that link's confidence "
                         "rather than pruned: a false 'unreachable' sends the owner to "
                         "delete live code."
                     )
