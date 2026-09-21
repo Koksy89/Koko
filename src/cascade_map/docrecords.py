@@ -29,6 +29,7 @@ from cascade_map.contracts.interfaces import (
     Edge,
     EdgeKind,
     Element,
+    ElementKind,
     Finding,
     LineageEdge,
     LineageKind,
@@ -113,6 +114,56 @@ RUNTIME_REQUIRED: tuple[str, ...] = (
 
 def _dict_complete(payload: Mapping[str, Any], required: Sequence[str]) -> bool:
     return all(key in payload and _filled(payload[key]) for key in required)
+
+
+# ---------------------------------------------------------------------------
+# Per-kind field applicability.
+#
+# Every ElementKind gets a record, and every required field in that record is
+# either a real value or an explicit unknown() naming why the field does not
+# apply to that kind. A PACKAGE has no signature; a CONFIG_KEY has no callers;
+# a DATA_FILE has no enclosing Python module. None of that is a gap in the
+# analysis -- it is a fact about the kind -- so it is never left as a raw
+# empty string or an unexplained empty list. Going through every ElementKind
+# here (13 total) is deliberate: a kind absent from today's fixture corpus
+# must still get a correct record when the owner's engine has one.
+# ---------------------------------------------------------------------------
+
+# Kinds that are themselves the root of a Python module namespace, or above
+# it. Their enclosing scope -- if any -- comes only from parent_id (the
+# containing package); falling back to `element.module` would be circular.
+_ROOT_OF_HIERARCHY_KINDS = frozenset({ElementKind.PACKAGE, ElementKind.MODULE})
+
+# Kinds that live outside the Python module namespace entirely: a JSON config
+# file, a key inside it, and a named feature that may be written from more
+# than one module. None of these has a single enclosing Python module.
+_NO_PYTHON_MODULE_KINDS = frozenset(
+    {ElementKind.DATA_FILE, ElementKind.CONFIG_KEY, ElementKind.FEATURE}
+)
+
+# Only these can carry Python decorators.
+_DECORATABLE_KINDS = frozenset(
+    {ElementKind.CLASS, ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.PROPERTY}
+)
+
+# Only these can appear as a source or target of a CALLS edge.
+_CALL_GRAPH_KINDS = frozenset(
+    {ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.PROPERTY}
+)
+
+# Only these execute and so can read or write a feature. A FEATURE element is
+# the data itself, not something that reads or writes; a CLASS is a template,
+# not a running frame; PACKAGE/MODULE/IMPORT/PARAMETER/DATA_FILE/CONFIG_KEY/
+# BLOB never appear as the source of a lineage edge.
+_DATA_ROLE_KINDS = frozenset(
+    {
+        ElementKind.FUNCTION,
+        ElementKind.METHOD,
+        ElementKind.PROPERTY,
+        ElementKind.MODULE,
+        ElementKind.ASSIGNMENT,
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -307,41 +358,76 @@ class DocumentationBuilder:
         )
 
     def _identity(self, element: Element) -> dict[str, Any]:
-        params, return_type = parse_signature(element.signature)
+        kind = element.kind
+
         if element.signature:
+            params, return_type = parse_signature(element.signature)
             parameters: Any = params
             return_val: Any = return_type or unknown(
                 "signature has no -> annotation and none could be inferred"
             )
+            signature_val: Any = element.signature
         else:
-            parameters = unknown(f"no signature recorded for kind {element.kind}")
-            return_val = unknown(f"no signature recorded for kind {element.kind}")
+            reason = f"{kind} elements have no call signature"
+            parameters = unknown(reason)
+            return_val = unknown(reason)
+            signature_val = unknown(reason)
+
+        if kind in _NO_PYTHON_MODULE_KINDS:
+            module_val: Any = unknown(
+                f"{kind} elements live outside the Python module namespace"
+            )
+        else:
+            module_val = element.module or unknown(
+                f"no module recorded for this {kind}; expected one for this kind"
+            )
+
+        if kind in _DECORATABLE_KINDS:
+            decorators_val: Any = list(element.decorators)
+        else:
+            decorators_val = unknown(f"{kind} elements cannot carry decorators")
+
         return {
             "id": element.id,
-            "kind": str(element.kind),
+            "kind": str(kind),
             "name": element.name,
             "qualname": element.qualname or element.name,
-            "module": element.module,
+            "module": module_val,
             "path": element.span.path,
             "line": element.span.line,
             "end_line": element.span.end_line if element.span.end_line is not None else element.span.line,
-            "signature": element.signature or unknown("no signature applicable to this kind"),
+            "signature": signature_val,
             "parameters": parameters,
             "return_type": return_val,
-            "decorators": list(element.decorators),
-            "docstring": element.docstring or unknown("no docstring present in source"),
+            "decorators": decorators_val,
+            "docstring": element.docstring or unknown(f"no docstring present for this {kind}"),
         }
 
     def _cascade_position(self, element: Element) -> dict[str, Any]:
-        order = self._order_index.get(
-            element.id,
-            None,
-        )
+        kind = element.kind
+        order = self._order_index.get(element.id)
         if order is None:
-            order = unknown(f"element of kind {element.kind} is not a member of any order node")
-        callers = sorted(set(self._callers.get(element.id, ())))
-        callees = sorted(set(self._callees.get(element.id, ())))
-        enclosing_scope = element.parent_id or element.module
+            order = unknown(f"{kind} is not a member of any order node")
+
+        if kind in _CALL_GRAPH_KINDS:
+            callers: Any = sorted(set(self._callers.get(element.id, ())))
+            callees: Any = sorted(set(self._callees.get(element.id, ())))
+        else:
+            reason = f"{kind} elements do not appear in the CALLS call graph"
+            callers = unknown(reason)
+            callees = unknown(reason)
+
+        if element.parent_id:
+            enclosing_scope: Any = element.parent_id
+        elif kind in _ROOT_OF_HIERARCHY_KINDS:
+            enclosing_scope = unknown(
+                f"{kind} is at the root of the hierarchy; it has no enclosing scope"
+            )
+        elif element.module and kind not in _NO_PYTHON_MODULE_KINDS:
+            enclosing_scope = element.module
+        else:
+            enclosing_scope = unknown(f"no enclosing scope recorded for this {kind}")
+
         return {
             "order": order,
             "callers": callers,
@@ -350,29 +436,35 @@ class DocumentationBuilder:
         }
 
     def _data_role(self, element: Element) -> dict[str, Any]:
-        reads: set[str] = set()
-        writes: set[str] = set()
-        write_kinds = {
-            LineageKind.ASSIGNS,
-            LineageKind.COLUMN_WRITE,
-            LineageKind.CONTAINER_WRITE,
-            LineageKind.ATTRIBUTE_WRITE,
-        }
-        saw_any_lineage = bool(self._lineage_edges)
-        for edge in self._lineage_edges:
-            if edge.source_id != element.id:
-                continue
-            if edge.kind is LineageKind.READS:
-                reads.add(edge.target_id)
-            elif edge.kind in write_kinds:
-                writes.add(edge.target_id)
+        kind = element.kind
+        if kind not in _DATA_ROLE_KINDS:
+            reason = f"{kind} elements do not read or write features directly"
+            features_read: Any = unknown(reason)
+            features_written: Any = unknown(reason)
+        else:
+            reads: set[str] = set()
+            writes: set[str] = set()
+            write_kinds = {
+                LineageKind.ASSIGNS,
+                LineageKind.COLUMN_WRITE,
+                LineageKind.CONTAINER_WRITE,
+                LineageKind.ATTRIBUTE_WRITE,
+            }
+            saw_any_lineage = bool(self._lineage_edges)
+            for edge in self._lineage_edges:
+                if edge.source_id != element.id:
+                    continue
+                if edge.kind is LineageKind.READS:
+                    reads.add(edge.target_id)
+                elif edge.kind in write_kinds:
+                    writes.add(edge.target_id)
 
-        features_read: Any = sorted(reads) if saw_any_lineage else unknown(
-            "no lineage data supplied to the documentation builder"
-        )
-        features_written: Any = sorted(writes) if saw_any_lineage else unknown(
-            "no lineage data supplied to the documentation builder"
-        )
+            features_read = sorted(reads) if saw_any_lineage else unknown(
+                "no lineage data supplied to the documentation builder"
+            )
+            features_written = sorted(writes) if saw_any_lineage else unknown(
+                "no lineage data supplied to the documentation builder"
+            )
 
         backward = self._slice_summary(element.id, "backward")
         forward = self._slice_summary(element.id, "forward")

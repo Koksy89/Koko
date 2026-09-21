@@ -17,7 +17,7 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 | 1 | Ingestion & inventory | ingestion-builder | **DONE** (PASS, round 2) |
 | 2 | Resolution & call graph | resolver-engineer | **DONE** (PASS — precision 100%, recall 100%) |
 | 3 | CFG, cascade ordering, decisions | cascade-engineer | **DONE** (PASS, round 2) |
-| 4 | Data/feature lineage & slicing | lineage-engineer | re-grading against the settled corpus |
+| 4 | Data/feature lineage & slicing | lineage-engineer | **DONE** |
 | 5 | Unplugged detection & hints | findings-builder | **DONE** (PASS, round 2) |
 | 6 | Version diff & impact | diff-impact-builder | **DONE** (PASS, 1 contract follow-up) |
 | 16 | Documentation records & completeness gate | docs-builder | **DONE** (PASS) |
@@ -26,7 +26,7 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 | 12 | Runtime tracer & value capture | tracer-engineer | **DONE** (PASS, 3 recorded gaps) |
 | 13 | Intent registry & alignment | alignment-engineer | **DONE** (PASS, round 2) |
 | 14 | Execution narrative | narrative-builder | **DONE** (PASS, round 2) |
-| 10 | CLI, integration & validation | the lead | not started |
+| 10 | CLI, integration & validation | the lead | **Mode B DONE**; Mode A not started |
 
 ## What exists
 
@@ -59,7 +59,28 @@ candidates with evidence rather than choosing silently.
 - **Q3 — which config files wire components.** Degrades card 2's confidence; does not stop it.
 - **Q4 — Mode A scenarios and external systems.** Needed before card 11, not before then.
 
-## Next action
+## Mode B phase gate — PASSED
+
+| Check | Result |
+|---|---|
+| Full suite | 1103 tests, 1071 passed, 0 failed |
+| Determinism | byte-identical across relative/absolute root and differing `PYTHONHASHSEED` |
+| Sentinel | marker absent after analysing the whole corpus — nothing was executed |
+| Completeness gate | zero incomplete documentation records |
+| Provenance | 1,287 facts, none missing method or confidence |
+
+Integration found two defects that twelve verifier passes did not, both the same
+shape — a card correct in isolation meeting an input its own tests never produced:
+
+1. `SourceSpan.path` was emitted as given rather than relative to the target root,
+   so card 2 found no source and produced **zero edges** from 426 elements. The
+   absolute-root form also broke constraint 4 outright: two machines produced
+   different bytes.
+2. The completeness gate failed 12 `DATA_FILE`/`CONFIG_KEY` elements over fields
+   meaningless for a JSON file. The gate was right; the records assumed every
+   element was Python.
+
+## Superseded next action
 
     /build-card 8      # fixture corpus
     /build-card 1      # ingestion & inventory

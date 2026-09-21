@@ -15,7 +15,6 @@ import pytest
 
 from cascade_map.contracts.interfaces import (
     Confidence,
-    DocRecord,
     Edge,
     EdgeKind,
     Element,
@@ -34,7 +33,6 @@ from cascade_map.contracts.interfaces import (
     CaptureStatus,
     VersionChange,
     ChangeKind,
-    canonical_dumps,
     canonical_jsonl,
     make_id,
 )
@@ -348,6 +346,84 @@ def test_gate_fails_when_runtime_overlay_present_but_record_lacks_it() -> None:
     [rec] = builder.records()
     broken = dataclasses.replace(rec, runtime={})
     assert builder.completeness_gate([broken]) == (el.id,)
+
+
+# ---------------------------------------------------------------------------
+# Every ElementKind gets a complete record -- fields that don't apply to a
+# kind must be an explicit unknown(), never a silently blank string or list.
+# ---------------------------------------------------------------------------
+
+
+def _element_of_kind(kind: ElementKind) -> Element:
+    """One representative element per kind, deliberately leaving fields blank
+    (no signature, no decorators, no module, no parent) the way card 1 would
+    for a kind that structurally cannot have them -- e.g. a DATA_FILE has no
+    Python module and no signature."""
+    return Element(
+        id=make_id("pkg.mod", f"thing_{kind.value.lower()}"),
+        kind=kind,
+        name=f"thing_{kind.value.lower()}",
+        qualname=f"thing_{kind.value.lower()}",
+        module="pkg.mod" if kind not in {ElementKind.DATA_FILE, ElementKind.CONFIG_KEY, ElementKind.FEATURE} else "",
+        span=_span(1, 1),
+        provenance=_prov(),
+        content_hash="abc123",
+    )
+
+
+ALL_ELEMENT_KINDS = tuple(ElementKind)
+
+
+def test_every_element_kind_gets_a_complete_record() -> None:
+    assert len(ALL_ELEMENT_KINDS) == 13, "update this test if ElementKind grows"
+    elements = [_element_of_kind(k) for k in ALL_ELEMENT_KINDS]
+    builder = DocumentationBuilder(elements=elements)
+    records = builder.records()
+    assert len(records) == len(elements)
+    offenders = builder.completeness_gate(records)
+    assert offenders == (), f"gate offenders for kinds it should have handled: {offenders}"
+
+
+def test_non_callable_kinds_get_explicit_unknown_not_blank_fields() -> None:
+    for kind in (ElementKind.DATA_FILE, ElementKind.CONFIG_KEY, ElementKind.FEATURE, ElementKind.BLOB):
+        el = _element_of_kind(kind)
+        builder = DocumentationBuilder(elements=[el])
+        [rec] = builder.records()
+        assert rec.identity["parameters"]["status"] == "UNKNOWN", kind
+        assert rec.identity["decorators"]["status"] == "UNKNOWN", kind
+        assert rec.cascade_position["callers"]["status"] == "UNKNOWN", kind
+        assert rec.cascade_position["callees"]["status"] == "UNKNOWN", kind
+        assert rec.data_role["features_read"]["status"] == "UNKNOWN", kind
+        assert builder.completeness_gate(builder.records()) == ()
+
+
+def test_no_python_module_kinds_get_explicit_unknown_module() -> None:
+    for kind in (ElementKind.DATA_FILE, ElementKind.CONFIG_KEY, ElementKind.FEATURE):
+        el = _element_of_kind(kind)
+        builder = DocumentationBuilder(elements=[el])
+        [rec] = builder.records()
+        assert rec.identity["module"]["status"] == "UNKNOWN", kind
+        assert rec.identity["module"]["reason"]
+
+
+def test_root_of_hierarchy_kinds_have_no_enclosing_scope() -> None:
+    for kind in (ElementKind.PACKAGE, ElementKind.MODULE):
+        el = _element_of_kind(kind)
+        builder = DocumentationBuilder(elements=[el])
+        [rec] = builder.records()
+        assert rec.cascade_position["enclosing_scope"]["status"] == "UNKNOWN", kind
+
+
+def test_config_key_gets_enclosing_scope_from_parent_data_file() -> None:
+    data_file = _element_of_kind(ElementKind.DATA_FILE)
+    key = dataclasses.replace(
+        _element_of_kind(ElementKind.CONFIG_KEY),
+        parent_id=data_file.id,
+    )
+    builder = DocumentationBuilder(elements=[data_file, key])
+    records = {r.element_id: r for r in builder.records()}
+    assert records[key.id].cascade_position["enclosing_scope"] == data_file.id
+    assert builder.completeness_gate(builder.records()) == ()
 
 
 # ---------------------------------------------------------------------------
