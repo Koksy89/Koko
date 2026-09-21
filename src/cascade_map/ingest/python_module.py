@@ -6,6 +6,8 @@ Never imports, execs or evaluates the target. AST only.
 from __future__ import annotations
 
 import ast
+import io
+import tokenize
 from dataclasses import dataclass, field
 
 from cascade_map.contracts.interfaces import (
@@ -20,8 +22,24 @@ from cascade_map.contracts.interfaces import (
     make_id,
 )
 
-from .constants import BLOB_THRESHOLD_BYTES, DOCSTRING_INLINE_CAP
+from .constants import BLOB_THRESHOLD_BYTES, DOCSTRING_INLINE_CAP, LITERAL_VALUE_CAP_BYTES
 from .hashing import sha256_hex, sha256_text
+
+# Token kinds that are pure formatting -- comments and whitespace -- and are
+# stripped when building normalized_body_hash. Docstrings are stripped
+# separately (see _normalized_body_hash): tokenize has no notion of "this
+# string is a docstring", so that part is done with the AST first.
+_FORMATTING_TOKENS = frozenset(
+    {
+        tokenize.COMMENT,
+        tokenize.NL,
+        tokenize.NEWLINE,
+        tokenize.INDENT,
+        tokenize.DEDENT,
+        tokenize.ENCODING,
+        tokenize.ENDMARKER,
+    }
+)
 
 _PROPERTY_DECORATOR_SUFFIXES = (".setter", ".getter", ".deleter")
 
@@ -74,6 +92,7 @@ def parse_python_file(
         provenance=_certain_prov(ctx, 1, note=module_docstring_note),
         content_hash=sha256_hex(raw_bytes),
         docstring=module_docstring,
+        normalized_body_hash=_normalized_body_hash(ctx, tree, segment_override=source),
     )
     ctx.elements.append(module_el)
 
@@ -113,6 +132,78 @@ def _content_hash(ctx: _Ctx, node: ast.AST) -> str:
         except Exception:
             segment = f"<unavailable:{getattr(node, 'lineno', '?')}>"
     return sha256_text(segment)
+
+
+def _normalized_body_hash(ctx: _Ctx, node: ast.AST, segment_override: str | None = None) -> str:
+    """Hash of `node`'s body with comments, docstrings and whitespace
+    normalized away -- "is this the same logic", distinct from
+    `content_hash`'s "is this the same bytes". Uses `tokenize` only, never
+    `ast.parse`/`compile` on target source (constraint 1 applies to every
+    reparse, not just the first one).
+
+    Empty string for elements with no body (anything but MODULE/CLASS/
+    FUNCTION/METHOD/PROPERTY). `segment_override` is for `ast.Module`, which
+    (unlike every other body-having node) carries no position info of its
+    own to feed `ast.get_source_segment`."""
+    if not hasattr(node, "body"):
+        return ""
+    segment = segment_override if segment_override is not None else ast.get_source_segment(ctx.source, node)
+    if segment is None:
+        return ""
+
+    body = getattr(node, "body", None) or []
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
+            and isinstance(body[0].value.value, str):
+        doc_segment = ast.get_source_segment(ctx.source, body[0])
+        if doc_segment:
+            segment = segment.replace(doc_segment, "", 1)
+
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(segment).readline)
+        normalized = [
+            (tok.type, tok.string) for tok in tokens if tok.type not in _FORMATTING_TOKENS
+        ]
+    except (tokenize.TokenizeError, IndentationError, SyntaxError, ValueError):
+        # Tokenizing an extracted segment in isolation can occasionally fail
+        # on code that only parses in its original context (e.g. a `match`
+        # soft keyword edge case). Fall back to the docstring-stripped
+        # segment itself rather than losing the fact entirely.
+        return sha256_text(segment)
+    return sha256_text(repr(normalized))
+
+
+def _literal_value_and_note(value_node: ast.AST | None) -> tuple[str, str]:
+    """`repr()` of an assignment's value when it is a literal constant --
+    empty when it is not, which is the common case and must never read as
+    "the literal was empty": `repr()` of any real literal (including `""`,
+    `0`, `False`, `None`) is always a non-empty string, so the empty default
+    is unambiguous on its own. A note is still attached when a str/bytes
+    literal is capped, the same way docstring capping is surfaced.
+
+    Never a path for blob content: str/bytes literals at or above
+    BLOB_THRESHOLD_BYTES are already absorbed into a BLOB element before this
+    runs (see `_handle_assign`/`_handle_annassign`), so this function's own
+    LITERAL_VALUE_CAP_BYTES check is a defensive second gate, not the
+    primary one.
+    """
+    node = value_node
+    sign = ""
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        if isinstance(node.operand, ast.Constant) and isinstance(node.operand.value, (int, float, complex)):
+            sign = "-" if isinstance(node.op, ast.USub) else "+"
+            node = node.operand
+    if not isinstance(node, ast.Constant):
+        return "", ""
+    value = node.value
+    if isinstance(value, (str, bytes)):
+        size = len(value.encode("utf-8", errors="surrogateescape")) if isinstance(value, str) else len(value)
+        if size >= LITERAL_VALUE_CAP_BYTES:
+            return "", (
+                f"literal_value omitted: {size} bytes >= LITERAL_VALUE_CAP_BYTES="
+                f"{LITERAL_VALUE_CAP_BYTES} (never a path for blob content)"
+            )
+    text = repr(value)
+    return (f"-{text}" if sign == "-" else text), ""
 
 
 def _capped_docstring(node: ast.AST) -> tuple[str, str]:
@@ -285,6 +376,7 @@ def _handle_def(stmt, scope: _Scope, ctx: _Ctx, local_top_names: frozenset[str])
         signature=_signature_text(stmt),
         docstring=docstring,
         parent_id=scope.element_id,
+        normalized_body_hash=_normalized_body_hash(ctx, stmt),
     )
     ctx.elements.append(element)
 
@@ -332,6 +424,7 @@ def _handle_class(stmt: ast.ClassDef, scope: _Scope, ctx: _Ctx, local_top_names:
         signature=signature,
         docstring=docstring,
         parent_id=scope.element_id,
+        normalized_body_hash=_normalized_body_hash(ctx, stmt),
     )
     ctx.elements.append(element)
     new_scope = _Scope(qualname=qualname, element_id=eid, kind="class")
@@ -360,12 +453,26 @@ def _collect_target_names(target: ast.AST) -> list[str]:
     return []
 
 
-def _emit_assignment(ctx: _Ctx, scope: _Scope, name: str, stmt: ast.AST, annotation: ast.AST | None = None) -> None:
+def _emit_assignment(
+    ctx: _Ctx,
+    scope: _Scope,
+    name: str,
+    stmt: ast.AST,
+    annotation: ast.AST | None = None,
+    value_node: ast.AST | None = None,
+) -> None:
+    """`value_node` is the expression `name` is *directly* bound to -- only
+    set by the caller when that binding is unambiguous (a plain `Name`
+    target, not one element of a tuple-unpacking target), since
+    `literal_value` must never guess which side of an unpacking a literal
+    belongs to."""
     if scope.kind not in ("module", "class"):
         return
     qualname = _child_qualname(scope, name)
     eid = ctx.mint_id(qualname)
-    note = _blob_threshold_note(getattr(stmt, "value", None))
+    blob_note = _blob_threshold_note(getattr(stmt, "value", None))
+    literal_value, literal_note = _literal_value_and_note(value_node)
+    note = "; ".join(part for part in (blob_note, literal_note) if part)
     ctx.elements.append(
         Element(
             id=eid,
@@ -378,6 +485,7 @@ def _emit_assignment(ctx: _Ctx, scope: _Scope, name: str, stmt: ast.AST, annotat
             content_hash=_content_hash(ctx, stmt),
             signature=_safe_unparse(annotation) if annotation is not None else "",
             parent_id=scope.element_id,
+            literal_value=literal_value,
         )
     )
 
@@ -389,8 +497,11 @@ def _handle_assign(stmt: ast.Assign, scope: _Scope, ctx: _Ctx) -> None:
         ctx.pending_blob_spans[id(stmt.value)] = stmt
         return
     for target in stmt.targets:
-        for name in _collect_target_names(target):
-            _emit_assignment(ctx, scope, name, stmt)
+        if isinstance(target, ast.Name):
+            _emit_assignment(ctx, scope, target.id, stmt, value_node=stmt.value)
+        else:
+            for name in _collect_target_names(target):
+                _emit_assignment(ctx, scope, name, stmt)
 
 
 def _handle_annassign(stmt: ast.AnnAssign, scope: _Scope, ctx: _Ctx) -> None:
@@ -401,7 +512,7 @@ def _handle_annassign(stmt: ast.AnnAssign, scope: _Scope, ctx: _Ctx) -> None:
     if stmt.value is not None and _is_big_constant(stmt.value):
         ctx.pending_blob_spans[id(stmt.value)] = stmt
         return
-    _emit_assignment(ctx, scope, stmt.target.id, stmt, annotation=stmt.annotation)
+    _emit_assignment(ctx, scope, stmt.target.id, stmt, annotation=stmt.annotation, value_node=stmt.value)
 
 
 def _handle_augassign(stmt: ast.AugAssign, scope: _Scope, ctx: _Ctx) -> None:

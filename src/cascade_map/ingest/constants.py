@@ -12,6 +12,14 @@ from __future__ import annotations
 # comfortably above ordinary docstrings.
 BLOB_THRESHOLD_BYTES = 1024
 
+# literal_value (Element) is capped at the same boundary as BLOB_THRESHOLD_BYTES:
+# a str/bytes literal at or above that size is already absorbed into a BLOB
+# element instead of an ASSIGNMENT one (see python_module._is_big_constant),
+# so this is a defensive, explicit second cap rather than a reachable path --
+# literal_value must never become a way to smuggle blob content into the
+# artifact under a different field name.
+LITERAL_VALUE_CAP_BYTES = BLOB_THRESHOLD_BYTES
+
 # A docstring longer than this is not copied into Element.docstring verbatim
 # (avoids duplicating multi-megabyte text into every consumer of elements.jsonl).
 # The underlying literal is still visited by blob detection and, if it clears

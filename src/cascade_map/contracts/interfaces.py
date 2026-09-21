@@ -817,6 +817,27 @@ class RunRecord:
     interpreter: str
     controls_active: dict[str, bool]
     blocked: tuple[BlockedAttempt, ...]
+    unguaranteed: tuple[str, ...] = ()
+    """Escape paths this harness knows it cannot close, named in every run.
+
+    Constraint 7 requires Mode A to be incapable of real-world side effects and
+    a run to refuse when that cannot be guaranteed. A pure `sys.audit` design
+    cannot make the guarantee absolute: card 11 constructed a direct
+    `_posixsubprocess.fork_exec` call that fires no audit event at all, and a
+    child process permitted by `declared_process_names` is unaudited once it is
+    running. Both are demonstrated, not theoretical.
+
+    Refusing every run over a limit that no run can avoid would make Mode A
+    unusable, so the honest form of constraint 7 here is disclosure: each entry
+    names a path the controls do not cover, and it travels with the run record
+    the owner reads. An empty tuple is a claim of complete coverage and must
+    never be the default for a limit that is merely unmeasured.
+
+    Closing these needs OS-level isolation -- seccomp, namespaces, a container
+    -- underneath the harness. That is outside this card, and stating so beats
+    implying a guarantee the code does not make.
+    """
+
     sandbox_dir: str = ""
     """Where writes were redirected. Card 12 needs it to locate a recording,
     and the owner needs it to find what the run produced."""

@@ -640,6 +640,11 @@ def test_forbidden_order_kinds_over_elements(case: str) -> None:
     for claim in forbidden:
         kind = OrderKind(claim["kind"])
         members = set(claim["element_ids"])
+        scheduled = {e for n in run.order for e in n.element_ids}
+        assert members <= scheduled, (
+            f"{case}: {sorted(members - scheduled)} appear in no order node at all, so "
+            "the absence of a forbidden node below proves nothing"
+        )
         offenders = [
             candidate
             for candidate in run.order
@@ -1396,18 +1401,38 @@ def test_two_runs_are_byte_identical(case: str) -> None:
 
 @pytest.mark.parametrize("case", CARD3_CASES)
 def test_every_artifact_is_sorted_by_id(case: str) -> None:
+    """Sorted, and holding the records the run produced.
+
+    An empty file is sorted too, so each artifact is also matched against the
+    sequence it serialises.
+    """
     run = result(case)
     for records in (run.blocks, run.cfg_edges, run.order, run.decisions, run.reach):
         ids = [r.id for r in records]
         assert ids == sorted(ids), case
-    for name, text in run.analyzer.artifacts().items():
+    serialised = {
+        "cfg_blocks.jsonl": run.blocks,
+        "cfg_edges.jsonl": run.cfg_edges,
+        "order.jsonl": run.order,
+        "decisions.jsonl": run.decisions,
+        "reachability.jsonl": run.reach,
+        "candidates.jsonl": run.candidates,
+        "unresolved.jsonl": run.unresolved,
+    }
+    assert set(run.analyzer.artifacts()) == set(serialised)
+    for name, text in sorted(run.analyzer.artifacts().items()):
         rows = [json.loads(line)["id"] for line in text.splitlines()]
         assert rows == sorted(rows), f"{case}/{name}"
+        assert rows == sorted(r.id for r in serialised[name]), f"{case}/{name}"
+    assert run.blocks and run.cfg_edges and run.order and run.reach, case
 
 
 def test_reachability_jsonl_round_trips_deterministically() -> None:
     run = result("dec_sink")
+    assert len(run.reach) == len(run.elements) > 1
+    assert run.reach_of("dec_sink::final_decision").state is ReachabilityState.REACHES_SINK
     rendered = canonical_jsonl(run.reach)
+    assert rendered.count("\n") == len(run.elements)
     assert rendered == canonical_jsonl(list(reversed(run.reach)))
     rows = [json.loads(line) for line in rendered.splitlines()]
     assert [r["id"] for r in rows] == sorted(r["id"] for r in rows)
