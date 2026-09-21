@@ -596,17 +596,55 @@ def _scenario_failure_view(run: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+#: `observer_failure.stage` ("start"/"stop") -> the sentence distinguishing
+#: the two, because they are not equally bad: a `start` failure means the
+#: run was never watched at all, so a zero-event report means nothing;
+#: `stop` means most of the run was probably observed and only the tail may
+#: be missing. Kept as a separate function from `_scenario_failure_explanation`
+#: on purpose -- these two facts must never be collapsed into one message.
+def _observer_failure_explanation(stage: str | None) -> str:
+    if stage == "start":
+        return (
+            "the observer failed before the run began: nothing was watched. A "
+            "report of zero events here means nothing about the target -- this "
+            "is a bug in the tool, not the target."
+        )
+    if stage == "stop":
+        return (
+            "the observer failed while finishing the run: most of it was "
+            "probably observed, but the tail may be missing. This is a bug in "
+            "the tool, not the target."
+        )
+    return f"unrecognised observer failure stage {stage!r} -- shown verbatim below."
+
+
+def _observer_failure_view(run: dict[str, Any]) -> dict[str, Any] | None:
+    of = run.get("observer_failure")
+    if not of:
+        return None
+    return {
+        "stage": of.get("stage", ""),
+        "exception_type": of.get("exception_type", ""),
+        "message": of.get("message", ""),
+        "traceback": of.get("traceback", ""),
+        "explanation": _observer_failure_explanation(of.get("stage")),
+    }
+
+
 def runtime_overview_view(rstore: RuntimeStore) -> dict[str, Any]:
-    """`RunRecord` verbatim. `scenario_failure` comes first in the returned
-    mapping -- when the scenario raised, the run happened but did not do
-    what was asked, and that must be visible before `unguaranteed` or
-    `blocked`, which describe a run that otherwise executed as intended."""
+    """`RunRecord` verbatim. `observer_failure` and `scenario_failure` come
+    first in the returned mapping, ahead of `unguaranteed` / `blocked` --
+    they are opposite findings (the target misbehaved vs. nobody was
+    watching) and both must be visible before anything that assumes the run
+    was observed as intended. Never collapsed into one message: if both are
+    set, both are returned, distinctly."""
     run = rstore.run_record
     if run is None:
         return {"available": False, "run_id": rstore.run_id}
     return {
         "available": True,
         "run_id": run.get("run_id", rstore.run_id),
+        "observer_failure": _observer_failure_view(run),
         "scenario_failure": _scenario_failure_view(run),
         "unguaranteed": list(run.get("unguaranteed") or ()),
         "blocked": [dict(b) for b in run.get("blocked") or ()],

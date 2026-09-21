@@ -44,11 +44,10 @@ class ScenarioStageError(Exception):
 
     Distinguishing the two matters to whoever reads the result: "your
     module does not exist" and "your `main()` raised" are different
-    problems. ``_execute`` currently catches and discards this (``RunRecord``
-    has no field yet for "the scenario itself failed" -- requested from the
-    lead, see the build report); the stage is already correctly identified
-    here so wiring it into the record is a small, localized change once
-    that field exists.
+    problems. ``_execute`` catches this and turns it into
+    ``RunRecord.scenario_failure`` via ``Harness._build_scenario_failure``
+    -- the run still completes (this is not a refusal; every control was
+    active), but is no longer indistinguishable from a clean one.
     """
 
     def __init__(self, stage: str, original: BaseException) -> None:

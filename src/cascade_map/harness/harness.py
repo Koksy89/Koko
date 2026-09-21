@@ -360,6 +360,7 @@ class Harness:
             unguaranteed=UNGUARANTEED_LIMITS,
             sandbox_dir=sandbox_dir,
             scenario_failure=scenario_failure,
+            observer_failure=observer_failure,
             refused=False,
             refusal_reason="",
         )
@@ -396,27 +397,46 @@ class Harness:
                 sys.modules.pop(name, None)
 
     @staticmethod
-    def _build_scenario_failure(exc: ScenarioStageError) -> ScenarioFailure:
-        """Turn a caught ``ScenarioStageError`` into the record the owner
-        reads. The traceback is capped explicitly, not silently truncated --
-        the same rule ``ValueCapture`` follows: a cutoff that reads as
-        complete would send someone to the wrong frame.
+    def _capped_traceback(exc: BaseException) -> str:
+        """The traceback text every ``ScenarioFailure`` carries, capped
+        explicitly rather than silently truncated -- the same rule
+        ``ValueCapture`` follows: a cutoff that reads as complete would send
+        someone to the wrong frame.
         """
-        original = exc.original
-        formatted = "".join(
-            traceback_module.format_exception(type(original), original, original.__traceback__)
-        )
+        formatted = "".join(traceback_module.format_exception(type(exc), exc, exc.__traceback__))
         if len(formatted) > SCENARIO_FAILURE_TRACEBACK_CAP:
             kept = formatted[:SCENARIO_FAILURE_TRACEBACK_CAP]
             formatted = (
                 f"{kept}\n...[traceback truncated: showing "
                 f"{SCENARIO_FAILURE_TRACEBACK_CAP} of {len(formatted)} characters]"
             )
+        return formatted
+
+    @classmethod
+    def _build_scenario_failure(cls, exc: ScenarioStageError) -> ScenarioFailure:
+        """Turn a caught ``ScenarioStageError`` into the record the owner
+        reads: the target misbehaved."""
+        original = exc.original
         return ScenarioFailure(
             stage=exc.stage,
             exception_type=type(original).__name__,
             message=str(original),
-            traceback=formatted,
+            traceback=cls._capped_traceback(original),
+        )
+
+    @classmethod
+    def _build_observer_failure(cls, stage: str, exc: BaseException) -> ScenarioFailure:
+        """Turn an exception raised by the observer itself into the record
+        the owner reads: the opposite finding from ``_build_scenario_failure``
+        -- the target may have run perfectly and nobody was watching (or
+        stopped watching partway through). *stage* is ``"start"`` or
+        ``"stop"``; see ``RunRecord.observer_failure``.
+        """
+        return ScenarioFailure(
+            stage=stage,
+            exception_type=type(exc).__name__,
+            message=str(exc),
+            traceback=cls._capped_traceback(exc),
         )
 
     # -- self-tests ----------------------------------------------------------
