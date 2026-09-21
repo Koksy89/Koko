@@ -18,8 +18,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# name -> filename, relative to the artifact root. Phase A's runtime/<run_id>/
-# files are intentionally not read here: phase A of card 15 adds them.
+# name -> filename, relative to the artifact root. Matches every top-level
+# file in ARCHITECTURE.md's output layout except the files that live under
+# runtime/<run_id>/ (run.json, events.jsonl, verdicts.jsonl, narrative.jsonl):
+# those need a run_id and belong to phase A of this card, not phase B.
 ARTIFACT_FILES: dict[str, str] = {
     "elements": "elements.jsonl",
     "unresolved": "unresolved.jsonl",
@@ -28,6 +30,7 @@ ARTIFACT_FILES: dict[str, str] = {
     "cfg_edges": "cfg_edges.jsonl",
     "order": "order.jsonl",
     "decisions": "decisions.jsonl",
+    "reachability": "reachability.jsonl",
     "lineage": "lineage.jsonl",
     "barriers": "barriers.jsonl",
     "slices": "slices.jsonl",
@@ -120,6 +123,7 @@ class ArtifactStore:
     decisions_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
     decisions_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     decisions_reading: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    reachability_by_element: dict[str, dict[str, Any]] = field(default_factory=dict)
     lineage_out: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     lineage_in: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     barriers_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
@@ -194,6 +198,14 @@ class ArtifactStore:
         self.decisions_by_element = _multi_index(decisions, "element_id")
         self.decisions_reading = _multi_index_many(decisions, "reads_ids")
 
+        # One Reachability record per element (card 3). If card 3 ever emits
+        # more than one for the same element, the first in id order wins,
+        # deterministically -- the viewer does not adjudicate between them.
+        for r in self.raw["reachability"]:
+            eid = r.get("element_id")
+            if isinstance(eid, str) and eid and eid not in self.reachability_by_element:
+                self.reachability_by_element[eid] = r
+
         lineage = self.raw["lineage"]
         self.lineage_out = _multi_index(lineage, "source_id")
         self.lineage_in = _multi_index(lineage, "target_id")
@@ -238,8 +250,8 @@ class ArtifactStore:
         ids.update(self.order_by_id)
         ids.update(self.decisions_by_id)
         ids.update(self.impacts_by_change)
-        for name in ("unresolved", "cfg_blocks", "cfg_edges", "lineage", "barriers",
-                      "slices", "findings", "changes", "records", "intents"):
+        for name in ("unresolved", "cfg_blocks", "cfg_edges", "reachability", "lineage",
+                      "barriers", "slices", "findings", "changes", "records", "intents"):
             for record in self.raw.get(name, ()):
                 rid = record.get("id")
                 if isinstance(rid, str):

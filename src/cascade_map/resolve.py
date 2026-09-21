@@ -67,6 +67,7 @@ __all__ = [
     "Resolver",
     "resolve",
     "build_graph",
+    "import_cycles",
     "CONFIG_SUFFIXES",
     "WIRING_KEY_WORDS",
 ]
@@ -2341,6 +2342,47 @@ class _CallResolver(ast.NodeVisitor):
         binding = self._eval(node.value)
         for target in node.targets:
             self._assign_target(target, binding, node)
+        if self.scope.kind == "module":
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self._registry_literal(target.id, node.value, node)
+
+    def _registry_literal(self, name: str, value: ast.expr, node: ast.AST) -> None:
+        """``REGISTRY = {"a": alpha}`` / ``STEPS = [a, b]`` -- membership is
+        literal, so the REGISTERS edges are RESOLVED. *Which* member a lookup
+        reaches is a separate, weaker claim made at the lookup site."""
+        reg = self.s.registries.get(name)
+        if reg is None:
+            return
+        items: list[tuple[str, ast.expr]] = []
+        if isinstance(value, ast.Dict):
+            for key, val in zip(value.keys, value.values):
+                literal = (
+                    key.value
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                    else ""
+                )
+                items.append((literal, val))
+        elif isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+            items = [("", item) for item in value.elts]
+        else:
+            return
+        for key_literal, item in items:
+            member = self._eval(item)
+            if not member.target_id or member.kind not in (_BKind.CALLABLE, _BKind.CLASS):
+                continue
+            self._emit(
+                EdgeKind.REGISTERS,
+                member.target_id,
+                Method.REGISTRY_MEMBERSHIP,
+                Confidence.RESOLVED,
+                node,
+                note=f"literal member of {name}"
+                + (f" under key {key_literal!r}" if key_literal else ""),
+                source_id=reg.element_id,
+            )
+            if key_literal:
+                self.r.register_key(key_literal, member.target_id)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if node.value is not None:
@@ -3358,10 +3400,16 @@ def import_cycles(edges: Sequence[Edge]) -> list[tuple[str, ...]]:
     Deterministic: each cycle is rotated to start at its smallest ID and the
     list is sorted.
     """
+    def module_of(node_id: str) -> str:
+        return node_id.split("::", 1)[0].split("#", 1)[0]
+
     graph: dict[str, set[str]] = defaultdict(set)
     for edge in edges:
         if edge.kind is EdgeKind.IMPORTS:
-            graph[edge.source_id].add(edge.target_id)
+            source = module_of(edge.source_id)
+            target = module_of(edge.target_id)
+            if source != target:
+                graph[source].add(target)
     cycles: set[tuple[str, ...]] = set()
     colour: dict[str, int] = {}
     stack: list[str] = []

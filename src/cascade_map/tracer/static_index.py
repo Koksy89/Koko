@@ -131,6 +131,7 @@ class StaticIndex:
         for bucket in self._decisions_by_element.values():
             bucket.sort(key=lambda d: d.id)
 
+        self._decision_by_id = {d.id: d for d in self.decisions}
         declared = {d.element_id for d in self.decisions if d.is_sink}
         self.sink_element_ids: frozenset[str] = frozenset(declared | set(sink_element_ids))
         self.sink_decision_ids: frozenset[str] = frozenset(
@@ -218,6 +219,11 @@ class StaticIndex:
 
     def element(self, element_id: str) -> Element | None:
         return self._by_id.get(element_id)
+
+    def decision(self, decision_id: str) -> DecisionPoint | None:
+        if not decision_id:
+            return None
+        return self._decision_by_id.get(decision_id)
 
     # -- line plans --------------------------------------------------------
 

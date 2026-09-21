@@ -565,7 +565,6 @@ class LineageTracer:
         self._out: dict[str, tuple[tuple[str, str], ...]] = {}
         self._in: dict[str, tuple[tuple[str, str], ...]] = {}
         self._slice_cache: dict[str, Slice] = {}
-        self._class_ids: frozenset[str] | None = None
 
     # -- LineageCard -------------------------------------------------------
 
@@ -901,14 +900,6 @@ class LineageTracer:
             return None
         found = info.functions.get(element_id)
         return None if found is None else (found[0], info)
-
-    def _modules_classes(self) -> frozenset[str]:
-        if self._class_ids is None:
-            ids: set[str] = set()
-            for info in self._modules.values():
-                ids.update(info.classes)
-            self._class_ids = frozenset(ids)
-        return self._class_ids
 
     def _class_qual_of(self, element_id: str) -> str:
         module = element_id.split("::")[0]
@@ -1353,10 +1344,9 @@ class _ModuleWalker:
             self.t._dict_defs.add(target_id)
         if isinstance(value, ast.Call) and _is_frame_producer(value):
             self.t._frame_defs.add(target_id)
-        if isinstance(value, ast.Call):
-            callee = self._resolve_callee(value)
-            if callee and callee[0] in self.t._modules_classes():
-                self.t._instance_of[target_id] = callee[0]
+        for src in srcs:
+            if src.id.endswith(_INSTANCE):
+                self.t._instance_of[target_id] = src.id[: -len(_INSTANCE)]
         for src in srcs:
             if src.id in self.t._frame_defs:
                 self.t._frame_defs.add(target_id)
@@ -2109,11 +2099,55 @@ class _ModuleWalker:
     ) -> tuple[_Src, ...]:
         found = self.t._function_node(callee_id)
         if found is None:
+            class_qual = self.t._class_qual_of(callee_id)
+            if class_qual:
+                return self._bind_constructor(node, callee_id, class_qual, confidence, method, note)
             return self._barrier_call(
                 node, UnresolvedReason.MISSING_TARGET,
                 f"call to {callee_id}, whose definition was not parsed",
             )
         func_node, info = found
+        self._bind_arguments(node, func_node, info, callee_id, confidence, method, note)
+        return (
+            _Src(
+                _return_node(callee_id),
+                combine(confidence, Confidence.RESOLVED),
+                note or "return value",
+            ),
+        )
+
+    def _bind_constructor(
+        self, node: ast.Call, class_id: str, class_qual: str, confidence: Confidence,
+        method: Method, note: str,
+    ) -> tuple[_Src, ...]:
+        """``C(...)`` binds ``__init__``'s parameters and yields an instance node."""
+        module = class_id.split("::")[0]
+        init_id = make_id(module, f"{class_qual}.__init__")
+        found = self.t._function_node(init_id)
+        if found is not None:
+            self._bind_arguments(
+                node, found[0], found[1], init_id, confidence, method,
+                note or "constructor argument", skip=1,
+            )
+        else:
+            for src in self._arg_sources(node):
+                self.t.add_edge(
+                    LineageKind.PARAMETER_BINDING, src.id, f"{class_id}{_INSTANCE}",
+                    self.span(node), method, combine(src.confidence, confidence, Confidence.PROBABLE),
+                    f"{_OVER}{class_qual} defines no __init__ this analysis parsed",
+                )
+        return (
+            _Src(
+                f"{class_id}{_INSTANCE}",
+                combine(confidence, Confidence.RESOLVED),
+                f"instance of {class_qual}",
+            ),
+        )
+
+    def _bind_arguments(
+        self, node: ast.Call, func_node: ast.AST, info: _ModuleInfo, callee_id: str,
+        confidence: Confidence, method: Method, note: str, skip: int = 0,
+    ) -> None:
         args = func_node.args  # type: ignore[union-attr]
         span = self.span(node)
         positional = [*args.posonlyargs, *args.args]

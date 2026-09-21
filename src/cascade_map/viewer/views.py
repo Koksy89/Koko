@@ -52,35 +52,99 @@ def _method_of(record: dict[str, Any]) -> str | None:
 
 #: Named, precomputed signals a caller may filter the browser by. Each is a
 #: direct membership check against a fact some other card already emitted --
-#: never a synthesized verdict. There is no single "is this element decision
-#: relevant" field in the contract (Element carries no such flag); these are
-#: the closest existing facts, exposed as-is. See the card's final report.
+#: never a synthesized verdict. `reaches_sink` / `no_sink_path` /
+#: `reachability_unknown` read the canonical `Reachability` record card 3
+#: emits (`reachability.jsonl`) when it is available; see
+#: :func:`element_reachability`. `reads_in_decision` and
+#: `decision_irrelevant_finding` are unrelated, already-direct facts
+#: (DecisionPoint.reads_ids membership and a Finding.kind, respectively).
 DECISION_SIGNALS = (
     "reads_in_decision",  # id appears in some DecisionPoint.reads_ids
-    "reaches_sink",  # a forward Slice rooted here has reaches_sink_ids
+    "reaches_sink",  # Reachability.state == REACHES_SINK (or its fallback)
+    "no_sink_path",  # Reachability.state == NO_SINK_PATH (canonical only)
+    "reachability_unknown",  # Reachability.state == UNKNOWN (or its fallback)
     "decision_irrelevant_finding",  # a DECISION_IRRELEVANT finding names it
-    "unreachable_finding",  # an UNREACHABLE_ELEMENT finding names it
 )
+
+#: Shown next to any reachability answer that did not come from
+#: reachability.jsonl, so the owner always knows which route produced it.
+_REACHABILITY_FALLBACK_NOTE = (
+    "reachability.jsonl not available: approximated from slices.jsonl / "
+    "findings.jsonl, which cannot see the UNKNOWN or bias-applied cases the "
+    "canonical Reachability record captures explicitly"
+)
+
+
+def element_reachability(store: ArtifactStore, element_id: str) -> dict[str, Any]:
+    """The canonical `Reachability` record for *element_id*, or a clearly
+    labelled fallback approximation when card 3 has not emitted one.
+
+    This is the single place the viewer answers "does this element reach a
+    decision sink". Every other view and the HTML renderer call this rather
+    than deriving their own answer, so there is exactly one route to the
+    fact, not two that can quietly disagree.
+
+    A fallback can only ever claim REACHES_SINK or UNKNOWN -- never
+    NO_SINK_PATH, which only the canonical record is entitled to assert: the
+    viewer has no way to prove the absence of a path on its own.
+    """
+    if store.available.get("reachability"):
+        record = store.reachability_by_element.get(element_id)
+        if record is None:
+            return {
+                "state": "UNKNOWN",
+                "source": "reachability.jsonl",
+                "reason": "reachability.jsonl is available but has no record for this element",
+                "sink_ids": [],
+                "path_ids": [],
+                "confidence": None,
+            }
+        return {
+            "state": record.get("state"),
+            "source": "reachability.jsonl",
+            "reason": record.get("reason", ""),
+            "sink_ids": list(record.get("sink_ids") or ()),
+            "path_ids": list(record.get("path_ids") or ()),
+            "confidence": _confidence_of(record),
+        }
+
+    reaches = any(
+        s.get("reaches_sink_ids") for s in store.slices_by_root.get((element_id, "forward"), ())
+    )
+    if reaches:
+        return {
+            "state": "REACHES_SINK",
+            "source": "fallback:slices.jsonl",
+            "reason": _REACHABILITY_FALLBACK_NOTE,
+            "sink_ids": [],
+            "path_ids": [],
+            "confidence": None,
+        }
+    return {
+        "state": "UNKNOWN",
+        "source": "fallback:no_data",
+        "reason": _REACHABILITY_FALLBACK_NOTE,
+        "sink_ids": [],
+        "path_ids": [],
+        "confidence": None,
+    }
 
 
 def _has_decision_signal(store: ArtifactStore, element_id: str, signal: str) -> bool:
     if signal == "reads_in_decision":
         return element_id in store.decisions_reading
-    if signal == "reaches_sink":
-        for s in store.slices_by_root.get((element_id, "forward"), ()):
-            if s.get("reaches_sink_ids"):
-                return True
-        return False
     if signal == "decision_irrelevant_finding":
         return any(
             f.get("kind") == "DECISION_IRRELEVANT"
             for f in store.findings_by_element.get(element_id, ())
         )
-    if signal == "unreachable_finding":
-        return any(
-            f.get("kind") == "UNREACHABLE_ELEMENT"
-            for f in store.findings_by_element.get(element_id, ())
-        )
+    if signal in ("reaches_sink", "no_sink_path", "reachability_unknown"):
+        wanted = {
+            "reaches_sink": "REACHES_SINK",
+            "no_sink_path": "NO_SINK_PATH",
+            "reachability_unknown": "UNKNOWN",
+        }[signal]
+        return element_reachability(store, element_id)["state"] == wanted
     raise ValueError(f"unknown decision signal: {signal!r}")
 
 
@@ -427,6 +491,7 @@ def element_detail(store: ArtifactStore, element_id: str) -> dict[str, Any]:
         "id": element_id,
         "found": element is not None,
         "element": element_summary(element) if element else None,
+        "reachability": element_reachability(store, element_id),
         "outgoing_edges": sorted(
             (_edge_view(e) for e in store.edges_out.get(element_id, [])),
             key=lambda e: e["id"] or "",

@@ -185,6 +185,7 @@ class Tracer:
         first_call: dict[str, int] = {}
         unmapped_reasons: dict[str, int] = {}
         nd_names_seen: dict[tuple[str, str], list[str]] = {}
+        element_of_event: dict[str, str] = {}
         sequence = 0
 
         def emit(
@@ -246,6 +247,8 @@ class Tracer:
                     continue
                 if obs.kind is ObsKind.HANDLER:
                     continue
+                if obs.kind is ObsKind.BRANCH_NEXT:
+                    pending_cond.pop(obs.frame_key, None)
                 event = emit(EventKind.UNMAPPED, obs, "", Confidence.UNKNOWN, note)
                 if obs.kind is ObsKind.CALL:
                     frame_event[obs.frame_key] = event.event_id
@@ -258,7 +261,8 @@ class Tracer:
                 entered.setdefault(element_id, []).append(event.event_id)
                 first_call.setdefault(element_id, event.sequence)
                 caller_event = frame_event.get(obs.parent_frame_key, "")
-                caller_element = _element_of(events, caller_event)
+                caller_element = element_of_event.get(caller_event, "")
+                element_of_event[event.event_id] = element_id
                 if caller_element:
                     observed_calls.setdefault((caller_element, element_id), []).append(
                         event.event_id
@@ -475,10 +479,10 @@ class Tracer:
                         (before, after),
                         f"order node {node_id} is a SEQUENCE placing {before} before "
                         f"{after}, but {after} ran first in this run.",
-                        tuple(
-                            event_id_for(first_call[after]) for _ in (0,)
-                        )
-                        + (event_id_for(first_call[before]),),
+                        (
+                            event_id_for(first_call[before]),
+                            event_id_for(first_call[after]),
+                        ),
                         Confidence.RESOLVED,
                     )
                 )
@@ -615,15 +619,6 @@ def _note(reason: str, text: str) -> str:
 def _nd_names(obs: RawObservation) -> tuple[str, ...]:
     raw = obs.detail.get("nd_names", "")
     return tuple(name for name in raw.split(",") if name in NONDETERMINISTIC_NAMES)
-
-
-def _element_of(events: Sequence[TraceEvent], event_id: str) -> str:
-    if not event_id:
-        return ""
-    for event in reversed(events):
-        if event.event_id == event_id:
-            return event.element_id
-    return ""
 
 
 def _category(reason: str) -> str:
