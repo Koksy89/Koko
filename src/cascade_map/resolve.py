@@ -416,7 +416,7 @@ class _Summariser(ast.NodeVisitor):
     def __init__(self, summary: _ModuleSum, id_for: Any) -> None:
         self.s = summary
         self._id_for = id_for
-        self._qual: list[str] = []
+        self._prefix = ""
         self._class_stack: list[_ClassSum] = []
         self._func_stack: list[_FuncSum] = []
         self._cond_depth = 0
@@ -424,7 +424,8 @@ class _Summariser(ast.NodeVisitor):
 
     # -- naming ---------------------------------------------------------
     def _qualname(self, name: str) -> str:
-        return ".".join([*self._qual, name])
+        return f"{self._prefix}{name}"
+
 
     def _ordinal(self, qualname: str) -> int:
         n = self.s.ordinals.get(qualname, 0) + 1
@@ -447,7 +448,7 @@ class _Summariser(ast.NodeVisitor):
                 col=node.col_offset,
                 conditional=self._cond_depth > 0,
                 type_checking=self._tc_depth > 0,
-                scope_qualname=".".join(self._qual),
+                scope_qualname=self._prefix,
             )
             self._record_import(spec, full_module=alias.name)
 
@@ -465,7 +466,7 @@ class _Summariser(ast.NodeVisitor):
                     col=node.col_offset,
                     conditional=self._cond_depth > 0,
                     type_checking=self._tc_depth > 0,
-                    scope_qualname=".".join(self._qual),
+                    scope_qualname=self._prefix,
                 )
                 self.s.stars.append(spec)
                 continue
@@ -479,7 +480,7 @@ class _Summariser(ast.NodeVisitor):
                 col=node.col_offset,
                 conditional=self._cond_depth > 0,
                 type_checking=self._tc_depth > 0,
-                scope_qualname=".".join(self._qual),
+                scope_qualname=self._prefix,
             )
             self._record_import(spec)
 
@@ -534,10 +535,11 @@ class _Summariser(ast.NodeVisitor):
         elif self._class_stack:
             self._class_stack[-1].nested_classes[node.name] = qualname
         self._class_stack.append(info)
-        self._qual.append(node.name)
+        outer = self._prefix
+        self._prefix = f"{qualname}."
         for child in node.body:
             self.visit(child)
-        self._qual.pop()
+        self._prefix = outer
         self._class_stack.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -577,7 +579,8 @@ class _Summariser(ast.NodeVisitor):
             self.s.top_defs[node.name] = qualname
 
         self._func_stack.append(info)
-        self._qual.append(node.name)
+        outer = self._prefix
+        self._prefix = f"{qualname}.<locals>."
         returns: list[str] = []
         for child in ast.walk(node):
             if isinstance(child, ast.Return) and child.value is not None:
@@ -585,7 +588,7 @@ class _Summariser(ast.NodeVisitor):
         info.return_exprs = tuple(returns)
         for child in node.body:
             self.visit(child)
-        self._qual.pop()
+        self._prefix = outer
         self._func_stack.pop()
 
     # -- assignments ----------------------------------------------------
@@ -1144,20 +1147,23 @@ class Resolver:
         elif spec.conditional:
             note_bits.append("conditional import")
         note = "; ".join(note_bits)
-        ceiling = Confidence.PROBABLE if (spec.conditional or spec.type_checking) else Confidence.RESOLVED
+        # A guarded import still names exactly one module: the guard changes
+        # *whether* it runs, not *what* it names. The note records the guard;
+        # downgrading the confidence would understate a certain resolution.
+        ceiling = Confidence.RESOLVED
 
         if spec.is_module_alias:
             target_module = spec.module
-            binding = _Binding(
+            known = target_module in self._modules
+            return _Binding(
                 kind=_BKind.MODULE,
                 module_name=target_module,
-                target_id=make_id(target_module),
+                target_id=self._modules[target_module].element_id if known else "",
                 method=Method.IMPORT_ABSOLUTE,
-                confidence=ceiling,
+                confidence=ceiling if known else Confidence.UNKNOWN,
                 note=note,
-                external=target_module not in self._modules,
+                external=not known,
             )
-            return binding
 
         target_module = (
             _relative_module(summary.name, summary.is_package, spec.level, spec.module)
@@ -1215,13 +1221,15 @@ class Resolver:
                     if b
                 ),
             )
-        # external module
+        # Outside the tree. There is no element to point at, so there is no
+        # edge: an edge to a bare dotted name would fabricate a node. The call
+        # site records it as THIRD_PARTY instead.
         return _Binding(
             kind=_BKind.CALLABLE,
-            target_id=make_id(target_module, spec.orig_name) if target_module else spec.orig_name,
+            target_id="",
             module_name=target_module,
             method=method,
-            confidence=ceiling,
+            confidence=Confidence.UNKNOWN,
             note="; ".join(b for b in [note, "target outside the inventory"] if b),
             external=True,
         )
@@ -1855,7 +1863,7 @@ class _CallResolver(ast.NodeVisitor):
         self.scope = _Scope(kind="module", names=dict(resolver._module_scope(summary.name)))
         self.owner_stack: list[str] = [summary.element_id]
         self.class_stack: list[tuple[str, str]] = []
-        self.qual: list[str] = []
+        self.prefix = ""
         self.ordinals: dict[str, int] = {}
         self.cond_depth = 0
         self.tc_depth = 0
@@ -1945,7 +1953,7 @@ class _CallResolver(ast.NodeVisitor):
     # -- definitions ----------------------------------------------------
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        qualname = ".".join([*self.qual, node.name])
+        qualname = f"{self.prefix}{node.name}"
         ordinal = self._ordinal(qualname)
         element_id = self.r._id_for(self.module, qualname, ordinal)
         key = (self.module, qualname)
@@ -1971,12 +1979,13 @@ class _CallResolver(ast.NodeVisitor):
 
         self.owner_stack.append(element_id)
         self.class_stack.append(key)
-        self.qual.append(node.name)
+        outer = self.prefix
+        self.prefix = f"{qualname}."
         self._push("class", class_key=key)
         for child in node.body:
             self.visit(child)
         self._pop()
-        self.qual.pop()
+        self.prefix = outer
         self.class_stack.pop()
         self.owner_stack.pop()
 
@@ -2064,7 +2073,7 @@ class _CallResolver(ast.NodeVisitor):
         self._function(node)
 
     def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-        qualname = ".".join([*self.qual, node.name])
+        qualname = f"{self.prefix}{node.name}"
         ordinal = self._ordinal(qualname)
         element_id = self.r._id_for(self.module, qualname, ordinal)
 
@@ -2082,13 +2091,14 @@ class _CallResolver(ast.NodeVisitor):
             self.visit(default)
 
         self.owner_stack.append(element_id)
-        self.qual.append(node.name)
+        outer = self.prefix
+        self.prefix = f"{qualname}.<locals>."
         self._push("function")
-        self._bind_parameters(node)
+        self._bind_parameters(node, element_id)
         for child in node.body:
             self.visit(child)
         self._pop()
-        self.qual.pop()
+        self.prefix = outer
         self.owner_stack.pop()
 
     def _bind_parameters(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
@@ -2255,22 +2265,34 @@ class _CallResolver(ast.NodeVisitor):
             )
             binding = self.r._binding_for_import(self.s, spec)
             self._bind_import(bound, binding)
-            target = self.r._modules[alias.name].element_id if alias.name in self.r._modules else make_id(alias.name)
+            if binding.external or not binding.target_id:
+                self._third_party(node, bound, alias.name, Method.IMPORT_ABSOLUTE)
+                continue
             self._emit(
                 EdgeKind.IMPORTS,
-                target,
+                binding.target_id,
                 Method.IMPORT_ABSOLUTE,
                 binding.confidence,
                 node,
-                note="; ".join(
-                    b
-                    for b in [
-                        binding.note,
-                        "" if alias.name in self.r._modules else "target outside the inventory",
-                    ]
-                    if b
-                ),
+                note=binding.note,
             )
+
+    def _third_party(
+        self, node: ast.AST, bound: str, module: str, method: Method
+    ) -> None:
+        """A name imported from outside the tree.
+
+        No edge: there is no element to point at and inventing one would put a
+        node in the graph that no file backs. A THIRD_PARTY record instead, so
+        the dependency is visible and card 4 can put a barrier on it.
+        """
+        self.r._record_unresolved(
+            owner=make_id(self.module, bound),
+            reason=UnresolvedReason.THIRD_PARTY,
+            span=_span(self.path, node),
+            description=f"{module!r} is outside the target tree; no element to point at",
+            attempted=(method,),
+        )
 
     def _bind_import(self, name: str, binding: _Binding) -> None:
         """Bind an imported name.

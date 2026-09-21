@@ -14,15 +14,15 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 | Card | Scope | Subagent | Status |
 |---|---|---|---|
 | 8 | Fixture corpus | fixture-writer | **FAILED x2 — rebuilding** (escalated) |
-| 1 | Ingestion & inventory | ingestion-builder | reworked, under verification |
+| 1 | Ingestion & inventory | ingestion-builder | **DONE** (PASS, round 2) |
 | 2 | Resolution & call graph | resolver-engineer | building — **precision 37.8%, watch this** |
-| 3 | CFG, cascade ordering, decisions | cascade-engineer | building |
+| 3 | CFG, cascade ordering, decisions | cascade-engineer | building — 15 tests red |
 | 4 | Data/feature lineage & slicing | lineage-engineer | building |
 | 5 | Unplugged detection & hints | findings-builder | **DONE** (PASS, round 2) |
 | 6 | Version diff & impact | diff-impact-builder | built, awaiting verification |
 | 16 | Documentation records & completeness gate | docs-builder | **DONE** (PASS) |
 | 15 | Viewer (phase B) | viewer-builder | **DONE** (PASS, round 2, phase B only) |
-| 11 | Safe execution harness | harness-builder | reworked, under verification |
+| 11 | Safe execution harness | harness-builder | **FAILED x2 — final round** |
 | 12 | Runtime tracer & value capture | tracer-engineer | built, awaiting verification |
 | 13 | Intent registry & alignment | alignment-engineer | **DONE** (PASS, round 2) |
 | 14 | Execution narrative | narrative-builder | reworked, awaiting verification |
