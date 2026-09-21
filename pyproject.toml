@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cascade-map"
+version = "0.0.0"
+description = "Static and runtime map of a Python decision engine."
+requires-python = ">=3.11"
+dependencies = ["networkx>=3.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "mypy>=1.8", "ruff>=0.4"]
+
+[project.scripts]
+cascade-map = "cascade_map.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
