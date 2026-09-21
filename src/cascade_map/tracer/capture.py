@@ -32,8 +32,9 @@ __all__ = [
     "MISSING",
 ]
 
-_ADDRESS = re.compile(r"(?<= at )0x[0-9a-fA-F]+")
-_ADDRESS_PLACEHOLDER = "0x..."
+_ADDRESS = re.compile(r"(?<= at )(?:0x[0-9a-fA-F]+|[0-9]{6,})")
+_HEX_PLACEHOLDER = "0x..."
+_DECIMAL_PLACEHOLDER = "..."
 ADDRESS_NOTE = (
     "memory addresses normalised to 0x...: an address is not information -- it is "
     "different in every process and comparable to nothing -- and leaving it in would "
@@ -50,11 +51,28 @@ def stable_text(text: str) -> str:
     captured values would carry one. ``type_name`` already holds the half of
     that repr which means anything.
 
-    Only the ``at 0x...`` form CPython itself emits is touched, so a hex
-    literal that is genuinely part of a value survives unless it follows the
-    word "at".
+    Not every identity is hex. ``importlib._bootstrap._ModuleLock`` formats
+    ``id(self)`` as a plain integer -- ``_ModuleLock('run_linear') at
+    140264054584784`` -- and the import machinery produces one before the
+    target's own code is reached, so the hex form alone left every run
+    divergent.
+
+    Two shapes are therefore normalised after the word "at": a ``0x`` hex
+    literal, which becomes ``0x...``, and a decimal of **six digits or more**,
+    which becomes ``...``. The digit floor is the
+    one narrowing this makes: a real ``"retry at 3"`` or ``"... at 1500"``
+    survives, while every plausible CPython ``id()`` -- the lowest heap address
+    on any live platform is far above 100000 -- is caught. A genuine six-digit
+    number after "at" (a unix timestamp, say) would be normalised, and the
+    capture's ``reason`` says so, which is what keeps an over-normalisation
+    visible rather than silent.
     """
-    return _ADDRESS.sub(_ADDRESS_PLACEHOLDER, text)
+    return _ADDRESS.sub(
+        lambda match: _HEX_PLACEHOLDER
+        if match.group().startswith("0x")
+        else _DECIMAL_PLACEHOLDER,
+        text,
+    )
 
 
 class _Missing:

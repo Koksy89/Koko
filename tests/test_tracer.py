@@ -1714,6 +1714,30 @@ def test_addresses_are_normalised_wherever_they_are_rendered() -> None:
         assert not re.search(r"0x[0-9a-fA-F]{6,}", text), (name, text)
 
 
+def test_a_decimal_identity_is_normalised_too() -> None:
+    """`importlib._bootstrap._ModuleLock` reprs `id(self)` in decimal."""
+
+    class Lock:
+        def __repr__(self) -> str:
+            return f"_ModuleLock('run_linear') at {id(self)}"
+
+    first, second = Lock(), Lock()
+    assert repr(first) != repr(second)
+    one, two = capture_value("lock", first), capture_value("lock", second)
+    assert one == two
+    assert one.repr_text == "_ModuleLock('run_linear') at ..."
+    assert ADDRESS_NOTE in one.reason
+
+
+def test_the_digit_floor_keeps_small_real_numbers() -> None:
+    """The one narrowing: six digits or more, so a real counter survives."""
+    assert stable_text("retry at 3") == "retry at 3"
+    assert stable_text("due at 1500") == "due at 1500"
+    assert stable_text("step at 99999") == "step at 99999"
+    assert stable_text("lock at 100000") == "lock at ..."
+    assert stable_text("lock at 140264054584784") == "lock at ..."
+
+
 def test_a_hex_value_that_is_real_data_survives() -> None:
     """Only CPython's own `at 0x...` form is touched."""
     assert capture_value("digest", "0xdeadbeef").repr_text == "'0xdeadbeef'"
@@ -1735,6 +1759,7 @@ from cascade_map.contracts.interfaces import (
 from cascade_map.tracer import StaticIndex, Tracer
 
 sys.path.insert(0, {probe_dir!r})
+sys.path.insert(0, {fixtures!r})
 import probe_module
 
 prov = Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN)
@@ -1767,7 +1792,9 @@ tracer = Tracer(index, recordings_dir={out!r} + "/recordings")
 tracer.start(run)
 try:
     probe_module.handle(probe_module.Widget(), {{"gamma", "alpha", "beta"}})
-    probe_module.handle(probe_module.Widget(), {{"delta", "epsilon"}})
+    probe_module.handle(probe_module.Lock(), {{"delta", "epsilon"}})
+    import run_linear  # the real import path, inside the trace window
+    run_linear.main()
 finally:
     tracer.stop()
 
@@ -1789,13 +1816,26 @@ print(json.dumps({{
         for capture in event.values.values()
         if "0x..." in capture.repr_text
     ),
+    "decimal_ids": sum(
+        1
+        for event in result.events
+        for capture in event.values.values()
+        if "_ModuleLock('probe') at ..." in capture.repr_text
+    ),
     "rate": result.mapping.rate_text,
     "nondet_ids": [observation.id for observation in result.nondeterminism],
 }}))
 '''
 
 _PROBE_MODULE = '''class Widget:
-    pass
+    """No __repr__: CPython renders the hex form."""
+
+
+class Lock:
+    """Reprs its identity in decimal, as importlib's _ModuleLock does."""
+
+    def __repr__(self):
+        return "_ModuleLock('probe') at %s" % id(self)
 
 
 def handle(widget, names):
@@ -1813,6 +1853,7 @@ def test_output_is_byte_identical_across_processes_and_hash_seeds(tmp_path: Path
     script = _DETERMINISM_PROBE.format(
         src=str(REPO_ROOT / "src"),
         probe_dir=str(probe_dir),
+        fixtures=str(MODE_A),
         out=str(out),
     )
     results = []
@@ -1831,7 +1872,8 @@ def test_output_is_byte_identical_across_processes_and_hash_seeds(tmp_path: Path
     assert len(results) == 3
     assert results[0]["events"] >= 6, results[0]
     assert results[0]["captured"] >= 8, results[0]
-    assert results[0]["addresses"] >= 2, "nothing with an address was captured"
+    assert results[0]["addresses"] >= 1, "nothing with a hex address was captured"
+    assert results[0]["decimal_ids"] >= 1, "nothing with a decimal id was captured"
     empty_digest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     assert results[0]["digests"]["events.jsonl"] != empty_digest, "identical emptiness"
     assert results[0]["digests"]["recording"] != empty_digest
