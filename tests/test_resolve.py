@@ -82,7 +82,7 @@ def _inventory(root: Path) -> list[Element]:
         if not path.is_file():
             continue
         rel = path.relative_to(root).as_posix()
-        if path.name == "expected.json":
+        if path.name in {"expected.json", "spans.json"}:
             continue  # card 8's expectation files are harness data, not target config
         if path.suffix == ".py":
             try:

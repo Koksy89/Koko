@@ -237,7 +237,8 @@
         "SIGNATURE_CHANGED",
         "BODY_CHANGED",
         "DECORATORS_CHANGED",
-        "UNCHANGED"
+        "UNCHANGED",
+        "AMBIGUOUS"
       ],
       "type": "string"
     },
@@ -1514,13 +1515,19 @@
     },
     "VersionChange": {
       "additionalProperties": false,
-      "description": "VersionChange(id: 'str', kind: 'ChangeKind', before_id: 'str', after_id: 'str', provenance: 'Provenance')",
+      "description": "VersionChange(id: 'str', kind: 'ChangeKind', before_id: 'str', after_id: 'str', provenance: 'Provenance', candidate_ids: 'tuple[str, ...]' = ())",
       "properties": {
         "after_id": {
           "type": "string"
         },
         "before_id": {
           "type": "string"
+        },
+        "candidate_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "id": {
           "type": "string"
@@ -1534,7 +1541,8 @@
             "SIGNATURE_CHANGED",
             "BODY_CHANGED",
             "DECORATORS_CHANGED",
-            "UNCHANGED"
+            "UNCHANGED",
+            "AMBIGUOUS"
           ],
           "type": "string"
         },

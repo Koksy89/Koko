@@ -19,7 +19,7 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 | 3 | CFG, cascade ordering, decisions | cascade-engineer | building — 15 tests red |
 | 4 | Data/feature lineage & slicing | lineage-engineer | on hold — corpus freeze |
 | 5 | Unplugged detection & hints | findings-builder | **DONE** (PASS, round 2) |
-| 6 | Version diff & impact | diff-impact-builder | built, awaiting verification |
+| 6 | Version diff & impact | diff-impact-builder | **DONE** (PASS, 1 contract follow-up) |
 | 16 | Documentation records & completeness gate | docs-builder | **DONE** (PASS) |
 | 15 | Viewer (phase B) | viewer-builder | **DONE** (PASS, round 2, phase B only) |
 | 11 | Safe execution harness | harness-builder | **FAILED x2 — final round** |

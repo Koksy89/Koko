@@ -238,6 +238,11 @@ class _BranchShape(_Shape):
     """False when every arm returns or raises: control rejoins at the element's
     exit, not after the branch. The MERGE node says which."""
 
+    condition_calls: tuple[tuple[int, int], ...] = ()
+    """Positions of calls inside the condition. A condition that *calls*
+    something reads what it called, and that is often the only element the
+    condition names -- `if rule(value)` reads the rule, not the local alias."""
+
     order_key: int = 0
     """Creation order of the branch's block, so decisions are numbered in
     source order rather than innermost-first (an `elif` chain is built from the
@@ -331,6 +336,16 @@ def _read_targets(node: ast.AST | None) -> tuple[str, ...]:
 
     walk(node)
     return tuple(found)
+
+
+def _call_positions(node: ast.AST | None) -> tuple[tuple[int, int], ...]:
+    """(line, col) of every call inside an expression, in source order."""
+    if node is None:
+        return ()
+    found = [
+        (child.lineno, child.col_offset) for child in ast.walk(node) if isinstance(child, ast.Call)
+    ]
+    return tuple(sorted(set(found)))
 
 
 def _pattern_source(pattern: ast.pattern) -> str:
@@ -622,6 +637,7 @@ class _FlowBuilder:
             kind="GUARD" if is_guard else "IF",
             arms=[("True", then_shape), ("False", else_shape)],
             reads=_read_targets(stmt.test),
+            condition_calls=_call_positions(stmt.test),
             is_guard=is_guard,
             block_id=branch_block,
             rejoins=merge is not None,
@@ -845,6 +861,7 @@ class _FlowBuilder:
             kind="MATCH",
             arms=arms,
             reads=_read_targets(stmt.subject),
+            condition_calls=_call_positions(stmt.subject),
             block_id=first_branch,
             rejoins=bool(ends),
         )
@@ -876,6 +893,7 @@ class _FlowBuilder:
             kind="ASSERT",
             arms=[("True", _SeqShape()), ("False", _SeqShape())],
             reads=_read_targets(stmt.test),
+            condition_calls=_call_positions(stmt.test),
             block_id=branch_block,
         )
         self._register_branch(shape)
@@ -945,6 +963,7 @@ class _FlowBuilder:
                     ("False", _SeqShape()) if is_and else ("True", _SeqShape()),
                 ],
                 reads=_read_targets(left),
+                condition_calls=_call_positions(left),
                 cascade_note=f"`{keyword}` gate",
                 block_id=branch_block,
             )
@@ -976,6 +995,7 @@ class _FlowBuilder:
                 ("False", _SeqShape(children=list(false_shapes))),
             ],
             reads=_read_targets(node.test),
+            condition_calls=_call_positions(node.test),
             block_id=branch_block,
         )
         self._register_branch(shape)
@@ -1030,6 +1050,7 @@ class _FlowBuilder:
                     kind="COMPREHENSION_FILTER",
                     arms=[("True", _SeqShape()), ("False", _SeqShape())],
                     reads=_read_targets(condition_node),
+                    condition_calls=_call_positions(condition_node),
                     block_id=branch_block,
                 )
                 self._register_branch(branch_shape)
@@ -2190,17 +2211,21 @@ class CascadeAnalyzer:
                     note = f"rule cascade: step {position} of {length}"
                 if shape.is_guard:
                     note = (note + "; " if note else "") + "guard clause: the true arm leaves"
+                called, call_confidences = self._condition_calls(
+                    element_id, shape.condition_calls, shape.span
+                )
+                reads = self._resolve_reads(element_id, shape.reads, shape.span, called)
                 self._decisions.append(
                     DecisionPoint(
                         id=decision_id,
                         element_id=element_id,
                         condition_source=shape.condition,
-                        reads_ids=self._resolve_reads(element_id, shape.reads, shape.span),
+                        reads_ids=reads,
                         outcomes=tuple(outcomes),
                         is_sink=element_id in self._sink_ids,
                         provenance=Provenance(
                             method=Method.AST_DIRECT,
-                            confidence=Confidence.CERTAIN,
+                            confidence=combine(Confidence.CERTAIN, *call_confidences),
                             span=shape.span,
                             note=f"{shape.kind}{'; ' + note if note else ''}",
                         ),
@@ -2251,11 +2276,38 @@ class CascadeAnalyzer:
                     out[shape.block_id] = (ordered.index(key) + 1, len(ordered))
         return out
 
+    def _condition_calls(
+        self, element_id: str, positions: Sequence[tuple[int, int]], span: SourceSpan
+    ) -> tuple[tuple[str, ...], tuple[Confidence, ...]]:
+        """Elements a condition calls, and how sure card 2 was of each.
+
+        `if rule(value)` reads the rule, and when the only edge to that rule is
+        HEURISTIC the decision is a HEURISTIC statement about the program. A
+        RESOLVED edge names exactly one element and adds no doubt, so only
+        weaker-than-RESOLVED resolutions lower the decision's confidence -- the
+        decision point itself is read straight off the AST.
+        """
+        targets: list[str] = []
+        confidences: list[Confidence] = []
+        for line, col in positions:
+            for edge in self._targets_at(SourceSpan(span.path, line, None, col), element_id):
+                if edge.kind not in WIRING_EDGE_KINDS:
+                    continue
+                if edge.target_id not in targets:
+                    targets.append(edge.target_id)
+                if _RANK[edge.provenance.confidence] < _RANK[Confidence.RESOLVED]:
+                    confidences.append(edge.provenance.confidence)
+        return tuple(targets), tuple(confidences)
+
     def _resolve_reads(
-        self, element_id: str, reads: Sequence[str], span: SourceSpan
+        self,
+        element_id: str,
+        reads: Sequence[str],
+        span: SourceSpan,
+        called: Sequence[str] = (),
     ) -> tuple[str, ...]:
         """Map the names a condition reads onto element and feature IDs."""
-        out: list[str] = []
+        out: list[str] = list(called)
         element = self._elements.get(element_id)
         for name in reads:
             if name.startswith("@key:"):

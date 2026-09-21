@@ -581,11 +581,7 @@ class _Summariser(ast.NodeVisitor):
         self._func_stack.append(info)
         outer = self._prefix
         self._prefix = f"{qualname}.<locals>."
-        returns: list[str] = []
-        for child in ast.walk(node):
-            if isinstance(child, ast.Return) and child.value is not None:
-                returns.append(_text(child.value))
-        info.return_exprs = tuple(returns)
+        info.return_exprs = tuple(_own_returns(node))
         for child in node.body:
             self.visit(child)
         self._prefix = outer
@@ -718,6 +714,33 @@ class _Summariser(ast.NodeVisitor):
                 else:
                     self._container_write(func.value, _text(arg), None)
         self.generic_visit(node)
+
+
+def _own_returns(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+    """Return expressions of *this* function, not of the ones nested in it.
+
+    ``ast.walk`` would fold a wrapper's own `return` into its decorator's, and
+    the decorator would then look as if it returned two different things.
+    """
+    out: list[str] = []
+
+    def walk(body: Sequence[ast.stmt]) -> None:
+        for stmt in body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                continue
+            if isinstance(stmt, ast.Return):
+                if stmt.value is not None:
+                    out.append(_text(stmt.value))
+                continue
+            for field in ("body", "orelse", "finalbody"):
+                inner = getattr(stmt, field, None)
+                if isinstance(inner, list):
+                    walk([n for n in inner if isinstance(n, ast.stmt)])
+            for handler in getattr(stmt, "handlers", []) or []:
+                walk(handler.body)
+
+    walk(node.body)
+    return out
 
 
 def _string_constants(node: ast.AST) -> list[str]:

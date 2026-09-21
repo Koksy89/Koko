@@ -23,7 +23,7 @@ from cascade_map.contracts import BlockedAttempt, RunRecord, canonical_dumps
 from .config import RunConfig, ScenarioSpec
 from .errors import BlockedOperation, HarnessRefusal
 from .hashing import compute_graph_hash, compute_run_id, compute_target_hashes, config_fingerprint
-from .sandbox import SandboxContext, activate
+from .sandbox import SandboxContext, activate, register_trusted_root
 
 __all__ = ["Harness"]
 

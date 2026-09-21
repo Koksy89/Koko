@@ -11,37 +11,63 @@ Python's part) -- so a run that can install one has a guarantee that persists
 for as long as the process does, and no code path, including a bug in this
 module, can later switch it back off.
 
-Enforcement is scoped to "is a run currently active", not to any logical flow
-within one -- deliberately **not** a ``ContextVar``. A ``ContextVar`` is
-designed to scope a value to one flow of control, and a plain
-``threading.Thread`` starts with a fresh default context, so a value set in
-the parent is invisible to it: the earlier version of this module used a
-``ContextVar`` and a target thread escaped every control as a result (a
-``threading.Thread`` that opened a socket saw no active context and was never
-blocked, silently -- caught in verification, not by this module's own tests).
-``asyncio`` tasks *are* visible to a ``ContextVar`` (they copy the creating
-context), which is exactly backwards: the case that already worked is the one
-``ContextVar`` was built for, and the case that mattered -- a plain thread,
-the ordinary shape of an ingestion or broker client -- is the one it does not
-cover.
+Enforcement answers exactly one question, for every audited event, on every
+thread: **is a run currently active?** Two designs for answering it have
+already failed, and the failures are the reason this one looks the way it
+does.
 
-The fix is a plain module-level flag, guarded by a lock for the transitions
-into and out of it. A module global is visible to every thread in the
-process without cooperation from whatever created it, which is exactly the
-property "a new thread cannot escape enforcement" needs.
+Round one used a ``ContextVar``. A ``ContextVar`` scopes a value to one
+logical flow of control, and a plain ``threading.Thread`` starts with a
+fresh default context -- a value set in the parent is invisible to it. A
+target thread that opened a socket saw no active context and was never
+blocked. Fixed by moving to a plain module-level global, visible to every
+thread with no cooperation required.
 
-Fail-closed at the boundary: tearing down at the end of a run cannot simply
-flip the flag back to "inactive" the instant the scenario function returns,
-because a daemon thread the scenario spawned and never joined may still be
-running and may still act after that instant. ``activate`` snapshots the
-threads alive before the run, joins every new *non-daemon* thread (the
-process cannot exit until it finishes anyway, so this costs nothing beyond
-latency already owed), and registers every new thread still alive after that
--- almost always a daemon -- against this run's context by thread identity,
-so its later operations are still judged and still recorded rather than
-falling through once the flag clears. Code that was never part of any run
-(the harness's own bookkeeping, an unrelated test) is not swept in: only
-threads this run is known to have spawned are tracked this way.
+Round two kept the global but tried to answer "is anything still running?"
+at block-exit time by *enumerating* threads: snapshot before, diff after,
+join what's new, register what's still alive by thread identity so its later
+actions stay judged after the flag itself cleared. Two more escapes followed
+the same shape: a ``threading.Thread`` *constructed* inside the active block
+but *started* after it returns is invisible to ``threading.enumerate()``
+until it starts, by which point the snapshot has already been taken and the
+flag has already cleared; and ``_thread.start_new_thread`` bypasses
+``threading``'s bookkeeping entirely and never appears in
+``threading.enumerate()`` at all. Both escapes were the same root cause as
+round one wearing a different disguise: enforcement depended on *knowing
+which threads exist*, and there is always another way to create one the
+registry does not see.
+
+**The fix is to stop trying to know.** There is no registry, no snapshot, no
+thread-identity tracking anywhere in this module. ``activate`` sets one
+module-level pointer on entry. On exit it makes a best-effort, bounded
+attempt to join non-daemon threads it can currently see -- pure hygiene, not
+a correctness mechanism, and not treated as proof of anything -- and then
+**does not clear the pointer**. A ``Thread`` object can be constructed and
+started from arbitrary later code with no observable trace at the moment
+``activate`` tears down, so there is no sound moment to declare "nothing from
+this run can still be running." Failing closed means treating that as true
+indefinitely rather than guessing it is false: enforcement for a run ends
+when a later run's ``activate`` call replaces it, or at process exit,
+whichever comes first -- never at block exit. An over-long window costs a
+spurious block (a refusal, the safe direction); a short one costs the
+real-world side effect this card exists to prevent.
+
+This has one real consequence worth naming: the harness's own bookkeeping
+(creating the sandbox directory, writing ``run.json`` after the scenario
+returns) happens *after* a window that may never close, and would otherwise
+be judged against a stale run's sandbox the moment a second run starts in
+the same process. It is not exempted by tracking *who* is asking (that is
+the same mistake in a new place) -- it is exempted by directory, via
+``register_trusted_root``: the harness's own sandbox root and its Mode B
+output directory are always-writable regardless of which run (if any) is
+currently active, because they are tool-owned locations the scenario is
+never told the path to, not real-world side-effect targets. In production
+this whole question is close to moot: one ``cascade-map trace`` invocation
+is one process that exits once its run record is written, so "ends at
+process exit" costs nothing there. It only bites inside a single process
+that runs the harness many times in a row, which is exactly what this
+module's own test suite does -- deliberately, to prove the escapes are
+closed.
 """
 
 from __future__ import annotations
@@ -253,13 +279,19 @@ def _extract_executable(event: str, args: tuple[object, ...]) -> str | None:
 
 
 def within_sandbox(path: str, sandbox_root: str) -> bool:
-    """True when *path*, fully resolved, lands inside *sandbox_root*.
+    """True when *path*, fully resolved, lands inside *sandbox_root* -- or
+    inside a directory ``register_trusted_root`` has marked as the harness's
+    own (see there for why that check belongs here too: it is the same
+    "is this write somewhere we control" question, just answered by path
+    instead of by which run happens to be current).
 
     ``realpath`` resolves ``..`` segments and symlinks along the way, so an
     absolute-path escape, a ``..`` escape and a symlink escape are all caught
     by the same check: whatever the path claims to be, this is where it
     actually points.
     """
+    if _is_trusted(path):
+        return True
     try:
         real = os.path.realpath(path)
         root = os.path.realpath(sandbox_root)
@@ -379,37 +411,53 @@ class SandboxContext:
 # Process-wide installation, run-scoped activation
 # ---------------------------------------------------------------------------
 
-#: The currently active run, or ``None``. A plain module global, not a
-#: ``ContextVar``: every thread in the process reads the same object with no
-#: cooperation required from whatever created the thread. Reads in the hot
-#: path (``_dispatch``) are lock-free -- a bare reference read/write is
-#: atomic under the GIL -- and are correct under concurrent mutation because
-#: every transition below only ever narrows *which* context a given event is
-#: judged against, never removes judgement entirely for a thread this run
-#: spawned. See ``_lingering`` for the one case that needs more care.
+#: The currently active run, or ``None`` if no run has ever started in this
+#: process. A plain module global: every thread reads the same object with no
+#: cooperation required from whatever created the thread, and no registry of
+#: "which threads exist" is consulted anywhere below -- see the module
+#: docstring for why that registry is exactly what round two's escapes broke.
+#: Reads in the hot path (``_dispatch``) are lock-free -- a bare reference
+#: read is atomic under the GIL.
 _active_ctx: SandboxContext | None = None
 _state_lock = threading.Lock()
 
-#: Thread identities a run's teardown found still alive after joining every
-#: non-daemon one -- almost always a daemon thread. Judged against that run's
-#: context even after ``_active_ctx`` has moved on, so a late action from a
-#: thread a run spawned is still blocked and still recorded instead of
-#: silently passing through once enforcement "ends" for the run that spawned
-#: it. Idents are pruned once the thread is no longer alive, since Python (and
-#: the OS underneath it) reuses thread identities and an unpruned entry could
-#: misattribute a later, unrelated thread's actions to a long-finished run --
-#: itself a fail-*closed* mistake (an extra block), never a fail-open one.
-_lingering: dict[int, SandboxContext] = {}
-
 _hook_installed = False
+
+#: Directories the harness's own code may always write to, regardless of
+#: which run (if any) is currently active, or whether enforcement has ever
+#: cleared at all. Populated by ``register_trusted_root`` -- a run's sandbox
+#: root and its Mode B output directory (where ``run.json`` lands). These are
+#: exempted *by path*, not by tracking who is asking (the caller's identity
+#: is exactly what this module stopped trying to know): the scenario is never
+#: told either path, so widening trust for them does not widen what the
+#: scenario itself can reach.
+_trusted_roots: set[str] = set()
+_trusted_roots_lock = threading.Lock()
+
+
+def register_trusted_root(path: str) -> None:
+    """Mark *path* as always-writable by the harness's own bookkeeping.
+
+    Call this once per directory, before anything might write to it. Safe to
+    call before the directory exists -- resolution is lexical, matching
+    ``within_sandbox``.
+    """
+    with _trusted_roots_lock:
+        _trusted_roots.add(os.path.realpath(path))
+
+
+def _is_trusted(path: str) -> bool:
+    try:
+        real = os.path.realpath(path)
+    except (OSError, ValueError):
+        return False
+    return any(real == root or real.startswith(root + os.sep) for root in _trusted_roots)
 
 
 def _dispatch(event: str, args: tuple[object, ...]) -> None:
     ctx = _active_ctx
     if ctx is None:
-        ctx = _lingering.get(threading.get_ident())
-        if ctx is None:
-            return
+        return
     ctx.handle_event(event, args)
 
 
@@ -423,43 +471,29 @@ def install_hook() -> None:
     _hook_installed = True
 
 
-def _prune_lingering() -> None:
-    alive = {t.ident for t in threading.enumerate() if t.ident is not None}
-    for ident in [i for i in _lingering if i not in alive]:
-        _lingering.pop(ident, None)
-
-
 @contextmanager
 def activate(ctx: SandboxContext) -> Iterator[SandboxContext]:
-    """Make *ctx* the context the process-wide hook enforces, for this block
-    -- and, fail-closed, for any thread the block spawns and does not clean
-    up after itself, for as long as that thread remains alive.
+    """Make *ctx* the context the process-wide hook enforces.
+
+    Sets the pointer on entry; deliberately does **not** clear it on exit.
+    See the module docstring: there is no sound way to prove a thread
+    constructed during this block, or started via ``_thread.start_new_thread``
+    (invisible to every ``threading`` API), cannot still run or still start
+    later. A best-effort, bounded join of currently-visible non-daemon
+    threads happens on the way out as hygiene -- it does not gate whether the
+    pointer clears, because treating its success as proof is the exact
+    mistake that let two different escapes through this module already.
+    Enforcement for this run ends when a later ``activate`` call replaces the
+    pointer, or at process exit.
     """
     global _active_ctx
     install_hook()
-    _prune_lingering()
-    before = {t.ident for t in threading.enumerate() if t.ident is not None}
     with _state_lock:
-        previous = _active_ctx
         _active_ctx = ctx
     try:
         yield ctx
     finally:
         current = threading.current_thread()
-        spawned = [
-            t
-            for t in threading.enumerate()
-            if t.ident is not None and t.ident not in before and t is not current
-        ]
-        # The process cannot exit while a non-daemon thread is alive, so
-        # waiting for one here adds no latency the caller was not already
-        # going to pay -- it only moves that wait inside the enforced window
-        # instead of after it, which is the point.
-        for t in spawned:
-            if not t.daemon:
+        for t in threading.enumerate():
+            if t is not current and not t.daemon and t.is_alive():
                 t.join(timeout=5.0)
-        with _state_lock:
-            for t in spawned:
-                if t.is_alive():
-                    _lingering[t.ident] = ctx  # type: ignore[index]
-            _active_ctx = previous

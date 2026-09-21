@@ -19,7 +19,7 @@ from .config import RunConfig, ScenarioSpec
 from .errors import BlockedOperation, HarnessRefusal
 from .harness import Harness
 from .hashing import compute_graph_hash, compute_run_id, compute_target_hashes
-from .sandbox import SandboxContext, activate, within_sandbox
+from .sandbox import SandboxContext, activate, register_trusted_root, within_sandbox
 
 __all__ = [
     "Harness",
@@ -29,6 +29,7 @@ __all__ = [
     "HarnessRefusal",
     "SandboxContext",
     "activate",
+    "register_trusted_root",
     "within_sandbox",
     "compute_graph_hash",
     "compute_run_id",

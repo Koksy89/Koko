@@ -630,6 +630,14 @@ class ChangeKind(StrEnum):
     BODY_CHANGED = "BODY_CHANGED"
     DECORATORS_CHANGED = "DECORATORS_CHANGED"
     UNCHANGED = "UNCHANGED"
+    AMBIGUOUS = "AMBIGUOUS"
+    """Several candidates matched and none is being claimed.
+
+    WORKPLAN card 6 requires ambiguous matches to be *reported as ambiguous*.
+    Without this, verification found only one side of a tied rename carried the
+    doubt: the other side rendered as a plain CERTAIN ADDED with no
+    back-reference, so an owner scanning by `kind` alone saw half an ambiguity
+    and a confident answer where there was none."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -639,6 +647,11 @@ class VersionChange:
     before_id: str
     after_id: str
     provenance: Provenance
+    candidate_ids: tuple[str, ...] = ()
+    """Set when kind is AMBIGUOUS: every element that matched equally well.
+
+    Both sides of an ambiguity carry the same candidate set, so the doubt is
+    visible from whichever end the owner is reading."""
 
 
 @dataclass(frozen=True, slots=True)
