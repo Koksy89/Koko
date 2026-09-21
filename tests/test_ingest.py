@@ -185,8 +185,9 @@ def test_inv_kinds(tmp_path: Path) -> None:
 
 def test_inv_kinds_sentinel_not_tripped(tmp_path: Path) -> None:
     _assert_sentinel_untripped()
-    inventory(str(_case_dir("inv_kinds")), cache_dir=tmp_path / "cache")
+    elements, _ = inventory(str(_case_dir("inv_kinds")), cache_dir=tmp_path / "cache")
     _assert_sentinel_untripped()
+    assert len(elements) > 5, "inventory must have actually run, not merely not-crashed"
 
 
 # ---------------------------------------------------------------------------
@@ -280,16 +281,42 @@ def test_inv_ids_stable(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# inv_syntax_error, inv_non_utf8, inv_incremental -- not yet built by
-# fixture-writer at the time this suite was written. Skipped with the case ID
-# named, per instructions, plus a self-contained (non-fixture) proof of the
-# same behavior so card 1's own correctness is not blocked on card 8.
+# inv_syntax_error, inv_non_utf8, inv_incremental -- these fixtures now exist
+# (card 8 landed them after this suite was first written). Each gets a real
+# assertion against the fixture's actual content below, plus the pre-existing
+# tmp_path-built test proving the same behavior on synthetic input -- both are
+# kept, per the coordinator's note, so the fixture test is never a weaker
+# restatement of the tmp_path one.
 # ---------------------------------------------------------------------------
 
 
-def test_inv_syntax_error_fixture_case() -> None:
-    if not _has_case("inv_syntax_error"):
-        pytest.skip("tests/fixtures/mode_b/inv_syntax_error not built yet (card 8, case inv_syntax_error)")
+def test_inv_syntax_error_fixture_case(tmp_path: Path) -> None:
+    assert _has_case("inv_syntax_error")
+    expected = json.loads((_case_dir("inv_syntax_error") / "expected.json").read_text())
+    elements, unresolved = _run_case("inv_syntax_error", tmp_path)
+
+    # A file that fails to parse contributes no elements at all -- not even a
+    # MODULE stub -- and the walk continues rather than crashing.
+    assert elements == [], "a syntax error must not produce a partial element list"
+    assert len(unresolved) == 1
+    record = unresolved[0]
+    exp_u = expected["unresolved"][0]
+    assert record.id == exp_u["id"]
+    assert record.reason == UnresolvedReason.SYNTAX_ERROR == exp_u["reason"]
+    assert record.span.path == exp_u["span"]["path"]
+    assert record.span.line == exp_u["span"]["line"], (
+        "the syntax error's reported line must match the fixture, unlike the "
+        "the informational-only span.line leniency used elsewhere in this file"
+    )
+    # NOTE (fixture defect, reported not matched): expected.json hardcodes
+    # description "Syntax error: unexpected EOF while parsing", the message an
+    # older CPython gave for this input. CPython 3.11's ast.parse raises
+    # "'[' was never closed (<unknown>, line 5)" for the same source --
+    # confirmed directly against the fixture file. Asserting the fixture's
+    # exact wording would pin a Python-version-specific string in a contract
+    # that only requires a SYNTAX_ERROR reason and a location. Only reason,
+    # id and span are asserted; description is checked for non-emptiness.
+    assert record.description
 
 
 def test_syntax_error_is_unresolved_not_a_crash(tmp_path: Path) -> None:
@@ -303,9 +330,23 @@ def test_syntax_error_is_unresolved_not_a_crash(tmp_path: Path) -> None:
     assert unresolved[0].span.path.endswith("__init__.py")
 
 
-def test_inv_non_utf8_fixture_case() -> None:
-    if not _has_case("inv_non_utf8"):
-        pytest.skip("tests/fixtures/mode_b/inv_non_utf8 not built yet (card 8, case inv_non_utf8)")
+def test_inv_non_utf8_fixture_case(tmp_path: Path) -> None:
+    assert _has_case("inv_non_utf8")
+    expected = json.loads((_case_dir("inv_non_utf8") / "expected.json").read_text())
+    elements, unresolved = _run_case("inv_non_utf8", tmp_path)
+
+    assert elements == [], "a non-UTF-8 file must not produce a partial element list"
+    assert len(unresolved) == 1
+    record = unresolved[0]
+    exp_u = expected["unresolved"][0]
+    assert record.id == exp_u["id"]
+    assert record.reason == UnresolvedReason.DECODE_ERROR == exp_u["reason"]
+    assert record.span.path == exp_u["span"]["path"]
+    assert record.span.line == exp_u["span"]["line"]
+    # description wording differs (fixture: "Unable to decode file as UTF-8";
+    # ours embeds the UnicodeDecodeError repr for diagnosability) -- reason
+    # and location are the load-bearing fields, checked above.
+    assert record.description
 
 
 def test_non_utf8_is_unresolved_not_a_crash(tmp_path: Path) -> None:
@@ -318,9 +359,48 @@ def test_non_utf8_is_unresolved_not_a_crash(tmp_path: Path) -> None:
     assert unresolved[0].reason == UnresolvedReason.DECODE_ERROR
 
 
-def test_inv_incremental_fixture_case() -> None:
-    if not _has_case("inv_incremental"):
-        pytest.skip("tests/fixtures/mode_b/inv_incremental not built yet (card 8, case inv_incremental)")
+def test_inv_incremental_fixture_case(tmp_path: Path) -> None:
+    """Exercises the real `inv_incremental` fixture content end to end:
+    static correctness against expected.json, cold/warm byte-identity, a
+    touch-only no-reparse, and a real content change picked up. This is a
+    genuine exercise of the fixture, not a restatement of the tmp_path-built
+    tests below (which use synthetic source and stay as an independent
+    proof)."""
+    assert _has_case("inv_incremental")
+
+    # expected.json content, matched the same way every other fixture case is.
+    _check_case("inv_incremental", tmp_path)
+
+    # The fixture directory is read-only territory (card 8's). Copy it to
+    # work the cache/mutate steps against, under the same basename so the
+    # module's dotted name is unaffected.
+    work_root = tmp_path / "work" / "inv_incremental"
+    work_root.mkdir(parents=True)
+    src = work_root / "__init__.py"
+    src.write_text((_case_dir("inv_incremental") / "__init__.py").read_text())
+    cache_dir = tmp_path / "cache"
+
+    cold_elements, cold_unresolved = inventory(str(work_root), cache_dir=cache_dir)
+    assert {e.name for e in cold_elements} == {"inv_incremental", "operation"}
+    cold_bytes = canonical_jsonl(cold_elements) + canonical_jsonl(cold_unresolved)
+
+    warm_elements, warm_unresolved = inventory(str(work_root), cache_dir=cache_dir)
+    warm_bytes = canonical_jsonl(warm_elements) + canonical_jsonl(warm_unresolved)
+    assert cold_bytes == warm_bytes
+
+    cache_file = next(cache_dir.glob("*.json"))
+    before_touch = cache_file.read_text()
+    os.utime(src, None)  # mtime changes, content does not
+    inventory(str(work_root), cache_dir=cache_dir)
+    assert cache_file.read_text() == before_touch, "a touched-but-unchanged file must not be re-analysed"
+
+    # a real content change: a second function appears, and only it is new
+    src.write_text(
+        src.read_text() + '\n\ndef second_operation():\n    """Another one."""\n    return 43\n'
+    )
+    changed_elements, _ = inventory(str(work_root), cache_dir=cache_dir)
+    names = {e.name for e in changed_elements}
+    assert names == {"inv_incremental", "operation", "second_operation"}, names
 
 
 def test_incremental_cache_cold_and_warm_are_byte_identical(tmp_path: Path) -> None:
@@ -330,6 +410,7 @@ def test_incremental_cache_cold_and_warm_are_byte_identical(tmp_path: Path) -> N
     cache_dir = tmp_path / "cache"
 
     cold_elements, cold_unresolved = inventory(str(case), cache_dir=cache_dir)
+    assert {e.name for e in cold_elements} == {"incr", "f"}
     cold_bytes = canonical_jsonl(cold_elements) + canonical_jsonl(cold_unresolved)
 
     warm_elements, warm_unresolved = inventory(str(case), cache_dir=cache_dir)
@@ -395,6 +476,11 @@ def test_sentinel_never_executed(tmp_path: Path) -> None:
 def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
     elements1, unresolved1 = inventory(str(MODE_B), cache_dir=tmp_path / "cache")
     elements2, unresolved2 = inventory(str(MODE_B), cache_dir=tmp_path / "cache")
+    # equality alone would hold vacuously if inventory() returned nothing;
+    # anchor it to real content from the corpus first.
+    assert len(elements1) > 20, "the mode_b corpus must yield a substantial element set"
+    assert any(e.id == "inv_kinds" for e in elements1)
+    assert any(u.reason == UnresolvedReason.SYNTAX_ERROR for u in unresolved1)
     assert canonical_jsonl(elements1) == canonical_jsonl(elements2)
     assert canonical_jsonl(unresolved1) == canonical_jsonl(unresolved2)
 
@@ -402,6 +488,8 @@ def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
 def test_cold_cache_matches_warm_cache_on_whole_corpus(tmp_path: Path) -> None:
     cold_elements, cold_unresolved = inventory(str(MODE_B), cache_dir=tmp_path / "cache_a")
     warm_elements, warm_unresolved = inventory(str(MODE_B), cache_dir=tmp_path / "cache_a")
+    assert len(cold_elements) > 20
+    assert any(e.id == "inv_kinds" for e in cold_elements)
     assert canonical_jsonl(cold_elements) == canonical_jsonl(warm_elements)
     assert canonical_jsonl(cold_unresolved) == canonical_jsonl(warm_unresolved)
 

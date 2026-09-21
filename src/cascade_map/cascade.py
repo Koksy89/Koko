@@ -2194,34 +2194,7 @@ class CascadeAnalyzer:
     # -- reachability -------------------------------------------------------
 
     def _build_reachability(self) -> None:
-        reverse: dict[str, list[Edge]] = {}
-        for edge in self._edges:
-            if edge.kind in WIRING_EDGE_KINDS:
-                reverse.setdefault(edge.target_id, []).append(edge)
-
-        best: dict[str, Confidence] = {}
-        via: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
-        heap: list[tuple[int, str]] = []
-        for sink in self._sink_ids:
-            best[sink] = Confidence.CERTAIN
-            via[sink] = ((sink,), ())
-            heapq.heappush(heap, (-_RANK[Confidence.CERTAIN], sink))
-        while heap:
-            negated, node = heapq.heappop(heap)
-            if -negated < _RANK[best.get(node, Confidence.UNKNOWN)]:
-                continue
-            for edge in sorted(reverse.get(node, []), key=lambda e: e.id):
-                source = edge.source_id
-                candidate = combine(best[node], edge.provenance.confidence)
-                known = best.get(source)
-                path_elements, path_edges = via[node]
-                new_path = ((source, *path_elements), (edge.id, *path_edges))
-                if known is None or _RANK[candidate] > _RANK[known]:
-                    best[source] = candidate
-                    via[source] = new_path
-                    heapq.heappush(heap, (-_RANK[candidate], source))
-                elif _RANK[candidate] == _RANK[known] and new_path < via[source]:
-                    via[source] = new_path
+        best, via = self._solve_reachability()
 
         # An element contained in something that reaches the sink reaches it too:
         # a parameter of a live function is live. Applied once, downwards only,

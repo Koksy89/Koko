@@ -2406,9 +2406,18 @@ class _CallResolver(ast.NodeVisitor):
 
     def _assign_target(self, target: ast.expr, binding: _Binding, node: ast.AST) -> None:
         if isinstance(target, ast.Name):
-            annotation_key = None
-            if binding.kind is _BKind.UNKNOWN:
-                annotation_key = None
+            if binding.kind is _BKind.UNKNOWN and self.scope.kind == "module":
+                # A container literal evaluates to nothing on its own, but the
+                # name still denotes the registry the summariser found.
+                registry = self.s.registries.get(target.id)
+                if registry is not None:
+                    binding = _Binding(
+                        kind=_BKind.REGISTRY,
+                        target_id=registry.element_id,
+                        registry_key=(self.module, target.id),
+                        method=Method.REGISTRY_MEMBERSHIP,
+                        confidence=Confidence.RESOLVED,
+                    )
             self._bind(target.id, binding)
             if self.scope.kind == "module" and binding.kind in (_BKind.CALLABLE, _BKind.CLASS):
                 alias_id = self.r._id_for(self.module, target.id, 1)

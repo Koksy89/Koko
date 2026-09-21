@@ -71,8 +71,27 @@ def _inventory(root: Path) -> list[Element]:
         if not path.is_file():
             continue
         rel = path.relative_to(root).as_posix()
+        if path.name == "expected.json":
+            continue  # card 8's expectation files are harness data, not target config
         if path.suffix == ".py":
-            elements.extend(_python_elements(path, rel))
+            try:
+                elements.extend(_python_elements(path, rel))
+            except (UnicodeDecodeError, SyntaxError, ValueError):
+                # card 1 emits DECODE_ERROR / SYNTAX_ERROR records here; the
+                # stand-in only needs to keep the module element so the
+                # resolver still sees, and reports on, the file.
+                elements.append(
+                    Element(
+                        id=make_id(_module_name(rel)),
+                        kind=ElementKind.MODULE,
+                        name=path.stem,
+                        qualname="",
+                        module=_module_name(rel),
+                        span=SourceSpan(path=rel, line=1),
+                        provenance=_PROVENANCE,
+                        content_hash="stub",
+                    )
+                )
         elif path.suffix in {".json", ".yaml", ".yml", ".ini", ".cfg", ".toml"}:
             elements.append(
                 Element(
@@ -1180,9 +1199,8 @@ def test_sentinel_is_never_executed() -> None:
     """Constraint 1, empirically: resolving the sentinel must not run it."""
     if SENTINEL_MARKER.exists():
         SENTINEL_MARKER.unlink()
-    root = FIXTURES / "sentinel"
-    assert (root / "__init__.py").is_file(), "the sentinel fixture is missing"
-    edges, unresolved, _ = _run(root)
+    assert (FIXTURES / "sentinel" / "__init__.py").is_file(), "the sentinel fixture is missing"
+    edges, unresolved, _ = _run_subset(FIXTURES, "sentinel")
     assert not SENTINEL_MARKER.exists(), "resolution executed the sentinel module"
     # and it was still analysed, not skipped
     assert edges or unresolved
