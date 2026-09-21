@@ -2,15 +2,15 @@
 
 Two families of cases:
 
-1. Fixtures the corpus (card 8) already provides under
-   ``tests/fixtures/mode_b/fnd_*`` -- loaded from their ``expected.json`` and
-   fed through :class:`Findings` unmodified.
+1. Fixtures the corpus (card 8) provides under ``tests/fixtures/mode_b/fnd_*``
+   -- loaded generically from each case's ``expected.json`` and fed through
+   :class:`Findings` unmodified (`test_fnd_corpus_case`). Two named gaps are
+   run as `xfail(strict=True)` rather than silently skipped or worked around:
+   see `KNOWN_CONTRACT_GAPS` and `KNOWN_FIXTURE_DEFECTS` below.
 2. Constructed graphs, one per :class:`FindingKind`, built directly against
-   the contract types. Card 8 has not yet published a fixture for every
-   ``FindingKind`` (only ``fnd_unknown_not_unplugged`` and
-   ``fnd_no_false_positive`` exist on disk at the time this card was built);
-   this file says so rather than silently skipping coverage. See the missing
-   IDs listed in ``MISSING_FIXTURES`` below.
+   the contract types, for direct control over edge cases the corpus does not
+   isolate as cleanly (evidence chains, confidence provenance, UNKNOWN vs
+   NO_SINK_PATH).
 """
 
 from __future__ import annotations
@@ -46,43 +46,16 @@ from cascade_map.findings import Findings
 
 FIXTURES_ROOT = Path(__file__).parent / "fixtures" / "mode_b"
 
-# FIXTURES.md specifies "one case per FindingKind, plus fnd_unknown_not_unplugged
-# and fnd_no_false_positive". At the time this card was built (round 2), card 8
-# had created a directory and an `expected.json` for every one of these, but
-# eight of them are still stubs: a bare module docstring, one MODULE element,
-# no edges, no unresolved records -- nothing for the kind under test to
-# exercise. Reported rather than silently treated as done; coverage for these
-# kinds is supplied by the constructed-graph tests below instead.
-MISSING_FIXTURES = {
-    "fnd_unreachable_element",
-    "fnd_unconsumed_feature",
-    "fnd_dangling_config_reference",
-    "fnd_orphaned_config_element",
-    "fnd_dead_branch",
-    "fnd_shadowed_definition",
-    "fnd_duplicated_logic",
-    "fnd_decision_irrelevant",
-}
-
-
 def _is_stub_fixture(name: str) -> bool:
+    """True for a case directory that exists but carries no real content yet
+    (a bare module docstring, one MODULE element, nothing else) -- reported
+    as an explicit skip in `test_fnd_corpus_case`, never silently treated as
+    a pass."""
     path = FIXTURES_ROOT / name / "expected.json"
     if not path.exists():
         return True
     data = json.loads(path.read_text())
-    # A real case needs more than the module element itself to exercise
-    # anything; every stub seen at round-2 time has exactly one.
     return len(data.get("elements", [])) <= 1
-
-
-def test_missing_fixtures_are_reported() -> None:
-    """Confirms the gap above still holds; update this test (and add a
-    fixture-driven case) the day card 8 fills one of these in for real."""
-    for name in MISSING_FIXTURES:
-        assert _is_stub_fixture(name), (
-            f"{name} now has real content in the corpus -- replace the "
-            "constructed-graph test for this kind with a fixture-driven one."
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +207,21 @@ KNOWN_CONTRACT_GAPS: dict[str, str] = {
     ),
 }
 
+# Cases where the corpus data itself looks incomplete rather than the
+# contract being short a fact -- named precisely so it can be relayed to
+# card 8, not silently worked around here.
+KNOWN_FIXTURE_DEFECTS: dict[str, str] = {
+    "fnd_unknown_not_unplugged": (
+        "`process` (fnd_unknown_not_unplugged::process) has no incoming edge "
+        "of any kind and is not listed in entry_ids, so plain reachability "
+        "correctly calls it UNREACHABLE_ELEMENT -- but finding_count_exact "
+        "is 0. Either an edge/entry making `process` live is missing from "
+        "the fixture, or `process` should be in `entry_ids` alongside the "
+        "module (it is the file's dispatch API; nothing else in the module "
+        "calls it)."
+    ),
+}
+
 
 @pytest.mark.parametrize("case", FND_CASE_NAMES)
 def test_fnd_corpus_case(case: str) -> None:
@@ -241,6 +229,8 @@ def test_fnd_corpus_case(case: str) -> None:
         pytest.skip(f"{case} is still a stub in the corpus (no elements beyond the module)")
     if case in KNOWN_CONTRACT_GAPS:
         pytest.xfail(KNOWN_CONTRACT_GAPS[case])
+    if case in KNOWN_FIXTURE_DEFECTS:
+        pytest.xfail(KNOWN_FIXTURE_DEFECTS[case])
 
     data = _load_case(case)
     findings = _build_findings_from_case(data).find()

@@ -77,6 +77,17 @@ _REPORTABLE_KINDS = {
     ElementKind.PROPERTY,
 }
 
+# Element kinds that bind a name in a Python scope, and so can meaningfully
+# "shadow" one another. CONFIG_KEY, DATA_FILE, FEATURE, IMPORT etc. are not
+# name bindings in this sense.
+_SHADOWABLE_KINDS = {
+    ElementKind.FUNCTION,
+    ElementKind.METHOD,
+    ElementKind.CLASS,
+    ElementKind.PROPERTY,
+    ElementKind.ASSIGNMENT,
+}
+
 _CONFIG_EXTENSIONS = (".json", ".yaml", ".yml", ".ini", ".cfg", ".toml")
 
 _WRITE_LINEAGE_KINDS = {
@@ -147,12 +158,19 @@ class Findings:
     # -- public API ---------------------------------------------------
 
     def find(self) -> Sequence[Finding]:
+        shadowed = self._shadowed_definitions()
+        # An element with an earlier, live definition that shadows it has a
+        # more specific, correct explanation already: reporting it a second
+        # time as UNREACHABLE_ELEMENT sends the owner to look for a missing
+        # call site, when the actual cause is the redefinition.
+        shadowed_ids = {f.element_id for f in shadowed}
+
         findings: list[Finding] = []
-        findings.extend(self._unreachable_elements())
+        findings.extend(self._unreachable_elements(exclude=shadowed_ids))
         findings.extend(self._dangling_config_references())
         findings.extend(self._orphaned_config_elements())
         findings.extend(self._dead_branches())
-        findings.extend(self._shadowed_definitions())
+        findings.extend(shadowed)
         findings.extend(self._duplicated_logic())
         findings.extend(self._unconsumed_features())
         findings.extend(self._decision_irrelevant())
@@ -175,7 +193,23 @@ class Findings:
                 incoming[e.target_id].append(e)
 
         reached: set[str] = set(self._entry_ids)
-        queue: deque[str] = deque(self._entry_ids)
+        # A module that defines an entry element has necessarily already run
+        # its top-level code -- that is how the entry function came to exist
+        # -- even though the import that pulled it in lives outside this
+        # graph, at the interpreter boundary. Without this, every entry
+        # module's own MODULE element reads as unreachable, which is wrong
+        # in the same way for every single-module fixture in the corpus.
+        entry_modules = {
+            el.module
+            for el_id in self._entry_ids
+            if (el := self._by_id.get(el_id)) is not None and el.module
+        }
+        if entry_modules:
+            for el in self._elements:
+                if el.kind == ElementKind.MODULE and el.module in entry_modules:
+                    reached.add(el.id)
+
+        queue: deque[str] = deque(reached)
         while queue:
             current = queue.popleft()
             for e in outgoing.get(current, ()):
@@ -199,7 +233,7 @@ class Findings:
 
     # -- UNREACHABLE_ELEMENT --------------------------------------------
 
-    def _unreachable_elements(self) -> list[Finding]:
+    def _unreachable_elements(self, *, exclude: set[str] = frozenset()) -> list[Finding]:
         if not self._entry_ids:
             # Without a known entry point, reachability is UNKNOWN
             # everywhere, not wrong everywhere. Report nothing rather than
@@ -219,6 +253,11 @@ class Findings:
                 # Reachable only through an unresolved call site: UNKNOWN,
                 # not unplugged. This is the distinction the card exists to
                 # preserve.
+                continue
+            if el.id in exclude:
+                # A more specific finding (e.g. SHADOWED_DEFINITION) already
+                # explains why this element is never used; naming it here
+                # too sends the owner looking for the wrong cause.
                 continue
             unreachable[el.id] = el
 
@@ -471,7 +510,14 @@ class Findings:
     def _shadowed_definitions(self) -> list[Finding]:
         groups: dict[tuple[str, str, str], list[Element]] = defaultdict(list)
         for el in self._elements:
-            if el.kind in (ElementKind.MODULE, ElementKind.PACKAGE):
+            if el.kind not in _SHADOWABLE_KINDS:
+                # Only elements that bind a name in a Python scope can
+                # "shadow" one another. CONFIG_KEY/DATA_FILE/FEATURE ids are
+                # not name bindings: a config file's `/rules/0` and `/rules/1`
+                # share a blank qualname and the same parent (the file) but
+                # are two different keys, not one name redefined.
+                continue
+            if not el.qualname:
                 continue
             groups[(el.module, el.parent_id, el.qualname)].append(el)
 
@@ -559,13 +605,6 @@ class Findings:
         if not feature_elements:
             return []
 
-        consumed: set[str] = set()
-        for dp in self._decision_points:
-            consumed.update(dp.reads_ids)
-        for s in self._slices:
-            if s.direction == "backward" and s.reaches_sink_ids:
-                consumed.update(s.member_ids)
-
         reads_by_feature: dict[str, list[LineageEdge]] = defaultdict(list)
         writes_by_feature: dict[str, list[LineageEdge]] = defaultdict(list)
         for le in self._lineage_edges:
@@ -573,6 +612,18 @@ class Findings:
                 reads_by_feature[le.source_id].append(le)
             elif le.kind in _WRITE_LINEAGE_KINDS:
                 writes_by_feature[le.target_id].append(le)
+
+        # A feature with any READS edge at all is consumed by something: at
+        # minimum that rules out "no lineage edge leaves it", which is the
+        # actual claim this finding makes. DecisionPoint.reads_ids and a
+        # sink-reaching backward Slice are a stronger, sink-specific version
+        # of the same fact when card 3/4 supply them; either is sufficient.
+        consumed: set[str] = set(reads_by_feature.keys())
+        for dp in self._decision_points:
+            consumed.update(dp.reads_ids)
+        for s in self._slices:
+            if s.direction == "backward" and s.reaches_sink_ids:
+                consumed.update(s.member_ids)
 
         out: list[Finding] = []
         for feat in feature_elements:

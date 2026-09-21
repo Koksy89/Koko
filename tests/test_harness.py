@@ -4,71 +4,58 @@ Constraint 7: Mode A must be incapable of real-world side effects. Every test
 here either proves a control holds against an adversarial program, or proves
 the harness refuses to start rather than run with a guarantee it cannot make.
 
-``tests/fixtures/mode_a/`` currently contains only ``run_linear`` -- the
-``adv_*`` cases FIXTURES.md specifies (card 8's territory) do not yet exist on
-disk. Rather than reach into ``tests/fixtures/`` (out of this card's
-territory) this file builds the same adversarial programs FIXTURES.md
-describes as temporary files under ``tmp_path``, one per case, named after the
-``adv_*``/``run_*`` case it proves. See the build report for this gap.
+**Why most of these tests run the harness in a subprocess.** Enforcement in
+``cascade_map.harness.sandbox`` is a plain module-level flag that, once a run
+activates it, deliberately never clears itself (see that module's docstring
+for the two escapes that happened when it tried to). That is correct for a
+real ``cascade-map trace`` invocation -- one process, exiting once its run
+record is written -- and is exactly the wrong thing for a single pytest
+process that runs the harness dozens of times to prove those escapes stay
+closed: an in-process test would leave its sandbox active for the rest of the
+session, including for pytest's own housekeeping. So every test that actually
+activates the sandbox (``activate()`` directly, or a ``Harness.start()`` call
+that reaches the point of constructing one) runs the relevant code in a
+genuinely separate interpreter via ``_probe`` or ``_run_harness``, and reads
+back what happened from that subprocess's stdout or its ``run.json``. Only
+the tests that provably never touch ``activate()`` at all -- the refusal
+paths that return before a sandbox is built, and the pure signature check --
+run in-process.
+
+``tests/fixtures/mode_a/adv_*`` exist on disk now (card 8's rebuild) but are
+still docstring-only placeholders with no adversarial code, so the adversarial
+programs below are still built as source text here rather than read from the
+corpus. See the build report.
 
 Nothing here ever imports, execs or reads ``target_engine/`` or
 ``target_versions/`` -- every target root used below is a *copy* of a fixture
 directory, made under ``tmp_path``, or a ``tmp_path`` the test itself wrote.
-
-The corpus in ``tests/fixtures/`` is the fixed point every card is measured
-against, and this card's own purpose is containing side effects -- so no test
-here ever points ``RunConfig.target_root`` (or anything else) directly at
-``tests/fixtures/``: real fixtures are copied into ``tmp_path`` first via
-``_copied_fixture`` before anything executes them, structurally ruling out a
-write landing in the corpus regardless of whether the sandbox's own
-``sys.dont_write_bytecode`` window is entered correctly. ``_fixtures_untouched``
-is the loud, local check that this held: it hashes the whole corpus before
-and after this module's tests run and fails if a single byte moved.
 """
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import hashlib
 import inspect
 import json
-import multiprocessing
 import os
 import shutil
-import socket
+import subprocess
 import sys
-import threading
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 
 from cascade_map.contracts import canonical_dumps
 from cascade_map.harness import Harness, RunConfig, ScenarioSpec
 from cascade_map.harness.hashing import compute_graph_hash, compute_target_hashes
-from cascade_map.harness.sandbox import SandboxContext, _reset_for_tests, activate
 
 FIXTURES_ROOT = Path(__file__).parent / "fixtures"
 FIXTURES_MODE_A = FIXTURES_ROOT / "mode_a"
+SRC_PATH = str(Path(__file__).resolve().parent.parent / "src")
 
 
-@pytest.fixture(autouse=True)
-def _clean_sandbox_state_between_tests():
-    """Enforcement in ``sandbox.py`` deliberately never clears itself (see
-    its module docstring) -- correct for one ``cascade-map trace`` per
-    process, friction for this module's own suite, which runs many harness
-    sessions in one process on purpose. ``_reset_for_tests`` is not part of
-    the harness's public surface and no production code calls it; this
-    fixture is the one place it is used, so each test's own setup (writing
-    its own fixture files, before that test's own ``Harness.start()`` has
-    registered its own trusted roots) gets the same clean slate a fresh
-    process would have, and nothing this module's tests do leaks into
-    whatever pytest or another card's tests run next.
-    """
-    _reset_for_tests()
-    yield
-    _reset_for_tests()
+# ---------------------------------------------------------------------------
+# The corpus is never a target. This module's own proof that held.
+# ---------------------------------------------------------------------------
 
 
 def _snapshot_fixtures_tree() -> dict[str, str]:
@@ -86,8 +73,8 @@ def _fixtures_untouched():
     """No test in this module may write anything into ``tests/fixtures/`` --
     not output, not a temp file, and not a bytecode cache from executing a
     fixture directly. Belt (this snapshot) and suspenders
-    (``sys.dont_write_bytecode`` for the whole module, on top of the
-    sandbox's own) around the one thing this card exists to prevent.
+    (``sys.dont_write_bytecode`` for the whole module) around the one thing
+    this card exists to prevent.
     """
     original_dont_write_bytecode = sys.dont_write_bytecode
     sys.dont_write_bytecode = True
@@ -110,10 +97,10 @@ def _copied_fixture(tmp_path: Path, relative: str) -> Path:
 
     Executing the corpus directly risks writing into it (a bytecode cache is
     exactly how this went wrong once already); copying first makes that
-    structurally impossible instead of depending on a flag staying set.
-    Returns the copy of *relative* itself, e.g. ``.../tmp_path/copy/run_linear``
-    for ``relative="run_linear"`` -- the caller points ``target_root`` at its
-    parent so the copied directory still imports under its original name.
+    structurally impossible. Returns the copy of *relative* itself, e.g.
+    ``.../tmp_path/fixture_copy/run_linear`` for ``relative="run_linear"`` --
+    the caller points ``target_root`` at its parent so the copy still imports
+    under its original name.
     """
     dest = tmp_path / "fixture_copy" / relative
     shutil.copytree(FIXTURES_MODE_A / relative, dest)
@@ -121,13 +108,139 @@ def _copied_fixture(tmp_path: Path, relative: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Subprocess helpers -- see the module docstring for why these exist.
+# ---------------------------------------------------------------------------
+
+
+def _run_python(script: str, timeout: float = 30.0, env: dict[str, str] | None = None):
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=env,
+    )
+
+
+def _probe(
+    tmp_path: Path,
+    body: str,
+    declared_process_names: frozenset[str] = frozenset(),
+    label: str = "probe",
+) -> dict:
+    """Run *body* against a fresh ``SandboxContext``/``activate`` in a
+    genuinely separate interpreter and return what it recorded.
+
+    *body* is Python source; ``ctx`` is already bound when it runs.
+    """
+    sandbox_root = tmp_path / f"sandbox_{label}"
+    sandbox_root.mkdir(parents=True, exist_ok=True)
+    script = (
+        "import sys, json\n"
+        f"sys.path.insert(0, {SRC_PATH!r})\n"
+        "from cascade_map.harness.sandbox import SandboxContext, activate\n"
+        f"ctx = SandboxContext(sandbox_root={str(sandbox_root)!r}, "
+        f"declared_process_names=frozenset({sorted(declared_process_names)!r}))\n"
+        + body
+        + "\nprint(json.dumps({"
+        "'blocked': [{'kind': b.kind, 'detail': b.detail} for b in ctx.blocked],"
+        "'reads_outside': len(ctx.reads_outside_sandbox),"
+        "}))\n"
+    )
+    result = _run_python(script)
+    assert result.returncode == 0, (
+        f"probe subprocess failed (exit {result.returncode}):\n"
+        f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    )
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    assert lines, f"probe produced no JSON output:\nSTDERR:\n{result.stderr}"
+    return json.loads(lines[-1])
+
+
+def _blocked_kinds(result: dict) -> list[str]:
+    return [b["kind"] for b in result["blocked"]]
+
+
+def _run_harness(
+    tmp_path: Path,
+    *,
+    source: str,
+    module: str = "target_mod",
+    scenario: str = "s",
+    function: str = "",
+    declared_process_names: frozenset[str] = frozenset(),
+    env_passthrough: frozenset[str] = frozenset(),
+    client_stub_source: str = "",
+    target_root: Path | None = None,
+    sandbox_root: Path | None = None,
+    graph_hash: str | None = None,
+    env: dict[str, str] | None = None,
+    label: str = "run",
+    timeout: float = 30.0,
+) -> tuple[dict, Path, Path]:
+    """Run ``Harness.start()`` against a target module built from *source*,
+    in a genuinely separate interpreter, and return
+    ``(run_record_dict, sandbox_root, mode_b_out_dir)``.
+    """
+    if target_root is None:
+        target_root = tmp_path / f"target_{label}"
+        target_root.mkdir(parents=True, exist_ok=True)
+    if source:
+        (target_root / f"{module}.py").write_text(source)
+
+    out_dir = tmp_path / f"out_{label}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "elements.jsonl").write_text("")
+    if sandbox_root is None:
+        sandbox_root = tmp_path / f"sandbox_{label}"
+
+    graph_hash_line = (
+        f"graph_hash = {graph_hash!r}\n"
+        if graph_hash is not None
+        else "graph_hash = compute_graph_hash(compute_target_hashes(target_root))\n"
+    )
+
+    script = (
+        "import sys\n"
+        f"sys.path.insert(0, {SRC_PATH!r})\n"
+        "from pathlib import Path\n"
+        "from cascade_map.harness import Harness, RunConfig, ScenarioSpec\n"
+        "from cascade_map.harness.hashing import compute_graph_hash, compute_target_hashes\n"
+        f"target_root = Path({str(target_root)!r})\n"
+        f"out_dir = Path({str(out_dir)!r})\n"
+        f"sandbox_root = Path({str(sandbox_root)!r})\n"
+        + client_stub_source
+        + "\nconfig = RunConfig(\n"
+        "    target_root=target_root,\n"
+        "    mode_b_out_dir=out_dir,\n"
+        "    sandbox_root=sandbox_root,\n"
+        f"    scenarios={{{scenario!r}: ScenarioSpec(name={scenario!r}, "
+        f"module={module!r}, function={function!r})}},\n"
+        f"    declared_process_names=frozenset({sorted(declared_process_names)!r}),\n"
+        f"    env_passthrough=frozenset({sorted(env_passthrough)!r}),\n"
+        + ("    client_stubs=CLIENT_STUBS,\n" if client_stub_source else "")
+        + ")\n"
+        + graph_hash_line
+        + f"Harness(config).start({scenario!r}, graph_hash)\n"
+    )
+    run_env = dict(os.environ) if env is None else env
+    result = _run_python(script, timeout=timeout, env=run_env)
+    assert result.returncode == 0, (
+        f"harness subprocess failed (exit {result.returncode}):\n"
+        f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    )
+    run_json_files = list((out_dir / "runtime").glob("*/run.json"))
+    assert len(run_json_files) == 1, f"expected exactly one run.json, found {run_json_files}"
+    record = json.loads(run_json_files[0].read_text())
+    return record, sandbox_root, out_dir
+
+
+# ---------------------------------------------------------------------------
+# In-process helpers -- only for tests that provably never call activate().
 # ---------------------------------------------------------------------------
 
 
 def _mode_b_graph(tmp_path: Path, name: str = "out") -> Path:
-    """A stand-in completed Mode B graph: just enough for the harness's own
-    "does a graph exist" check -- an ``elements.jsonl`` anchor file."""
     out_dir = tmp_path / name
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "elements.jsonl").write_text("")
@@ -145,22 +258,13 @@ def _graph_hash_for(target_root: Path) -> str:
     return compute_graph_hash(compute_target_hashes(target_root))
 
 
-def _config(
-    tmp_path: Path,
-    target_root: Path,
-    scenario: str,
-    module: str,
-    function: str = "",
-    **kwargs: object,
-) -> RunConfig:
+def _config(tmp_path: Path, target_root: Path, scenario: str, module: str) -> RunConfig:
     out_dir = _mode_b_graph(tmp_path)
-    sandbox_root = tmp_path / "sandbox"
     return RunConfig(
         target_root=target_root,
         mode_b_out_dir=out_dir,
-        sandbox_root=sandbox_root,
-        scenarios={scenario: ScenarioSpec(name=scenario, module=module, function=function)},
-        **kwargs,  # type: ignore[arg-type]
+        sandbox_root=tmp_path / "sandbox",
+        scenarios={scenario: ScenarioSpec(name=scenario, module=module)},
     )
 
 
@@ -170,60 +274,69 @@ def _run(config: RunConfig, scenario: str, graph_hash: str | None = None):
     return Harness(config).start(scenario, graph_hash)
 
 
-def _kinds(record) -> list[str]:
-    return [b.kind for b in record.blocked]
-
-
 # ---------------------------------------------------------------------------
 # run_linear -- a legitimate scenario completes cleanly, end to end
 # ---------------------------------------------------------------------------
 
 
 def test_run_linear_completes_with_every_control_active(tmp_path: Path) -> None:
-    # A copy, never the corpus itself: see _copied_fixture and _fixtures_untouched.
     copied_run_linear = _copied_fixture(tmp_path, "run_linear")
     target_root = copied_run_linear.parent
 
-    out_dir = _mode_b_graph(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    (out_dir / "elements.jsonl").write_text("")
     sandbox_root = tmp_path / "sandbox"
-    config = RunConfig(
-        target_root=target_root,
-        mode_b_out_dir=out_dir,
-        sandbox_root=sandbox_root,
-        scenarios={
-            "run_linear": ScenarioSpec(name="run_linear", module="run_linear", function="main")
-        },
-    )
-    record = _run(config, "run_linear")
+    graph_hash = _graph_hash_for(target_root)
 
-    assert record.refused is False
-    assert record.refusal_reason == ""
+    script = (
+        "import sys\n"
+        f"sys.path.insert(0, {SRC_PATH!r})\n"
+        "from pathlib import Path\n"
+        "from cascade_map.harness import Harness, RunConfig, ScenarioSpec\n"
+        f"config = RunConfig(\n"
+        f"    target_root=Path({str(target_root)!r}),\n"
+        f"    mode_b_out_dir=Path({str(out_dir)!r}),\n"
+        f"    sandbox_root=Path({str(sandbox_root)!r}),\n"
+        "    scenarios={'run_linear': ScenarioSpec(name='run_linear', "
+        "module='run_linear', function='main')},\n"
+        ")\n"
+        f"Harness(config).start('run_linear', {graph_hash!r})\n"
+    )
+    result = _run_python(script)
+    assert result.returncode == 0, f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+
+    run_json_files = list((out_dir / "runtime").glob("*/run.json"))
+    assert len(run_json_files) == 1
+    record = json.loads(run_json_files[0].read_text())
+
+    assert record["refused"] is False
+    assert record["refusal_reason"] == ""
     # Only informational reads of stdlib/interpreter internals may appear --
     # nothing the scenario itself did was blocked or written outside it.
-    assert _kinds(record) == ["filesystem_read_outside_sandbox"] * len(record.blocked)
-    assert record.controls_active == {
+    assert _blocked_kinds(record) == ["filesystem_read_outside_sandbox"] * len(
+        record["blocked"]
+    )
+    assert record["controls_active"] == {
         "network": True,
         "filesystem": True,
         "process": True,
         "environment": True,
         "external_clients": True,
     }
-    assert record.run_id.startswith("run_")
+    assert record["run_id"].startswith("run_")
+    assert record["sandbox_dir"] == str(sandbox_root)
 
     # No write landed even in the *copy* -- and the real corpus was never
     # named as a target_root at all, so it could not have been touched.
     assert not (copied_run_linear / "__pycache__").exists()
     assert not (FIXTURES_MODE_A / "run_linear" / "__pycache__").exists()
 
-    run_json = out_dir / "runtime" / record.run_id / "run.json"
-    assert run_json.exists()
-    on_disk = json.loads(run_json.read_text())
-    assert on_disk["run_id"] == record.run_id
-    assert canonical_dumps(record) + "\n" == run_json.read_text()
-
 
 # ---------------------------------------------------------------------------
-# Refusals -- constraint 7: refusing to start is the correct outcome
+# Refusals -- constraint 7: refusing to start is the correct outcome.
+# None of these reach the point of constructing a sandbox, so they run
+# in-process: verified case by case in the harness build report.
 # ---------------------------------------------------------------------------
 
 
@@ -250,7 +363,7 @@ def test_refuses_when_graph_is_stale(tmp_path: Path) -> None:
     target_root = _write_target(tmp_path, "trivial", "x = 1\n")
     config = _config(tmp_path, target_root, "s", "trivial")
 
-    record = _run(config, "s", graph_hash="0" * 64)  # a graph hash that matches nothing
+    record = _run(config, "s", graph_hash="0" * 64)  # matches nothing
 
     assert record.refused is True
     assert "stale graph" in record.refusal_reason
@@ -269,8 +382,11 @@ def test_refuses_when_scenario_not_declared(tmp_path: Path) -> None:
 
 def test_refuses_when_audit_hook_cannot_be_verified(tmp_path: Path, monkeypatch) -> None:
     """adv_refuse_start: with a control unavailable, the run refuses and
-    names the guarantee -- simulated here by making hook installation fail,
-    since a real broken interpreter is not something a test can construct."""
+    names the guarantee -- simulated by making hook installation fail, since
+    a genuinely broken interpreter is not something a test can construct.
+    ``install_hook`` raises before ``activate`` ever touches the sandbox
+    pointer, so this stays safe to run in-process.
+    """
     target_root = _write_target(tmp_path, "trivial", "x = 1\n")
     config = _config(tmp_path, target_root, "s", "trivial")
 
@@ -302,98 +418,84 @@ def test_no_force_flag_exists_on_start() -> None:
 
 
 def test_adv_network_outbound_connect_blocked(tmp_path: Path) -> None:
-    target_root = _write_target(
+    result = _probe(
         tmp_path,
-        "adv_network",
         "import socket\n"
-        "s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
-        "s.settimeout(0.01)\n"
-        "try:\n"
-        "    s.connect(('93.184.216.34', 80))\n"
-        "finally:\n"
-        "    s.close()\n",
+        "with activate(ctx):\n"
+        "    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+        "    s.settimeout(0.01)\n"
+        "    try:\n"
+        "        s.connect(('93.184.216.34', 80))\n"
+        "    except Exception:\n"
+        "        pass\n"
+        "    finally:\n"
+        "        s.close()\n",
     )
-    config = _config(tmp_path, target_root, "adv_network", "adv_network")
-    record = _run(config, "adv_network")
-
-    assert record.refused is False
-    assert "network" in _kinds(record)
-    net = [b for b in record.blocked if b.kind == "network"][0]
-    assert "socket.connect" in net.detail
+    assert _blocked_kinds(result) == ["network"]
+    assert "socket.connect" in result["blocked"][0]["detail"]
 
 
 def test_adv_dns_lookup_blocked(tmp_path: Path) -> None:
-    target_root = _write_target(
+    result = _probe(
         tmp_path,
-        "adv_dns",
         "import socket\n"
-        "try:\n"
-        "    socket.gethostbyname('example.com')\n"
-        "except Exception:\n"
-        "    pass\n",
+        "with activate(ctx):\n"
+        "    try:\n"
+        "        socket.gethostbyname('example.com')\n"
+        "    except Exception:\n"
+        "        pass\n",
     )
-    config = _config(tmp_path, target_root, "adv_dns", "adv_dns")
-    record = _run(config, "adv_dns")
-
-    assert record.refused is False
-    assert "network" in _kinds(record)
-    net = [b for b in record.blocked if b.kind == "network"][0]
-    assert "gethostbyname" in net.detail
+    assert _blocked_kinds(result) == ["network"]
+    assert "gethostbyname" in result["blocked"][0]["detail"]
 
 
 def test_adv_undeclared_client_is_a_hard_stop(tmp_path: Path) -> None:
     """adv_undeclared_client: reaching an external system with no declared
     stub goes through the real socket layer and is blocked like anything
     else undeclared -- not a special-cased pass-through."""
-    target_root = _write_target(
+    result = _probe(
         tmp_path,
-        "adv_undeclared_client",
         "import socket\n"
-        "s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
-        "s.settimeout(0.01)\n"
-        "try:\n"
-        "    s.connect(('203.0.113.5', 5432))  # pretend Postgres, never declared\n"
-        "finally:\n"
-        "    s.close()\n",
+        "with activate(ctx):\n"
+        "    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+        "    s.settimeout(0.01)\n"
+        "    try:\n"
+        "        s.connect(('203.0.113.5', 5432))  # pretend Postgres, never declared\n"
+        "    except Exception:\n"
+        "        pass\n"
+        "    finally:\n"
+        "        s.close()\n",
     )
-    config = _config(tmp_path, target_root, "adv_undeclared_client", "adv_undeclared_client")
-    record = _run(config, "adv_undeclared_client")
-
-    assert record.refused is False
-    assert "network" in _kinds(record)
+    assert _blocked_kinds(result) == ["network"]
 
 
 def test_declared_client_stub_bypasses_network_entirely(tmp_path: Path) -> None:
     """A declared client never touches the socket layer at all: the stub
     satisfies the import first."""
-    target_root = _write_target(
-        tmp_path,
-        "uses_broker",
-        "import fake_broker\n"
-        "result = fake_broker.send('order-1')\n"
-        "with open('stub_result.txt', 'w') as f:\n"
-        "    f.write(result)\n",
+    client_stub_source = (
+        "from types import ModuleType\n"
+        "def _make_fake_broker():\n"
+        "    mod = ModuleType('fake_broker')\n"
+        "    mod.send = lambda payload: f'stubbed-ack:{payload}'\n"
+        "    return mod\n"
+        "CLIENT_STUBS = {'fake_broker': _make_fake_broker}\n"
     )
-
-    def _make_stub() -> ModuleType:
-        mod = ModuleType("fake_broker")
-        mod.send = lambda payload: f"stubbed-ack:{payload}"  # type: ignore[attr-defined]
-        return mod
-
-    config = _config(
+    record, sandbox_root, _ = _run_harness(
         tmp_path,
-        target_root,
-        "uses_broker",
-        "uses_broker",
-        client_stubs={"fake_broker": _make_stub},
+        source=(
+            "import fake_broker\n"
+            "result = fake_broker.send('order-1')\n"
+            "with open('stub_result.txt', 'w') as f:\n"
+            "    f.write(result)\n"
+        ),
+        module="uses_broker",
+        function="",
+        client_stub_source=client_stub_source,
+        label="stub",
     )
-    record = _run(config, "uses_broker")
-
-    assert record.refused is False
-    assert "network" not in _kinds(record)
-    result_file = config.sandbox_root / "stub_result.txt"
-    assert result_file.read_text() == "stubbed-ack:order-1"
-    assert "fake_broker" not in sys.modules  # restored, not leaked into the test process
+    assert record["refused"] is False
+    assert "network" not in _blocked_kinds(record)
+    assert (sandbox_root / "stub_result.txt").read_text() == "stubbed-ack:order-1"
 
 
 # ---------------------------------------------------------------------------
@@ -403,74 +505,57 @@ def test_declared_client_stub_bypasses_network_entirely(tmp_path: Path) -> None:
 
 def test_adv_write_escape_absolute_path_blocked(tmp_path: Path) -> None:
     outside = tmp_path / "outside_absolute.txt"
-    target_root = _write_target(
+    record, _, _ = _run_harness(
         tmp_path,
-        "adv_write_absolute",
-        f"with open({str(outside)!r}, 'w') as f:\n"
-        "    f.write('escaped')\n",
+        source=f"with open({str(outside)!r}, 'w') as f:\n    f.write('escaped')\n",
+        module="adv_write_absolute",
+        label="abs",
     )
-    config = _config(tmp_path, target_root, "adv_write_absolute", "adv_write_absolute")
-    record = _run(config, "adv_write_absolute")
-
-    assert "filesystem_write" in _kinds(record)
+    assert "filesystem_write" in _blocked_kinds(record)
     assert not outside.exists()
 
 
 def test_adv_write_escape_dotdot_blocked(tmp_path: Path) -> None:
-    target_root = _write_target(
+    record, sandbox_root, _ = _run_harness(
         tmp_path,
-        "adv_write_dotdot",
-        "with open('../escaped_dotdot.txt', 'w') as f:\n"
-        "    f.write('escaped')\n",
+        source="with open('../escaped_dotdot.txt', 'w') as f:\n    f.write('escaped')\n",
+        module="adv_write_dotdot",
+        label="dotdot",
     )
-    config = _config(tmp_path, target_root, "adv_write_dotdot", "adv_write_dotdot")
-    record = _run(config, "adv_write_dotdot")
-
-    assert "filesystem_write" in _kinds(record)
-    assert not (config.sandbox_root.parent / "escaped_dotdot.txt").exists()
+    assert "filesystem_write" in _blocked_kinds(record)
+    assert not (sandbox_root.parent / "escaped_dotdot.txt").exists()
 
 
 def test_adv_write_escape_symlink_blocked(tmp_path: Path) -> None:
     outside_dir = tmp_path / "outside_via_symlink"
     outside_dir.mkdir()
-    sandbox_root = tmp_path / "sandbox"
+    sandbox_root = tmp_path / "sandbox_symlink"
     sandbox_root.mkdir()
     (sandbox_root / "escape_link").symlink_to(outside_dir, target_is_directory=True)
 
-    target_root = _write_target(
+    record, _, _ = _run_harness(
         tmp_path,
-        "adv_write_symlink",
-        "with open('escape_link/escaped.txt', 'w') as f:\n"
-        "    f.write('escaped')\n",
-    )
-    out_dir = _mode_b_graph(tmp_path)
-    config = RunConfig(
-        target_root=target_root,
-        mode_b_out_dir=out_dir,
+        source="with open('escape_link/escaped.txt', 'w') as f:\n    f.write('escaped')\n",
+        module="adv_write_symlink",
         sandbox_root=sandbox_root,
-        scenarios={"s": ScenarioSpec(name="s", module="adv_write_symlink")},
+        label="symlink",
     )
-    record = _run(config, "s")
-
-    assert "filesystem_write" in _kinds(record)
+    assert "filesystem_write" in _blocked_kinds(record)
     assert not (outside_dir / "escaped.txt").exists()
 
 
 def test_write_inside_sandbox_succeeds_and_is_not_blocked(tmp_path: Path) -> None:
-    target_root = _write_target(
+    record, sandbox_root, _ = _run_harness(
         tmp_path,
-        "legit_write",
-        "with open('inside.txt', 'w') as f:\n"
-        "    f.write('fine')\n",
+        source="with open('inside.txt', 'w') as f:\n    f.write('fine')\n",
+        module="legit_write",
+        label="legit",
     )
-    config = _config(tmp_path, target_root, "legit_write", "legit_write")
-    record = _run(config, "legit_write")
-
-    # No write was blocked (the only permitted kind of entry left is a read
-    # of the interpreter's own stdlib/bytecode cache, outside the sandbox by
+    # No write was blocked (the only permitted entries left are reads of the
+    # interpreter's own stdlib/bytecode cache, outside the sandbox by
     # necessity and recorded, not blocked).
-    assert "filesystem_write" not in _kinds(record)
-    assert (config.sandbox_root / "inside.txt").read_text() == "fine"
+    assert "filesystem_write" not in _blocked_kinds(record)
+    assert (sandbox_root / "inside.txt").read_text() == "fine"
 
 
 # ---------------------------------------------------------------------------
@@ -479,52 +564,47 @@ def test_write_inside_sandbox_succeeds_and_is_not_blocked(tmp_path: Path) -> Non
 
 
 def test_adv_subprocess_os_system_and_fork_all_blocked(tmp_path: Path) -> None:
-    target_root = _write_target(
+    record, _, _ = _run_harness(
         tmp_path,
-        "adv_subprocess",
-        "import os, subprocess\n"
-        "try:\n"
-        "    subprocess.run(['echo', 'hi'])\n"
-        "except Exception:\n"
-        "    pass\n"
-        "try:\n"
-        "    os.system('echo hi')\n"
-        "except Exception:\n"
-        "    pass\n"
-        "try:\n"
-        "    os.fork()\n"
-        "except Exception:\n"
-        "    pass\n",
+        source=(
+            "import os, subprocess\n"
+            "try:\n"
+            "    subprocess.run(['echo', 'hi'])\n"
+            "except Exception:\n"
+            "    pass\n"
+            "try:\n"
+            "    os.system('echo hi')\n"
+            "except Exception:\n"
+            "    pass\n"
+            "try:\n"
+            "    os.fork()\n"
+            "except Exception:\n"
+            "    pass\n"
+        ),
+        module="adv_subprocess",
+        label="subproc",
     )
-    config = _config(tmp_path, target_root, "adv_subprocess", "adv_subprocess")
-    record = _run(config, "adv_subprocess")
-
-    process_blocks = [b for b in record.blocked if b.kind == "process"]
-    events = {b.detail.split()[0] for b in process_blocks}
+    process_blocks = [b for b in record["blocked"] if b["kind"] == "process"]
+    events = {b["detail"].split()[0] for b in process_blocks}
     assert {"subprocess.Popen", "os.system", "os.fork"} <= events
 
 
 def test_declared_process_is_allowed_to_spawn(tmp_path: Path) -> None:
     python = os.path.basename(sys.executable)
-    target_root = _write_target(
+    record, sandbox_root, _ = _run_harness(
         tmp_path,
-        "declared_subprocess",
-        "import subprocess, sys\n"
-        "subprocess.run([sys.executable, '-c', 'pass'], check=True)\n"
-        "with open('ran.txt', 'w') as f:\n"
-        "    f.write('ok')\n",
-    )
-    config = _config(
-        tmp_path,
-        target_root,
-        "declared_subprocess",
-        "declared_subprocess",
+        source=(
+            "import subprocess, sys\n"
+            "subprocess.run([sys.executable, '-c', 'pass'], check=True)\n"
+            "with open('ran.txt', 'w') as f:\n"
+            "    f.write('ok')\n"
+        ),
+        module="declared_subprocess",
         declared_process_names=frozenset({python}),
+        label="declared_proc",
     )
-    record = _run(config, "declared_subprocess")
-
-    assert "process" not in _kinds(record)
-    assert (config.sandbox_root / "ran.txt").read_text() == "ok"
+    assert "process" not in _blocked_kinds(record)
+    assert (sandbox_root / "ran.txt").read_text() == "ok"
 
 
 # ---------------------------------------------------------------------------
@@ -534,43 +614,38 @@ def test_declared_process_is_allowed_to_spawn(tmp_path: Path) -> None:
 
 def test_undeclared_env_var_not_passed_through(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CASCADE_MAP_TEST_SECRET_TOKEN", "super-secret-value")
-    target_root = _write_target(
+    record, sandbox_root, _ = _run_harness(
         tmp_path,
-        "env_check",
-        "import os\n"
-        "value = os.environ.get('CASCADE_MAP_TEST_SECRET_TOKEN', '<absent>')\n"
-        "with open('env_result.txt', 'w') as f:\n"
-        "    f.write(value)\n",
+        source=(
+            "import os\n"
+            "value = os.environ.get('CASCADE_MAP_TEST_SECRET_TOKEN', '<absent>')\n"
+            "with open('env_result.txt', 'w') as f:\n"
+            "    f.write(value)\n"
+        ),
+        module="env_check",
+        label="env_secret",
     )
-    config = _config(tmp_path, target_root, "env_check", "env_check")
-    record = _run(config, "env_check")
-
-    assert record.controls_active["environment"] is True
-    assert (config.sandbox_root / "env_result.txt").read_text() == "<absent>"
-    # The harness's own process keeps its environment, restored after the run.
+    assert record["controls_active"]["environment"] is True
+    assert (sandbox_root / "env_result.txt").read_text() == "<absent>"
+    # The parent test process keeps its own environment untouched.
     assert os.environ["CASCADE_MAP_TEST_SECRET_TOKEN"] == "super-secret-value"
 
 
 def test_declared_env_var_is_passed_through(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CASCADE_MAP_TEST_PUBLIC_VAR", "hello")
-    target_root = _write_target(
+    record, sandbox_root, _ = _run_harness(
         tmp_path,
-        "env_check_declared",
-        "import os\n"
-        "value = os.environ.get('CASCADE_MAP_TEST_PUBLIC_VAR', '<absent>')\n"
-        "with open('env_result.txt', 'w') as f:\n"
-        "    f.write(value)\n",
-    )
-    config = _config(
-        tmp_path,
-        target_root,
-        "env_check_declared",
-        "env_check_declared",
+        source=(
+            "import os\n"
+            "value = os.environ.get('CASCADE_MAP_TEST_PUBLIC_VAR', '<absent>')\n"
+            "with open('env_result.txt', 'w') as f:\n"
+            "    f.write(value)\n"
+        ),
+        module="env_check_declared",
         env_passthrough=frozenset({"CASCADE_MAP_TEST_PUBLIC_VAR"}),
+        label="env_public",
     )
-    record = _run(config, "env_check_declared")
-
-    assert (config.sandbox_root / "env_result.txt").read_text() == "hello"
+    assert (sandbox_root / "env_result.txt").read_text() == "hello"
 
 
 # ---------------------------------------------------------------------------
@@ -581,22 +656,21 @@ def test_declared_env_var_is_passed_through(tmp_path: Path, monkeypatch) -> None
 def test_reads_outside_sandbox_are_allowed_and_recorded(tmp_path: Path) -> None:
     outside_file = tmp_path / "readable_outside.txt"
     outside_file.write_text("read me")
-    target_root = _write_target(
+    record, sandbox_root, _ = _run_harness(
         tmp_path,
-        "reads_outside",
-        f"with open({str(outside_file)!r}) as f:\n"
-        "    data = f.read()\n"
-        "with open('copy.txt', 'w') as f:\n"
-        "    f.write(data)\n",
+        source=(
+            f"with open({str(outside_file)!r}) as f:\n"
+            "    data = f.read()\n"
+            "with open('copy.txt', 'w') as f:\n"
+            "    f.write(data)\n"
+        ),
+        module="reads_outside",
+        label="reads_outside",
     )
-    config = _config(tmp_path, target_root, "reads_outside", "reads_outside")
-    record = _run(config, "reads_outside")
-
-    assert (config.sandbox_root / "copy.txt").read_text() == "read me"
-    read_kinds = [b for b in record.blocked if b.kind == "filesystem_read_outside_sandbox"]
-    assert any(str(outside_file) in b.detail for b in read_kinds)
-    # A read is not a write: it did not block the run or the target's own logic.
-    assert "filesystem_write" not in _kinds(record)
+    assert (sandbox_root / "copy.txt").read_text() == "read me"
+    read_kinds = [b for b in record["blocked"] if b["kind"] == "filesystem_read_outside_sandbox"]
+    assert any(str(outside_file) in b["detail"] for b in read_kinds)
+    assert "filesystem_write" not in _blocked_kinds(record)
 
 
 # ---------------------------------------------------------------------------
@@ -605,9 +679,7 @@ def test_reads_outside_sandbox_are_allowed_and_recorded(tmp_path: Path) -> None:
 
 
 def test_replay_is_byte_identical(tmp_path: Path) -> None:
-    target_root = _write_target(
-        tmp_path,
-        "adv_network_replay",
+    source = (
         "import socket\n"
         "s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
         "s.settimeout(0.01)\n"
@@ -618,42 +690,69 @@ def test_replay_is_byte_identical(tmp_path: Path) -> None:
         "finally:\n"
         "    s.close()\n"
         "with open('marker.txt', 'w') as f:\n"
-        "    f.write('ran')\n",
+        "    f.write('ran')\n"
     )
-    out_dir = _mode_b_graph(tmp_path)
+    target_root = tmp_path / "target_shared"
+    target_root.mkdir()
+    (target_root / "adv_network_replay.py").write_text(source)
     graph_hash = _graph_hash_for(target_root)
 
-    def _new_config(label: str) -> RunConfig:
-        return RunConfig(
-            target_root=target_root,
-            mode_b_out_dir=out_dir,
-            sandbox_root=tmp_path / f"sandbox_{label}",
-            scenarios={
-                "adv_network_replay": ScenarioSpec(
-                    name="adv_network_replay", module="adv_network_replay"
-                )
-            },
-        )
+    record_one, _, out_one = _run_harness(
+        tmp_path,
+        source="",
+        module="adv_network_replay",
+        target_root=target_root,
+        graph_hash=graph_hash,
+        label="replay_one",
+    )
+    record_two, _, out_two = _run_harness(
+        tmp_path,
+        source="",
+        module="adv_network_replay",
+        target_root=target_root,
+        graph_hash=graph_hash,
+        label="replay_two",
+    )
 
-    record_one = Harness(_new_config("one")).start("adv_network_replay", graph_hash)
-    record_two = Harness(_new_config("two")).start("adv_network_replay", graph_hash)
-
-    assert record_one.run_id == record_two.run_id
-    assert canonical_dumps(record_one) == canonical_dumps(record_two)
+    assert record_one["run_id"] == record_two["run_id"]
+    # Both records include their own (different) sandbox_dir, which is
+    # expected -- exclude it and compare everything else byte for byte.
+    one = {k: v for k, v in record_one.items() if k != "sandbox_dir"}
+    two = {k: v for k, v in record_two.items() if k != "sandbox_dir"}
+    assert canonical_dumps(one) == canonical_dumps(two)
 
 
 def test_run_record_written_to_disk_is_replayable(tmp_path: Path) -> None:
-    target_root = _write_target(tmp_path, "trivial_replay", "x = 1\n")
-    config = _config(tmp_path, target_root, "trivial_replay", "trivial_replay")
-    record = _run(config, "trivial_replay")
+    target_root = tmp_path / "target_shared"
+    target_root.mkdir()
+    (target_root / "trivial_replay.py").write_text("x = 1\n")
+    sandbox_root = tmp_path / "sandbox_fixed"
+    graph_hash = _graph_hash_for(target_root)
 
-    run_json_path = config.mode_b_out_dir / "runtime" / record.run_id / "run.json"
+    record_one, _, out_dir = _run_harness(
+        tmp_path,
+        source="",
+        module="trivial_replay",
+        target_root=target_root,
+        sandbox_root=sandbox_root,
+        graph_hash=graph_hash,
+        label="disk_replay",
+    )
+    run_json_path = out_dir / "runtime" / record_one["run_id"] / "run.json"
     first_bytes = run_json_path.read_bytes()
 
     # Re-run the identical scenario against the identical config: the run ID
     # is deterministic, so this overwrites the same path -- with the same
     # bytes, which is exactly the property under test.
-    _run(config, "trivial_replay")
+    _run_harness(
+        tmp_path,
+        source="",
+        module="trivial_replay",
+        target_root=target_root,
+        sandbox_root=sandbox_root,
+        graph_hash=graph_hash,
+        label="disk_replay",
+    )
     second_bytes = run_json_path.read_bytes()
 
     assert first_bytes == second_bytes
@@ -662,173 +761,209 @@ def test_run_record_written_to_disk_is_replayable(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Threads and processes: enforcement must not be scoped to one logical flow
 #
-# A ``ContextVar``-based earlier version of ``sandbox.activate`` let a plain
-# ``threading.Thread`` escape every control (default context, no active
-# value) with no exception and no ``BlockedAttempt`` -- found in
-# verification, not by this suite. These are the regression tests for that,
-# and for the concurrency shapes near it: nested threads, a thread pool, an
-# asyncio task (already correctly blocked before the fix -- kept as a
-# regression guard, not new coverage), a thread started before the sandbox
-# activated but acting during it, and a daemon thread still alive when the
-# sandbox's activation block exits.
+# Round one used a ``ContextVar``, which a plain ``threading.Thread`` does
+# not inherit -- a thread that opened a socket was never blocked, silently.
+# Round two kept a global but tried to track "which threads exist" to decide
+# when to clear it; a ``Thread`` *constructed* inside the active block but
+# *started* after it returns, and a raw ``_thread.start_new_thread``, both
+# escaped that registry. The fix (see sandbox.py) is to stop tracking threads
+# at all: the pointer is set on activation and never cleared automatically.
+# These are the regression tests for all of that, plus the shapes near it.
 # ---------------------------------------------------------------------------
 
-
-def _new_ctx(tmp_path: Path, label: str = "s") -> SandboxContext:
-    root = tmp_path / f"sandbox_{label}"
-    root.mkdir(parents=True, exist_ok=True)
-    return SandboxContext(sandbox_root=str(root), declared_process_names=frozenset())
-
-
-def _attempt_connect() -> None:
-    """A blocking-network attempt swallowed by the caller, not this function
-    -- so it works the same whether the audit hook lets it through or not."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.05)
-    try:
-        s.connect_ex(("127.0.0.1", 9))
-    except Exception:
-        pass
-    finally:
-        s.close()
+_ATTEMPT_CONNECT = (
+    "import socket\n"
+    "def _attempt():\n"
+    "    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+    "    s.settimeout(0.05)\n"
+    "    try:\n"
+    "        s.connect_ex(('127.0.0.1', 9))\n"
+    "    except Exception:\n"
+    "        pass\n"
+    "    finally:\n"
+    "        s.close()\n"
+)
 
 
 def test_thread_cannot_escape_the_sandbox(tmp_path: Path) -> None:
-    """The exact reproduction from verification, as a permanent regression
-    test: a plain ``threading.Thread`` started inside ``activate()`` must be
-    blocked and recorded, not silently pass through."""
-    ctx = _new_ctx(tmp_path)
-    with activate(ctx):
-        t = threading.Thread(target=_attempt_connect)
-        t.start()
-        t.join()
+    """The exact reproduction from verification: a plain ``threading.Thread``
+    started inside ``activate()`` must be blocked and recorded."""
+    result = _probe(
+        tmp_path,
+        "import threading\n"
+        + _ATTEMPT_CONNECT
+        + "with activate(ctx):\n"
+        "    t = threading.Thread(target=_attempt)\n"
+        "    t.start()\n"
+        "    t.join()\n",
+        label="thread",
+    )
+    assert _blocked_kinds(result) == ["network"]
 
-    assert len(ctx.blocked) == 1
-    assert ctx.blocked[0].kind == "network"
+
+def test_thread_constructed_inside_started_after_cannot_escape(tmp_path: Path) -> None:
+    """The escape that broke round two: a ``Thread`` built while the sandbox
+    is active but only ``.start()``-ed after the block exits. Enforcement
+    must still be in force when it actually runs."""
+    result = _probe(
+        tmp_path,
+        "import threading\n"
+        + _ATTEMPT_CONNECT
+        + "with activate(ctx):\n"
+        "    t = threading.Thread(target=_attempt)\n"
+        "t.start()\n"
+        "t.join()\n",
+        label="thread_late_start",
+    )
+    assert _blocked_kinds(result) == ["network"]
+
+
+def test_thread_start_new_thread_cannot_escape(tmp_path: Path) -> None:
+    """The other escape that broke round two: ``_thread.start_new_thread``
+    bypasses ``threading``'s own bookkeeping entirely and never appears in
+    ``threading.enumerate()``. Blocked and recorded regardless, during and
+    after the active block, since enforcement here never depended on
+    knowing this thread existed."""
+    result = _probe(
+        tmp_path,
+        "import _thread, threading\n"
+        + _ATTEMPT_CONNECT
+        + "done = threading.Event()\n"
+        "def _run():\n"
+        "    _attempt()\n"
+        "    done.set()\n"
+        "with activate(ctx):\n"
+        "    _thread.start_new_thread(_run, ())\n"
+        "done.wait(timeout=5)\n",
+        label="start_new_thread",
+    )
+    assert _blocked_kinds(result) == ["network"]
 
 
 def test_nested_thread_cannot_escape_the_sandbox(tmp_path: Path) -> None:
     """A thread that itself starts another thread: both generations are
     covered, since enforcement is global, not tied to who spawned whom."""
-    ctx = _new_ctx(tmp_path)
-
-    def outer() -> None:
-        inner = threading.Thread(target=_attempt_connect)
-        inner.start()
-        inner.join()
-
-    with activate(ctx):
-        t = threading.Thread(target=outer)
-        t.start()
-        t.join()
-
-    assert len(ctx.blocked) == 1
-    assert ctx.blocked[0].kind == "network"
+    result = _probe(
+        tmp_path,
+        "import threading\n"
+        + _ATTEMPT_CONNECT
+        + "def outer():\n"
+        "    inner = threading.Thread(target=_attempt)\n"
+        "    inner.start()\n"
+        "    inner.join()\n"
+        "with activate(ctx):\n"
+        "    t = threading.Thread(target=outer)\n"
+        "    t.start()\n"
+        "    t.join()\n",
+        label="nested_thread",
+    )
+    assert _blocked_kinds(result) == ["network"]
 
 
 def test_threadpool_executor_worker_cannot_escape_the_sandbox(tmp_path: Path) -> None:
-    ctx = _new_ctx(tmp_path)
-    with activate(ctx):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            future = pool.submit(_attempt_connect)
-            future.result(timeout=5)
+    result = _probe(
+        tmp_path,
+        "import concurrent.futures\n"
+        + _ATTEMPT_CONNECT
+        + "with activate(ctx):\n"
+        "    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:\n"
+        "        future = pool.submit(_attempt)\n"
+        "        future.result(timeout=5)\n",
+        label="threadpool",
+    )
+    assert _blocked_kinds(result) == ["network"]
 
-    assert len(ctx.blocked) == 1
-    assert ctx.blocked[0].kind == "network"
+
+def test_process_pool_executor_worker_cannot_escape_the_sandbox(tmp_path: Path) -> None:
+    """A ``ProcessPoolExecutor`` worker opens a socket in a genuinely
+    separate OS process. Its own ``.submit`` first has to launch that
+    process, which is blocked the same way any other process spawn is; the
+    worker's socket call is therefore never reached at all."""
+    result = _probe(
+        tmp_path,
+        "import concurrent.futures\n"
+        + _ATTEMPT_CONNECT
+        + "with activate(ctx):\n"
+        "    try:\n"
+        "        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as pool:\n"
+        "            future = pool.submit(_attempt)\n"
+        "            future.result(timeout=10)\n"
+        "    except Exception:\n"
+        "        pass\n",
+        label="processpool",
+    )
+    assert "process" in _blocked_kinds(result)
 
 
 def test_asyncio_task_cannot_escape_the_sandbox(tmp_path: Path) -> None:
-    """Regression guard: this case already worked before the fix (asyncio
-    tasks copy the creating ``contextvars.Context``) and must keep working
-    now that enforcement is a plain global rather than a ``ContextVar``."""
-    ctx = _new_ctx(tmp_path)
-
-    async def main() -> None:
-        await asyncio.get_event_loop().run_in_executor(None, lambda: None)
-        _attempt_connect()
-
-    with activate(ctx):
-        asyncio.run(main())
-
-    assert len(ctx.blocked) == 1
-    assert ctx.blocked[0].kind == "network"
+    """Regression guard: this case already worked under the ``ContextVar``
+    design (asyncio tasks copy the creating context) and must keep working
+    now that enforcement is a plain global instead."""
+    result = _probe(
+        tmp_path,
+        "import asyncio\n"
+        + _ATTEMPT_CONNECT
+        + "async def main():\n"
+        "    await asyncio.get_event_loop().run_in_executor(None, lambda: None)\n"
+        "    _attempt()\n"
+        "with activate(ctx):\n"
+        "    asyncio.run(main())\n",
+        label="asyncio",
+    )
+    assert _blocked_kinds(result) == ["network"]
 
 
 def test_thread_started_before_activate_is_still_blocked_once_inside(tmp_path: Path) -> None:
     """A thread already running when the sandbox activates is judged the
     same way as one the sandbox itself spawned: enforcement depends on
     whether a run is active *when the operation happens*, not on when or
-    where the thread that performs it was created."""
-    ctx = _new_ctx(tmp_path)
-    started = threading.Event()
-    proceed = threading.Event()
-
-    def pre_started_worker() -> None:
-        started.set()
-        proceed.wait(timeout=5)
-        _attempt_connect()
-
-    pre_started = threading.Thread(target=pre_started_worker)
-    pre_started.start()
-    assert started.wait(timeout=5)
-
-    with activate(ctx):
-        proceed.set()
-        pre_started.join(timeout=5)
-
-    assert len(ctx.blocked) == 1
-    assert ctx.blocked[0].kind == "network"
+    where the thread performing it was created."""
+    result = _probe(
+        tmp_path,
+        "import threading\n"
+        + _ATTEMPT_CONNECT
+        + "started = threading.Event()\n"
+        "proceed = threading.Event()\n"
+        "def pre_started_worker():\n"
+        "    started.set()\n"
+        "    proceed.wait(timeout=5)\n"
+        "    _attempt()\n"
+        "pre_started = threading.Thread(target=pre_started_worker)\n"
+        "pre_started.start()\n"
+        "started.wait(timeout=5)\n"
+        "with activate(ctx):\n"
+        "    proceed.set()\n"
+        "    pre_started.join(timeout=5)\n",
+        label="pre_started",
+    )
+    assert _blocked_kinds(result) == ["network"]
 
 
 def test_daemon_thread_outliving_activate_does_not_escape(tmp_path: Path) -> None:
-    """adv_thread_daemon_teardown: a daemon thread the sandbox does not (and
-    cannot) join is still alive after ``activate()``'s block exits. Its later
-    action must still be blocked and recorded -- fail closed, not open --
-    rather than passing through the instant enforcement looks "off" from the
-    outside. No window: the assertion right after ``activate()`` exits is 0,
-    proving the block did not happen before teardown; the second assertion,
-    after the daemon has had time to act, is 1.
+    """A daemon thread the sandbox does not (and cannot) join is still alive
+    after ``activate()``'s block exits. Its later action must still be
+    blocked and recorded -- fail closed, not open. The probe asserts zero
+    blocked attempts immediately after ``activate()`` exits (proving the
+    block did not already happen), then waits for the daemon and asserts
+    one -- no window where enforcement looked "off" to it.
     """
-    ctx = _new_ctx(tmp_path)
-    daemon_acted = threading.Event()
-
-    def late_worker() -> None:
-        import time
-
-        time.sleep(0.15)
-        _attempt_connect()
-        daemon_acted.set()
-
-    with activate(ctx):
-        t = threading.Thread(target=late_worker, daemon=True)
-        t.start()
-        # Deliberately does not join: this is what a target's own ingestion
-        # or broker client looks like when it does not wait for a worker.
-
-    assert len(ctx.blocked) == 0, "the daemon had not acted yet -- nothing to prove here"
-    assert daemon_acted.wait(timeout=5), "the daemon thread never ran its attempt"
-    assert len(ctx.blocked) == 1
-    assert ctx.blocked[0].kind == "network"
-
-
-def test_daemon_thread_registered_at_teardown_is_pruned_once_dead(tmp_path: Path) -> None:
-    """The lingering-thread registry that makes the previous test pass must
-    not grow forever or misattribute a reused thread identity to a stale
-    run: a dead lingering thread is forgotten on the next ``activate()``."""
-    import cascade_map.harness.sandbox as sandbox_module
-
-    ctx = _new_ctx(tmp_path, "daemon_prune")
-    with activate(ctx):
-        t = threading.Thread(target=lambda: None, daemon=True)
-        t.start()
-    t.join(timeout=5)
-    assert not t.is_alive()
-
-    # A second, unrelated run: pruning happens at the start of activate().
-    ctx2 = _new_ctx(tmp_path, "daemon_prune_2")
-    with activate(ctx2):
-        pass
-    assert t.ident not in sandbox_module._lingering
+    result = _probe(
+        tmp_path,
+        "import threading, time, json, sys\n"
+        + _ATTEMPT_CONNECT
+        + "daemon_acted = threading.Event()\n"
+        "def late_worker():\n"
+        "    time.sleep(0.15)\n"
+        "    _attempt()\n"
+        "    daemon_acted.set()\n"
+        "with activate(ctx):\n"
+        "    t = threading.Thread(target=late_worker, daemon=True)\n"
+        "    t.start()\n"
+        "assert len(ctx.blocked) == 0, 'blocked before the daemon acted'\n"
+        "assert daemon_acted.wait(timeout=5), 'daemon thread never ran'\n",
+        label="daemon_teardown",
+    )
+    assert _blocked_kinds(result) == ["network"]
 
 
 # ---------------------------------------------------------------------------
@@ -840,54 +975,80 @@ def test_daemon_thread_registered_at_teardown_is_pruned_once_dead(tmp_path: Path
 # ``multiprocessing.util.spawnv_passfds``), bypassing the
 # ``subprocess.Popen`` audit event along with every other event this module
 # otherwise relies on -- verified empirically while building this test, not
-# assumed. It is closed by gating the ``import`` of the backend module that
-# performs it (``sandbox._MULTIPROCESSING_LAUNCH_MODULES``), since every
-# start method loads that module lazily, only once a process is genuinely
-# about to be launched.
+# assumed (see the build report for the raw trace). It is closed by gating
+# the ``import`` of the backend module that performs it, since every start
+# method loads that module lazily, only once a process is genuinely about
+# to be launched.
 # ---------------------------------------------------------------------------
 
-
-def _mp_noop() -> None:
-    pass
+_MP_NOOP_DEF = "def _mp_noop():\n    pass\n"
 
 
 def test_multiprocessing_fork_is_blocked(tmp_path: Path) -> None:
-    ctx = _new_ctx(tmp_path, "mp_fork")
-    with activate(ctx):
-        try:
-            multiprocessing.get_context("fork").Process(target=_mp_noop).start()
-        except Exception:
-            pass
-    assert len(ctx.blocked) == 1
-    assert ctx.blocked[0].kind == "process"
-    assert "os.fork" in ctx.blocked[0].detail
+    result = _probe(
+        tmp_path,
+        "import multiprocessing\n"
+        + _MP_NOOP_DEF
+        + "with activate(ctx):\n"
+        "    try:\n"
+        "        multiprocessing.get_context('fork').Process(target=_mp_noop).start()\n"
+        "    except Exception:\n"
+        "        pass\n",
+        label="mp_fork",
+    )
+    assert _blocked_kinds(result) == ["process"]
+    assert "os.fork" in result["blocked"][0]["detail"]
 
 
 def test_multiprocessing_spawn_is_blocked(tmp_path: Path) -> None:
-    """The gap: reproduced, then closed. Before the import gate, this
-    assertion failed with ``len(ctx.blocked) == 0`` and the child process
-    genuinely ran, unaudited -- see the harness build report."""
-    ctx = _new_ctx(tmp_path, "mp_spawn")
-    with activate(ctx):
-        try:
-            multiprocessing.get_context("spawn").Process(target=_mp_noop).start()
-        except Exception:
-            pass
-    assert len(ctx.blocked) == 1
-    assert ctx.blocked[0].kind == "process"
-    assert "multiprocessing" in ctx.blocked[0].detail
+    """The gap: reproduced, then closed. Before the import gate this probe's
+    only assertion failed with zero blocked attempts, and the child process
+    genuinely ran, unaudited."""
+    result = _probe(
+        tmp_path,
+        "import multiprocessing\n"
+        + _MP_NOOP_DEF
+        + "with activate(ctx):\n"
+        "    try:\n"
+        "        multiprocessing.get_context('spawn').Process(target=_mp_noop).start()\n"
+        "    except Exception:\n"
+        "        pass\n",
+        label="mp_spawn",
+    )
+    assert _blocked_kinds(result) == ["process"]
+    assert "multiprocessing" in result["blocked"][0]["detail"]
 
 
 def test_declared_multiprocessing_is_allowed(tmp_path: Path) -> None:
-    root = tmp_path / "sandbox_mp_declared"
-    root.mkdir()
-    ctx = SandboxContext(
-        sandbox_root=str(root), declared_process_names=frozenset({"multiprocessing", "fork"})
+    result = _probe(
+        tmp_path,
+        "import multiprocessing\n"
+        + _MP_NOOP_DEF
+        + "with activate(ctx):\n"
+        "    p = multiprocessing.get_context('spawn').Process(target=_mp_noop)\n"
+        "    p.start()\n"
+        "    p.join(timeout=10)\n"
+        "    assert p.exitcode == 0, p.exitcode\n",
+        declared_process_names=frozenset({"multiprocessing", "fork"}),
+        label="mp_declared",
     )
-    with activate(ctx):
-        p = multiprocessing.get_context("spawn").Process(target=_mp_noop)
-        p.start()
-        p.join(timeout=10)
-        exitcode = p.exitcode
-    assert ctx.blocked == []
-    assert exitcode == 0
+    assert result["blocked"] == []
+
+
+def test_direct_posixsubprocess_fork_exec_is_unverified() -> None:
+    """``multiprocessing``'s spawn path calls ``_posixsubprocess.fork_exec``
+    directly (see the section docstring above) -- undocumented, with a
+    23-argument positional C signature that varies across patch versions.
+    Constructing a *minimal, correct* direct call to it to probe in
+    isolation was attempted and abandoned: every attempt either raised
+    ``TypeError`` on argument count/type before reaching the audit hook, or
+    would have required pinning to this exact interpreter's private ABI.
+    This is recorded here as a known, honestly unverified path -- covered
+    indirectly by ``test_multiprocessing_spawn_is_blocked`` (the only
+    production caller of this function this codebase relies on), not
+    independently. See the build report.
+    """
+    pytest.skip(
+        "direct _posixsubprocess.fork_exec probing abandoned: undocumented, "
+        "version-dependent C signature; see docstring and build report"
+    )
