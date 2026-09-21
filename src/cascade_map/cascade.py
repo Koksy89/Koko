@@ -58,6 +58,7 @@ from .contracts.interfaces import (
     DecisionPoint,
     Edge,
     EdgeKind,
+    DetectedCandidate,
     Element,
     ElementKind,
     Method,
@@ -76,7 +77,8 @@ from .contracts.interfaces import (
 )
 
 __all__ = [
-    "Candidate",
+    "ROLE_ENTRY_POINT",
+    "ROLE_DECISION_SINK",
     "CascadeAnalyzer",
     "CFG_ELEMENT_KINDS",
     "WIRING_EDGE_KINDS",
@@ -175,27 +177,9 @@ whose branching lives inside the model, not in the source."""
 _AST_DIRECT_CERTAIN = Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN)
 
 
-# ---------------------------------------------------------------------------
-# Records this card needs but the contract does not yet define
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class Candidate:
-    """An auto-detected entry point or decision sink, reported not adopted.
-
-    `TARGET_PROFILE.md` leaves both blank at the time of writing. Per
-    ARCHITECTURE.md the card detects candidates read-only and reports them with
-    evidence and a confidence; it never silently picks one.
-    """
-
-    id: str
-    element_id: str
-    role: str
-    """``"ENTRY_POINT"`` or ``"DECISION_SINK"``."""
-
-    evidence: str
-    provenance: Provenance
+ROLE_ENTRY_POINT = "entry_point"
+ROLE_DECISION_SINK = "decision_sink"
+"""The two `DetectedCandidate.role` values this card emits."""
 
 
 # ---------------------------------------------------------------------------
@@ -1178,8 +1162,8 @@ class CascadeAnalyzer:
         self._unresolved: list[Unresolved] = []
         self._opaque: set[str] = set()
         self._reachability: list[Reachability] = []
-        self._entry_candidates: list[Candidate] = []
-        self._sink_candidates: list[Candidate] = []
+        self._entry_candidates: list[DetectedCandidate] = []
+        self._sink_candidates: list[DetectedCandidate] = []
         self._builders: dict[str, _FlowBuilder] = {}
         self._source_cache: dict[str, ast.Module | None] = {}
         self._entry_ids: tuple[str, ...] = ()
@@ -1259,10 +1243,10 @@ class CascadeAnalyzer:
         """
         return tuple(self._reachability)
 
-    def entry_point_candidates(self) -> Sequence[Candidate]:
+    def entry_point_candidates(self) -> Sequence[DetectedCandidate]:
         return tuple(self._entry_candidates)
 
-    def sink_candidates(self) -> Sequence[Candidate]:
+    def sink_candidates(self) -> Sequence[DetectedCandidate]:
         return tuple(self._sink_candidates)
 
     def entry_ids(self) -> Sequence[str]:
@@ -1429,11 +1413,11 @@ class CascadeAnalyzer:
         if known:
             for entry in known:
                 self._entry_candidates.append(
-                    Candidate(
+                    DetectedCandidate(
                         id=make_id("@entry", entry),
                         element_id=entry,
-                        role="ENTRY_POINT",
-                        evidence="declared by the owner",
+                        role=ROLE_ENTRY_POINT,
+                        evidence=("declared by the owner in TARGET_PROFILE.md",)
                         provenance=Provenance(
                             method=Method.AST_DIRECT,
                             confidence=Confidence.CERTAIN,
@@ -1469,10 +1453,10 @@ class CascadeAnalyzer:
             if not evidence:
                 continue
             self._entry_candidates.append(
-                Candidate(
+                DetectedCandidate(
                     id=make_id("@entry", element.id),
                     element_id=element.id,
-                    role="ENTRY_POINT",
+                    role=ROLE_ENTRY_POINT,
                     evidence=evidence,
                     provenance=Provenance(
                         method=Method.NAME_HEURISTIC,
@@ -1504,11 +1488,11 @@ class CascadeAnalyzer:
         if known:
             for sink in known:
                 self._sink_candidates.append(
-                    Candidate(
+                    DetectedCandidate(
                         id=make_id("@sink", sink),
                         element_id=sink,
-                        role="DECISION_SINK",
-                        evidence="declared by the owner",
+                        role=ROLE_DECISION_SINK,
+                        evidence=("declared by the owner in TARGET_PROFILE.md",)
                         provenance=Provenance(
                             method=Method.AST_DIRECT,
                             confidence=Confidence.CERTAIN,
@@ -1536,10 +1520,10 @@ class CascadeAnalyzer:
                 if not hit:
                     continue
             self._sink_candidates.append(
-                Candidate(
+                DetectedCandidate(
                     id=make_id("@sink", element.id),
                     element_id=element.id,
-                    role="DECISION_SINK",
+                    role=ROLE_DECISION_SINK,
                     evidence=f"name matches the decision-sink hint {hit!r}",
                     provenance=Provenance(
                         method=Method.NAME_HEURISTIC,

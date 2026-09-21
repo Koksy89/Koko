@@ -1,3 +1,8 @@
+# Card 1's incremental cache. Keyed on content hash, regenerated on demand,
+# and never a source of truth — committing it would let a stale record survive
+# a change, which is the one thing the content-hash key exists to prevent.
+.cascade_map/
+
 # Read-only copies of the analysis target — never committed.
 target_engine/
 target_versions/
