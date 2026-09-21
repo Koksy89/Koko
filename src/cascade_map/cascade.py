@@ -402,6 +402,7 @@ class _FlowBuilder:
         self._n = 0
         self._edge_seen: dict[str, int] = {}
         self._loops: list[tuple[str, str]] = []
+        self._statement: ast.stmt | None = None
         self._handlers: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
         self._finally: list[str] = []
         self._unres_n = 0
@@ -452,6 +453,10 @@ class _FlowBuilder:
                 ),
             )
         )
+
+    def _expr_span(self, node: ast.AST) -> SourceSpan:
+        """The statement a decision-bearing expression belongs to."""
+        return _span_of(self.path, self._statement if self._statement is not None else node)
 
     def _register_branch(self, shape: _BranchShape) -> None:
         """Record a branch, numbered by when its block was created.
@@ -504,6 +509,10 @@ class _FlowBuilder:
         return cur, seq
 
     def _stmt(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        # A decision written inside an expression -- a ternary, a short-circuit
+        # gate, a comprehension filter -- is reported at the statement that
+        # evaluates it, which is where the owner reads it.
+        self._statement = stmt
         handler = getattr(self, f"_stmt_{type(stmt).__name__}", None)
         if handler is not None:
             return handler(stmt, cur)  # type: ignore[no-any-return]
@@ -557,7 +566,10 @@ class _FlowBuilder:
         shapes.extend(got)
         block = self._block(BlockKind.RETURN, stmt, note=_src(stmt))
         self._edge(cur, block, condition="<return>")
-        self._edge(block, self._finally[-1] if self._finally else self.exit_id)
+        if self._finally:
+            self._edge(block, self._finally[-1], condition="<enter finally>")
+        else:
+            self._edge(block, self.exit_id)
         return None, shapes
 
     def _stmt_Raise(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
@@ -953,7 +965,7 @@ class _FlowBuilder:
             )
             self._edge(rhs_end, merge)
             shape = _BranchShape(
-                span=_span_of(self.path, left),
+                span=self._expr_span(left),
                 condition=condition,
                 kind="SHORT_CIRCUIT",
                 arms=[
@@ -987,7 +999,7 @@ class _FlowBuilder:
         self._edge(true_end, merge)
         self._edge(false_end, merge)
         shape = _BranchShape(
-            span=_span_of(self.path, node),
+            span=self._expr_span(node),
             condition=condition,
             kind="TERNARY",
             arms=[
@@ -1045,7 +1057,7 @@ class _FlowBuilder:
                 self._edge(branch_block, kept, condition=condition, taken_when=True)
                 self._edge(branch_block, head, condition=condition, taken_when=False)
                 branch_shape = _BranchShape(
-                    span=_span_of(self.path, condition_node),
+                    span=self._expr_span(condition_node),
                     condition=condition,
                     kind="COMPREHENSION_FILTER",
                     arms=[("True", _SeqShape()), ("False", _SeqShape())],
@@ -1610,12 +1622,14 @@ class CascadeAnalyzer:
     def _aggregate_element_ids(self) -> None:
         """Every node names the elements it schedules, in execution order.
 
-        A leaf call node names its callee; a SEQUENCE, BRANCH, LOOP or MERGE
-        names everything underneath it, depth-first in child order, so a node
-        answers "what runs here" on its own. The kind still says how: the ids
-        under a BRANCH are alternatives, the ids under an UNORDERED have no
-        fixed order between them, and nothing about this pass turns one into a
-        SEQUENCE.
+        A leaf call node names its callee. A node gathers from a child only
+        when the child runs unconditionally and in place -- another SEQUENCE,
+        or the MERGE that owns a branch's continuation. It never gathers
+        through a BRANCH, LOOP, UNORDERED or CYCLE child, because those say
+        something the parent does not: a SEQUENCE naming two exclusive
+        alternatives would assert that both run, one after the other, which is
+        the flattening the workplan calls a defect. Those nodes name their own
+        members and stay the place to read them.
 
         A node that names elements rests on card 2's call edges, so its method
         becomes CFG_REACHABILITY; a node that names none is pure structure read
@@ -1623,6 +1637,7 @@ class CascadeAnalyzer:
         """
         index = {node.id: node for node in self._order}
         memo: dict[str, tuple[str, ...]] = {}
+        transparent = {OrderKind.SEQUENCE, OrderKind.MERGE}
 
         def gather(node_id: str, seen: frozenset[str]) -> tuple[str, ...]:
             if node_id in memo:
@@ -1632,6 +1647,14 @@ class CascadeAnalyzer:
                 return ()
             out: list[str] = list(node.element_ids)
             for child_id in node.children:
+                child = index.get(child_id)
+                if child is None:
+                    continue
+                if child.kind not in transparent and node.kind not in {
+                    OrderKind.BRANCH,
+                    OrderKind.LOOP,
+                }:
+                    continue
                 for element_id in gather(child_id, seen | {node_id}):
                     if element_id not in out:
                         out.append(element_id)
@@ -2603,6 +2626,7 @@ class CascadeAnalyzer:
         sinks = tuple(self._sink_ids)
         for element in sorted(self._elements.values(), key=lambda e: e.id):
             record_id = make_id("@reach", element.id)
+            incident: list[Confidence] = []
             if element.id in best:
                 confidence = best[element.id]
                 path = via[element.id]
@@ -2655,6 +2679,12 @@ class CascadeAnalyzer:
                     "any decision sink"
                 )
                 state = ReachabilityState.NO_SINK_PATH
+                incident = [
+                    edge.provenance.confidence
+                    for edge in self._edges
+                    if edge.kind in WIRING_EDGE_KINDS
+                    and element.id in {edge.source_id, edge.target_id}
+                ]
             self._reachability.append(
                 Reachability(
                     id=record_id,
@@ -2664,10 +2694,12 @@ class CascadeAnalyzer:
                         method=Method.CFG_REACHABILITY,
                         # A NO_SINK_PATH verdict is a closed-world claim: it holds
                         # unless card 2 missed an edge, and where card 2 said it
-                        # might have, the state above is UNKNOWN instead.
+                        # might have, the state above is UNKNOWN instead. It is
+                        # therefore only as good as the edges that touch the
+                        # element.
                         confidence=Confidence.UNKNOWN
                         if state is ReachabilityState.UNKNOWN
-                        else Confidence.PROBABLE,
+                        else combine(Confidence.RESOLVED, *incident),
                         span=element.span,
                         note=reason,
                     ),

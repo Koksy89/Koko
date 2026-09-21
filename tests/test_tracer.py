@@ -1094,9 +1094,13 @@ def test_clock_and_randomness_references_are_recorded_as_observed_properties() -
     builder.add(ObsKind.CALL, line=10, first_line=10, detail={"nd_names": "random,time"})
     index = StaticIndex(root="/nowhere", elements=[element("m::decide", "decide", "m.py", 10, 20)])
     result = Tracer(index).materialise(make_run(), builder.build())
-    kinds = {observation.kind for observation in result.nondeterminism}
-    assert kinds == {NondeterminismKind.WALL_CLOCK, NondeterminismKind.RANDOMNESS}
-    for observation in result.nondeterminism:
+    observations = result.nondeterminism
+    assert len(observations) == 2
+    assert {observation.kind for observation in observations} == {
+        NondeterminismKind.WALL_CLOCK,
+        NondeterminismKind.RANDOMNESS,
+    }
+    for observation in observations:
         assert observation.element_id == "m::decide"
         assert observation.provenance.method is Method.RUNTIME_OBSERVED
         assert observation.provenance.run_id == "run_001"

@@ -128,6 +128,7 @@ def test_nar_anchored_every_step_has_an_anchor() -> None:
 def test_nar_anchored_event_backed_steps_have_both_ids() -> None:
     steps = _narrate(_linear_events())
     leaves = [s for s in steps if not s.children]
+    assert len(leaves) == 6  # one leaf per event in _linear_events()
     for step in leaves:
         assert step.element_ids, f"leaf missing element_ids: {step.text!r}"
         assert step.event_ids, f"leaf missing event_ids: {step.text!r}"

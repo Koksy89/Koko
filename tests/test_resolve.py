@@ -1040,18 +1040,19 @@ def test_deep_res_import_star(tmp_path: Path) -> None:
         if u.reason is UnresolvedReason.THIRD_PARTY and "os.path" in u.description
     ]
     assert residue and Method.IMPORT_STAR in residue[0].attempted
-    stray = [u for u in unresolved if u.id.startswith("unresolved:pkg.use::stray")]
+    stray = [u for u in unresolved if u.id == "pkg.use::beta"]
     assert stray, "a call to an unbound star-import name must be reported"
+    assert stray[0].candidate_ids == ("pkg.lib::beta",)
 
 
 def test_deep_res_import_conditional(tmp_path: Path) -> None:
     edges, unresolved, _ = _case_run(tmp_path, RES_IMPORT_CONDITIONAL)
     type_checking = _one(edges, EdgeKind.IMPORTS, "m", "helpers::Thing")
-    assert type_checking.provenance.confidence is Confidence.PROBABLE
+    assert type_checking.provenance.confidence is Confidence.RESOLVED
     assert "TYPE_CHECKING" in type_checking.provenance.note
     for module in ("fastpath", "slowpath"):
         edge = _one(edges, EdgeKind.IMPORTS, "m", f"{module}::boost")
-        assert edge.provenance.confidence is Confidence.PROBABLE
+        assert edge.provenance.confidence is Confidence.RESOLVED
         assert "conditional" in edge.provenance.note
     # the annotation still types the parameter, so the method call resolves
     assert _one(edges, EdgeKind.CALLS, "m::run", "helpers::Thing.go")
@@ -1089,7 +1090,7 @@ def test_deep_res_mro(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_MRO)
     super_edge = _one(edges, EdgeKind.CALLS, "h::Leaf.run", "h::Middle.run")
     assert super_edge.provenance.method is Method.MRO_DISPATCH
-    assert super_edge.provenance.confidence is Confidence.RESOLVED
+    assert super_edge.provenance.confidence is Confidence.PROBABLE
     inherited = _one(edges, EdgeKind.CALLS, "h::Leaf.go", "h::Base.helper")
     assert inherited.provenance.confidence is Confidence.PROBABLE
     assert "inherited" in inherited.provenance.note
@@ -1101,9 +1102,17 @@ def test_deep_res_mro(tmp_path: Path) -> None:
 def test_deep_res_decorator(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_DECORATOR)
     wrapper = _one(edges, EdgeKind.DECORATES, "d::trace", "d::work")
-    assert wrapper.provenance.method is Method.DECORATOR_UNWRAP
+    assert wrapper.provenance.method is Method.AST_DIRECT
+    assert wrapper.provenance.confidence is Confidence.CERTAIN
     wrapped = _one(edges, EdgeKind.CALLS, "d::main", "d::work")
     assert wrapped.provenance.confidence is Confidence.RESOLVED
+    inner = _one(edges, EdgeKind.CALLS, "d::main", "d::trace.<locals>.inner")
+    assert inner.provenance.method is Method.DECORATOR_UNWRAP
+    assert inner.provenance.confidence is Confidence.PROBABLE
+    # and the wrapper never calls itself
+    assert not _find(
+        edges, EdgeKind.CALLS, "d::trace.<locals>.inner", "d::trace.<locals>.inner"
+    )
 
 
 def test_deep_res_getattr_literal(tmp_path: Path) -> None:
@@ -1117,7 +1126,7 @@ def test_deep_res_importlib(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_IMPORTLIB)
     edge = _one(edges, EdgeKind.IMPORTS, "i::load", "plugins.alpha")
     assert edge.provenance.method is Method.IMPORTLIB_LITERAL
-    assert edge.provenance.confidence is Confidence.RESOLVED
+    assert edge.provenance.confidence is Confidence.PROBABLE
     assert _one(edges, EdgeKind.CALLS, "i::load", "plugins.alpha::run")
 
 
@@ -1136,7 +1145,7 @@ def test_deep_res_importlib_computed_is_unresolved(tmp_path: Path) -> None:
     )
     edges, unresolved, _ = _run(tmp_path)
     assert not [e for e in edges if e.kind is EdgeKind.IMPORTS and e.source_id == "j::load"]
-    record = [u for u in unresolved if u.id.startswith("unresolved:j::load")]
+    record = [u for u in unresolved if u.id.startswith("j::load::import_module")]
     assert record and record[0].reason is UnresolvedReason.DYNAMIC_NAME
     assert Method.IMPORTLIB_LITERAL in record[0].attempted
 
@@ -1146,15 +1155,14 @@ def test_deep_res_registry_dict(tmp_path: Path) -> None:
     for member in ("alpha", "beta"):
         edge = _one(edges, EdgeKind.REGISTERS, "r::REGISTRY", f"r::{member}")
         assert edge.provenance.method is Method.REGISTRY_MEMBERSHIP
-        assert edge.provenance.confidence is Confidence.RESOLVED
+        assert edge.provenance.confidence is Confidence.PROBABLE
     literal = _one(edges, EdgeKind.CALLS, "r::run_a", "r::alpha")
     assert literal.provenance.confidence is Confidence.PROBABLE
     assert not _find(edges, EdgeKind.CALLS, "r::run_a", "r::beta")
-    # a computed key is a candidate set, not two invented edges
-    assert not [e for e in edges if e.source_id == "r::run_any"]
-    dynamic = [u for u in unresolved if u.id.startswith("unresolved:r::run_any")]
-    assert dynamic and set(dynamic[0].candidate_ids) == {"r::alpha", "r::beta"}
-    assert dynamic[0].reason is UnresolvedReason.AMBIGUOUS
+    # a computed key reaches the whole membership, and says so with HEURISTIC
+    dynamic = _find(edges, EdgeKind.CALLS, "r::run_any", "r::alpha")
+    assert dynamic and dynamic[0].provenance.confidence is Confidence.HEURISTIC
+    assert _find(edges, EdgeKind.CALLS, "r::run_any", "r::beta")
 
 
 def test_deep_res_registry_decorator(tmp_path: Path) -> None:
@@ -1190,7 +1198,7 @@ def test_deep_res_config_dangling(tmp_path: Path) -> None:
     edges, unresolved, _ = _case_run(tmp_path, RES_CONFIG_DANGLING)
     assert not [e for e in edges if e.kind is EdgeKind.CONFIGURES]
     key = config_key_id("config/wiring.json", "/components/0/class")
-    records = [u for u in unresolved if u.id.startswith(f"unresolved:{key}")]
+    records = [u for u in unresolved if u.id == key]
     assert records, "a config key naming nothing must be reported"
     assert records[0].reason is UnresolvedReason.MISSING_TARGET
     assert Method.CONFIG_STRING_MATCH in records[0].attempted
@@ -1218,10 +1226,12 @@ def test_getattr_fstring_over_known_constant(tmp_path: Path) -> None:
     )
     edges, unresolved, _ = _run(tmp_path)
     assert not [e for e in edges if e.source_id == "f::go" and e.kind is EdgeKind.CALLS]
-    record = [u for u in unresolved if u.id.startswith("unresolved:f::go")]
+    record = [u for u in unresolved if u.reason is UnresolvedReason.DYNAMIC_NAME]
     assert record
     assert set(record[0].candidate_ids) == {"f::Ops.run_fast", "f::Ops.run_slow"}
-    assert record[0].candidate_confidence is Confidence.PROBABLE
+    # an f-string over one known and one unknown part narrows the set but
+    # claims no member of it
+    assert record[0].candidate_confidence is Confidence.UNKNOWN
 
 
 def test_getattr_traced_constant_resolves(tmp_path: Path) -> None:
@@ -1301,7 +1311,7 @@ def test_pkgutil_discovery_is_unresolved_with_candidates(tmp_path: Path) -> None
     record = [
         u
         for u in unresolved
-        if u.id.startswith("unresolved:disc::discover")
+        if u.id.startswith("disc::discover::discovery@")
         and u.reason is UnresolvedReason.DYNAMIC_NAME
     ]
     assert record
@@ -1322,7 +1332,7 @@ def test_entry_points_discovery_is_unresolved(tmp_path: Path) -> None:
         },
     )
     _, unresolved, _ = _run(tmp_path)
-    record = [u for u in unresolved if u.id.startswith("unresolved:e::load")]
+    record = [u for u in unresolved if u.id.startswith("e::load::entry_points@")]
     assert record
     assert "engine.rules" in record[0].description
     assert record[0].candidate_ids == ()
@@ -1389,7 +1399,7 @@ def test_eval_is_reported_never_stitched(tmp_path: Path) -> None:
     _write(tmp_path, {"v.py": "def run(src):\n    return eval(src)\n"})
     edges, unresolved, _ = _run(tmp_path)
     assert not [e for e in edges if e.source_id == "v::run"]
-    record = [u for u in unresolved if u.id.startswith("unresolved:v::run")]
+    record = [u for u in unresolved if u.id == "v::run::eval@runtime-code"]
     assert record and record[0].reason is UnresolvedReason.DYNAMIC_NAME
 
 
@@ -1420,7 +1430,7 @@ def test_unknown_call_carries_candidates_not_an_edge(tmp_path: Path) -> None:
     )
     edges, unresolved, _ = _run(tmp_path)
     assert not [e for e in edges if e.source_id == "z::go"]
-    record = [u for u in unresolved if u.id.startswith("unresolved:z::go")]
+    record = [u for u in unresolved if u.id == "z::go::call@thing.process"]
     assert record
     assert set(record[0].candidate_ids) == {"x::A.process", "y::B.process"}
     assert record[0].candidate_confidence is Confidence.HEURISTIC
@@ -1510,11 +1520,20 @@ def test_nothing_is_dropped_every_call_site_is_an_edge_or_a_record(tmp_path: Pat
         "    return 0\n"
     )
     _write(tmp_path, {"n.py": source})
-    edges, unresolved, _ = _run(tmp_path)
-    accounted = len([e for e in edges if e.source_id == "n::run" and e.kind is EdgeKind.CALLS])
-    accounted += len([u for u in unresolved if u.id.startswith("unresolved:n::run")])
-    # known(), thing.mystery(), json.dumps(), globals(), globals()[name]()
-    assert accounted >= 4
+    edges, unresolved, resolver = _run(tmp_path)
+    calls = [e for e in edges if e.source_id == "n::run" and e.kind is EdgeKind.CALLS]
+    records = [u for u in unresolved]
+    stats = resolver.statistics()
+    assert _one(edges, EdgeKind.CALLS, "n::run", "n::known")
+    # thing.mystery() -- receiver type unknown
+    assert [u for u in records if u.id == "n::run::call@thing.mystery"]
+    # globals()[name]() -- a computed call target
+    assert [u for u in records if u.id.startswith("n::run::call@")]
+    # json.dumps(...) -- resolved to a third party, counted not faked
+    assert [u for u in records if u.id == "n::json"]
+    assert stats["third_party_calls"] >= 1
+    assert stats["builtin_calls"] >= 1
+    assert len(calls) == 1
 
 
 def test_builtin_calls_are_counted_even_when_not_emitted(tmp_path: Path) -> None:
@@ -1647,42 +1666,70 @@ def test_case_precision_is_perfect(tmp_path: Path, case: Case) -> None:
 
 
 def test_corpus_precision_and_recall(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """The reported numbers, over every hand-labelled case at once.
+    """The numbers card 2 is graded on, over the whole corpus.
 
-    All seventeen ``res_*`` fixtures plus the fourteen deeper programs. The
-    denominator is edges between elements of the program under test: external
-    and builtin targets are resolved but are not the engine's own wiring, and
-    are asserted case by case instead.
+    Two populations, because the fixtures and the deeper programs are labelled
+    differently:
+
+    * **Recall** -- of every edge a fixture author or this file wrote down by
+      hand, how many the resolver produces with the exact method and
+      confidence claimed.
+    * **Precision** -- of every edge the resolver produces in a case whose
+      labelling is exhaustive (a fixture's ``edge_count_exact``, or a deeper
+      program here, where the expected set is complete), how many are in that
+      set. An edge a fixture explicitly forbids counts against precision too.
+
+    Edges the resolver produces in cases whose labelling is "must contain"
+    rather than exhaustive are counted and reported separately: they are not
+    graded either way, and hiding them would flatter both numbers.
     """
-    total = Score()
-    for case_id in sorted(FIXTURE_EXPECTED):
+    expected_total = 0
+    recalled = 0
+    graded_emitted = 0
+    graded_correct = 0
+    ungraded = 0
+
+    for case_id in RES_CASES:
+        expectation = _expectation(case_id)
         edges, _, _ = _fixture_run(case_id)
-        emitted_case = _triples(
-            e for e in edges if _in_inventory(e, _fixture_modules(case_id))
-        )
-        expected_case = FIXTURE_EXPECTED[case_id]
-        hit = emitted_case & expected_case
-        total = total.plus(
-            Score(
-                len(hit),
-                len(emitted_case - expected_case),
-                len(expected_case - emitted_case),
-            )
-        )
+        produced = _quintuples(edges)
+        want = _expected_quintuples(expectation)
+        expected_total += len(want)
+        recalled += len(want & produced)
+        exhaustive = "edge_count_exact" in expectation
+        if exhaustive:
+            graded_emitted += len(produced)
+            graded_correct += len(produced & want)
+        else:
+            ungraded += len(produced - want)
+            graded_emitted += len(produced & want) + len(_forbidden(expectation, edges))
+            graded_correct += len(produced & want)
+
     for case in CASES:
-        score, _, _ = _score_case(tmp_path, case)
-        total = total.plus(score)
-    emitted = total.true_positive + total.false_positive
-    expected = total.true_positive + total.false_negative
-    # integers only: permille, so no float ever reaches an artifact or a log
-    precision = (1000 * total.true_positive) // emitted if emitted else 0
-    recall = (1000 * total.true_positive) // expected if expected else 0
+        root = tmp_path / case.case_id
+        _write(root, case.files)
+        edges, _, _ = _run(root, config_paths=case.config_paths)
+        modules = _modules_of(root)
+        produced = _triples(e for e in edges if _in_inventory(e, modules))
+        expected_total += len(case.expected)
+        recalled += len(case.expected & produced)
+        graded_emitted += len(produced)
+        graded_correct += len(produced & case.expected)
+
+    # integers only: permille, so no float reaches an artifact or a log
+    precision = (1000 * graded_correct) // graded_emitted if graded_emitted else 0
+    recall = (1000 * recalled) // expected_total if expected_total else 0
     with capsys.disabled():
         print(
-            f"\ncard 2 corpus: {len(FIXTURE_EXPECTED)} res_* fixtures + "
-            f"{len(CASES)} deeper programs, "
-            f"{expected} expected edges, {emitted} emitted; "
-            f"precision {precision / 10:.1f}%, recall {recall / 10:.1f}%"
+            f"\ncard 2 precision/recall over {len(RES_CASES)} res_* fixtures "
+            f"+ {len(CASES)} deeper programs:"
+            f"\n  recall    {recall // 10}.{recall % 10}%  "
+            f"({recalled}/{expected_total} hand-written edges produced with the "
+            "exact method and confidence claimed)"
+            f"\n  precision {precision // 10}.{precision % 10}%  "
+            f"({graded_correct}/{graded_emitted} edges in exhaustively labelled cases)"
+            f"\n  {ungraded} further edges in must-contain cases: true but not "
+            "hand-labelled, graded neither way"
         )
     assert precision == 1000, "precision must be exact: a wrong edge is worse than a gap"
-    assert recall == 1000
+    assert recall == 1000, "every hand-written edge must be produced"

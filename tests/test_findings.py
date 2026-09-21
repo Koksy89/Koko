@@ -326,6 +326,8 @@ def test_unreachable_module_and_class_are_reported() -> None:
         f"a genuinely unreachable CLASS was not reported; got {unreachable_ids!r}"
     )
     assert "other" not in unreachable_ids
+    assert len(unreachable_ids) == 2
+    assert findings
     for f in findings:
         assert f.evidence_ids
 

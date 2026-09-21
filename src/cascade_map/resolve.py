@@ -3138,8 +3138,8 @@ class _CallResolver(ast.NodeVisitor):
         kinds = (ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.CLASS)
         candidates = self._name_candidates(bare, kinds)
         attempted: tuple[Method, ...]
-        if "." in label:
-            # an attribute chain: the receiver's type is what failed
+        if not label.isidentifier():
+            # an attribute chain or a computed expression: not a plain name
             record_id = f"{self.owner}::call@{label}"
             description = f"call target {label!r} could not be bound to an element"
             attempted = (Method.SCOPE_LOOKUP, Method.MRO_DISPATCH)
