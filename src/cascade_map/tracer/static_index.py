@@ -15,7 +15,7 @@ from __future__ import annotations
 import linecache
 import os
 import posixpath
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Iterable, Sequence
 
 from cascade_map.contracts.interfaces import (

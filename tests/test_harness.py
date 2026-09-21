@@ -28,13 +28,17 @@ and after this module's tests run and fails if a single byte moved.
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import hashlib
 import inspect
 import json
+import multiprocessing
 import os
 import shutil
 import socket
 import sys
+import threading
 from pathlib import Path
 from types import ModuleType
 
@@ -43,6 +47,7 @@ import pytest
 from cascade_map.contracts import canonical_dumps
 from cascade_map.harness import Harness, RunConfig, ScenarioSpec
 from cascade_map.harness.hashing import compute_graph_hash, compute_target_hashes
+from cascade_map.harness.sandbox import SandboxContext, activate
 
 FIXTURES_ROOT = Path(__file__).parent / "fixtures"
 FIXTURES_MODE_A = FIXTURES_ROOT / "mode_a"
@@ -634,3 +639,237 @@ def test_run_record_written_to_disk_is_replayable(tmp_path: Path) -> None:
     second_bytes = run_json_path.read_bytes()
 
     assert first_bytes == second_bytes
+
+
+# ---------------------------------------------------------------------------
+# Threads and processes: enforcement must not be scoped to one logical flow
+#
+# A ``ContextVar``-based earlier version of ``sandbox.activate`` let a plain
+# ``threading.Thread`` escape every control (default context, no active
+# value) with no exception and no ``BlockedAttempt`` -- found in
+# verification, not by this suite. These are the regression tests for that,
+# and for the concurrency shapes near it: nested threads, a thread pool, an
+# asyncio task (already correctly blocked before the fix -- kept as a
+# regression guard, not new coverage), a thread started before the sandbox
+# activated but acting during it, and a daemon thread still alive when the
+# sandbox's activation block exits.
+# ---------------------------------------------------------------------------
+
+
+def _new_ctx(tmp_path: Path, label: str = "s") -> SandboxContext:
+    root = tmp_path / f"sandbox_{label}"
+    root.mkdir(parents=True, exist_ok=True)
+    return SandboxContext(sandbox_root=str(root), declared_process_names=frozenset())
+
+
+def _attempt_connect() -> None:
+    """A blocking-network attempt swallowed by the caller, not this function
+    -- so it works the same whether the audit hook lets it through or not."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.05)
+    try:
+        s.connect_ex(("127.0.0.1", 9))
+    except Exception:
+        pass
+    finally:
+        s.close()
+
+
+def test_thread_cannot_escape_the_sandbox(tmp_path: Path) -> None:
+    """The exact reproduction from verification, as a permanent regression
+    test: a plain ``threading.Thread`` started inside ``activate()`` must be
+    blocked and recorded, not silently pass through."""
+    ctx = _new_ctx(tmp_path)
+    with activate(ctx):
+        t = threading.Thread(target=_attempt_connect)
+        t.start()
+        t.join()
+
+    assert len(ctx.blocked) == 1
+    assert ctx.blocked[0].kind == "network"
+
+
+def test_nested_thread_cannot_escape_the_sandbox(tmp_path: Path) -> None:
+    """A thread that itself starts another thread: both generations are
+    covered, since enforcement is global, not tied to who spawned whom."""
+    ctx = _new_ctx(tmp_path)
+
+    def outer() -> None:
+        inner = threading.Thread(target=_attempt_connect)
+        inner.start()
+        inner.join()
+
+    with activate(ctx):
+        t = threading.Thread(target=outer)
+        t.start()
+        t.join()
+
+    assert len(ctx.blocked) == 1
+    assert ctx.blocked[0].kind == "network"
+
+
+def test_threadpool_executor_worker_cannot_escape_the_sandbox(tmp_path: Path) -> None:
+    ctx = _new_ctx(tmp_path)
+    with activate(ctx):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            future = pool.submit(_attempt_connect)
+            future.result(timeout=5)
+
+    assert len(ctx.blocked) == 1
+    assert ctx.blocked[0].kind == "network"
+
+
+def test_asyncio_task_cannot_escape_the_sandbox(tmp_path: Path) -> None:
+    """Regression guard: this case already worked before the fix (asyncio
+    tasks copy the creating ``contextvars.Context``) and must keep working
+    now that enforcement is a plain global rather than a ``ContextVar``."""
+    ctx = _new_ctx(tmp_path)
+
+    async def main() -> None:
+        await asyncio.get_event_loop().run_in_executor(None, lambda: None)
+        _attempt_connect()
+
+    with activate(ctx):
+        asyncio.run(main())
+
+    assert len(ctx.blocked) == 1
+    assert ctx.blocked[0].kind == "network"
+
+
+def test_thread_started_before_activate_is_still_blocked_once_inside(tmp_path: Path) -> None:
+    """A thread already running when the sandbox activates is judged the
+    same way as one the sandbox itself spawned: enforcement depends on
+    whether a run is active *when the operation happens*, not on when or
+    where the thread that performs it was created."""
+    ctx = _new_ctx(tmp_path)
+    started = threading.Event()
+    proceed = threading.Event()
+
+    def pre_started_worker() -> None:
+        started.set()
+        proceed.wait(timeout=5)
+        _attempt_connect()
+
+    pre_started = threading.Thread(target=pre_started_worker)
+    pre_started.start()
+    assert started.wait(timeout=5)
+
+    with activate(ctx):
+        proceed.set()
+        pre_started.join(timeout=5)
+
+    assert len(ctx.blocked) == 1
+    assert ctx.blocked[0].kind == "network"
+
+
+def test_daemon_thread_outliving_activate_does_not_escape(tmp_path: Path) -> None:
+    """adv_thread_daemon_teardown: a daemon thread the sandbox does not (and
+    cannot) join is still alive after ``activate()``'s block exits. Its later
+    action must still be blocked and recorded -- fail closed, not open --
+    rather than passing through the instant enforcement looks "off" from the
+    outside. No window: the assertion right after ``activate()`` exits is 0,
+    proving the block did not happen before teardown; the second assertion,
+    after the daemon has had time to act, is 1.
+    """
+    ctx = _new_ctx(tmp_path)
+    daemon_acted = threading.Event()
+
+    def late_worker() -> None:
+        import time
+
+        time.sleep(0.15)
+        _attempt_connect()
+        daemon_acted.set()
+
+    with activate(ctx):
+        t = threading.Thread(target=late_worker, daemon=True)
+        t.start()
+        # Deliberately does not join: this is what a target's own ingestion
+        # or broker client looks like when it does not wait for a worker.
+
+    assert len(ctx.blocked) == 0, "the daemon had not acted yet -- nothing to prove here"
+    assert daemon_acted.wait(timeout=5), "the daemon thread never ran its attempt"
+    assert len(ctx.blocked) == 1
+    assert ctx.blocked[0].kind == "network"
+
+
+def test_daemon_thread_registered_at_teardown_is_pruned_once_dead(tmp_path: Path) -> None:
+    """The lingering-thread registry that makes the previous test pass must
+    not grow forever or misattribute a reused thread identity to a stale
+    run: a dead lingering thread is forgotten on the next ``activate()``."""
+    import cascade_map.harness.sandbox as sandbox_module
+
+    ctx = _new_ctx(tmp_path, "daemon_prune")
+    with activate(ctx):
+        t = threading.Thread(target=lambda: None, daemon=True)
+        t.start()
+    t.join(timeout=5)
+    assert not t.is_alive()
+
+    # A second, unrelated run: pruning happens at the start of activate().
+    ctx2 = _new_ctx(tmp_path, "daemon_prune_2")
+    with activate(ctx2):
+        pass
+    assert t.ident not in sandbox_module._lingering
+
+
+# ---------------------------------------------------------------------------
+# multiprocessing: checked, and one real gap found and closed
+#
+# ``multiprocessing``'s "fork" start method calls ``os.fork()`` and is
+# already covered by ``PROCESS_EVENTS``. Its "spawn" start method does not:
+# it calls ``_posixsubprocess.fork_exec`` directly (see
+# ``multiprocessing.util.spawnv_passfds``), bypassing the
+# ``subprocess.Popen`` audit event along with every other event this module
+# otherwise relies on -- verified empirically while building this test, not
+# assumed. It is closed by gating the ``import`` of the backend module that
+# performs it (``sandbox._MULTIPROCESSING_LAUNCH_MODULES``), since every
+# start method loads that module lazily, only once a process is genuinely
+# about to be launched.
+# ---------------------------------------------------------------------------
+
+
+def _mp_noop() -> None:
+    pass
+
+
+def test_multiprocessing_fork_is_blocked(tmp_path: Path) -> None:
+    ctx = _new_ctx(tmp_path, "mp_fork")
+    with activate(ctx):
+        try:
+            multiprocessing.get_context("fork").Process(target=_mp_noop).start()
+        except Exception:
+            pass
+    assert len(ctx.blocked) == 1
+    assert ctx.blocked[0].kind == "process"
+    assert "os.fork" in ctx.blocked[0].detail
+
+
+def test_multiprocessing_spawn_is_blocked(tmp_path: Path) -> None:
+    """The gap: reproduced, then closed. Before the import gate, this
+    assertion failed with ``len(ctx.blocked) == 0`` and the child process
+    genuinely ran, unaudited -- see the harness build report."""
+    ctx = _new_ctx(tmp_path, "mp_spawn")
+    with activate(ctx):
+        try:
+            multiprocessing.get_context("spawn").Process(target=_mp_noop).start()
+        except Exception:
+            pass
+    assert len(ctx.blocked) == 1
+    assert ctx.blocked[0].kind == "process"
+    assert "multiprocessing" in ctx.blocked[0].detail
+
+
+def test_declared_multiprocessing_is_allowed(tmp_path: Path) -> None:
+    root = tmp_path / "sandbox_mp_declared"
+    root.mkdir()
+    ctx = SandboxContext(
+        sandbox_root=str(root), declared_process_names=frozenset({"multiprocessing", "fork"})
+    )
+    with activate(ctx):
+        p = multiprocessing.get_context("spawn").Process(target=_mp_noop)
+        p.start()
+        p.join(timeout=10)
+        exitcode = p.exitcode
+    assert ctx.blocked == ()
+    assert exitcode == 0

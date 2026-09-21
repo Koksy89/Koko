@@ -16,13 +16,13 @@ from __future__ import annotations
 import os
 import sys
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from types import CodeType, FrameType
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Sequence
 
 from cascade_map.contracts.interfaces import RunRecord, ValueCapture
 
-from .capture import MISSING, capture_value, capture_values, dropped
+from .capture import MISSING, capture_values, dropped
 from .limits import DEFAULT_LIMITS, CaptureLimits, RedactionPolicy
 from .nondeterminism import names_in
 from .recording import RECORDING_VERSION, ObsKind, RawObservation, Recording

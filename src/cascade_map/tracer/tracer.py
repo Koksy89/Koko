@@ -12,13 +12,12 @@ edits them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 
 from cascade_map.contracts.interfaces import (
     Confidence,
-    DecisionPoint,
     EventKind,
     Method,
     Provenance,
@@ -30,7 +29,6 @@ from cascade_map.contracts.interfaces import (
     combine,
 )
 
-from .capture import capture_value
 from .collector import DEFAULT_REQUIRED_CONTROLS, TraceCollector, TraceRefused, refusal_reason
 from .contradictions import Contradiction, ContradictionKind
 from .limits import DEFAULT_LIMITS, CaptureLimits, RedactionPolicy

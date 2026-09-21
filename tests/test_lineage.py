@@ -2,17 +2,25 @@
 
 Grading notes, stated plainly because the card is graded on precision and recall:
 
-* `FIXTURES.md` specifies nine `lin_*` cases. Only `mode_b/lin_barrier/` exists in
-  `tests/fixtures/` at the time this card was built, and it has no
-  `expected.json`. `test_fixture_lin_barrier` reads that fixture as text (never
-  imports or executes it). The other eight cases are exercised here against
-  sources this test constructs and expectations hand-written from reading them,
-  never recorded from tool output. The missing fixture case IDs are named in
-  `MISSING_FIXTURE_CASES` and reported by `test_missing_fixture_cases_are_named`.
-* `GRADED` holds two cases whose *complete* expected edge set is written out by
-  hand. `test_precision_and_recall` grades against them: precision must be 1 --
-  a confident wrong edge is the failure this card fears -- and recall is
-  asserted at 1 and printed.
+* All nine `lin_*` cases in `FIXTURES.md` are exercised against the real fixture
+  sources in `tests/fixtures/mode_b/`, read as text and parsed, never imported or
+  executed.
+* `GRADED` holds every case whose *complete* expected edge set is written out by
+  hand here, from reading the source: the eight non-barrier fixtures plus four
+  larger constructed cases that cover what the fixtures do not (`**kwargs`,
+  dataframe merge/groupby/apply, config-named features, alias mutation, sinks).
+  `test_precision_and_recall` grades against them: precision must be 1 -- a
+  confident wrong edge is the failure this card fears -- and recall is asserted
+  at 1 and printed.
+
+**Known conflict, reported not papered over.** `mode_b/lin_assign_chain/
+expected.json` writes lineage node IDs as `module::function::variable`, while
+the binding contract's `make_id(module, qualname)` yields
+`module::function.variable` (one `::`, dotted qualname -- as card 1's own
+`res_getattr_computed` expectation uses for `Helper.method_a`). This card follows
+the contract. `test_fixture_lin_assign_chain_expected_lineage` grades against
+card 8's expectation through the explicit translation in `contract_id`, so the
+conflict is visible rather than silently resolved. Only the lead can settle it.
 """
 
 from __future__ import annotations
@@ -46,9 +54,10 @@ from cascade_map.lineage import LineageTracer
 FIXTURES = Path(__file__).parent / "fixtures"
 SENTINEL_MARKER = Path("/tmp/cascade_map_sentinel_marker.txt")
 
-#: `FIXTURES.md` lineage cases with no fixture directory yet. Named, not faked.
-MISSING_FIXTURE_CASES = (
+#: Every lineage case in FIXTURES.md.
+LINEAGE_CASES = (
     "lin_assign_chain",
+    "lin_barrier",
     "lin_closure",
     "lin_container",
     "lin_dataframe",
@@ -99,6 +108,21 @@ def analyze(
     return tracer
 
 
+def fixture_tracer(case: str, *, sinks: Sequence[str] = ()) -> LineageTracer:
+    """Parse one `mode_b` fixture. Reads the file as text; never imports it."""
+    path = f"mode_b/{case}/__init__.py"
+    assert (FIXTURES / path).exists(), f"fixture {case} is missing"
+    tracer = LineageTracer(root=FIXTURES, sink_ids=sinks)
+    tracer.trace_values([module_element(case, path)], [])
+    return tracer
+
+
+def contract_id(fixture_node_id: str) -> str:
+    """Translate card 8's `m::f::v` node ID into the contract's `make_id` form."""
+    module, _, rest = fixture_node_id.partition("::")
+    return make_id(module, rest.replace("::", ".")) if rest else make_id(module)
+
+
 def triples(edges: Iterable[LineageEdge]) -> set[tuple[str, str, str]]:
     return {(str(edge.kind), edge.source_id, edge.target_id) for edge in edges}
 
@@ -116,7 +140,172 @@ def edges_between(tracer: LineageTracer, source: str, target: str) -> list[Linea
 
 
 # ---------------------------------------------------------------------------
-# lin_assign_chain -- assignment, augmented assignment, unpacking, walrus
+# The FIXTURES.md lineage corpus. Complete expected edge sets, hand-written from
+# reading each fixture source.
+# ---------------------------------------------------------------------------
+
+FIXTURE_EXPECTED: dict[str, set[tuple[str, str, str]]] = {
+    # x = input_value; y = x + 1; z = y * 2; result = z - 1; return result
+    # total = 0; total += data; total *= 2; return total
+    "lin_assign_chain": {
+        ("ASSIGNS", "lin_assign_chain::process_data.input_value", "lin_assign_chain::process_data.x"),
+        ("ASSIGNS", "lin_assign_chain::process_data.x", "lin_assign_chain::process_data.y"),
+        ("ASSIGNS", "lin_assign_chain::process_data.y", "lin_assign_chain::process_data.z"),
+        ("ASSIGNS", "lin_assign_chain::process_data.z", "lin_assign_chain::process_data.result"),
+        ("RETURNS", "lin_assign_chain::process_data.result", "lin_assign_chain::process_data.@return"),
+        ("ASSIGNS", "lin_assign_chain::augmented_example.total", "lin_assign_chain::augmented_example.total#2"),
+        ("ASSIGNS", "lin_assign_chain::augmented_example.data", "lin_assign_chain::augmented_example.total#2"),
+        ("ASSIGNS", "lin_assign_chain::augmented_example.total#2", "lin_assign_chain::augmented_example.total#3"),
+        ("RETURNS", "lin_assign_chain::augmented_example.total#3", "lin_assign_chain::augmented_example.@return"),
+    },
+    # def process(x, y, **kwargs): z = x + y; return z
+    "lin_params": {
+        ("ASSIGNS", "lin_params::process.x", "lin_params::process.z"),
+        ("ASSIGNS", "lin_params::process.y", "lin_params::process.z"),
+        ("RETURNS", "lin_params::process.z", "lin_params::process.@return"),
+    },
+    # config = {}; config["key"] = "value"; config["other"] = 42; return config
+    # Both values are literals, so the two keys have no incoming edge -- but each
+    # is its own node and each mutates the container.
+    "lin_container": {
+        ("MUTATES", "@feature:key", "lin_container::setup.config"),
+        ("MUTATES", "@feature:other", "lin_container::setup.config"),
+        ("RETURNS", "lin_container::setup.config", "lin_container::setup.@return"),
+    },
+    # def transform(df): df["new_col"] = df["old_col"] * 2; return df
+    "lin_dataframe": {
+        ("COLUMN_WRITE", "@feature:old_col", "@feature:new_col"),
+        ("MUTATES", "@feature:new_col", "lin_dataframe::transform.df"),
+        ("RETURNS", "lin_dataframe::transform.df", "lin_dataframe::transform.@return"),
+    },
+    # features = {"score": 0.5}; features["score"] = features["score"] * 2
+    # One node for the key, whether it is written in a literal or by subscript.
+    "lin_feature_named": {
+        ("CONTAINER_WRITE", "@feature:score", "lin_feature_named::process.features"),
+        ("MUTATES", "@feature:score", "lin_feature_named::process.features"),
+        ("RETURNS", "lin_feature_named::process.features", "lin_feature_named::process.@return"),
+    },
+    # def outer(x): def inner(): return x; return inner
+    "lin_closure": {
+        ("RETURNS", "lin_closure::outer.x", "lin_closure::outer.inner.@return"),
+        ("RETURNS", "lin_closure::outer.inner", "lin_closure::outer.@return"),
+    },
+    # def compute(a, b): x = a + 1; y = b * 2; z = x + y; return z
+    "lin_slice_backward": {
+        ("ASSIGNS", "lin_slice_backward::compute.a", "lin_slice_backward::compute.x"),
+        ("ASSIGNS", "lin_slice_backward::compute.b", "lin_slice_backward::compute.y"),
+        ("ASSIGNS", "lin_slice_backward::compute.x", "lin_slice_backward::compute.z"),
+        ("ASSIGNS", "lin_slice_backward::compute.y", "lin_slice_backward::compute.z"),
+        ("RETURNS", "lin_slice_backward::compute.z", "lin_slice_backward::compute.@return"),
+    },
+    # def transform(x): y = x * 2; z = y + 1; return z
+    "lin_slice_forward": {
+        ("ASSIGNS", "lin_slice_forward::transform.x", "lin_slice_forward::transform.y"),
+        ("ASSIGNS", "lin_slice_forward::transform.y", "lin_slice_forward::transform.z"),
+        ("RETURNS", "lin_slice_forward::transform.z", "lin_slice_forward::transform.@return"),
+    },
+}
+
+
+@pytest.mark.parametrize("case", sorted(FIXTURE_EXPECTED))
+def test_fixture_lineage_is_exactly_as_expected(case: str) -> None:
+    tracer = fixture_tracer(case)
+    assert triples(tracer.lineage_edges) == FIXTURE_EXPECTED[case]
+
+
+def test_fixture_lin_assign_chain_expected_lineage() -> None:
+    """Graded directly against card 8's `expected.json` lineage records.
+
+    Node IDs are translated by `contract_id`: card 8 writes `m::f::v`, the
+    contract's `make_id` yields `m::f.v`. See this module's docstring.
+    """
+    expected = json.loads(
+        (FIXTURES / "mode_b" / "lin_assign_chain" / "expected.json").read_text(encoding="utf-8")
+    )
+    records = expected.get("lineage", [])
+    assert records, "lin_assign_chain/expected.json lost its lineage records"
+    tracer = fixture_tracer("lin_assign_chain")
+    by_pair = {(e.source_id, e.target_id): e for e in tracer.lineage_edges}
+    for record in records:
+        source = contract_id(record["source_id"])
+        target = contract_id(record["target_id"])
+        edge = by_pair.get((source, target))
+        assert edge is not None, f"missing {record['id']}: {source} -> {target}"
+        assert str(edge.kind) == record["kind"]
+        assert str(edge.provenance.method) == record["provenance"]["method"]
+        assert str(edge.provenance.confidence) == record["provenance"]["confidence"]
+        assert edge.span is not None
+        assert edge.span.line == record["span"]["line"]
+
+
+def test_fixture_lin_container_keys_are_separate_nodes() -> None:
+    tracer = fixture_tracer("lin_container")
+    assert feature_id("key") in tracer.feature_ids()
+    assert feature_id("other") in tracer.feature_ids()
+    backward = tracer.slice(feature_id("key"), "backward")
+    assert feature_id("other") not in backward.member_ids
+
+
+def test_fixture_lin_dataframe_columns_are_first_class() -> None:
+    tracer = fixture_tracer("lin_dataframe")
+    assert tracer.feature_ids() == (feature_id("new_col"), feature_id("old_col"))
+    backward = tracer.slice(feature_id("new_col"), "backward")
+    assert feature_id("old_col") in backward.member_ids
+
+
+def test_fixture_lin_feature_named_is_one_node() -> None:
+    tracer = fixture_tracer("lin_feature_named")
+    assert tracer.feature_ids() == (feature_id("score"),)
+
+
+def test_fixture_lin_closure_captures_the_enclosing_value() -> None:
+    tracer = fixture_tracer("lin_closure")
+    backward = tracer.slice("lin_closure::outer.inner.@return", "backward")
+    assert "lin_closure::outer.x" in backward.member_ids
+
+
+def test_fixture_lin_slice_backward_is_exact() -> None:
+    tracer = fixture_tracer("lin_slice_backward")
+    backward = tracer.slice("lin_slice_backward::compute.z", "backward")
+    assert set(backward.member_ids) == {
+        "lin_slice_backward::compute.a",
+        "lin_slice_backward::compute.b",
+        "lin_slice_backward::compute.x",
+        "lin_slice_backward::compute.y",
+        "lin_slice_backward::compute.z",
+    }
+    narrow = tracer.slice("lin_slice_backward::compute.x", "backward")
+    assert set(narrow.member_ids) == {
+        "lin_slice_backward::compute.a",
+        "lin_slice_backward::compute.x",
+    }
+
+
+def test_fixture_lin_slice_forward_reaches_the_sink_and_stops() -> None:
+    sink = "lin_slice_forward::transform.@return"
+    tracer = fixture_tracer("lin_slice_forward", sinks=[sink])
+    forward = tracer.slice("lin_slice_forward::transform.x", "forward")
+    assert set(forward.member_ids) == {
+        "lin_slice_forward::transform.x",
+        "lin_slice_forward::transform.y",
+        "lin_slice_forward::transform.z",
+        sink,
+    }
+    assert forward.reaches_sink_ids == (sink,)
+    unrelated = tracer.slice("lin_slice_forward::transform.z", "forward")
+    assert unrelated.member_ids == ("lin_slice_forward::transform.z", sink)
+
+
+def test_every_fixtures_md_lineage_case_is_covered() -> None:
+    covered = set(FIXTURE_EXPECTED) | {"lin_barrier"}
+    assert covered == set(LINEAGE_CASES)
+    for case in LINEAGE_CASES:
+        assert (FIXTURES / "mode_b" / case / "__init__.py").exists(), case
+
+
+# ---------------------------------------------------------------------------
+# Supplementary constructed cases: what the fixtures do not reach.
+# lin_assign_chain -- unpacking and walrus, which the fixture omits
 # ---------------------------------------------------------------------------
 
 CHAIN_SRC = '''\
@@ -871,17 +1060,6 @@ def test_default_slices_cover_every_feature(tmp_path: Path) -> None:
     assert list(slices) == sorted(slices, key=lambda s: s.id)
 
 
-def test_missing_fixture_cases_are_named() -> None:
-    """Honest gap, and a tripwire.
-
-    These `FIXTURES.md` lineage cases had no fixture directory when this card was
-    built, so they are exercised against constructed sources above. When card 8
-    writes one, this test fails so that the real fixture is graded here instead.
-    """
-    present = [case for case in MISSING_FIXTURE_CASES if (FIXTURES / "mode_b" / case).exists()]
-    assert not present, (
-        f"lineage fixtures now exist and must be graded directly: {sorted(present)}"
-    )
 
 
 # ---------------------------------------------------------------------------

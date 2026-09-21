@@ -15,7 +15,7 @@ import json
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable
 
 from cascade_map.contracts.interfaces import CaptureStatus, ValueCapture, canonical_dumps
 
@@ -169,6 +169,3 @@ class Recording:
     def with_observations(self, observations: Iterable[RawObservation]) -> "Recording":
         return Recording(header=dict(self.header), observations=tuple(observations))
 
-
-def observations_of(records: Sequence[RawObservation]) -> tuple[RawObservation, ...]:
-    return tuple(records)
