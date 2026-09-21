@@ -127,6 +127,7 @@ def _probe(
     body: str,
     declared_process_names: frozenset[str] = frozenset(),
     label: str = "probe",
+    timeout: float = 30.0,
 ) -> dict:
     """Run *body* against a fresh ``SandboxContext``/``activate`` in a
     genuinely separate interpreter and return what it recorded.
@@ -147,7 +148,7 @@ def _probe(
         "'reads_outside': len(ctx.reads_outside_sandbox),"
         "}))\n"
     )
-    result = _run_python(script)
+    result = _run_python(script, timeout=timeout)
     assert result.returncode == 0, (
         f"probe subprocess failed (exit {result.returncode}):\n"
         f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
