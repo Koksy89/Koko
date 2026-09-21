@@ -1,0 +1,14 @@
+# Read-only copies of the analysis target — never committed.
+target_engine/
+target_versions/
+.venv-target/
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
