@@ -544,6 +544,16 @@ class LineageEdge:
     target_id: str
     provenance: Provenance
     span: SourceSpan | None = None
+    """**The statement where the flow happens**, not where either endpoint was
+    defined.
+
+    For ``result = compute(x)`` the span is that assignment, even though ``x``
+    was defined earlier and ``compute`` elsewhere. Settled because the owner's
+    question of a lineage edge is "where does this value move", and the
+    definition sites are already reachable through the endpoint elements. A
+    span pointing at a definition would duplicate what the element already
+    says and answer the wrong question.
+    """
 
 
 @dataclass(frozen=True, slots=True)

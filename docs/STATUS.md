@@ -67,6 +67,23 @@ candidates with evidence rather than choosing silently.
 These two run in parallel — card 1 needs the corpus to test against, but both can be
 delegated in the same step.
 
+## Corpus freeze — a sequencing rule I should have set at the start
+
+**No card whose grade depends on `tests/fixtures/` may be verified while card 8 is
+rewriting it.** Cards 2, 3 and 4 are in that set. Their verification waits for card 8 to
+land and pass.
+
+This cost a real, misleading result. Card 4 reported precision 1.0 and recall 1.0. By the
+time verification ran, 153 of 263 fixture files had changed underneath it and the actual
+measured precision was **0.28** — not because card 4 regressed, but because its
+hand-written expectations were written against fixture source that no longer exists. The
+builder is not at fault for that number.
+
+The general rule: a corpus that moves while it is being read cannot grade anything. This
+is the second time the same principle has bitten — the first was a `__pycache__`
+directory written into the corpus by a harness test. Both are consequences of running
+thirteen builders in one tree, which was my call.
+
 ## The thing to watch
 
 Card 2's own corpus test currently reports **37.8% precision** on its call graph, with 34

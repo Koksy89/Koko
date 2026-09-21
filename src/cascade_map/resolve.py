@@ -720,6 +720,36 @@ class _Summariser(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+def _string_constants(node: ast.AST) -> list[str]:
+    """Every string literal in a subtree, in source order."""
+    out: list[str] = []
+    for child in ast.walk(node):
+        if isinstance(child, ast.Constant) and isinstance(child.value, str):
+            out.append(child.value)
+    return out
+
+
+def _decorator_key_literal(text: str) -> str:
+    """The literal string argument of ``@register("scale")``, if there is one."""
+    try:
+        expr = ast.parse(text, mode="eval").body
+    except SyntaxError:
+        return ""
+    if not isinstance(expr, ast.Call):
+        return ""
+    for arg in [*expr.args, *[kw.value for kw in expr.keywords]]:
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            return arg.value
+    return ""
+
+
+def _element_name(resolver: "Resolver", element_id: str) -> str:
+    element = resolver._elements.get(element_id)
+    if element is not None:
+        return element.name
+    return element_id.rsplit("::", 1)[-1].rsplit(".", 1)[-1]
+
+
 def _literal_builtin_type(node: ast.expr) -> str:
     """The builtin type a literal expression plainly has, or ``""``."""
     if isinstance(node, (ast.List, ast.ListComp)):
@@ -1006,7 +1036,14 @@ class Resolver:
                     binding = self._binding_for_dotted(head, module)
                     if not binding.target_id:
                         continue
-                    self._decorated_by[binding.target_id].append(element_id)
+                    # `@trace` applies `trace` itself; `@register("x")` applies
+                    # whatever `register` returns. Binding the decorated
+                    # element to the wrong one of those two would put the key
+                    # argument where the decorated function belongs.
+                    applied = binding.target_id
+                    if text.strip() != head:
+                        applied = self.wrapper_of(binding.target_id) or binding.target_id
+                    self._decorated_by[applied].append(element_id)
                     key_literal = _decorator_key_literal(text)
                     registrar = self._registrar_for(binding.target_id)
                     if registrar is None:
@@ -1090,6 +1127,15 @@ class Resolver:
 
     def decorated_by(self, decorator_id: str) -> tuple[str, ...]:
         return tuple(self._decorated_by.get(decorator_id, ()))
+
+    def decorators_of(self, element_id: str) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                decorator
+                for decorator, targets in self._decorated_by.items()
+                if element_id in targets
+            )
+        )
 
     def registry_members(self, container_id: str) -> tuple[tuple[str, Method], ...]:
         return tuple(self._registry_members.get(container_id, ()))
@@ -1994,6 +2040,9 @@ class _CallResolver(ast.NodeVisitor):
         #: nodes whose value is consumed by an enclosing call, so the reference
         #: edge would duplicate that call's edge.
         self._suppress_reference: set[int] = set()
+        #: the element a module- or class-level assignment is binding, so a
+        #: dynamic value gets the ID of the name that holds it.
+        self._assign_name: str = ""
 
     # -- plumbing -------------------------------------------------------
 
@@ -2217,7 +2266,10 @@ class _CallResolver(ast.NodeVisitor):
         self.prefix = outer
         self.owner_stack.pop()
 
-    def _bind_parameters(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _bind_parameters(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef, element_id: str = ""
+    ) -> None:
+        self._bind_decorated_parameter(node, element_id)
         args = node.args
         all_args = [*args.posonlyargs, *args.args, *args.kwonlyargs]
         decorators = {_text(d).split("(")[0] for d in node.decorator_list}
@@ -2254,6 +2306,42 @@ class _CallResolver(ast.NodeVisitor):
                         note="from parameter annotation",
                     ),
                 )
+
+    def _bind_decorated_parameter(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef, element_id: str
+    ) -> None:
+        """Inside ``def trace(func)``, ``func`` *is* the decorated function.
+
+        The parameter is not a free variable: the decorator syntax binds it.
+        Resolving it turns the body of every wrapper from an unresolved call
+        site into the edge the cascade actually needs. PROBABLE, because the
+        binding is read off the decorator application rather than a call.
+        """
+        if not element_id:
+            return
+        targets = self.r.decorated_by(element_id)
+        if not targets:
+            return
+        args = [*node.args.posonlyargs, *node.args.args]
+        if not args:
+            return
+        first = args[0].arg
+        if len(targets) == 1:
+            self.scope.names[first] = _Binding(
+                kind=_BKind.CALLABLE,
+                target_id=targets[0],
+                method=Method.DECORATOR_UNWRAP,
+                confidence=Confidence.PROBABLE,
+                note="`" + first + "` inside the decorator is the decorated function",
+            )
+        else:
+            self.scope.names[first] = _Binding(
+                kind=_BKind.CANDIDATES,
+                candidates=targets,
+                method=Method.DECORATOR_UNWRAP,
+                confidence=Confidence.UNKNOWN,
+                note="this decorator is applied to more than one element",
+            )
 
     def _decorator_edges(
         self,
@@ -2579,9 +2667,19 @@ class _CallResolver(ast.NodeVisitor):
         self.generic_visit(node)
         self.cond_depth -= 1
 
+    def _assign_owner(self, fallback: str = "dynamic") -> str:
+        """The ID a dynamic value belongs to: the name it is assigned to."""
+        if self._assign_name:
+            return self.r._id_for(self.module, f"{self.prefix}{self._assign_name}")
+        return f"{self.owner}::{fallback}"
+
     def visit_Assign(self, node: ast.Assign) -> None:
+        names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        outer_name = self._assign_name
+        self._assign_name = names[0] if names else ""
         self.visit(node.value)
         binding = self._eval(node.value)
+        self._assign_name = outer_name
         for target in node.targets:
             self._assign_target(target, binding, node)
         if self.scope.kind == "module":
@@ -2590,61 +2688,29 @@ class _CallResolver(ast.NodeVisitor):
                     self._registry_literal(target.id, node.value, node)
 
     def _registry_literal(self, name: str, value: ast.expr, node: ast.AST) -> None:
-        """``REGISTRY = {"a": alpha}`` / ``STEPS = [a, b]`` -- membership is
-        literal, so the REGISTERS edges are RESOLVED. *Which* member a lookup
-        reaches is a separate, weaker claim made at the lookup site."""
+        """``HANDLERS = {"buy": handle_buy}`` -- membership is literal.
+
+        PROBABLE rather than RESOLVED: the dict is a registry only because it
+        holds callables, which is a reading of the code, not a declaration in
+        it, and the dict can be mutated later.
+        """
         reg = self.s.registries.get(name)
         if reg is None:
             return
-        items: list[tuple[str, ast.expr]] = []
-        if isinstance(value, ast.Dict):
-            for key, val in zip(value.keys, value.values):
-                literal = (
-                    key.value
-                    if isinstance(key, ast.Constant) and isinstance(key.value, str)
-                    else ""
-                )
-                items.append((literal, val))
-        elif isinstance(value, (ast.List, ast.Tuple, ast.Set)):
-            items = [("", item) for item in value.elts]
-        else:
+        if not isinstance(value, (ast.Dict, ast.List, ast.Tuple, ast.Set)):
             return
-        for key_literal, item in items:
-            member = self._eval(item)
-            if not member.target_id or member.kind not in (_BKind.CALLABLE, _BKind.CLASS):
+        for member, method in self.r.registry_members(reg.element_id):
+            if method is not Method.REGISTRY_MEMBERSHIP:
                 continue
             self._emit(
                 EdgeKind.REGISTERS,
-                member.target_id,
+                member,
                 Method.REGISTRY_MEMBERSHIP,
-                Confidence.RESOLVED,
+                Confidence.PROBABLE,
                 node,
-                note=f"literal member of {name}"
-                + (f" under key {key_literal!r}" if key_literal else ""),
+                note=f"literal member of {name}",
                 source_id=reg.element_id,
             )
-            if key_literal:
-                self.r.register_key(key_literal, member.target_id)
-
-    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-        if node.value is not None:
-            self.visit(node.value)
-            binding = self._eval(node.value)
-        else:
-            key = self.r._class_key_from_text(_text(node.annotation), self.module)
-            binding = (
-                _Binding(
-                    kind=_BKind.INSTANCE,
-                    class_key=key,
-                    target_id=self.r._class_element(key),
-                    method=Method.MRO_DISPATCH,
-                    confidence=Confidence.PROBABLE,
-                    note="from annotation",
-                )
-                if key is not None
-                else _UNKNOWN_BINDING
-            )
-        self._assign_target(node.target, binding, node)
 
     def _assign_target(self, target: ast.expr, binding: _Binding, node: ast.AST) -> None:
         if isinstance(target, ast.Name):
@@ -2958,6 +3024,27 @@ class _CallResolver(ast.NodeVisitor):
             return
         self._unresolved_call(node, label)
 
+    def _wrapper_edges(self, target_id: str, node: ast.Call) -> None:
+        """A call to a decorated name reaches the wrapper too.
+
+        After ``@trace``, the name ``compute`` is bound to ``trace``'s inner
+        function: the wrapper is what actually runs and the wrapped function
+        is the element the owner reasons about. Dropping either edge loses one
+        of those two truths, so both are emitted -- the wrapper at PROBABLE,
+        because whether the decorator really wraps is an inference.
+        """
+        for decorator_id in self.r.decorators_of(target_id):
+            wrapper = self.r.wrapper_of(decorator_id)
+            if wrapper and wrapper != target_id:
+                self._emit(
+                    EdgeKind.CALLS,
+                    wrapper,
+                    Method.DECORATOR_UNWRAP,
+                    Confidence.PROBABLE,
+                    node,
+                    note="the wrapper: what the name is actually bound to after decoration",
+                )
+
     def _ambiguity_note(self, binding: _Binding, node: ast.Call) -> None:
         """Record subclass overrides that could take this dispatch instead."""
         if binding.method is not Method.MRO_DISPATCH or binding.class_key is None:
@@ -2987,14 +3074,36 @@ class _CallResolver(ast.NodeVisitor):
         bare = label.split(".")[-1]
         kinds = (ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.CLASS)
         candidates = self._name_candidates(bare, kinds)
-        star_note = ""
-        if self.s.stars:
-            star_note = " (this module has a star import, which may bind the name)"
-        self._unresolved(
-            node,
-            UnresolvedReason.MISSING_TARGET if candidates else UnresolvedReason.DYNAMIC_NAME,
-            f"call target {label!r} could not be bound to an element" + star_note,
-            (Method.SCOPE_LOOKUP, Method.IMPORT_ABSOLUTE, Method.MRO_DISPATCH),
+        attempted: tuple[Method, ...]
+        if "." in label:
+            # an attribute chain: the receiver's type is what failed
+            record_id = f"{self.owner}::call@{label}"
+            description = f"call target {label!r} could not be bound to an element"
+            attempted = (Method.SCOPE_LOOKUP, Method.MRO_DISPATCH)
+        else:
+            # a bare name nothing in scope binds: the record belongs to the
+            # name itself, so a reader lands on the name rather than on a
+            # position inside a function.
+            record_id = make_id(self.module, bare)
+            attempted = (Method.SCOPE_LOOKUP, Method.IMPORT_ABSOLUTE)
+            description = f"`{bare}` is used but nothing binds it here"
+            if self.s.stars:
+                sources = ", ".join(
+                    sorted(
+                        {
+                            spec.module or "." * spec.level
+                            for spec in self.s.stars
+                        }
+                    )
+                )
+                attempted = (*attempted, Method.IMPORT_STAR)
+                description += f"; the star import from {sources} does not export it"
+        self.r._record_unresolved(
+            owner=record_id,
+            reason=UnresolvedReason.MISSING_TARGET if candidates else UnresolvedReason.DYNAMIC_NAME,
+            span=_span(self.path, node),
+            description=description,
+            attempted=attempted,
             candidates=candidates,
             candidate_confidence=Confidence.HEURISTIC if candidates else Confidence.UNKNOWN,
         )
@@ -3103,18 +3212,21 @@ class _CallResolver(ast.NodeVisitor):
             node,
             UnresolvedReason.DYNAMIC_NAME,
             (
-                "getattr with a name this analysis could not pin to one attribute; "
-                "no edge claimed"
+                f"getattr attribute name is `{_text(node.args[1])}`, which this "
+                "analysis could not pin to one attribute"
                 + (
-                    f" (name is constrained to literals {sorted(name_val.literals)} "
-                    f"and prefixes {sorted(p for p in name_val.prefixes if p)})"
-                    if name_val.constrained
-                    else ""
+                    "; the members matching what is known of the name are listed "
+                    "as candidates and none is claimed"
+                    if candidates
+                    else "; no candidate could be narrowed down"
                 )
             ),
-            (Method.GETATTR_LITERAL, Method.GETATTR_TRACED, Method.DATAFLOW),
+            (Method.GETATTR_LITERAL, Method.GETATTR_TRACED),
             candidates=candidates,
-            candidate_confidence=Confidence.PROBABLE if candidates else Confidence.UNKNOWN,
+            # UNKNOWN even with candidates: the set is right, the choice within
+            # it is not being made, and a confidence here would imply one.
+            candidate_confidence=Confidence.UNKNOWN,
+            site=f"getattr@{_text(node.args[1])}",
         )
         return _Binding(
             kind=_BKind.CANDIDATES,
@@ -3206,13 +3318,34 @@ class _CallResolver(ast.NodeVisitor):
             target_id = (
                 self.r._modules[target_module].element_id if known else make_id(target_module)
             )
+            if not known:
+                self.r._record_unresolved(
+                    owner=f"{self._assign_owner()}",
+                    reason=UnresolvedReason.THIRD_PARTY,
+                    span=_span(self.path, node),
+                    description=(
+                        f"import_module({literal!r}) names a module outside the "
+                        "target tree; no element to point at"
+                    ),
+                    attempted=(Method.IMPORTLIB_LITERAL,),
+                )
+                return _Binding(
+                    kind=_BKind.MODULE,
+                    module_name=target_module,
+                    method=method,
+                    confidence=Confidence.UNKNOWN,
+                    external=True,
+                )
             self._emit(
                 EdgeKind.IMPORTS,
                 target_id,
                 method,
-                Confidence.RESOLVED,
+                # PROBABLE, not RESOLVED: the string is a literal but the
+                # import happens at runtime and nothing static guarantees it
+                # is reached.
+                Confidence.PROBABLE,
                 node,
-                note="literal dynamic import" + ("" if known else "; target outside the inventory"),
+                note="literal dynamic import",
             )
             return _Binding(
                 kind=_BKind.MODULE,
@@ -3227,11 +3360,20 @@ class _CallResolver(ast.NodeVisitor):
             for m in sorted(self.r._modules)
             if name_val.matches(m) or name_val.matches(m.rsplit(".", 1)[-1])
         ]
-        self._unresolved(
-            node,
-            UnresolvedReason.DYNAMIC_NAME,
-            "dynamic import with a module name that is not a traceable literal",
-            (Method.IMPORTLIB_LITERAL, Method.DATAFLOW),
+        # A literal default buried in the expression -- os.environ.get("X",
+        # "pkg.plugin") -- names a real module; offer it, claim nothing.
+        for literal in _string_constants(node):
+            if literal in self.r._modules:
+                candidates.append(self.r._modules[literal].element_id)
+        self.r._record_unresolved(
+            owner=self._assign_owner("import_module"),
+            reason=UnresolvedReason.DYNAMIC_NAME,
+            span=_span(self.path, node),
+            description=(
+                "import_module's argument is not a traceable literal; any string "
+                "literal in the expression is offered as a candidate only"
+            ),
+            attempted=(Method.IMPORTLIB_LITERAL,),
             candidates=candidates,
             candidate_confidence=Confidence.HEURISTIC if candidates else Confidence.UNKNOWN,
         )
@@ -3338,7 +3480,7 @@ class _CallResolver(ast.NodeVisitor):
                     confidence=Confidence.PROBABLE,
                 )
         if result.kind is _BKind.UNKNOWN:
-            members = self._registry_members(reg, module) if reg is not None else []
+            members = self._registry_member_ids(base.target_id)
             self._unresolved(
                 node,
                 UnresolvedReason.AMBIGUOUS,
@@ -3361,33 +3503,39 @@ class _CallResolver(ast.NodeVisitor):
 
     def _registry_call(self, binding: _Binding, node: ast.Call, label: str) -> None:
         assert binding.registry_key is not None
-        module, name = binding.registry_key
-        reg = self.r._modules[module].registries.get(name)
-        if reg is None:
-            self._unresolved_call(node, label)
-            return
-        members = self._registry_members(reg, module)
-        self._unresolved(
-            node,
-            UnresolvedReason.AMBIGUOUS,
-            f"call through registry {name!r}; the member invoked depends on runtime data",
-            (Method.REGISTRY_MEMBERSHIP,),
-            candidates=members,
-            candidate_confidence=Confidence.PROBABLE,
-        )
+        self._registry_dispatch(binding.target_id, node, label)
 
-    def _registry_members(self, reg: _RegistrySum, module: str) -> list[str]:
-        out: list[str] = []
-        for text in reg.members:
-            binding = self.r._binding_from_assign_text(module, text)
-            if binding.target_id and binding.kind in (_BKind.CALLABLE, _BKind.CLASS):
-                out.append(binding.target_id)
-                continue
-            dotted = text.strip()
-            resolved = self.r._binding_for_dotted(dotted, module) if dotted.isidentifier() or "." in dotted else _UNKNOWN_BINDING
-            if resolved.target_id and resolved.kind in (_BKind.CALLABLE, _BKind.CLASS):
-                out.append(resolved.target_id)
-        return sorted(set(out))
+    def _registry_dispatch(self, container_id: str, node: ast.Call, label: str) -> None:
+        """A lookup whose key is decided at runtime reaches every member.
+
+        One edge per member at HEURISTIC, rather than one unresolved record:
+        the *set* of possible targets is known exactly, only the choice within
+        it is not, and a cascade that stops at the registry hides the whole
+        downstream half of the engine. HEURISTIC is the honesty: at most one
+        of these runs on any given call.
+        """
+        members = self.r.registry_members(container_id)
+        if not members:
+            self._unresolved(
+                node,
+                UnresolvedReason.AMBIGUOUS,
+                f"lookup through {label!r}, whose members this analysis could not read",
+                (Method.REGISTRY_MEMBERSHIP,),
+                site=f"registry@{label}",
+            )
+            return
+        for member, method in members:
+            self._emit(
+                EdgeKind.CALLS,
+                member,
+                method,
+                Confidence.HEURISTIC,
+                node,
+                note=f"one of {len(members)} members of the registry; the key is runtime data",
+            )
+
+    def _registry_member_ids(self, container_id: str) -> list[str]:
+        return [member for member, _ in self.r.registry_members(container_id)]
 
     def _subscript_call(self, node: ast.Call, func: ast.Subscript) -> None:
         binding = self._eval(func.value)
@@ -3396,12 +3544,10 @@ class _CallResolver(ast.NodeVisitor):
             return
         module, name = binding.registry_key
         reg = self.r._modules[module].registries.get(name)
-        if reg is None:
-            self._unresolved_call(node, _text(func))
-            return
         key_val = self._eval_str(func.slice) if isinstance(func.slice, ast.expr) else _OPEN_STR
-        if key_val.closed and len(key_val.literals) == 1 and key_val.literals[0] in reg.entries:
-            text = reg.entries[key_val.literals[0]]
+        if reg is not None and key_val.closed and len(key_val.literals) == 1:
+            literal = key_val.literals[0]
+            text = reg.entries.get(literal, "")
             member = self.r._binding_for_dotted(text, module) if text else _UNKNOWN_BINDING
             if member.target_id and member.kind in (_BKind.CALLABLE, _BKind.CLASS):
                 kind = EdgeKind.INSTANTIATES if member.kind is _BKind.CLASS else EdgeKind.CALLS
@@ -3411,21 +3557,10 @@ class _CallResolver(ast.NodeVisitor):
                     Method.REGISTRY_MEMBERSHIP,
                     Confidence.PROBABLE,
                     node,
-                    note=f"registry {name}[{key_val.literals[0]!r}]",
+                    note=f"registry {name}[{literal!r}]",
                 )
                 return
-        members = self._registry_members(reg, module)
-        self._unresolved(
-            node,
-            UnresolvedReason.AMBIGUOUS,
-            (
-                f"registry {name}[...] indexed with a key that is not a traceable "
-                "literal; no edge claimed"
-            ),
-            (Method.REGISTRY_MEMBERSHIP, Method.DATAFLOW),
-            candidates=members,
-            candidate_confidence=Confidence.PROBABLE if members else Confidence.UNKNOWN,
-        )
+        self._registry_dispatch(binding.target_id, node, name)
 
     def _super_call(self, node: ast.Call, attr: str) -> None:
         if not self.class_stack:
@@ -3463,7 +3598,10 @@ class _CallResolver(ast.NodeVisitor):
             EdgeKind.CALLS,
             target,
             Method.MRO_DISPATCH,
-            Confidence.RESOLVED if single else Confidence.PROBABLE,
+            # PROBABLE even with a complete, linear MRO: super() is resolved
+            # against type(self) at runtime, and a subclass loaded elsewhere
+            # can sit between these two classes.
+            Confidence.PROBABLE,
             node,
             note=f"super() from {key[1]} reaches {owner[1] if owner else '?'}",
         )
@@ -3575,10 +3713,14 @@ class _CallResolver(ast.NodeVisitor):
         if isinstance(node, ast.IfExp):
             left = self._eval(node.body)
             right = self._eval(node.orelse)
-            if left.kind is _BKind.CONST and right.kind is _BKind.CONST:
+            merged = _merge_str(self._eval_str(node.body), self._eval_str(node.orelse))
+            if merged.constrained:
+                # One branch a literal and the other unknown means the value is
+                # *constrained*, never *known*. Collapsing to the literal branch
+                # would turn a coin flip into a fact.
                 return _Binding(
                     kind=_BKind.CONST,
-                    const=_merge_str(left.const or _OPEN_STR, right.const or _OPEN_STR),
+                    const=merged,
                     method=Method.DATAFLOW,
                     confidence=Confidence.PROBABLE,
                 )

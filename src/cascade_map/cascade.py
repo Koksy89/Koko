@@ -130,6 +130,12 @@ _BUILTIN_NAMES: frozenset[str] = frozenset(dir(builtins)) | frozenset(
     {"self", "cls", "__name__", "__file__", "__doc__", "None", "True", "False"}
 )
 
+_IMPURE_BUILTINS: frozenset[str] = frozenset(
+    {"print", "open", "setattr", "delattr", "exec", "eval", "input", "__import__"}
+)
+"""Builtins that reach outside the call. Named, not guessed: every other
+builtin is treated as pure for the side-effect test."""
+
 _SINK_NAME_HINTS: tuple[str, ...] = (
     "final_decision",
     "final_signal",
@@ -614,7 +620,7 @@ class _FlowBuilder:
             span=_span_of(self.path, stmt),
             condition=condition,
             kind="GUARD" if is_guard else "IF",
-            arms=[("true", then_shape), ("false", else_shape)],
+            arms=[("True", then_shape), ("False", else_shape)],
             reads=_read_targets(stmt.test),
             is_guard=is_guard,
             block_id=branch_block,
@@ -868,7 +874,7 @@ class _FlowBuilder:
             span=_span_of(self.path, stmt),
             condition=condition,
             kind="ASSERT",
-            arms=[("holds", _SeqShape()), ("fails", _SeqShape())],
+            arms=[("True", _SeqShape()), ("False", _SeqShape())],
             reads=_read_targets(stmt.test),
             block_id=branch_block,
         )
@@ -933,8 +939,10 @@ class _FlowBuilder:
                 condition=condition,
                 kind="SHORT_CIRCUIT",
                 arms=[
-                    (f"evaluate `{_src(right)}`", _SeqShape(children=list(rhs_shapes))),
-                    ("short-circuit", _SeqShape()),
+                    ("True", _SeqShape(children=list(rhs_shapes)))
+                    if is_and
+                    else ("False", _SeqShape(children=list(rhs_shapes))),
+                    ("False", _SeqShape()) if is_and else ("True", _SeqShape()),
                 ],
                 reads=_read_targets(left),
                 cascade_note=f"`{keyword}` gate",
@@ -964,8 +972,8 @@ class _FlowBuilder:
             condition=condition,
             kind="TERNARY",
             arms=[
-                ("true", _SeqShape(children=list(true_shapes))),
-                ("false", _SeqShape(children=list(false_shapes))),
+                ("True", _SeqShape(children=list(true_shapes))),
+                ("False", _SeqShape(children=list(false_shapes))),
             ],
             reads=_read_targets(node.test),
             block_id=branch_block,
@@ -1020,7 +1028,7 @@ class _FlowBuilder:
                     span=_span_of(self.path, condition_node),
                     condition=condition,
                     kind="COMPREHENSION_FILTER",
-                    arms=[("kept", _SeqShape()), ("skipped", _SeqShape())],
+                    arms=[("True", _SeqShape()), ("False", _SeqShape())],
                     reads=_read_targets(condition_node),
                     block_id=branch_block,
                 )
@@ -1147,6 +1155,8 @@ class CascadeAnalyzer:
         self._edges_by_source: dict[str, list[Edge]] = {}
         self._positioned_edge_ids: set[str] = set()
         self._children: dict[str, list[str]] = {}
+        self._discarded_cache: dict[str, set[tuple[int, int]]] = {}
+        self._side_effect_cache: dict[str, bool] = {}
 
     # -- the contract -------------------------------------------------------
 
@@ -1572,6 +1582,65 @@ class CascadeAnalyzer:
         for element_id in sorted(self._builders):
             self._order_for_element(element_id)
         self._build_cascade_root()
+        self._aggregate_element_ids()
+
+    _UNAGGREGATED = frozenset({make_id("@order", "@cascade"), make_id("@order", "@total")})
+
+    def _aggregate_element_ids(self) -> None:
+        """Every node names the elements it schedules, in execution order.
+
+        A leaf call node names its callee; a SEQUENCE, BRANCH, LOOP or MERGE
+        names everything underneath it, depth-first in child order, so a node
+        answers "what runs here" on its own. The kind still says how: the ids
+        under a BRANCH are alternatives, the ids under an UNORDERED have no
+        fixed order between them, and nothing about this pass turns one into a
+        SEQUENCE.
+
+        A node that names elements rests on card 2's call edges, so its method
+        becomes CFG_REACHABILITY; a node that names none is pure structure read
+        off the AST.
+        """
+        index = {node.id: node for node in self._order}
+        memo: dict[str, tuple[str, ...]] = {}
+
+        def gather(node_id: str, seen: frozenset[str]) -> tuple[str, ...]:
+            if node_id in memo:
+                return memo[node_id]
+            node = index.get(node_id)
+            if node is None or node_id in seen:
+                return ()
+            out: list[str] = list(node.element_ids)
+            for child_id in node.children:
+                for element_id in gather(child_id, seen | {node_id}):
+                    if element_id not in out:
+                        out.append(element_id)
+            memo[node_id] = tuple(out)
+            return memo[node_id]
+
+        rebuilt: list[OrderNode] = []
+        for node in self._order:
+            if node.id in self._UNAGGREGATED or node.kind is OrderKind.CYCLE:
+                rebuilt.append(node)
+                continue
+            element_ids = gather(node.id, frozenset())
+            provenance = node.provenance
+            if provenance is not None and element_ids:
+                provenance = Provenance(
+                    method=Method.CFG_REACHABILITY,
+                    confidence=provenance.confidence,
+                    span=provenance.span,
+                    note=provenance.note,
+                )
+            rebuilt.append(
+                OrderNode(
+                    id=node.id,
+                    kind=node.kind,
+                    element_ids=element_ids,
+                    children=node.children,
+                    provenance=provenance,
+                )
+            )
+        self._order = rebuilt
 
     def _order_for_element(self, element_id: str) -> str:
         builder = self._builders[element_id]
@@ -1614,7 +1683,7 @@ class CascadeAnalyzer:
         self._emit(
             root_id,
             OrderKind.SEQUENCE,
-            (element_id,),
+            (),
             children,
             Method.AST_DIRECT,
             confidence,
@@ -1639,6 +1708,15 @@ class CascadeAnalyzer:
     def _emit_seq(
         self, seq: _SeqShape, element_id: str, path: str
     ) -> tuple[list[str], Confidence]:
+        """Emit one order node per shape, in execution order.
+
+        A branch is followed by a MERGE node that *owns the continuation*: what
+        runs after the arms rejoin hangs off the merge, because that is where
+        control actually resumes. The alternative -- listing the branch and the
+        continuation as flat siblings -- reads as though the arms and the
+        continuation were one sequence, which is the flattening the workplan
+        calls a defect.
+        """
         children: list[str] = []
         confidences: list[Confidence] = [Confidence.CERTAIN]
         for index, shape in enumerate(seq.children):
@@ -1649,15 +1727,20 @@ class CascadeAnalyzer:
             children.append(node_id)
             confidences.append(confidence)
             if shape.node_id and isinstance(shape, _BranchShape):
+                rest = _SeqShape(children=list(seq.children[index + 1 :]))
+                rest_children, rest_confidence = self._emit_seq(
+                    rest, element_id, f"{child_path}/after"
+                )
                 merge_id = self._emit(
                     self._order_id(element_id, f"{child_path}/merge"),
                     OrderKind.MERGE,
                     (),
-                    (),
+                    rest_children,
                     Method.AST_DIRECT,
-                    Confidence.CERTAIN,
+                    rest_confidence,
                     (
-                        f"control from every arm of {node_id} rejoins here"
+                        f"control from every arm of {node_id} rejoins here, and what "
+                        "follows runs once, whichever arm ran"
                         if shape.rejoins
                         else f"every arm of {node_id} returns or raises; control rejoins "
                         f"at the exit of {element_id}, not here"
@@ -1665,6 +1748,8 @@ class CascadeAnalyzer:
                     shape.span,
                 )
                 children.append(merge_id)
+                confidences.append(rest_confidence)
+                break
         return children, combine(*confidences)
 
     def _emit_shape(
@@ -2226,172 +2311,201 @@ class CascadeAnalyzer:
 
     # -- reachability -------------------------------------------------------
 
-    _POS_SINK = (10**9, 10**9)
+    def _discarded_call_sites(self, path: str) -> set[tuple[int, int]]:
+        """Positions of calls whose result is thrown away.
 
-    def _call_sites(
-        self,
-    ) -> tuple[
-        dict[str, list[tuple[tuple[int, int], str, Edge]]],
-        dict[str, list[tuple[str, tuple[int, int], Edge]]],
-        dict[str, list[tuple[tuple[int, int], str]]],
-    ]:
-        """Wiring edges indexed by the position they fire at inside their caller."""
-        sites: dict[str, list[tuple[tuple[int, int], str, Edge]]] = {}
-        callers: dict[str, list[tuple[str, tuple[int, int], Edge]]] = {}
-        for edge in self._edges:
-            if edge.kind not in WIRING_EDGE_KINDS:
-                continue
-            if edge.call_site is None:
-                # No position: it could fire anywhere in the caller, so it is
-                # treated as firing first. Biased toward reachable on purpose.
-                position = (-1, -1)
-            else:
-                position = (edge.call_site.line, edge.call_site.col or 0)
-            sites.setdefault(edge.source_id, []).append((position, edge.target_id, edge))
-            callers.setdefault(edge.target_id, []).append((edge.source_id, position, edge))
-        sink_sites: dict[str, list[tuple[tuple[int, int], str]]] = {}
+        ``log_metrics(rows)`` as a bare statement hands nothing to anyone. That
+        is the only value-free call shape this card can recognise from the AST,
+        and it is what separates "runs before the decision" from "feeds the
+        decision".
+        """
+        if path in self._discarded_cache:
+            return self._discarded_cache[path]
+        found: set[tuple[int, int]] = set()
+        tree = self._parse(path)
+        if tree is not None:
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Expr):
+                    continue
+                value = node.value
+                if isinstance(value, ast.Await):
+                    value = value.value
+                if isinstance(value, ast.Call):
+                    found.add((value.lineno, value.col_offset))
+        self._discarded_cache[path] = found
+        return found
+
+    def _result_is_used(self, edge: Edge) -> bool:
+        if edge.call_site is None:
+            return True  # no position: assume the value is used, never the reverse
+        position = (edge.call_site.line, edge.call_site.col or 0)
+        return position not in self._discarded_call_sites(edge.call_site.path)
+
+    def _may_have_side_effects(self, element_id: str, stack: tuple[str, ...] = ()) -> bool:
+        """Could running this element change anything outside itself?
+
+        Used only to decide between NO_SINK_PATH and UNKNOWN for an element
+        whose result is discarded. Conservative in the safe direction: anything
+        it cannot see -- a body with no CFG, a method call, a call it cannot
+        resolve -- counts as a side effect, so the element comes back UNKNOWN
+        rather than being called dead.
+        """
+        if element_id in self._side_effect_cache:
+            return self._side_effect_cache[element_id]
+        if element_id in stack:
+            return True
+        builder = self._builders.get(element_id)
+        if builder is None:
+            return True
+        verdict = False
+        for node in ast.walk(builder.node):
+            if isinstance(node, (ast.Global, ast.Nonlocal, ast.Yield, ast.YieldFrom)):
+                verdict = True
+            elif isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(
+                node.ctx, (ast.Store, ast.Del)
+            ):
+                verdict = True
+            elif isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Attribute):
+                    verdict = True  # a method may mutate its receiver
+                elif isinstance(node.func, ast.Name):
+                    name = node.func.id
+                    if name in _IMPURE_BUILTINS:
+                        verdict = True
+                    elif name not in _BUILTIN_NAMES:
+                        target = self._lookup_name(self._elements.get(element_id), name)
+                        verdict = not target or self._may_have_side_effects(
+                            target, (*stack, element_id)
+                        )
+                else:
+                    verdict = True
+            if verdict:
+                break
+        self._side_effect_cache[element_id] = verdict
+        return verdict
+
+    def _sink_sites(self) -> dict[str, list[tuple[str, int]]]:
+        """Sinks that are values rather than callables, keyed by their holder.
+
+        ``FINAL_DECISION = decide(...)`` at module level is a sink nobody calls;
+        it is a position inside the element that holds it.
+        """
+        out: dict[str, list[tuple[str, int]]] = {}
         for sink_id in self._sink_ids:
             sink = self._elements.get(sink_id)
             if sink is None or sink.kind in CFG_ELEMENT_KINDS:
                 continue
-            # A sink that is a variable (``FINAL_DECISION = ...``) is a position
-            # inside whatever element holds it, not something anybody calls.
             owner = sink.parent_id or make_id(sink.module)
-            end = sink.span.end_line or sink.span.line
-            sink_sites.setdefault(owner, []).append(((end, self._POS_SINK[1]), sink_id))
-        for bucket in (*sites.values(), *callers.values(), *sink_sites.values()):
-            bucket.sort(key=lambda row: (row[0], str(row[1])))
-        return sites, callers, sink_sites
+            out.setdefault(owner, []).append((sink_id, sink.span.end_line or sink.span.line))
+        for bucket in out.values():
+            bucket.sort()
+        return out
 
     def _solve_reachability(
         self,
-    ) -> tuple[dict[str, Confidence], dict[str, tuple[str, ...]]]:
-        """Can the sink still run, from the moment this element starts?
+    ) -> tuple[dict[str, Confidence], dict[str, tuple[str, ...]], dict[str, str]]:
+        """Which elements drive the final decision?
 
-        Pure call-graph reachability answers the wrong question. In a cascade
-        ``main`` calls ``ingest`` and then ``final_decision``; ``ingest`` never
-        calls the sink, yet the decision plainly runs after it, and calling
-        ``ingest`` unreachable would be exactly the false "unreachable" the
-        workplan forbids. So two quantities are solved together:
+        Not "which elements run before it" -- that is a different question, and
+        it answers yes for a logger called between two cascade stages. An
+        element drives the decision when its *work* reaches the sink:
 
-        ``R(E)``    the sink runs at or after ``E`` starts, and
-        ``Cont(E)`` the sink runs after ``E`` returns to its callers.
+        a. it calls something that reaches the sink;
+        b. its result is consumed by something that reaches the sink -- which
+           covers both a stage whose output the sink eventually reads, and a
+           helper the sink itself calls;
+        c. it holds, or contains, the sink.
 
-        Both are monotone in a four-level lattice, so the fixpoint terminates.
-        Positions inside a caller are compared by source order, which
-        over-approximates across branches -- a call in the ``then`` arm is
-        treated as preceding a sink call in the ``else`` arm. That direction is
-        chosen deliberately: it can only mark something reachable that is not.
+        (b) is the approximation in this card. Card 3 sees call edges, not
+        values, so "consumed by" means the call's result is not discarded. An
+        element called only for its side effects therefore has no (b)
+        justification -- and rather than call it dead, it comes back UNKNOWN
+        whenever it could have a side effect at all, because whether those
+        effects feed the decision is a lineage question card 4 owns.
+
+        Returns the confidence per element, a representative path, and the
+        reason any element was left UNKNOWN.
         """
-        sites, callers, sink_sites = self._call_sites()
+        sites: dict[str, list[Edge]] = {}
+        callers: dict[str, list[Edge]] = {}
+        for edge in self._edges:
+            if edge.kind not in WIRING_EDGE_KINDS:
+                continue
+            sites.setdefault(edge.source_id, []).append(edge)
+            callers.setdefault(edge.target_id, []).append(edge)
+        for bucket in (*sites.values(), *callers.values()):
+            bucket.sort(key=lambda e: e.id)
+        sink_sites = self._sink_sites()
+
         best: dict[str, Confidence] = {}
         via: dict[str, tuple[str, ...]] = {}
-        cont: dict[str, Confidence] = {}
-        cont_via: dict[str, tuple[str, ...]] = {}
         for sink_id in self._sink_ids:
             best[sink_id] = Confidence.CERTAIN
             via[sink_id] = (sink_id,)
-
-        def better(
-            current: tuple[Confidence, tuple[str, ...]] | None,
-            candidate: tuple[Confidence, tuple[str, ...]],
-        ) -> bool:
-            """Strictly stronger only.
-
-            Confidence alone drives the fixpoint. Breaking ties on the path
-            would not terminate: lexicographic order over paths admits an
-            infinite descending chain once the call graph has a cycle. Each
-            element is therefore raised at most four times, and the first
-            justification to reach a level keeps it -- deterministic, because
-            every collection iterated here is sorted.
-            """
-            if current is None:
-                return True
-            return _RANK[candidate[0]] > _RANK[current[0]]
+        for owner, held in sink_sites.items():
+            if owner not in best:
+                best[owner] = Confidence.CERTAIN
+                via[owner] = (owner, held[0][0])
 
         def join(head: str, rest: Sequence[str]) -> tuple[str, ...]:
-            """Prepend *head*, collapsing any loop back onto it.
-
-            A representative path is a simple path: recursion is reported as a
-            CYCLE order node, not as a path that visits an element twice.
-            """
+            """Prepend *head*, collapsing any loop back onto it: a
+            representative path is a simple path. Recursion is reported as a
+            CYCLE order node, not as a path that visits an element twice."""
+            rest = tuple(rest)
             if head in rest:
-                return (head, *tuple(rest)[tuple(rest).index(head) + 1 :])
+                return (head, *rest[rest.index(head) + 1 :])
             return (head, *rest)
 
-        def after(caller: str, position: tuple[int, int]) -> tuple[Confidence, tuple[str, ...]]:
-            """The sink still runs, once control is back in *caller* at *position*."""
-            winner: tuple[Confidence, tuple[str, ...]] | None = None
-            for sink_position, sink_id in sink_sites.get(caller, []):
-                if sink_position >= position:
-                    candidate = (Confidence.CERTAIN, (caller, sink_id))
-                    if better(winner, candidate):
-                        winner = candidate
-            for site_position, target, edge in sites.get(caller, []):
-                if site_position < position or target not in best:
-                    continue
-                candidate = (
-                    combine(best[target], edge.provenance.confidence),
-                    join(caller, via[target]),
-                )
-                if better(winner, candidate):
-                    winner = candidate
-            if caller in cont:
-                candidate = (cont[caller], join(caller, cont_via[caller][1:]))
-                if better(winner, candidate):
-                    winner = candidate
-            return winner or (Confidence.UNKNOWN, ())
-
-        element_ids = sorted(
-            {*self._elements, *sites, *callers, *sink_sites}
-        )
+        element_ids = sorted({*self._elements, *sites, *callers})
         changed = True
         while changed:
             changed = False
             for element_id in element_ids:
-                # Cont(E): what happens after E hands control back.
                 winner: tuple[Confidence, tuple[str, ...]] | None = None
-                for caller, position, edge in callers.get(element_id, []):
-                    confidence, path = after(caller, position)
-                    if not path:
-                        continue
-                    candidate = (combine(confidence, edge.provenance.confidence), path)
-                    if better(winner, candidate):
-                        winner = candidate
-                if winner is not None and better(
-                    (cont[element_id], cont_via[element_id]) if element_id in cont else None,
-                    winner,
-                ):
-                    cont[element_id] = winner[0]
-                    cont_via[element_id] = winner[1]
-                    changed = True
-
-                # R(E): the sink at or after E.
-                reach: tuple[Confidence, tuple[str, ...]] | None = None
-                for _position, target, edge in sites.get(element_id, []):
+                for edge in sites.get(element_id, []):
+                    target = edge.target_id
                     if target not in best:
                         continue
                     candidate = (
                         combine(best[target], edge.provenance.confidence),
                         join(element_id, via[target]),
                     )
-                    if better(reach, candidate):
-                        reach = candidate
-                for _sink_position, sink_id in sink_sites.get(element_id, []):
-                    candidate = (Confidence.CERTAIN, (element_id, sink_id))
-                    if better(reach, candidate):
-                        reach = candidate
-                if element_id in cont:
-                    candidate = (cont[element_id], join(element_id, cont_via[element_id]))
-                    if better(reach, candidate):
-                        reach = candidate
-                if reach is not None and better(
-                    (best[element_id], via[element_id]) if element_id in best else None,
-                    reach,
-                ):
-                    best[element_id] = reach[0]
-                    via[element_id] = reach[1]
+                    if winner is None or _RANK[candidate[0]] > _RANK[winner[0]]:
+                        winner = candidate
+                for edge in callers.get(element_id, []):
+                    caller = edge.source_id
+                    if caller not in best or not self._result_is_used(edge):
+                        continue
+                    candidate = (
+                        combine(best[caller], edge.provenance.confidence),
+                        join(element_id, via[caller]),
+                    )
+                    if winner is None or _RANK[candidate[0]] > _RANK[winner[0]]:
+                        winner = candidate
+                if winner is None:
+                    continue
+                known = best.get(element_id)
+                if known is None or _RANK[winner[0]] > _RANK[known]:
+                    best[element_id] = winner[0]
+                    via[element_id] = winner[1]
                     changed = True
+
+        # Side-effect-only callees: not dead, just not traceable from here.
+        unknown_reason: dict[str, str] = {}
+        for element_id in element_ids:
+            if element_id in best:
+                continue
+            for edge in callers.get(element_id, []):
+                if edge.source_id not in best or self._result_is_used(edge):
+                    continue
+                if self._may_have_side_effects(element_id):
+                    unknown_reason[element_id] = (
+                        f"called by {edge.source_id}, which reaches a decision sink, but its "
+                        "result is discarded. It can still affect the decision through a side "
+                        "effect, and whether it does is a lineage question card 4 answers -- "
+                        "so this is UNKNOWN, not NO_SINK_PATH."
+                    )
+                    break
 
         # An element contained in something that reaches the sink reaches it too:
         # a parameter of a live function is live. Applied once, downwards only,
@@ -2425,13 +2539,14 @@ class CascadeAnalyzer:
             winner_id = max(contained, key=lambda c: (_RANK[best[c]], c))
             best[element.id] = best[winner_id]
             via[element.id] = (element.id, *via[winner_id])
-        return best, via
+        return best, via, unknown_reason
+
 
     def _build_reachability(self) -> None:
         """One :class:`Reachability` per inventoried element. No exceptions:
         cards 5 and 15 read this file as the canonical answer, so an element
         missing from it is a hole in both."""
-        best, via = self._solve_reachability()
+        best, via, side_effect_unknown = self._solve_reachability()
         behind_unknown = self._behind_unresolved()
         sinks = tuple(self._sink_ids)
         for element in sorted(self._elements.values(), key=lambda e: e.id):
@@ -2471,6 +2586,9 @@ class CascadeAnalyzer:
                     "no decision sink is declared in TARGET_PROFILE.md and none was detected, "
                     "so nothing can be said about reaching one. UNKNOWN, not NO_SINK_PATH."
                 )
+                state = ReachabilityState.UNKNOWN
+            elif element.id in side_effect_unknown:
+                reason = side_effect_unknown[element.id]
                 state = ReachabilityState.UNKNOWN
             elif element.id in behind_unknown:
                 reason = (
