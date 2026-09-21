@@ -149,6 +149,46 @@ def _read_jsonl(out_dir: Path, name: str, cls: type) -> list[Any]:
     ]
 
 
+def build_index(graph_dir: Path, target_root: Path) -> Any:
+    """The `StaticIndex` for a target. Used by this process **and the child**.
+
+    Shared deliberately. The first Mode A run mapped 0 of 524 events because
+    the child collected against an empty index while this process materialised
+    against a full one — the collector keys events to elements as it observes
+    them, so an index the child does not have is an index the recording never
+    saw. Two call sites building "the same" index independently is how that
+    happens.
+    """
+    from cascade_map.contracts.interfaces import (
+        CFGBlock,
+        CFGEdge,
+        DecisionPoint,
+        Edge,
+        Element,
+        LineageEdge,
+        OrderNode,
+    )
+    from cascade_map.tracer import StaticIndex
+
+    manifest_path = graph_dir / "manifest.json"
+    sinks = (
+        tuple(json.loads(manifest_path.read_text(encoding="utf-8")).get("sink_ids", []))
+        if manifest_path.exists()
+        else ()
+    )
+    return StaticIndex(
+        root=str(target_root),
+        elements=_read_jsonl(graph_dir, "elements.jsonl", Element),
+        edges=_read_jsonl(graph_dir, "edges.jsonl", Edge),
+        decisions=_read_jsonl(graph_dir, "decisions.jsonl", DecisionPoint),
+        cfg_blocks=_read_jsonl(graph_dir, "cfg_blocks.jsonl", CFGBlock),
+        cfg_edges=_read_jsonl(graph_dir, "cfg_edges.jsonl", CFGEdge),
+        lineage=_read_jsonl(graph_dir, "lineage.jsonl", LineageEdge),
+        order_nodes=_read_jsonl(graph_dir, "order.jsonl", OrderNode),
+        sink_element_ids=sinks,
+    )
+
+
 # ---------------------------------------------------------------------------
 # analyze
 # ---------------------------------------------------------------------------
@@ -387,16 +427,7 @@ def trace(
             f"Nothing was executed."
         )
 
-    index = StaticIndex(
-        root=str(target_root),
-        elements=elements,
-        edges=_read_jsonl(graph_dir, "edges.jsonl", Edge),
-        decisions=_read_jsonl(graph_dir, "decisions.jsonl", DecisionPoint),
-        cfg_blocks=_read_jsonl(graph_dir, "cfg_blocks.jsonl", CFGBlock),
-        cfg_edges=_read_jsonl(graph_dir, "cfg_edges.jsonl", CFGEdge),
-        lineage=_read_jsonl(graph_dir, "lineage.jsonl", LineageEdge),
-        order_nodes=_read_jsonl(graph_dir, "order.jsonl", OrderNode),
-    )
+    index = build_index(graph_dir, target_root)
     tracer = Tracer(index, recordings_dir=recordings)
     result = tracer.result(run)
     order_nodes = _read_jsonl(graph_dir, "order.jsonl", OrderNode)
@@ -455,7 +486,8 @@ config = RunConfig(
     declared_process_names=frozenset(spec_doc.get("declared_process_names", ())),
     env_passthrough=frozenset(spec_doc.get("env_passthrough", ())),
 )
-index = StaticIndex(root=str(target_root))
+from cascade_map.cli import build_index
+index = build_index(Path({graph_dir}), target_root)
 tracer = Tracer(index, recordings_dir=Path({recordings}))
 graph_hash = compute_graph_hash(compute_target_hashes(target_root))
 try:

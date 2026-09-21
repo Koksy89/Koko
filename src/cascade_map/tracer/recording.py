@@ -169,3 +169,8 @@ class Recording:
     def with_observations(self, observations: Iterable[RawObservation]) -> "Recording":
         return Recording(header=dict(self.header), observations=tuple(observations))
 
+    def with_header(self, **updates: Any) -> "Recording":
+        header = dict(self.header)
+        header.update(updates)
+        return Recording(header=header, observations=self.observations)
+

@@ -74,6 +74,9 @@ class MappingReport:
     observations: int
     dropped_observations: int
     elements_entered: int
+    persist_error: str = ""
+    """Why this run's recording is not on disk, when it could not be written.
+    Empty when it was written, or when no recordings directory is configured."""
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -88,6 +91,7 @@ class MappingReport:
             "observations": self.observations,
             "dropped_observations": self.dropped_observations,
             "elements_entered": self.elements_entered,
+            "persist_error": self.persist_error,
         }
 
 
@@ -160,6 +164,19 @@ class Tracer:
         this in a `finally`, so it must never turn a target's exception into a
         tracer's exception. Holding the recording here is what lets
         `result(run)` work in-process, with no round trip through disk.
+
+        It is also written to `recordings_dir` when one is configured, because
+        in-process is not the only case: card 11's sandbox never lifts
+        enforcement once a run starts, so `cascade-map trace` runs the harness
+        in a child process and that child's memory -- and the held recording
+        with it -- dies at exit. The file is the only thing that survives.
+
+        This runs *inside* the sandbox window, so the write may itself be
+        blocked. That is recorded on the recording and in the mapping report,
+        never raised: a target's run must not fail because its observer could
+        not save a file. A refused `start()` writes nothing at all -- an empty
+        file would later read as a run that observed nothing rather than a run
+        that never happened.
         """
         collector = self._observing
         run = self._observed_run
@@ -171,7 +188,26 @@ class Tracer:
             collector.stop()
         finally:
             if run is not None:
-                self.hold(run, collector.recording())
+                recording = collector.recording()
+                error = self._persist(run, recording)
+                if error:
+                    recording = recording.with_header(persist_error=error)
+                self.hold(run, recording)
+
+    def _persist(self, run: RunRecord, recording: Recording) -> str:
+        """Write the recording out, or return why it could not be written."""
+        if self.recordings_dir is None:
+            return ""
+        relative = f"{run.run_id}/recording.jsonl"
+        try:
+            recording.write(self.recording_path(run.run_id))
+        except Exception as exc:  # noqa: BLE001 - including the sandbox's own denial
+            return (
+                f"the recording could not be persisted to {relative}: "
+                f"{type(exc).__name__}: {exc}. This run can still be materialised in "
+                "process from the held copy, but it cannot be replayed later."
+            )
+        return ""
 
     def collector(self, run: RunRecord) -> TraceCollector:
         """The hook the harness installs around the target call.
@@ -464,6 +500,7 @@ class Tracer:
             observations=len(ordered),
             dropped_observations=dropped,
             elements_entered=len(entered),
+            persist_error=str(recording.header.get("persist_error", "")),
         )
 
         return TraceResult(

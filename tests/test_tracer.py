@@ -1592,3 +1592,82 @@ def test_the_recording_carries_the_escape_paths_the_harness_could_not_close() ->
     assert tracer.load_recording(run).header["unguaranteed"] == [
         "direct _posixsubprocess.fork_exec"
     ]
+
+
+# ---------------------------------------------------------------------------
+# persistence: the child process dies, the file is what survives
+# ---------------------------------------------------------------------------
+
+
+def test_stopping_persists_the_recording_when_a_directory_is_configured(
+    tmp_path: Path,
+) -> None:
+    tracer = Tracer(branch_index(), recordings_dir=tmp_path)
+    run = make_run()
+    observed_window(tracer, run, lambda: _branching_probe(7))
+    path = tracer.recording_path(run.run_id)
+    assert path.is_file(), "cascade-map trace has nothing else to read"
+    assert Recording.read(path).observations
+    assert tracer.result(run).mapping.persist_error == ""
+
+
+def test_materialising_from_disk_and_from_memory_are_byte_identical(
+    tmp_path: Path,
+) -> None:
+    index = branch_index()
+    held = Tracer(index, recordings_dir=tmp_path)
+    run = make_run()
+    observed_window(held, run, lambda: _branching_probe(7))
+
+    from_disk = Tracer(index, recordings_dir=tmp_path)
+    assert not from_disk._recordings, "this tracer must read the file, not a held copy"
+    memory_result = held.result(run)
+    disk_result = from_disk.result(run)
+    assert memory_result.events
+    memory_files = held.emit(memory_result, tmp_path / "memory")
+    disk_files = from_disk.emit(disk_result, tmp_path / "disk")
+    assert memory_files == disk_files
+    assert set(memory_files) == EXPECTED_ARTIFACTS
+    for name in sorted(memory_files):
+        assert (tmp_path / "memory" / name).read_bytes() == (
+            tmp_path / "disk" / name
+        ).read_bytes()
+    assert Recording.read(tracer_path := held.recording_path(run.run_id)).dumps() == (
+        tracer_path.read_text(encoding="utf-8")
+    )
+
+
+def test_a_refused_run_persists_nothing(tmp_path: Path) -> None:
+    tracer = Tracer(StaticIndex(root="/nowhere"), recordings_dir=tmp_path)
+    run = make_run(controls={"network": False, "filesystem": True, "process": True})
+    with pytest.raises(TraceRefused):
+        tracer.start(run)
+    tracer.stop()
+    assert not tracer.recording_path(run.run_id).exists()
+    assert list(tmp_path.iterdir()) == [], "an empty file would read as a run that observed nothing"
+
+
+def test_a_blocked_write_is_recorded_not_raised(tmp_path: Path) -> None:
+    """The write happens inside the sandbox window, where it may be denied.
+
+    Card 11's `BlockedOperation` is not imported here -- the tracer must not
+    depend on the harness -- so the denial is staged with a real filesystem
+    refusal: a plain file where the recordings directory should be.
+    """
+    blocked = tmp_path / "denied"
+    blocked.write_text("not a directory", encoding="utf-8")
+    tracer = Tracer(branch_index(), recordings_dir=blocked)
+    run = make_run()
+
+    raised = observed_window(tracer, run, lambda: _branching_probe(7))
+    assert raised is None, "an observer that cannot save must not break the run"
+
+    result = tracer.result(run)  # the held copy still works
+    assert result.events
+    assert "run_001/recording.jsonl" in result.mapping.persist_error
+    assert "cannot be replayed later" in result.mapping.persist_error
+    assert "Error" in result.mapping.persist_error
+    assert blocked.read_text(encoding="utf-8") == "not a directory"
+    assert json.loads(tracer.emit(result, tmp_path / "out")["mapping.json"])[
+        "persist_error"
+    ] == result.mapping.persist_error
