@@ -1193,10 +1193,14 @@ def test_html_render_runtime_evidence_is_visually_distinct_and_tagged(runtime_st
     assert "runtime-evidence" in html
     assert "runtime-section" in html
     assert f"run: {RUN_ID}" in html
-    # the phase B page (no rstore) never mentions a run id at all
+    # the phase B page (no rstore) never mentions a run id, and never
+    # renders the runtime section itself (the CSS rule for it stays defined
+    # in the shared stylesheet either way, so check the section marker, not
+    # the class name).
     baseline = render_site(store)
     assert RUN_ID not in baseline
-    assert "runtime-section" not in baseline
+    assert 'id="runtime"' not in baseline
+    assert 'class="runtime-section"' not in baseline
 
 
 # -- determinism and offline discipline, extended to the overlay ------------

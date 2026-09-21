@@ -260,6 +260,7 @@ class TraceCollector:
             "dropped_observations": self._truncated,
             "max_observations": self.max_observations,
             "hash_randomization": bool(sys.flags.hash_randomization),
+            "unguaranteed": list(getattr(self.run, "unguaranteed", ()) or ()),
             "thread_count": len(self._slots),
             "thread_slots": sorted(self._slots.values()),
             "external_frames": {key: self._external[key] for key in sorted(self._external)},

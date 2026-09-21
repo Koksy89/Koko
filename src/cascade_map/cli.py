@@ -97,6 +97,59 @@ def _confidence_census(records: Sequence[Any]) -> dict[str, int]:
 
 
 # ---------------------------------------------------------------------------
+# Reading a Mode B graph back
+# ---------------------------------------------------------------------------
+
+
+def _rebuild(cls: type, payload: dict[str, Any]) -> Any:
+    """Reconstruct one contract dataclass from a parsed artifact row.
+
+    Generic on purpose. A hand-written reader per type would be a second
+    description of the schema, free to drift from `canonical_dumps` the moment
+    a field is added -- and the drift would be silent, because a missing field
+    just reads as a default. This walks the dataclass's own fields instead, so
+    the contract stays the single description.
+    """
+    import dataclasses
+    import typing
+
+    hints = typing.get_type_hints(cls)
+    kwargs: dict[str, Any] = {}
+    for field in dataclasses.fields(cls):
+        if field.name not in payload:
+            continue
+        value = payload[field.name]
+        hint = hints[field.name]
+        origin = typing.get_origin(hint)
+        args = typing.get_args(hint)
+        if value is None:
+            kwargs[field.name] = None
+        elif origin is tuple and args and dataclasses.is_dataclass(args[0]):
+            kwargs[field.name] = tuple(_rebuild(args[0], v) for v in value)
+        elif origin is tuple:
+            kwargs[field.name] = tuple(value)
+        elif dataclasses.is_dataclass(hint) and isinstance(value, dict):
+            kwargs[field.name] = _rebuild(hint, value)
+        elif args and any(dataclasses.is_dataclass(a) for a in args) and isinstance(value, dict):
+            inner = next(a for a in args if dataclasses.is_dataclass(a))
+            kwargs[field.name] = _rebuild(inner, value)
+        else:
+            kwargs[field.name] = value
+    return cls(**kwargs)
+
+
+def _read_jsonl(out_dir: Path, name: str, cls: type) -> list[Any]:
+    path = out_dir / name
+    if not path.exists():
+        return []
+    return [
+        _rebuild(cls, json.loads(line))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+# ---------------------------------------------------------------------------
 # analyze
 # ---------------------------------------------------------------------------
 
@@ -248,6 +301,173 @@ def analyze(
 
 
 # ---------------------------------------------------------------------------
+# trace — Mode A
+# ---------------------------------------------------------------------------
+
+
+def trace(
+    graph_dir: Path,
+    scenario_file: Path,
+    scenario: str,
+    out_root: Path,
+) -> tuple[int, str]:
+    """Run the target under the harness and write the runtime overlay.
+
+    The harness runs in a **child process**, and that is not an optimisation.
+
+    Card 11's sandbox never auto-clears its enforcement once a run starts:
+    clearing it at block exit left a window in which a thread outliving the
+    run escaped every control, so it now ends only at process exit. That is
+    the right call for containment, and it means the harness owns its process
+    for good — the first attempt at this command died trying to `mkdir` its own
+    output directory afterwards, blocked by its own sandbox.
+
+    So the child runs the target and writes its recording and run record
+    *inside* the sandbox, which it legitimately owns. This parent stays clean
+    and does the materialising and writing. Nothing is widened to make room for
+    the tool: the alternative was declaring our output directory a permitted
+    write root, which would have let the target write there too.
+    """
+    import subprocess
+
+    from cascade_map.contracts.interfaces import (
+        CFGBlock,
+        CFGEdge,
+        DecisionPoint,
+        Edge,
+        Element,
+        LineageEdge,
+        OrderNode,
+        RunRecord,
+    )
+    from cascade_map.harness.hashing import compute_graph_hash, compute_target_hashes
+    from cascade_map.narrative import Narrator
+    from cascade_map.tracer import StaticIndex, Tracer
+
+    spec_doc = json.loads(scenario_file.read_text(encoding="utf-8"))
+    target_root = Path(spec_doc["target_root"]).resolve()
+    if scenario not in spec_doc.get("scenarios", {}):
+        known = ", ".join(sorted(spec_doc.get("scenarios", {}))) or "none"
+        return EXIT_USAGE, f"no scenario named {scenario!r}. Declared: {known}"
+
+    elements = _read_jsonl(graph_dir, "elements.jsonl", Element)
+    if not elements:
+        return EXIT_USAGE, (
+            f"no Mode B graph in {graph_dir}. Mode A always builds on a completed "
+            f"static graph — run `cascade-map analyze` first."
+        )
+
+    sandbox_root = (out_root / "sandbox").resolve()
+    sandbox_root.mkdir(parents=True, exist_ok=True)
+    recordings = sandbox_root / "recordings"
+    recordings.mkdir(parents=True, exist_ok=True)
+    record_out = sandbox_root / "run_record.json"
+
+    child = _CHILD_SOURCE.format(
+        spec=json.dumps(spec_doc),
+        scenario=json.dumps(scenario),
+        graph_dir=json.dumps(str(graph_dir.resolve())),
+        sandbox=json.dumps(str(sandbox_root)),
+        recordings=json.dumps(str(recordings)),
+        record_out=json.dumps(str(record_out)),
+        src=json.dumps(str(Path(__file__).resolve().parents[1])),
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", child], capture_output=True, text=True, timeout=1800
+    )
+    if not record_out.exists():
+        detail = (completed.stderr or completed.stdout or "").strip()[-2000:]
+        return EXIT_REFUSED, f"the harness produced no run record.\n\n{detail}"
+
+    run = _rebuild(RunRecord, json.loads(record_out.read_text(encoding="utf-8")))
+    if run.refused:
+        return EXIT_REFUSED, (
+            f"REFUSED: {run.refusal_reason}\n\n"
+            f"A refusal is a correct outcome, not a warning to work around. "
+            f"Nothing was executed."
+        )
+
+    index = StaticIndex(
+        root=str(target_root),
+        elements=elements,
+        edges=_read_jsonl(graph_dir, "edges.jsonl", Edge),
+        decisions=_read_jsonl(graph_dir, "decisions.jsonl", DecisionPoint),
+        cfg_blocks=_read_jsonl(graph_dir, "cfg_blocks.jsonl", CFGBlock),
+        cfg_edges=_read_jsonl(graph_dir, "cfg_edges.jsonl", CFGEdge),
+        lineage=_read_jsonl(graph_dir, "lineage.jsonl", LineageEdge),
+        order_nodes=_read_jsonl(graph_dir, "order.jsonl", OrderNode),
+    )
+    tracer = Tracer(index, recordings_dir=recordings)
+    result = tracer.result(run)
+    order_nodes = _read_jsonl(graph_dir, "order.jsonl", OrderNode)
+    decisions = _read_jsonl(graph_dir, "decisions.jsonl", DecisionPoint)
+    narrative = Narrator().narrate(result.events, order_nodes, decisions, run)
+
+    run_dir = out_root / "runtime" / run.run_id
+    tracer.emit(result, run_dir)
+    _write(run_dir, "run.json", canonical_dumps(run) + "\n")
+    _write(run_dir, "narrative.jsonl", canonical_jsonl(narrative))
+
+    total, mapped = result.mapping.total_events, result.mapping.mapped_events
+    rate = f"{100 * mapped // total}%" if total else "nothing was observed"
+    lines = [
+        f"Wrote {run_dir}",
+        "",
+        f"  run id         {run.run_id}",
+        f"  events         {total:,}",
+        f"  mapped         {mapped:,} ({rate})",
+        f"  unmapped       {total - mapped:,}   <- where the static map was wrong",
+        f"  contradictions {len(result.contradictions):,}   <- observation vs static claim",
+        f"  nondeterminism {len(result.nondeterminism):,}",
+        f"  blocked        {len(run.blocked):,}   <- side effects the harness stopped",
+        "",
+    ]
+    if run.unguaranteed:
+        lines.append("WHAT THIS RUN COULD NOT GUARANTEE:")
+        lines += [f"  - {item}" for item in run.unguaranteed]
+        lines.append("")
+    return EXIT_OK, "\n".join(lines)
+
+
+#: Runs in a child interpreter. Writes its record inside the sandbox, which is
+#: the only place it is allowed to write once the harness has taken the process.
+_CHILD_SOURCE = """
+import json, sys
+sys.path.insert(0, {src})
+from pathlib import Path
+from cascade_map.contracts.interfaces import canonical_dumps
+from cascade_map.harness import Harness, HarnessRefusal, RunConfig, ScenarioSpec
+from cascade_map.harness.hashing import compute_graph_hash, compute_target_hashes
+from cascade_map.tracer import StaticIndex, Tracer
+
+spec_doc = json.loads({spec!r}) if isinstance({spec!r}, str) else {spec}
+target_root = Path(spec_doc["target_root"]).resolve()
+config = RunConfig(
+    target_root=target_root,
+    mode_b_out_dir=Path({graph_dir}),
+    sandbox_root=Path({sandbox}),
+    scenarios={{
+        name: ScenarioSpec(name=name, module=body["module"],
+                           function=body.get("function", ""),
+                           args=tuple(body.get("args", ())))
+        for name, body in spec_doc["scenarios"].items()
+    }},
+    declared_process_names=frozenset(spec_doc.get("declared_process_names", ())),
+    env_passthrough=frozenset(spec_doc.get("env_passthrough", ())),
+)
+index = StaticIndex(root=str(target_root))
+tracer = Tracer(index, recordings_dir=Path({recordings}))
+graph_hash = compute_graph_hash(compute_target_hashes(target_root))
+try:
+    run = Harness(config).start({scenario}, graph_hash, tracer)
+except HarnessRefusal as exc:
+    print("refusal:", exc, file=sys.stderr)
+    raise SystemExit(4)
+Path({record_out}).write_text(canonical_dumps(run) + "\\n", encoding="utf-8")
+"""
+
+
+# ---------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------
 
@@ -329,7 +549,12 @@ def _build_parser() -> argparse.ArgumentParser:
     show.add_argument("out_dir", type=Path)
     show.add_argument("--html", type=Path, default=None)
 
-    sub.add_parser("trace", help="Mode A — run the target under the harness")
+    run_a = sub.add_parser("trace", help="Mode A — run the target under the harness")
+    run_a.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
+    run_a.add_argument("--scenarios", type=Path, required=True,
+                       help="JSON file declaring target_root and named scenarios")
+    run_a.add_argument("--scenario", required=True)
+    run_a.add_argument("--out", type=Path, default=Path("out/latest"))
     return parser
 
 
@@ -372,19 +597,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
         return EXIT_OK
 
-    # Mode A. Refusing is the correct answer while it is unbuilt, and it must
-    # not read as "nothing happened".
-    print(
-        "REFUSED: `trace` is not built yet.\n\n"
-        "Mode A runs your engine to watch it. Card 10's Mode A half, and card "
-        "15's runtime overlay, do not exist.\n\n"
-        "When it does exist, read docs/design/ARCHITECTURE.md under 'What layer "
-        "3 does not cover' first: the harness cannot close every escape, it "
-        "says so in every run record, and the first run belongs inside a "
-        "container.",
-        file=sys.stderr,
-    )
-    return EXIT_REFUSED
+    code, message = trace(args.graph_dir, args.scenarios, args.scenario, args.out)
+    print(message, file=sys.stderr if code else sys.stdout)
+    return code
 
 
 if __name__ == "__main__":

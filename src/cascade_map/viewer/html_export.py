@@ -456,7 +456,7 @@ def _render_events(store: ArtifactStore, rstore: RuntimeStore) -> str:
             for name, v in sorted(detail["values"].items())
         ) or "<tr><td colspan='6'>no captured values</td></tr>"
         rows.append(
-            f"<div class='element-detail runtime-evidence' id='evt-{escape(detail['event_id'])}'>"
+            f'<div class="element-detail runtime-evidence" id="evt-{escape(detail["event_id"])}">'
             f"<p><b>{escape(detail['event_id'])}</b> {_run_tag(detail['run_id'])} "
             f"kind: {escape(detail['kind'] or '')} | element: {_ref(store, detail['element_id'])} | "
             f"sequence: {detail['sequence']} | depth: {detail['depth']} | "

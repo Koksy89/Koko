@@ -120,11 +120,64 @@ class Tracer:
         self.required_controls = tuple(required_controls)
         self.max_observations = max_observations
         self._recordings: dict[str, Recording] = {}
+        self._observing: TraceCollector | None = None
+        self._observed_run: RunRecord | None = None
 
     # -- collection (called by the harness, inside its own process) --------
 
+    def start(self, run: RunRecord) -> None:
+        """`RunObserver`: begin observing the run the harness just verified.
+
+        The record arrives here rather than at construction because the
+        refusal below is only worth anything against the record the harness
+        actually produced -- real `controls_active`, real `run_id`. A check fed
+        a record fabricated before verification does not fail quietly; it
+        reports a pass.
+
+        Called inside the sandbox window. If it refuses, nothing is installed
+        and `stop()` afterwards is a no-op.
+        """
+        if self._observing is not None:
+            raise RuntimeError(
+                f"this tracer is already observing run {self._observed_run.run_id}"
+                if self._observed_run is not None
+                else "this tracer is already observing a run"
+            )
+        collector = self.collector(run)  # refuses here on a run it may not trace
+        self._observing = collector
+        self._observed_run = run
+        try:
+            collector.start()
+        except BaseException:
+            self._observing = None
+            self._observed_run = None
+            raise
+
+    def stop(self) -> None:
+        """`RunObserver`: stop observing and keep the recording.
+
+        Safe to call when `start()` refused or never ran -- the harness puts
+        this in a `finally`, so it must never turn a target's exception into a
+        tracer's exception. Holding the recording here is what lets
+        `result(run)` work in-process, with no round trip through disk.
+        """
+        collector = self._observing
+        run = self._observed_run
+        self._observing = None
+        self._observed_run = None
+        if collector is None:
+            return
+        try:
+            collector.stop()
+        finally:
+            if run is not None:
+                self.hold(run, collector.recording())
+
     def collector(self, run: RunRecord) -> TraceCollector:
-        """The hook the harness installs around the target call."""
+        """The hook the harness installs around the target call.
+
+        Kept for callers driving collection themselves; `start`/`stop` are the
+        `RunObserver` adapter over it."""
         return TraceCollector(
             run,
             self.index,
@@ -391,15 +444,18 @@ class Tracer:
 
         mapped = sum(1 for event in events if event.element_id)
         total = len(events)
-        permille = (mapped * 1000) // total if total else 1000
+        permille = (mapped * 1000) // total if total else 0
         report = MappingReport(
             run_id=run_id,
             total_events=total,
             mapped_events=mapped,
             unmapped_events=total - mapped,
             rate_permille=permille,
-            rate_text=f"{mapped}/{total} events mapped "
-            f"({permille // 10}.{permille % 10}%)",
+            rate_text=(
+                f"{mapped}/{total} events mapped ({permille // 10}.{permille % 10}%)"
+                if total
+                else "0/0 events mapped: nothing was observed in this run"
+            ),
             unmapped_reasons=unmapped_reasons,
             external_frames={
                 str(key): int(value)

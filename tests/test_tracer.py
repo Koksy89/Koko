@@ -43,6 +43,7 @@ from cascade_map.contracts.interfaces import (
     OrderKind,
     OrderNode,
     Provenance,
+    RunObserver,
     RunRecord,
     SourceSpan,
     canonical_dumps,
@@ -1462,3 +1463,132 @@ def test_emitted_events_match_the_trace_event_schema(tmp_path: Path) -> None:
             assert capture["status"] in ("FULL", "SUMMARIZED", "REDACTED", "DROPPED")
             if capture["status"] != "FULL":
                 assert capture["reason"]
+
+
+# ---------------------------------------------------------------------------
+# the RunObserver seam: what card 11 starts and stops around the target call
+# ---------------------------------------------------------------------------
+
+
+def observed_window(tracer: Tracer, run: RunRecord, call: Any) -> BaseException | None:
+    """Mimic card 11's window: start inside it, stop in the `finally`."""
+    raised: BaseException | None = None
+    tracer.start(run)
+    try:
+        call()
+    except BaseException as exc:  # noqa: BLE001 - the harness swallows this too
+        raised = exc
+    finally:
+        tracer.stop()
+    return raised
+
+
+def test_the_tracer_is_a_run_observer() -> None:
+    observer: RunObserver = Tracer(StaticIndex(root="/nowhere"))
+    members = {name for name in vars(RunObserver) if not name.startswith("_")}
+    assert members == {"start", "stop"}
+    for name in sorted(members):
+        assert callable(getattr(observer, name))
+        assert inspect.signature(getattr(Tracer, name)) == inspect.signature(
+            getattr(RunObserver, name)
+        ), name
+
+
+def test_observing_a_run_holds_its_recording_without_touching_disk() -> None:
+    index = branch_index()
+    tracer = Tracer(index)
+    assert tracer.recordings_dir is None
+    observed_window(tracer, make_run(), lambda: _branching_probe(7))
+    result = tracer.result(make_run())
+    assert len(result.events) >= 3
+    branch = next(event for event in result.events if event.kind is EventKind.BRANCH)
+    assert branch.branch_taken == "high"
+    with pytest.raises(TraceRefused):
+        tracer.recording_path("run_001")  # no directory configured, and none needed
+
+
+def test_the_observer_stops_even_when_the_target_raises() -> None:
+    index = StaticIndex(
+        root=str(Path(__file__).resolve().parent),
+        elements=[probe_element(_raising_probe, "probes::_raising_probe")],
+    )
+    tracer = Tracer(index)
+
+    def boom() -> None:
+        _raising_probe()
+        raise KeyError("the scenario failed")
+
+    raised = observed_window(tracer, make_run(), boom)
+    assert isinstance(raised, KeyError)
+    assert sys.gettrace() is None, "the trace hook must not outlive the window"
+    events = tracer.result(make_run()).events
+    assert [event.kind for event in events].count(EventKind.EXCEPTION) >= 1
+
+
+def test_the_observer_refuses_a_run_it_may_not_trace() -> None:
+    tracer = Tracer(StaticIndex(root="/nowhere"))
+    run = make_run(
+        controls={
+            "network": False,
+            "filesystem": True,
+            "process": True,
+        }
+    )
+    with pytest.raises(TraceRefused) as raised:
+        tracer.start(run)
+    assert "'network'" in raised.value.reason
+    assert sys.gettrace() is None, "a refusal must install nothing"
+    tracer.stop()  # safe after a refusal
+    with pytest.raises(TraceRefused):
+        tracer.result(run)
+
+
+def test_stopping_an_observer_that_never_started_is_a_no_op() -> None:
+    tracer = Tracer(StaticIndex(root="/nowhere"))
+    tracer.stop()
+    tracer.stop()
+    assert sys.gettrace() is None
+
+
+def test_an_observer_cannot_be_started_twice_but_can_observe_twice() -> None:
+    index = branch_index()
+    tracer = Tracer(index)
+    tracer.start(make_run("run_a"))
+    try:
+        with pytest.raises(RuntimeError):
+            tracer.start(make_run("run_b"))
+    finally:
+        tracer.stop()
+    observed_window(tracer, make_run("run_b"), lambda: _branching_probe(1))
+    assert tracer.result(make_run("run_a")).events
+    second = tracer.result(make_run("run_b"))
+    assert next(
+        event for event in second.events if event.kind is EventKind.BRANCH
+    ).branch_taken == "low"
+
+
+def test_an_empty_trace_never_reports_a_perfect_mapping_rate() -> None:
+    tracer = Tracer(StaticIndex(root="/nowhere"))
+    observed_window(tracer, make_run(), lambda: None)
+    report = tracer.result(make_run()).mapping
+    assert report.total_events == 0
+    assert report.rate_permille == 0
+    assert report.rate_text == "0/0 events mapped: nothing was observed in this run"
+
+
+def test_the_recording_carries_the_escape_paths_the_harness_could_not_close() -> None:
+    run = RunRecord(
+        run_id="run_001",
+        target_hashes={},
+        graph_hash="g",
+        scenario="fixture",
+        interpreter="cpython",
+        controls_active={"network": True, "filesystem": True, "process": True},
+        blocked=(),
+        unguaranteed=("direct _posixsubprocess.fork_exec",),
+    )
+    tracer = Tracer(StaticIndex(root="/nowhere"))
+    observed_window(tracer, run, lambda: None)
+    assert tracer.load_recording(run).header["unguaranteed"] == [
+        "direct _posixsubprocess.fork_exec"
+    ]
