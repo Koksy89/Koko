@@ -1,41 +1,48 @@
 {
+  "case_id": "inv_incremental",
+  "cold_and_warm_must_be_byte_identical": true,
+  "content_change_must_reparse": true,
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "inv_incremental",
       "kind": "MODULE",
-      "name": "inv_incremental",
-      "qualname": "",
       "module": "inv_incremental",
-      "span": {
-        "path": "tests/fixtures/mode_b/inv_incremental/__init__.py",
-        "line": 1
-      },
+      "name": "inv_incremental",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "docstring": "Module for testing incremental analysis.",
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/inv_incremental/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "An operation.",
       "id": "inv_incremental::operation",
       "kind": "FUNCTION",
-      "name": "operation",
-      "qualname": "operation",
       "module": "inv_incremental",
-      "span": {
-        "path": "tests/fixtures/mode_b/inv_incremental/__init__.py",
-        "line": 4
-      },
+      "name": "operation",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "docstring": "An operation.",
-      "content_hash_asserted": false
+      "qualname": "operation",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 10,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/inv_incremental/__init__.py"
+      }
     }
   ],
+  "proves": "Cold and warm runs are byte-identical; a touched-but-unchanged file is not re-analysed (its cached record is reused verbatim); a file whose content hash changes is re-analysed.",
+  "touch_must_not_reparse": true,
   "unresolved": []
 }

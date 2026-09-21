@@ -25,7 +25,7 @@ from cascade_map.contracts.interfaces import (
     file_id,
 )
 
-from .hashing import sha256_hex, sha256_text
+from .hashing import locate_byte_offset, sha256_hex, sha256_text
 
 try:
     import yaml  # type: ignore[import-untyped]
@@ -72,11 +72,12 @@ def parse_data_file(
     try:
         text = source_bytes.decode("utf-8")
     except UnicodeDecodeError as exc:
+        line, col = locate_byte_offset(source_bytes, exc.start)
         unresolved.append(
             Unresolved(
                 id=file_id(path_str),
                 reason=UnresolvedReason.DECODE_ERROR,
-                span=SourceSpan(path=path_str, line=1),
+                span=SourceSpan(path=path_str, line=line, col=col),
                 description=f"{path_str} is not valid UTF-8: {exc}",
             )
         )

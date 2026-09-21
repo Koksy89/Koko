@@ -14,11 +14,15 @@ Nothing here executes target code. The one fixture touched is read as JSON.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Sequence
 
 import pytest
 
+from cascade_map import alignment as alignment_module
 from cascade_map.alignment import (
     API_KEY_ENV,
     MODEL_ID,
@@ -339,6 +343,50 @@ def test_malformed_entry_is_reported_with_location(
     assert needle in issue.description
 
 
+@pytest.mark.parametrize(
+    ("body", "line"),
+    [
+        ("intents: &anchor\n  - element_id: a::b\n", 1),
+        ("intents:\n  - element_id: a::b\n    statement: *alias\n    status: CONFIRMED\n", 3),
+        ("intents:\n  - element_id: a::b\n    statement: !!str x\n    status: CONFIRMED\n", 3),
+        ("intents:\n  - element_id: a::b\n    statement: |\n      two\n      lines\n", 3),
+        ("intents:\n  - element_id: a::b\n    statement: >\n      folded\n", 3),
+        ("intents:\n  - element_id: a::b\n    statement: {a: 1}\n", 3),
+        ("intents:\n  - element_id: a::b\n    invariants: [a, [b]]\n", 3),
+        ("---\nintents: []\n", 1),
+    ],
+)
+def test_parser_refuses_unsupported_yaml_constructs(tmp_path: Path, body: str, line: int) -> None:
+    """An anchor, alias, tag, block scalar or flow mapping is a located refusal.
+
+    Reading `statement: *common` as the literal text `*common` would silently
+    misrepresent what the owner wrote, which is worse than refusing the file.
+    """
+    path = tmp_path / "intents.yaml"
+    path.write_text(body, encoding="utf-8")
+    registry = load_registry(path)
+    assert registry.intents == ()
+    assert registry.issues[0].reason is UnresolvedReason.SYNTAX_ERROR
+    assert registry.issues[0].span.line == line
+    assert "supported" in registry.issues[0].description
+
+
+def test_duplicate_key_inside_an_entry_is_reported(tmp_path: Path) -> None:
+    path = tmp_path / "intents.yaml"
+    path.write_text(
+        "intents:\n"
+        "  - element_id: a::b\n"
+        "    status: CONFIRMED\n"
+        "    statement: one\n"
+        "    statement: two\n",
+        encoding="utf-8",
+    )
+    registry = load_registry(path)
+    assert registry.intents == ()
+    assert registry.rejected_element_ids == ("a::b",)
+    assert any("duplicate key" in issue.description for issue in registry.issues)
+
+
 def test_missing_status_is_never_read_as_owner_confirmation(tmp_path: Path) -> None:
     path = tmp_path / "intents.yaml"
     path.write_text("intents:\n  - element_id: a::b\n    statement: x\n", encoding="utf-8")
@@ -573,6 +621,9 @@ def test_a_contradiction_outranks_an_unverifiable_expectation() -> None:
     ]
     assert verdict.verdict is Verdict.MISALIGNED
     assert verdict.expectation == "invariant 'returns.value == 7'"
+    # The unrecognised invariant is still named: a contradiction outranking it must
+    # not bury the fact that one expectation went unchecked.
+    assert "UNVERIFIABLE: invariant 'nonsense expectation'" in verdict.provenance.note
 
 
 def test_missing_captured_value_is_unverifiable() -> None:
@@ -1104,6 +1155,202 @@ def test_replaying_the_same_run_twice_is_byte_identical() -> None:
     )
     assert verdicts_jsonl(first) == verdicts_jsonl(second)
     assert verdicts_jsonl(first).endswith("\n")
+
+
+_DETERMINISM_DRIVER = '''\
+"""Emits every card-13 artifact from one fixed input. Run under two hash seeds."""
+
+import sys
+
+sys.path.insert(0, sys.argv[1])
+
+from cascade_map.alignment import (
+    AlignmentEngine,
+    intents_jsonl,
+    issues_jsonl,
+    parse_registry_text,
+    verdicts_jsonl,
+)
+from cascade_map.contracts.interfaces import (
+    CaptureStatus,
+    Confidence,
+    Edge,
+    EdgeKind,
+    Element,
+    ElementKind,
+    EventKind,
+    LineageEdge,
+    LineageKind,
+    Method,
+    Provenance,
+    SourceSpan,
+    TraceEvent,
+    ValueCapture,
+    canonical_dumps,
+    feature_id,
+)
+
+SPEC = """\\
+intents:
+  - element_id: m::f
+    status: CONFIRMED
+    statement: Writes the score and calls the gate.
+    invariants:
+      - returns.type == int
+      - returns.value >= 0
+      - calls m::g
+      - runs before m::g
+      - not a real invariant
+    expected_writes:
+      - "@feature:score"
+    expected_reads:
+      - "@feature:raw"
+  - element_id: m::g
+    status: CONFIRMED
+    statement: Runs before f.
+    invariants:
+      - runs before m::f
+  - element_id: m::y
+    status: CONFIRMED
+    statement: Returns one.
+    invariants:
+      - returns.value == 1
+  - element_id: m::h
+    status: PROPOSED
+    statement: Unknown.
+  - element_id: m::dup
+    status: CONFIRMED
+    statement: one
+  - element_id: m::dup
+    status: CONFIRMED
+    statement: two
+  - element_id: m::bad
+    statement: no status
+"""
+
+
+def element(element_id):
+    return Element(
+        id=element_id,
+        kind=ElementKind.FUNCTION,
+        name=element_id.split("::")[-1],
+        qualname=element_id.split("::")[-1],
+        module="m",
+        span=SourceSpan(path="m.py", line=1),
+        provenance=Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN),
+        content_hash="h",
+    )
+
+
+def event(event_id, element_id, kind, sequence, caller="", values=None):
+    return TraceEvent(
+        event_id=event_id,
+        run_id="run_001",
+        kind=kind,
+        element_id=element_id,
+        sequence=sequence,
+        depth=0,
+        caller_event_id=caller,
+        values=values or {},
+    )
+
+
+def full(text, type_name):
+    return ValueCapture(status=CaptureStatus.FULL, repr_text=text, type_name=type_name)
+
+
+registry = parse_registry_text(SPEC, "intents.yaml", known_element_ids=["m::f", "m::g"])
+elements = [element(name) for name in ("m::f", "m::g", "m::x", "m::y", "m::z")]
+events = [
+    event("e1", "m::f", EventKind.CALL, 1, values={"raw": full("2", "int")}),
+    event("e2", "m::g", EventKind.CALL, 2, caller="e1"),
+    event(
+        "e3",
+        feature_id("score"),
+        EventKind.FEATURE_WRITE,
+        3,
+        caller="e1",
+        values={"v": full("7", "int")},
+    ),
+    event("e4", "m::f", EventKind.RETURN, 4, values={"return_value": full("7", "int")}),
+    event("e5", "m::x", EventKind.CALL, 5),
+]
+edges = [
+    Edge(
+        id="edge1",
+        kind=EdgeKind.CALLS,
+        source_id="m::f",
+        target_id="m::g",
+        provenance=Provenance(method=Method.SCOPE_LOOKUP, confidence=Confidence.RESOLVED),
+    )
+]
+lineage = [
+    LineageEdge(
+        id="lin1",
+        kind=LineageKind.COLUMN_WRITE,
+        source_id="m::f",
+        target_id=feature_id("score"),
+        provenance=Provenance(method=Method.DATAFLOW, confidence=Confidence.RESOLVED),
+    )
+]
+
+engine = AlignmentEngine(
+    registry=registry, elements=elements, edges=edges, lineage_edges=lineage
+)
+verdicts = engine.judge(registry.intents, events)
+sys.stdout.write(verdicts_jsonl(verdicts))
+sys.stdout.write(intents_jsonl(registry.intents))
+sys.stdout.write(issues_jsonl(registry.issues))
+sys.stdout.write(canonical_dumps(engine.coverage().to_dict()))
+'''
+
+
+def test_output_is_byte_identical_across_processes_with_different_hash_seeds(
+    tmp_path: Path,
+) -> None:
+    """Determinism across processes, not merely across two calls in one process.
+
+    Set iteration order is stable within a process and varies between processes, so
+    an in-process comparison cannot see the one mistake most likely to break
+    constraint 4 here: emitting a set without sorting it. Three subprocesses, one
+    with hashing disabled and two with different random seeds, must agree byte for
+    byte on every artifact this card emits.
+    """
+    script = tmp_path / "driver.py"
+    script.write_text(_DETERMINISM_DRIVER, encoding="utf-8")
+    src_root = str(Path(alignment_module.__file__).resolve().parents[1])
+
+    outputs: list[bytes] = []
+    for seed in ("0", "1", "524287"):
+        env = dict(os.environ)
+        env["PYTHONHASHSEED"] = seed
+        env["PYTHONDONTWRITEBYTECODE"] = "1"  # never write into the source tree
+        env.pop(API_KEY_ENV, None)
+        result = subprocess.run(
+            [sys.executable, str(script), src_root],
+            env=env,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+        outputs.append(result.stdout)
+
+    assert outputs[0] == outputs[1] == outputs[2]
+    # The run must actually exercise the set-bearing paths, or it proves nothing.
+    payload = outputs[0]
+    for marker in (
+        b'"verdict":"MISALIGNED"',
+        b'"verdict":"UNVERIFIABLE"',
+        b'"verdict":"NO_INTENT"',
+        b'"verdict":"NOT_EXERCISED"',
+        b"AMBIGUOUS",
+        b"MISSING_TARGET",
+        b'"evidence_ids":["e1"',
+    ):
+        assert marker in payload, marker
+    # And it must agree with what this process computes from the same input.
+    assert payload.decode("utf-8").count("\n") > 10
 
 
 def test_artifacts_contain_no_floats() -> None:

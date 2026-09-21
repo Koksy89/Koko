@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import ast
 import builtins
-import heapq
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -229,6 +228,14 @@ class _BranchShape(_Shape):
     block_id: str = ""
     arm_node_ids: list[str] = field(default_factory=list)
     is_decision: bool = True
+    rejoins: bool = True
+    """False when every arm returns or raises: control rejoins at the element's
+    exit, not after the branch. The MERGE node says which."""
+
+    order_key: int = 0
+    """Creation order of the branch's block, so decisions are numbered in
+    source order rather than innermost-first (an `elif` chain is built from the
+    inside out)."""
 
 
 @dataclass
@@ -425,6 +432,17 @@ class _FlowBuilder:
             )
         )
 
+    def _register_branch(self, shape: _BranchShape) -> None:
+        """Record a branch, numbered by when its block was created.
+
+        An ``elif`` chain is built from the inside out, so appending in call
+        order would number the last `elif` first and make the decision records
+        read backwards.
+        """
+        _, _, ordinal = shape.block_id.rpartition("@block")
+        shape.order_key = int(ordinal) if ordinal.isdigit() else len(self.branches)
+        self.branches.append(shape)
+
     def _unresolved(self, node: ast.AST, reason: UnresolvedReason, description: str) -> None:
         record_id = make_id(self.element.id, f"@cfg_unresolved{self._unres_n}")
         self._unres_n += 1
@@ -600,8 +618,9 @@ class _FlowBuilder:
             reads=_read_targets(stmt.test),
             is_guard=is_guard,
             block_id=branch_block,
+            rejoins=merge is not None,
         )
-        self.branches.append(shape)
+        self._register_branch(shape)
         shapes.append(shape)
         return merge, shapes
 
@@ -755,7 +774,7 @@ class _FlowBuilder:
                 block_id=body_start,
                 is_decision=False,
             )
-            self.branches.append(branch)
+            self._register_branch(branch)
             shapes: list[_Shape] = [branch]
             shapes.extend(final_shape.children)
             return final_end, shapes
@@ -769,7 +788,7 @@ class _FlowBuilder:
             block_id=body_start,
             is_decision=False,
         )
-        self.branches.append(branch)
+        self._register_branch(branch)
         if not ends:
             return None, [branch]
         merge = self._block(BlockKind.NORMAL, stmt, note="merge")
@@ -789,12 +808,14 @@ class _FlowBuilder:
         arms: list[tuple[str, _SeqShape]] = []
         fallthrough: str | None = cur
         exhaustive = False
+        first_branch = ""
         for case in stmt.cases:
             assert fallthrough is not None
             label = _pattern_source(case.pattern)
             if case.guard is not None:
                 label = f"{label} if {_src(case.guard)}"
             branch_block = self._block(BlockKind.BRANCH, case.pattern, note=f"case {label}")
+            first_branch = first_branch or branch_block
             self._edge(fallthrough, branch_block)
             case_start = self._block(BlockKind.NORMAL, case.body[0] if case.body else case.pattern)
             self._edge(branch_block, case_start, condition=f"{subject} ~ {label}", taken_when=True)
@@ -818,9 +839,10 @@ class _FlowBuilder:
             kind="MATCH",
             arms=arms,
             reads=_read_targets(stmt.subject),
-            block_id=self.blocks[-1].id,
+            block_id=first_branch,
+            rejoins=bool(ends),
         )
-        self.branches.append(shape)
+        self._register_branch(shape)
         shapes.append(shape)
         if not ends:
             return None, shapes
@@ -850,7 +872,7 @@ class _FlowBuilder:
             reads=_read_targets(stmt.test),
             block_id=branch_block,
         )
-        self.branches.append(shape)
+        self._register_branch(shape)
         shapes.append(shape)
         return ok, shapes
 
@@ -918,7 +940,7 @@ class _FlowBuilder:
                 cascade_note=f"`{keyword}` gate",
                 block_id=branch_block,
             )
-            self.branches.append(shape)
+            self._register_branch(shape)
             shapes.append(shape)
             cur = merge
         return cur, shapes
@@ -948,7 +970,7 @@ class _FlowBuilder:
             reads=_read_targets(node.test),
             block_id=branch_block,
         )
-        self.branches.append(shape)
+        self._register_branch(shape)
         shapes.append(shape)
         return merge, shapes
 
@@ -1002,7 +1024,7 @@ class _FlowBuilder:
                     reads=_read_targets(condition_node),
                     block_id=branch_block,
                 )
-                self.branches.append(branch_shape)
+                self._register_branch(branch_shape)
                 filter_shapes.append(branch_shape)
                 filtered = kept
             inner_seq, inner_end = build(index + 1, filtered)
@@ -1634,7 +1656,12 @@ class CascadeAnalyzer:
                     (),
                     Method.AST_DIRECT,
                     Confidence.CERTAIN,
-                    f"control from every arm of {node_id} rejoins here",
+                    (
+                        f"control from every arm of {node_id} rejoins here"
+                        if shape.rejoins
+                        else f"every arm of {node_id} returns or raises; control rejoins "
+                        f"at the exit of {element_id}, not here"
+                    ),
                     shape.span,
                 )
                 children.append(merge_id)
@@ -1880,7 +1907,7 @@ class CascadeAnalyzer:
             kind = OrderKind.SEQUENCE
             note = "the cascade, from its entry point"
 
-        total = self._total_order(pre_order, reachable, successors)
+        total = self._total_order(pre_order, reachable, successors, bool(cycles))
         if total is not None:
             children.append(total)
 
@@ -2004,6 +2031,7 @@ class CascadeAnalyzer:
         pre_order: Sequence[str],
         reachable: Mapping[str, Confidence],
         successors: Mapping[str, list[Edge]],
+        has_cycles: bool,
     ) -> str | None:
         """A single SEQUENCE over the whole cascade -- only when one exists.
 
@@ -2011,7 +2039,7 @@ class CascadeAnalyzer:
         cycles or dispatches. Anything else would be a flattened branch, which
         the workplan calls a defect rather than a simplification.
         """
-        if not pre_order:
+        if not pre_order or has_cycles or len(set(pre_order)) != len(pre_order):
             return None
         for element_id in pre_order:
             builder = self._builders.get(element_id)
@@ -2019,20 +2047,15 @@ class CascadeAnalyzer:
                 return None
             if builder.branches or builder.deferred:
                 return None
-            if any(isinstance(b.kind, str) and b.kind for b in builder.branches):
-                return None
             if any(block.kind is BlockKind.LOOP_HEAD for block in builder.blocks):
                 return None
             if self._unpositioned_children(element_id):
                 return None
-        for element_id in pre_order:
-            seen: set[str] = set()
+            targets: set[str] = set()
             for edge in successors.get(element_id, []):
-                if edge.target_id in seen:
+                if edge.target_id in targets:
                     return None
-                seen.add(edge.target_id)
-            if len(set(pre_order)) != len(pre_order):
-                return None
+                targets.add(edge.target_id)
         confidence = combine(*[reachable[e] for e in pre_order])
         return self._emit(
             make_id("@order", "@total"),
@@ -2055,7 +2078,7 @@ class CascadeAnalyzer:
             builder = self._builders[element_id]
             counter = 0
             cascade_members = self._cascade_chain(builder)
-            for shape in builder.branches:
+            for shape in sorted(builder.branches, key=lambda b: (b.order_key, b.block_id)):
                 if not shape.is_decision:
                     continue
                 decision_id = make_id(element_id, f"@decision{counter}")
@@ -2263,11 +2286,28 @@ class CascadeAnalyzer:
             current: tuple[Confidence, tuple[str, ...]] | None,
             candidate: tuple[Confidence, tuple[str, ...]],
         ) -> bool:
+            """Strictly stronger only.
+
+            Confidence alone drives the fixpoint. Breaking ties on the path
+            would not terminate: lexicographic order over paths admits an
+            infinite descending chain once the call graph has a cycle. Each
+            element is therefore raised at most four times, and the first
+            justification to reach a level keeps it -- deterministic, because
+            every collection iterated here is sorted.
+            """
             if current is None:
                 return True
-            if _RANK[candidate[0]] != _RANK[current[0]]:
-                return _RANK[candidate[0]] > _RANK[current[0]]
-            return candidate[1] < current[1]
+            return _RANK[candidate[0]] > _RANK[current[0]]
+
+        def join(head: str, rest: Sequence[str]) -> tuple[str, ...]:
+            """Prepend *head*, collapsing any loop back onto it.
+
+            A representative path is a simple path: recursion is reported as a
+            CYCLE order node, not as a path that visits an element twice.
+            """
+            if head in rest:
+                return (head, *tuple(rest)[tuple(rest).index(head) + 1 :])
+            return (head, *rest)
 
         def after(caller: str, position: tuple[int, int]) -> tuple[Confidence, tuple[str, ...]]:
             """The sink still runs, once control is back in *caller* at *position*."""
@@ -2282,12 +2322,12 @@ class CascadeAnalyzer:
                     continue
                 candidate = (
                     combine(best[target], edge.provenance.confidence),
-                    (caller, *via[target]),
+                    join(caller, via[target]),
                 )
                 if better(winner, candidate):
                     winner = candidate
             if caller in cont:
-                candidate = (cont[caller], (caller, *cont_via[caller][1:]))
+                candidate = (cont[caller], join(caller, cont_via[caller][1:]))
                 if better(winner, candidate):
                     winner = candidate
             return winner or (Confidence.UNKNOWN, ())
@@ -2323,7 +2363,7 @@ class CascadeAnalyzer:
                         continue
                     candidate = (
                         combine(best[target], edge.provenance.confidence),
-                        (element_id, *via[target]),
+                        join(element_id, via[target]),
                     )
                     if better(reach, candidate):
                         reach = candidate
@@ -2332,7 +2372,7 @@ class CascadeAnalyzer:
                     if better(reach, candidate):
                         reach = candidate
                 if element_id in cont:
-                    candidate = (cont[element_id], (element_id, *cont_via[element_id]))
+                    candidate = (cont[element_id], join(element_id, cont_via[element_id]))
                     if better(reach, candidate):
                         reach = candidate
                 if reach is not None and better(

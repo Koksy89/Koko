@@ -1,59 +1,71 @@
 {
+  "case_id": "inv_ids_stable",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "inv_ids_stable",
       "kind": "MODULE",
+      "module": "inv_ids_stable",
       "name": "inv_ids_stable",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
       "qualname": "",
-      "module": "inv_ids_stable",
       "span": {
-        "path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "docstring": "Module to test that IDs are stable across reformatting.",
-      "content_hash_asserted": false
+        "line": 1,
+        "path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py"
+      }
     },
     {
-      "id": "inv_ids_stable::foo",
-      "kind": "FUNCTION",
-      "name": "foo",
-      "qualname": "foo",
-      "module": "inv_ids_stable",
-      "span": {
-        "path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py",
-        "line": 5
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
-      "docstring": "A simple function.",
-      "content_hash_asserted": false
-    },
-    {
+      "content_hash_asserted": false,
+      "docstring": "Another function.",
       "id": "inv_ids_stable::bar",
       "kind": "FUNCTION",
-      "name": "bar",
-      "qualname": "bar",
       "module": "inv_ids_stable",
-      "span": {
-        "path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py",
-        "line": 9
-      },
+      "name": "bar",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
+      "qualname": "bar",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py"
+      }
+    },
+    {
       "content_hash": null,
-      "docstring": "Another function.",
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "A simple function.",
+      "id": "inv_ids_stable::foo",
+      "kind": "FUNCTION",
+      "module": "inv_ids_stable",
+      "name": "foo",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "foo",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py"
+      }
     }
   ],
+  "ids_invariant_under_reformatting": [
+    "inv_ids_stable",
+    "inv_ids_stable::bar",
+    "inv_ids_stable::foo"
+  ],
+  "proves": "Reformatting the file (whitespace, comments, line breaks) changes no ID.",
   "unresolved": []
 }

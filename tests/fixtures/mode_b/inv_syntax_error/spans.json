@@ -1,0 +1,10 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/unresolved/0/span": {
+      "kind": "line",
+      "line_contains": "    return x",
+      "occurrence": 1
+    }
+  }
+}

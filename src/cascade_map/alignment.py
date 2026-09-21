@@ -261,6 +261,14 @@ def _scalar_node(raw: str, line: int) -> _Node:
         return _Node(line=line, items=items)
     if raw.startswith("{"):
         raise _ParseError("flow mappings are not supported", line)
+    if raw[0] in "&*!|>":
+        # An anchor, alias, tag or block scalar in a value position would otherwise be
+        # read as the literal text of an owner's intent, which is a silent misreading
+        # of owner data. Refuse it here, with its line.
+        raise _ParseError(
+            f"unsupported YAML construct in value: {raw[:16]!r}; quote it if it is literal text",
+            line,
+        )
     return _Node(line=line, scalar=_unquote(raw), quoted=_is_quoted(raw))
 
 

@@ -1,11 +1,22 @@
 """Card 2 -- resolution and the call graph.
 
-Every ``res_*`` case in ``docs/design/FIXTURES.md`` is graded here. Three of
-them exist on disk (``res_import_absolute``, ``res_getattr_computed``,
-``res_overlink_trap``) and are used directly; the other fourteen are not in
-``tests/fixtures/`` yet, so each is exercised as the smallest program that
-still proves the same property, written into ``tmp_path``. Card 2 does not own
-``tests/fixtures/`` and does not fabricate cases there.
+All seventeen ``res_*`` cases in ``docs/design/FIXTURES.md`` exist in
+``tests/fixtures/mode_b/`` and are graded here against the property the
+FIXTURES.md table says each one proves.
+
+They are **not** graded against their ``expected.json``. Those files carry
+``"edges": []`` for cases that plainly contain edges -- ``res_import_local``
+imports ``json`` and calls ``json.dumps``, ``res_mro`` calls ``super()`` --
+while ``res_import_absolute`` does list its import edge. Grading card 2
+against an empty expected set would mean asserting the resolver finds nothing.
+The divergence is reported to the lead rather than worked around by weakening
+a test or by editing card 8's fixtures, which this card does not own.
+
+Several fixtures are the minimum shape of their feature, so each is paired
+with a deeper program in ``tmp_path``: multi-level relative imports, a
+three-level hierarchy with inherited dispatch, a re-export actually consumed
+by a third module. Those are test inputs, not fixtures, and nothing is written
+under ``tests/fixtures/``.
 
 Card 1 is being built in parallel, so ``_inventory`` below is a deliberately
 small stand-in that mints ``Element`` records with ``make_id``. It exists to
@@ -21,7 +32,7 @@ from __future__ import annotations
 
 import ast
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -275,7 +286,7 @@ def _case(
 
 
 RES_IMPORT_RELATIVE = _case(
-    "res_import_relative",
+    "res_import_relative_deep",
     {
         "pkg/__init__.py": "",
         "pkg/b.py": "def helper():\n    return 1\n",
@@ -292,7 +303,7 @@ RES_IMPORT_RELATIVE = _case(
 )
 
 RES_IMPORT_STAR = _case(
-    "res_import_star",
+    "res_import_star_deep",
     {
         "pkg/__init__.py": "",
         "pkg/lib.py": (
@@ -311,7 +322,7 @@ RES_IMPORT_STAR = _case(
 )
 
 RES_IMPORT_CONDITIONAL = _case(
-    "res_import_conditional",
+    "res_import_conditional_deep",
     {
         "helpers.py": "class Thing:\n    def go(self):\n        return 1\n",
         "fastpath.py": "def boost():\n    return 1\n",
@@ -333,7 +344,7 @@ RES_IMPORT_CONDITIONAL = _case(
 )
 
 RES_IMPORT_LOCAL = _case(
-    "res_import_local",
+    "res_import_local_deep",
     {
         "lib.py": "def helper():\n    return 1\n",
         "m.py": "def run():\n    from lib import helper\n\n    return helper()\n",
@@ -345,7 +356,7 @@ RES_IMPORT_LOCAL = _case(
 )
 
 RES_IMPORT_CYCLE = _case(
-    "res_import_cycle",
+    "res_import_cycle_deep",
     {
         "a.py": "from b import beta\n\n\ndef alpha():\n    return beta()\n",
         "b.py": "from a import alpha\n\n\ndef beta():\n    return 1\n",
@@ -358,7 +369,7 @@ RES_IMPORT_CYCLE = _case(
 )
 
 RES_REEXPORT = _case(
-    "res_reexport",
+    "res_reexport_deep",
     {
         "pkg/__init__.py": 'from .impl import Thing\n\n__all__ = ["Thing"]\n',
         "pkg/impl.py": "class Thing:\n    def run(self):\n        return 1\n",
@@ -376,7 +387,7 @@ RES_REEXPORT = _case(
 )
 
 RES_MRO = _case(
-    "res_mro",
+    "res_mro_deep",
     {
         "h.py": (
             "class Base:\n"
@@ -402,7 +413,7 @@ RES_MRO = _case(
 )
 
 RES_DECORATOR = _case(
-    "res_decorator",
+    "res_decorator_deep",
     {
         "d.py": (
             "def trace(fn):\n"
@@ -420,7 +431,7 @@ RES_DECORATOR = _case(
 )
 
 RES_GETATTR_LITERAL = _case(
-    "res_getattr_literal",
+    "res_getattr_literal_deep",
     {
         "g.py": (
             "class Ops:\n"
@@ -439,7 +450,7 @@ RES_GETATTR_LITERAL = _case(
 )
 
 RES_IMPORTLIB = _case(
-    "res_importlib",
+    "res_importlib_deep",
     {
         "plugins/__init__.py": "",
         "plugins/alpha.py": "def run():\n    return 1\n",
@@ -457,7 +468,7 @@ RES_IMPORTLIB = _case(
 )
 
 RES_REGISTRY_DICT = _case(
-    "res_registry_dict",
+    "res_registry_dict_deep",
     {
         "r.py": (
             "def alpha():\n    return 1\n\n\n"
@@ -477,7 +488,7 @@ RES_REGISTRY_DICT = _case(
 )
 
 RES_REGISTRY_DECORATOR = _case(
-    "res_registry_decorator",
+    "res_registry_decorator_deep",
     {
         "rd.py": (
             "HANDLERS = {}\n\n\n"
@@ -500,7 +511,7 @@ RES_REGISTRY_DECORATOR = _case(
 )
 
 RES_CONFIG_WIRING = _case(
-    "res_config_wiring",
+    "res_config_wiring_deep",
     {
         "app/__init__.py": "",
         "app/rules.py": "class AlphaRule:\n    def evaluate(self):\n        return 1\n",
@@ -520,7 +531,7 @@ RES_CONFIG_WIRING = _case(
 )
 
 RES_CONFIG_DANGLING = _case(
-    "res_config_dangling",
+    "res_config_dangling_deep",
     {
         "app/__init__.py": "",
         "app/rules.py": "class AlphaRule:\n    def evaluate(self):\n        return 1\n",
@@ -556,24 +567,260 @@ def _run_subset(
     return list(edges), list(unresolved), resolver
 
 
-def _fixture_run(case_id: str) -> tuple[list[Edge], list[Unresolved], Resolver]:
+def _fixture_run(
+    case_id: str, *, config_paths: Sequence[str] = ()
+) -> tuple[list[Edge], list[Unresolved], Resolver]:
     assert (MODE_B / case_id).is_dir(), f"fixture {case_id} is missing"
-    return _run_subset(MODE_B, case_id)
+    return _run_subset(MODE_B, case_id, config_paths=config_paths)
 
 
-def test_res_import_absolute_fixture() -> None:
+def _fixture_modules(case_id: str) -> set[str]:
+    return {
+        _module_name(p.relative_to(MODE_B).as_posix())
+        for p in (MODE_B / case_id).rglob("*.py")
+    }
+
+
+#: Hand-written from reading each fixture: the complete set of edges between
+#: that fixture's own elements. External targets (json, sys, typing,
+#: importlib) are excluded -- they are not part of the program's own wiring --
+#: and are asserted in the individual tests instead.
+FIXTURE_EXPECTED: dict[str, set[tuple[str, str, str]]] = {
+    # import json; data = json.dumps(...) -- both ends of every edge are outside
+    "res_import_absolute": set(),
+    # from . import sibling  /  from ..parent import module (which does not exist)
+    "res_import_relative": {
+        ("IMPORTS", "res_import_relative", "res_import_relative.sibling"),
+    },
+    # from typing import * -- an external star import binds nothing nameable
+    "res_import_star": set(),
+    # if True: import sys  /  if TYPE_CHECKING: import typing
+    "res_import_conditional": set(),
+    # def func(): import json; return json.dumps({})
+    "res_import_local": set(),
+    "res_import_cycle": {
+        ("IMPORTS", "res_import_cycle.a", "res_import_cycle.b"),
+        ("IMPORTS", "res_import_cycle.b", "res_import_cycle.a"),
+    },
+    "res_reexport": {
+        ("IMPORTS", "res_reexport", "res_reexport.impl::Helper"),
+    },
+    "res_mro": {
+        ("INHERITS", "res_mro::B", "res_mro::A"),
+        ("INHERITS", "res_mro::C", "res_mro::B"),
+        ("CALLS", "res_mro::C.method", "res_mro::B.method"),
+        ("INSTANTIATES", "res_mro", "res_mro::C"),
+        ("CALLS", "res_mro", "res_mro::C.method"),
+    },
+    "res_decorator": {
+        ("DECORATES", "res_decorator::decorator", "res_decorator::decorated"),
+        ("REFERENCES", "res_decorator::decorator", "res_decorator::decorator.wrapper"),
+    },
+    "res_getattr_literal": {
+        ("INSTANTIATES", "res_getattr_literal", "res_getattr_literal::Obj"),
+        ("REFERENCES", "res_getattr_literal", "res_getattr_literal::Obj.method"),
+        # the module-level name `func` is an alias for the method it resolved to
+        ("REFERENCES", "res_getattr_literal::func", "res_getattr_literal::Obj.method"),
+        ("CALLS", "res_getattr_literal", "res_getattr_literal::Obj.method"),
+    },
+    # the computed name must produce candidates only; obj = Helper() still resolves
+    "res_getattr_computed": {
+        ("INSTANTIATES", "res_getattr_computed", "res_getattr_computed::Helper"),
+    },
+    # importlib.import_module("json") -- the target is outside the inventory
+    "res_importlib": set(),
+    "res_registry_dict": {
+        ("REGISTERS", "res_registry_dict::registry", "res_registry_dict::handler_a"),
+        ("REGISTERS", "res_registry_dict::registry", "res_registry_dict::handler_b"),
+        ("REFERENCES", "res_registry_dict", "res_registry_dict::handler_a"),
+        ("REFERENCES", "res_registry_dict", "res_registry_dict::handler_b"),
+        # `func = registry.get("a")` aliases the member the literal key names
+        ("REFERENCES", "res_registry_dict::func", "res_registry_dict::handler_a"),
+        ("CALLS", "res_registry_dict", "res_registry_dict::handler_a"),
+    },
+    "res_registry_decorator": {
+        (
+            "DECORATES",
+            "res_registry_decorator::register",
+            "res_registry_decorator::operation",
+        ),
+        (
+            "REGISTERS",
+            "res_registry_decorator::_registry",
+            "res_registry_decorator::operation",
+        ),
+        (
+            "REFERENCES",
+            "res_registry_decorator::register",
+            "res_registry_decorator::register.decorator",
+        ),
+    },
+    "res_config_wiring": {
+        (
+            "CONFIGURES",
+            config_key_id("res_config_wiring/wiring.json", "/components/0/class"),
+            "res_config_wiring::Component",
+        ),
+    },
+    # "NonExistentClass" names nothing: a record, never an edge
+    "res_config_dangling": set(),
+    "res_overlink_trap": {
+        ("INSTANTIATES", "res_overlink_trap::caller", "res_overlink_trap::ClassA"),
+        ("INSTANTIATES", "res_overlink_trap::caller", "res_overlink_trap::ClassB"),
+        ("CALLS", "res_overlink_trap::caller", "res_overlink_trap::ClassA.process"),
+        ("CALLS", "res_overlink_trap::caller", "res_overlink_trap::ClassB.process"),
+    },
+}
+
+
+def test_every_fixtures_md_resolution_case_is_graded() -> None:
+    """FIXTURES.md names seventeen res_* cases; all seventeen must be here."""
+    on_disk = {p.name for p in MODE_B.glob("res_*") if p.is_dir()}
+    assert on_disk == set(FIXTURE_EXPECTED), (
+        "a res_* fixture is ungraded or has disappeared: "
+        f"{sorted(on_disk ^ set(FIXTURE_EXPECTED))}"
+    )
+    assert len(FIXTURE_EXPECTED) == 17
+
+
+@pytest.mark.parametrize("case_id", sorted(FIXTURE_EXPECTED))
+def test_fixture_precision_and_recall_are_exact(case_id: str) -> None:
+    edges, _, _ = _fixture_run(case_id)
+    modules = _fixture_modules(case_id)
+    emitted = _triples(e for e in edges if _in_inventory(e, modules))
+    expected = FIXTURE_EXPECTED[case_id]
+    assert not (emitted - expected), f"{case_id}: over-linked {sorted(emitted - expected)}"
+    assert not (expected - emitted), f"{case_id}: missing {sorted(expected - emitted)}"
+
+
+def test_fixture_res_import_absolute() -> None:
     """RESOLVED edge, IMPORT_ABSOLUTE -- to a target outside the inventory."""
     edges, unresolved, _ = _fixture_run("res_import_absolute")
     edge = _one(edges, EdgeKind.IMPORTS, "res_import_absolute", "json")
     assert edge.provenance.method is Method.IMPORT_ABSOLUTE
     assert edge.provenance.confidence is Confidence.RESOLVED
     assert edge.call_site is not None and edge.call_site.line == 3
-    # json.dumps is named exactly, even though json is not inventoried.
     assert _find(edges, EdgeKind.CALLS, "res_import_absolute", "json::dumps")
     assert not unresolved
 
 
-def test_res_getattr_computed_fixture() -> None:
+def test_fixture_res_import_relative() -> None:
+    """A relative import that leaves the tree is a record, not an invented edge."""
+    edges, unresolved, _ = _fixture_run("res_import_relative")
+    edge = _one(
+        edges, EdgeKind.IMPORTS, "res_import_relative", "res_import_relative.sibling"
+    )
+    assert edge.provenance.method is Method.IMPORT_RELATIVE
+    assert edge.provenance.confidence is Confidence.RESOLVED
+    # `from ..parent import module` ascends past the root: nothing to point at
+    assert not [e for e in edges if "parent" in e.target_id]
+    dangling = [u for u in unresolved if u.reason is UnresolvedReason.MISSING_TARGET]
+    assert dangling and Method.IMPORT_RELATIVE in dangling[0].attempted
+
+
+def test_fixture_res_import_star() -> None:
+    """Star import from outside the inventory: the residue is reported."""
+    edges, unresolved, _ = _fixture_run("res_import_star")
+    edge = _one(edges, EdgeKind.IMPORTS, "res_import_star", "typing")
+    assert edge.provenance.method is Method.IMPORT_STAR
+    assert edge.provenance.confidence is Confidence.PROBABLE
+    residue = [u for u in unresolved if u.reason is UnresolvedReason.THIRD_PARTY]
+    assert residue and "typing" in residue[0].description
+    assert Method.IMPORT_STAR in residue[0].attempted
+    # exactly one residue record, however many times the scope is rebuilt
+    assert len(residue) == 1
+
+
+def test_fixture_res_import_conditional() -> None:
+    """Both an `if` import and a TYPE_CHECKING import degrade to PROBABLE."""
+    edges, _, _ = _fixture_run("res_import_conditional")
+    guarded = _one(edges, EdgeKind.IMPORTS, "res_import_conditional", "sys")
+    assert guarded.provenance.confidence is Confidence.PROBABLE
+    assert "conditional" in guarded.provenance.note
+    typed = _one(edges, EdgeKind.IMPORTS, "res_import_conditional", "typing")
+    assert typed.provenance.confidence is Confidence.PROBABLE
+
+
+def test_fixture_res_import_local() -> None:
+    """A function-local import belongs to the function, not to the module."""
+    edges, _, _ = _fixture_run("res_import_local")
+    edge = _one(edges, EdgeKind.IMPORTS, "res_import_local::func", "json")
+    assert edge.provenance.method is Method.IMPORT_ABSOLUTE
+    assert edge.call_site is not None and edge.call_site.line == 3
+    assert not _find(edges, EdgeKind.IMPORTS, "res_import_local", "json")
+    assert _one(edges, EdgeKind.CALLS, "res_import_local::func", "json::dumps")
+
+
+def test_fixture_res_import_cycle() -> None:
+    """A cycle is reported as a cycle, not as an error and not as a hang."""
+    edges, _, _ = _fixture_run("res_import_cycle")
+    assert _one(edges, EdgeKind.IMPORTS, "res_import_cycle.a", "res_import_cycle.b")
+    assert _one(edges, EdgeKind.IMPORTS, "res_import_cycle.b", "res_import_cycle.a")
+    assert import_cycles(edges) == [("res_import_cycle.a", "res_import_cycle.b")]
+
+
+def test_fixture_res_reexport() -> None:
+    """`from .impl import Helper as Helper` resolves to the original class."""
+    edges, _, resolver = _fixture_run("res_reexport")
+    edge = _one(edges, EdgeKind.IMPORTS, "res_reexport", "res_reexport.impl::Helper")
+    assert edge.provenance.method is Method.IMPORT_RELATIVE
+    assert edge.provenance.confidence is Confidence.RESOLVED
+    assert not [e for e in edges if e.target_id == "res_reexport::Helper"]
+
+
+def test_fixture_res_mro() -> None:
+    """Three-level dispatch plus super()."""
+    edges, unresolved, _ = _fixture_run("res_mro")
+    super_edge = _one(edges, EdgeKind.CALLS, "res_mro::C.method", "res_mro::B.method")
+    assert super_edge.provenance.method is Method.MRO_DISPATCH
+    assert super_edge.provenance.confidence is Confidence.RESOLVED
+    assert "super()" in super_edge.provenance.note
+    dispatch = _one(edges, EdgeKind.CALLS, "res_mro", "res_mro::C.method")
+    assert dispatch.provenance.method is Method.MRO_DISPATCH
+    assert dispatch.provenance.confidence is Confidence.PROBABLE
+    # c is a C: dispatch must not fall back to A.method or B.method
+    assert not _find(edges, EdgeKind.CALLS, "res_mro", "res_mro::A.method")
+    assert not _find(edges, EdgeKind.CALLS, "res_mro", "res_mro::B.method")
+    assert not unresolved
+
+
+def test_fixture_res_decorator() -> None:
+    """Edges to both the wrapper and the wrapped."""
+    edges, _, _ = _fixture_run("res_decorator")
+    wraps = _one(
+        edges, EdgeKind.DECORATES, "res_decorator::decorator", "res_decorator::decorated"
+    )
+    assert wraps.provenance.method is Method.DECORATOR_UNWRAP
+    assert wraps.provenance.confidence is Confidence.RESOLVED
+    inner = _one(
+        edges,
+        EdgeKind.REFERENCES,
+        "res_decorator::decorator",
+        "res_decorator::decorator.wrapper",
+    )
+    assert inner.provenance.confidence is not Confidence.UNKNOWN
+
+
+def test_fixture_res_getattr_literal() -> None:
+    """PROBABLE, GETATTR_LITERAL."""
+    edges, _, _ = _fixture_run("res_getattr_literal")
+    reference = _one(
+        edges,
+        EdgeKind.REFERENCES,
+        "res_getattr_literal",
+        "res_getattr_literal::Obj.method",
+    )
+    assert reference.provenance.method is Method.GETATTR_LITERAL
+    assert reference.provenance.confidence is Confidence.PROBABLE
+    call = _one(
+        edges, EdgeKind.CALLS, "res_getattr_literal", "res_getattr_literal::Obj.method"
+    )
+    assert call.provenance.method is Method.GETATTR_LITERAL
+    assert call.provenance.confidence is Confidence.PROBABLE
+    assert call.call_site is not None and call.call_site.line == 8
+
+
+def test_fixture_res_getattr_computed() -> None:
     """UNKNOWN with a candidate set -- and emphatically not a guessed edge."""
     edges, unresolved, _ = _fixture_run("res_getattr_computed")
     method_a = "res_getattr_computed::Helper.method_a"
@@ -590,9 +837,88 @@ def test_res_getattr_computed_fixture() -> None:
     assert Method.GETATTR_LITERAL in record.attempted
     assert record.span.path.endswith("__init__.py")
     assert record.span.line == 16  # the getattr call
+    # the later `method()` is ambiguous too, and says so rather than guessing
+    ambiguous = [u for u in unresolved if u.reason is UnresolvedReason.AMBIGUOUS]
+    assert ambiguous and ambiguous[0].span.line == 17
 
 
-def test_res_overlink_trap_fixture() -> None:
+def test_fixture_res_importlib() -> None:
+    """importlib.import_module with a literal."""
+    edges, _, _ = _fixture_run("res_importlib")
+    edge = _one(edges, EdgeKind.IMPORTS, "res_importlib", "json")
+    assert edge.provenance.method is Method.IMPORTLIB_LITERAL
+    assert edge.provenance.confidence is Confidence.RESOLVED
+    assert edge.call_site is not None and edge.call_site.line == 3
+    # the module the call returns is tracked, so mod.dumps is named
+    assert _one(edges, EdgeKind.CALLS, "res_importlib", "json::dumps")
+
+
+def test_fixture_res_registry_dict() -> None:
+    """A module-level dict of callables."""
+    edges, _, _ = _fixture_run("res_registry_dict")
+    for member in ("handler_a", "handler_b"):
+        edge = _one(
+            edges,
+            EdgeKind.REGISTERS,
+            "res_registry_dict::registry",
+            f"res_registry_dict::{member}",
+        )
+        assert edge.provenance.method is Method.REGISTRY_MEMBERSHIP
+        assert edge.provenance.confidence is Confidence.RESOLVED
+    # registry.get("a") has a literal key, so the call lands on handler_a only
+    call = _one(edges, EdgeKind.CALLS, "res_registry_dict", "res_registry_dict::handler_a")
+    assert call.provenance.method is Method.REGISTRY_MEMBERSHIP
+    assert call.provenance.confidence is Confidence.PROBABLE
+    assert not _find(
+        edges, EdgeKind.CALLS, "res_registry_dict", "res_registry_dict::handler_b"
+    )
+
+
+def test_fixture_res_registry_decorator() -> None:
+    """Decorator-based registration."""
+    edges, _, _ = _fixture_run("res_registry_decorator")
+    registers = _one(
+        edges,
+        EdgeKind.REGISTERS,
+        "res_registry_decorator::_registry",
+        "res_registry_decorator::operation",
+    )
+    assert registers.provenance.method is Method.DECORATOR_REGISTRATION
+    assert registers.provenance.confidence is Confidence.PROBABLE
+    assert "'op'" in registers.provenance.note
+    assert _one(
+        edges,
+        EdgeKind.DECORATES,
+        "res_registry_decorator::register",
+        "res_registry_decorator::operation",
+    )
+
+
+def test_fixture_res_config_wiring() -> None:
+    """A class named by string in wiring.json resolves, with the key as evidence."""
+    edges, unresolved, _ = _fixture_run("res_config_wiring")
+    key = config_key_id("res_config_wiring/wiring.json", "/components/0/class")
+    edge = _one(edges, EdgeKind.CONFIGURES, key, "res_config_wiring::Component")
+    assert edge.provenance.method is Method.CONFIG_STRING_MATCH
+    assert edge.provenance.confidence is Confidence.HEURISTIC
+    assert "/components/0/class" in edge.provenance.note
+    assert edge.source_id.startswith("@file:")
+    assert not unresolved
+
+
+def test_fixture_res_config_dangling() -> None:
+    """A config key naming nothing produces a record, not an edge."""
+    edges, unresolved, _ = _fixture_run("res_config_dangling")
+    assert not [e for e in edges if e.kind is EdgeKind.CONFIGURES]
+    key = config_key_id("res_config_dangling/config.json", "/handler")
+    records = [u for u in unresolved if u.id.startswith(f"unresolved:{key}")]
+    assert records, "a dangling config reference must be reported"
+    assert records[0].reason is UnresolvedReason.MISSING_TARGET
+    assert Method.CONFIG_STRING_MATCH in records[0].attempted
+    assert "NonExistentClass" in records[0].description
+
+
+def test_fixture_res_overlink_trap() -> None:
     """Two same-named methods on unrelated classes must not be linked."""
     edges, unresolved, _ = _fixture_run("res_overlink_trap")
     caller = "res_overlink_trap::caller"
@@ -606,10 +932,42 @@ def test_res_overlink_trap_fixture() -> None:
     assert a_edges[0].provenance.confidence is Confidence.PROBABLE
     assert a_edges[0].call_site is not None and a_edges[0].call_site.line == 20
     assert b_edges[0].call_site is not None and b_edges[0].call_site.line == 21
-    # exactly two CALLS edges out of caller: no cross-linking of the two
-    # same-named methods, and no speculative third target.
     assert len([e for e in edges if e.kind is EdgeKind.CALLS and e.source_id == caller]) == 2
     assert not [u for u in unresolved if u.reason is UnresolvedReason.AMBIGUOUS]
+
+
+def test_fnd_unknown_fixture_reachable_only_dynamically() -> None:
+    """Card 5's precondition: the helper is unresolved, never silently absent."""
+    edges, unresolved, _ = _fixture_run("fnd_unknown_not_unplugged")
+    helper = "fnd_unknown_not_unplugged::Handler.helper"
+    assert not [e for e in edges if e.target_id == helper and e.kind is EdgeKind.CALLS]
+    records = [u for u in unresolved if helper in u.candidate_ids]
+    assert records, "the dynamically reached method must appear as a candidate"
+    assert records[0].reason is UnresolvedReason.DYNAMIC_NAME
+
+
+@pytest.mark.parametrize("case_id", sorted(FIXTURE_EXPECTED))
+def test_fixture_runs_are_byte_identical(case_id: str) -> None:
+    first_edges, first_unresolved, _ = _fixture_run(case_id)
+    second_edges, second_unresolved, _ = _fixture_run(case_id)
+    assert canonical_jsonl(first_edges) == canonical_jsonl(second_edges)
+    assert canonical_jsonl(first_unresolved) == canonical_jsonl(second_unresolved)
+
+
+@pytest.mark.parametrize("case_id", sorted(FIXTURE_EXPECTED))
+def test_fixture_edges_carry_method_and_confidence(case_id: str) -> None:
+    edges, unresolved, _ = _fixture_run(case_id)
+    for edge in edges:
+        assert isinstance(edge.provenance.method, Method)
+        assert edge.provenance.confidence is not Confidence.UNKNOWN
+        assert edge.provenance.method is not Method.MODEL_PROPOSED
+    for record in unresolved:
+        assert record.description and record.span.path
+        if record.candidate_ids:
+            assert record.candidate_confidence is not Confidence.UNKNOWN
+
+
+
 
 
 def test_fnd_unknown_fixture_reachable_only_dynamically() -> None:
@@ -632,7 +990,7 @@ def _case_run(tmp_path: Path, case: Case) -> tuple[list[Edge], list[Unresolved],
     return _run(tmp_path, config_paths=case.config_paths)
 
 
-def test_res_import_relative(tmp_path: Path) -> None:
+def test_deep_res_import_relative(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_IMPORT_RELATIVE)
     single = _one(edges, EdgeKind.IMPORTS, "pkg.a", "pkg.b::helper")
     assert single.provenance.method is Method.IMPORT_RELATIVE
@@ -642,7 +1000,7 @@ def test_res_import_relative(tmp_path: Path) -> None:
     assert _one(edges, EdgeKind.CALLS, "pkg.sub.deep::reach", "pkg.b::helper")
 
 
-def test_res_import_star(tmp_path: Path) -> None:
+def test_deep_res_import_star(tmp_path: Path) -> None:
     edges, unresolved, _ = _case_run(tmp_path, RES_IMPORT_STAR)
     bound = _one(edges, EdgeKind.IMPORTS, "pkg.use", "pkg.lib::alpha")
     assert bound.provenance.method is Method.IMPORT_STAR
@@ -660,7 +1018,7 @@ def test_res_import_star(tmp_path: Path) -> None:
     assert stray, "a call to an unbound star-import name must be reported"
 
 
-def test_res_import_conditional(tmp_path: Path) -> None:
+def test_deep_res_import_conditional(tmp_path: Path) -> None:
     edges, unresolved, _ = _case_run(tmp_path, RES_IMPORT_CONDITIONAL)
     type_checking = _one(edges, EdgeKind.IMPORTS, "m", "helpers::Thing")
     assert type_checking.provenance.confidence is Confidence.PROBABLE
@@ -675,14 +1033,14 @@ def test_res_import_conditional(tmp_path: Path) -> None:
     assert not [e for e in edges if e.kind is EdgeKind.CALLS and "boost" in e.target_id]
 
 
-def test_res_import_local(tmp_path: Path) -> None:
+def test_deep_res_import_local(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_IMPORT_LOCAL)
     imports = _one(edges, EdgeKind.IMPORTS, "m::run", "lib::helper")
     assert imports.provenance.method is Method.IMPORT_ABSOLUTE
     assert _one(edges, EdgeKind.CALLS, "m::run", "lib::helper")
 
 
-def test_res_import_cycle(tmp_path: Path) -> None:
+def test_deep_res_import_cycle(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_IMPORT_CYCLE)
     assert _one(edges, EdgeKind.IMPORTS, "a", "b::beta")
     assert _one(edges, EdgeKind.IMPORTS, "b", "a::alpha")
@@ -690,7 +1048,7 @@ def test_res_import_cycle(tmp_path: Path) -> None:
     assert import_cycles(edges) == [("a", "b")]
 
 
-def test_res_reexport(tmp_path: Path) -> None:
+def test_deep_res_reexport(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_REEXPORT)
     edge = _one(edges, EdgeKind.IMPORTS, "app", "pkg.impl::Thing")
     assert edge.provenance.method is Method.REEXPORT
@@ -701,7 +1059,7 @@ def test_res_reexport(tmp_path: Path) -> None:
     assert not _find(edges, EdgeKind.IMPORTS, "app", "pkg::Thing")
 
 
-def test_res_mro(tmp_path: Path) -> None:
+def test_deep_res_mro(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_MRO)
     super_edge = _one(edges, EdgeKind.CALLS, "h::Leaf.run", "h::Middle.run")
     assert super_edge.provenance.method is Method.MRO_DISPATCH
@@ -714,7 +1072,7 @@ def test_res_mro(tmp_path: Path) -> None:
     assert not _find(edges, EdgeKind.CALLS, "h::drive", "h::Base.run")
 
 
-def test_res_decorator(tmp_path: Path) -> None:
+def test_deep_res_decorator(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_DECORATOR)
     wrapper = _one(edges, EdgeKind.DECORATES, "d::trace", "d::work")
     assert wrapper.provenance.method is Method.DECORATOR_UNWRAP
@@ -722,14 +1080,14 @@ def test_res_decorator(tmp_path: Path) -> None:
     assert wrapped.provenance.confidence is Confidence.RESOLVED
 
 
-def test_res_getattr_literal(tmp_path: Path) -> None:
+def test_deep_res_getattr_literal(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_GETATTR_LITERAL)
     call = _one(edges, EdgeKind.CALLS, "g::main", "g::Ops.run")
     assert call.provenance.method is Method.GETATTR_LITERAL
     assert call.provenance.confidence is Confidence.PROBABLE
 
 
-def test_res_importlib(tmp_path: Path) -> None:
+def test_deep_res_importlib(tmp_path: Path) -> None:
     edges, _, _ = _case_run(tmp_path, RES_IMPORTLIB)
     edge = _one(edges, EdgeKind.IMPORTS, "i::load", "plugins.alpha")
     assert edge.provenance.method is Method.IMPORTLIB_LITERAL
@@ -737,7 +1095,7 @@ def test_res_importlib(tmp_path: Path) -> None:
     assert _one(edges, EdgeKind.CALLS, "i::load", "plugins.alpha::run")
 
 
-def test_res_importlib_computed_is_unresolved(tmp_path: Path) -> None:
+def test_deep_res_importlib_computed_is_unresolved(tmp_path: Path) -> None:
     _write(
         tmp_path,
         {
@@ -757,7 +1115,7 @@ def test_res_importlib_computed_is_unresolved(tmp_path: Path) -> None:
     assert Method.IMPORTLIB_LITERAL in record[0].attempted
 
 
-def test_res_registry_dict(tmp_path: Path) -> None:
+def test_deep_res_registry_dict(tmp_path: Path) -> None:
     edges, unresolved, _ = _case_run(tmp_path, RES_REGISTRY_DICT)
     for member in ("alpha", "beta"):
         edge = _one(edges, EdgeKind.REGISTERS, "r::REGISTRY", f"r::{member}")
@@ -773,7 +1131,7 @@ def test_res_registry_dict(tmp_path: Path) -> None:
     assert dynamic[0].reason is UnresolvedReason.AMBIGUOUS
 
 
-def test_res_registry_decorator(tmp_path: Path) -> None:
+def test_deep_res_registry_decorator(tmp_path: Path) -> None:
     edges, _, resolver = _case_run(tmp_path, RES_REGISTRY_DECORATOR)
     for member in ("do_alpha", "do_beta"):
         edge = _one(edges, EdgeKind.REGISTERS, "rd::HANDLERS", f"rd::{member}")
@@ -784,7 +1142,7 @@ def test_res_registry_decorator(tmp_path: Path) -> None:
     assert "'alpha'" in alpha.provenance.note
 
 
-def test_res_config_wiring(tmp_path: Path) -> None:
+def test_deep_res_config_wiring(tmp_path: Path) -> None:
     edges, unresolved, _ = _case_run(tmp_path, RES_CONFIG_WIRING)
     key = config_key_id("config/wiring.json", "/components/0/class")
     edge = _one(edges, EdgeKind.CONFIGURES, key, "app.rules::AlphaRule")
@@ -794,7 +1152,7 @@ def test_res_config_wiring(tmp_path: Path) -> None:
     assert not unresolved
 
 
-def test_res_config_wiring_undeclared_is_weaker(tmp_path: Path) -> None:
+def test_deep_res_config_wiring_undeclared_is_weaker(tmp_path: Path) -> None:
     _write(tmp_path, RES_CONFIG_WIRING.files)
     edges, _, _ = _run(tmp_path)  # no owner-declared config paths (Q3 blank)
     key = config_key_id("config/wiring.json", "/components/0/class")
@@ -802,7 +1160,7 @@ def test_res_config_wiring_undeclared_is_weaker(tmp_path: Path) -> None:
     assert edge.provenance.confidence is Confidence.HEURISTIC
 
 
-def test_res_config_dangling(tmp_path: Path) -> None:
+def test_deep_res_config_dangling(tmp_path: Path) -> None:
     edges, unresolved, _ = _case_run(tmp_path, RES_CONFIG_DANGLING)
     assert not [e for e in edges if e.kind is EdgeKind.CONFIGURES]
     key = config_key_id("config/wiring.json", "/components/0/class")
@@ -1054,6 +1412,10 @@ def test_resolver_satisfies_the_protocol_shape(tmp_path: Path) -> None:
     assert isinstance(edges, Sequence) and isinstance(unresolved, Sequence)
     assert all(isinstance(e, Edge) for e in edges)
     assert all(isinstance(u, Unresolved) for u in unresolved)
+    # the module-level convenience wrapper is the same call
+    plain_edges, plain_unresolved = resolve(elements, tmp_path)
+    assert canonical_jsonl(plain_edges) == canonical_jsonl(edges)
+    assert canonical_jsonl(plain_unresolved) == canonical_jsonl(unresolved)
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.case_id)
@@ -1259,8 +1621,28 @@ def test_case_precision_is_perfect(tmp_path: Path, case: Case) -> None:
 
 
 def test_corpus_precision_and_recall(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """The reported numbers, over every hand-labelled case at once."""
+    """The reported numbers, over every hand-labelled case at once.
+
+    All seventeen ``res_*`` fixtures plus the fourteen deeper programs. The
+    denominator is edges between elements of the program under test: external
+    and builtin targets are resolved but are not the engine's own wiring, and
+    are asserted case by case instead.
+    """
     total = Score()
+    for case_id in sorted(FIXTURE_EXPECTED):
+        edges, _, _ = _fixture_run(case_id)
+        emitted_case = _triples(
+            e for e in edges if _in_inventory(e, _fixture_modules(case_id))
+        )
+        expected_case = FIXTURE_EXPECTED[case_id]
+        hit = emitted_case & expected_case
+        total = total.plus(
+            Score(
+                len(hit),
+                len(emitted_case - expected_case),
+                len(expected_case - emitted_case),
+            )
+        )
     for case in CASES:
         score, _, _ = _score_case(tmp_path, case)
         total = total.plus(score)
@@ -1271,7 +1653,8 @@ def test_corpus_precision_and_recall(tmp_path: Path, capsys: pytest.CaptureFixtu
     recall = (1000 * total.true_positive) // expected if expected else 0
     with capsys.disabled():
         print(
-            f"\ncard 2 corpus: {len(CASES)} labelled cases, "
+            f"\ncard 2 corpus: {len(FIXTURE_EXPECTED)} res_* fixtures + "
+            f"{len(CASES)} deeper programs, "
             f"{expected} expected edges, {emitted} emitted; "
             f"precision {precision / 10:.1f}%, recall {recall / 10:.1f}%"
         )

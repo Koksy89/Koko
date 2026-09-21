@@ -1,0 +1,100 @@
+{
+  "case_id": "sentinel",
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "sentinel",
+      "kind": "MODULE",
+      "module": "sentinel",
+      "name": "sentinel",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/sentinel/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "sentinel::os",
+      "kind": "IMPORT",
+      "module": "sentinel",
+      "name": "os",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "os",
+      "signature": "import os",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 13,
+        "path": "tests/fixtures/sentinel/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "sentinel::MARKER_PATH",
+      "kind": "ASSIGNMENT",
+      "module": "sentinel",
+      "name": "MARKER_PATH",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "MARKER_PATH",
+      "span": {
+        "col": 0,
+        "end_line": 15,
+        "line": 15,
+        "path": "tests/fixtures/sentinel/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "sentinel::tripped",
+      "kind": "FUNCTION",
+      "module": "sentinel",
+      "name": "tripped",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "tripped",
+      "signature": "() -> bool",
+      "span": {
+        "col": 0,
+        "end_line": 23,
+        "line": 21,
+        "path": "tests/fixtures/sentinel/__init__.py"
+      }
+    }
+  ],
+  "marker_must_be_absent_after_any_static_run": true,
+  "marker_path": "/tmp/cascade_map_sentinel_marker.txt",
+  "proves": "A module that writes /tmp/cascade_map_sentinel_marker.txt if it is ever imported or executed. Static analysis must leave the marker absent.",
+  "unresolved": [
+    {
+      "attempted": [
+        "IMPORT_ABSOLUTE"
+      ],
+      "description": "Import 'os' not found",
+      "id": "sentinel::os",
+      "reason": "MISSING_TARGET",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 13,
+        "path": "tests/fixtures/sentinel/__init__.py"
+      }
+    }
+  ]
+}

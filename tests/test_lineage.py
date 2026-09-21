@@ -738,12 +738,12 @@ def test_confidence_of_a_slice_is_combined_from_its_hops(tmp_path: Path) -> None
 
 
 def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
     first = analyze(
         tmp_path / "a", {"cascade": CASCADE_SRC, "frames": FRAME_SRC, "cont": CONTAINER_SRC},
         sinks=[SINK],
-    ) if (tmp_path / "a").mkdir() is None else None
-    assert first is not None
-    (tmp_path / "b").mkdir()
+    )
     second = analyze(
         tmp_path / "b", {"cascade": CASCADE_SRC, "frames": FRAME_SRC, "cont": CONTAINER_SRC},
         sinks=[SINK],
@@ -871,14 +871,16 @@ def test_default_slices_cover_every_feature(tmp_path: Path) -> None:
     assert list(slices) == sorted(slices, key=lambda s: s.id)
 
 
-def test_missing_fixture_cases_are_named(tmp_path: Path) -> None:
-    """Honest gap: FIXTURES.md lineage cases card 8 has not written yet."""
-    absent = tuple(
-        case for case in MISSING_FIXTURE_CASES if not (FIXTURES / "mode_b" / case).exists()
-    )
-    assert absent == MISSING_FIXTURE_CASES or not absent, (
-        "some lineage fixtures now exist; fold them into these tests: "
-        f"{sorted(set(MISSING_FIXTURE_CASES) - set(absent))}"
+def test_missing_fixture_cases_are_named() -> None:
+    """Honest gap, and a tripwire.
+
+    These `FIXTURES.md` lineage cases had no fixture directory when this card was
+    built, so they are exercised against constructed sources above. When card 8
+    writes one, this test fails so that the real fixture is graded here instead.
+    """
+    present = [case for case in MISSING_FIXTURE_CASES if (FIXTURES / "mode_b" / case).exists()]
+    assert not present, (
+        f"lineage fixtures now exist and must be graded directly: {sorted(present)}"
     )
 
 
@@ -948,7 +950,7 @@ def test_the_card_cannot_execute_target_code() -> None:
         if isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[0])
     assert called.isdisjoint(
-        {"eval", "exec", "compile", "__import__", "import_module", "loads", "system", "run"}
+        {"eval", "exec", "compile", "__import__", "import_module", "loads", "system", "popen"}
     )
     assert imported.isdisjoint({"importlib", "subprocess", "pickle", "marshal", "runpy"})
     assert "MODEL_PROPOSED" not in {

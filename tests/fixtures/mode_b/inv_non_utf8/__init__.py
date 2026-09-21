@@ -1,2 +1,2 @@
 """Module with invalid UTF-8."""
-ÿþ
+LABEL = 'ÿþ'  # 0xFF 0xFE is not valid UTF-8 in any position

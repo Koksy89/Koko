@@ -12,15 +12,27 @@ describes as temporary files under ``tmp_path``, one per case, named after the
 ``adv_*``/``run_*`` case it proves. See the build report for this gap.
 
 Nothing here ever imports, execs or reads ``target_engine/`` or
-``target_versions/`` -- every target root used below is a fixture directory or
-a ``tmp_path`` the test itself wrote.
+``target_versions/`` -- every target root used below is a *copy* of a fixture
+directory, made under ``tmp_path``, or a ``tmp_path`` the test itself wrote.
+
+The corpus in ``tests/fixtures/`` is the fixed point every card is measured
+against, and this card's own purpose is containing side effects -- so no test
+here ever points ``RunConfig.target_root`` (or anything else) directly at
+``tests/fixtures/``: real fixtures are copied into ``tmp_path`` first via
+``_copied_fixture`` before anything executes them, structurally ruling out a
+write landing in the corpus regardless of whether the sandbox's own
+``sys.dont_write_bytecode`` window is entered correctly. ``_fixtures_untouched``
+is the loud, local check that this held: it hashes the whole corpus before
+and after this module's tests run and fails if a single byte moved.
 """
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 import os
+import shutil
 import socket
 import sys
 from pathlib import Path
@@ -32,7 +44,58 @@ from cascade_map.contracts import canonical_dumps
 from cascade_map.harness import Harness, RunConfig, ScenarioSpec
 from cascade_map.harness.hashing import compute_graph_hash, compute_target_hashes
 
-FIXTURES_MODE_A = Path(__file__).parent / "fixtures" / "mode_a"
+FIXTURES_ROOT = Path(__file__).parent / "fixtures"
+FIXTURES_MODE_A = FIXTURES_ROOT / "mode_a"
+
+
+def _snapshot_fixtures_tree() -> dict[str, str]:
+    snapshot: dict[str, str] = {}
+    for path in sorted(FIXTURES_ROOT.rglob("*")):
+        if path.is_file():
+            snapshot[path.relative_to(FIXTURES_ROOT).as_posix()] = hashlib.sha256(
+                path.read_bytes()
+            ).hexdigest()
+    return snapshot
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _fixtures_untouched():
+    """No test in this module may write anything into ``tests/fixtures/`` --
+    not output, not a temp file, and not a bytecode cache from executing a
+    fixture directly. Belt (this snapshot) and suspenders
+    (``sys.dont_write_bytecode`` for the whole module, on top of the
+    sandbox's own) around the one thing this card exists to prevent.
+    """
+    original_dont_write_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    before = _snapshot_fixtures_tree()
+    yield
+    sys.dont_write_bytecode = original_dont_write_bytecode
+    after = _snapshot_fixtures_tree()
+    added = sorted(set(after) - set(before))
+    removed = sorted(set(before) - set(after))
+    changed = sorted(k for k in (set(after) & set(before)) if after[k] != before[k])
+    assert not added and not removed and not changed, (
+        "tests/fixtures/ changed while this module's tests ran -- "
+        f"added={added} removed={removed} changed={changed}. Every other "
+        "card is measured against this corpus; nothing here may write to it."
+    )
+
+
+def _copied_fixture(tmp_path: Path, relative: str) -> Path:
+    """A read-only-by-construction copy of a real fixture under ``tmp_path``.
+
+    Executing the corpus directly risks writing into it (a bytecode cache is
+    exactly how this went wrong once already); copying first makes that
+    structurally impossible instead of depending on a flag staying set.
+    Returns the copy of *relative* itself, e.g. ``.../tmp_path/copy/run_linear``
+    for ``relative="run_linear"`` -- the caller points ``target_root`` at its
+    parent so the copied directory still imports under its original name.
+    """
+    dest = tmp_path / "fixture_copy" / relative
+    shutil.copytree(FIXTURES_MODE_A / relative, dest)
+    return dest
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -94,10 +157,14 @@ def _kinds(record) -> list[str]:
 
 
 def test_run_linear_completes_with_every_control_active(tmp_path: Path) -> None:
+    # A copy, never the corpus itself: see _copied_fixture and _fixtures_untouched.
+    copied_run_linear = _copied_fixture(tmp_path, "run_linear")
+    target_root = copied_run_linear.parent
+
     out_dir = _mode_b_graph(tmp_path)
     sandbox_root = tmp_path / "sandbox"
     config = RunConfig(
-        target_root=FIXTURES_MODE_A,
+        target_root=target_root,
         mode_b_out_dir=out_dir,
         sandbox_root=sandbox_root,
         scenarios={
@@ -120,7 +187,9 @@ def test_run_linear_completes_with_every_control_active(tmp_path: Path) -> None:
     }
     assert record.run_id.startswith("run_")
 
-    # No trace of ever having written into the fixture tree.
+    # No write landed even in the *copy* -- and the real corpus was never
+    # named as a target_root at all, so it could not have been touched.
+    assert not (copied_run_linear / "__pycache__").exists()
     assert not (FIXTURES_MODE_A / "run_linear" / "__pycache__").exists()
 
     run_json = out_dir / "runtime" / record.run_id / "run.json"

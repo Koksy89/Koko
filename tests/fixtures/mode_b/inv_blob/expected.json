@@ -1,41 +1,47 @@
 {
+  "assignment_elements_expected": 0,
+  "blob_must_never_be_decoded": true,
+  "case_id": "inv_blob",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Module with a large embedded blob.",
       "id": "inv_blob",
       "kind": "MODULE",
-      "name": "inv_blob",
-      "qualname": "",
       "module": "inv_blob",
-      "span": {
-        "path": "tests/fixtures/mode_b/inv_blob/__init__.py",
-        "line": 1
-      },
+      "name": "inv_blob",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "docstring": "Module with a large embedded blob.",
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/inv_blob/__init__.py"
+      }
     },
     {
+      "byte_size": 1048578,
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "inv_blob::@blob#1",
       "kind": "BLOB",
-      "name": "@blob#1",
-      "qualname": "@blob#1",
       "module": "inv_blob",
-      "span": {
-        "path": "tests/fixtures/mode_b/inv_blob/__init__.py",
-        "line": 3
-      },
+      "name": "@blob#1",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "byte_size": 1048576,
-      "content_hash_asserted": false
+      "qualname": "@blob#1",
+      "span": {
+        "col": 0,
+        "end_line": 5,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/inv_blob/__init__.py"
+      }
     }
   ],
+  "proves": "A ~1 MiB embedded string literal becomes an opaque BLOB element with its size and location, is never decoded or decompressed, and absorbs the assignment it sits in (no ASSIGNMENT element for DATA).",
   "unresolved": []
 }

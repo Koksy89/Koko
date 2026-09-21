@@ -94,20 +94,24 @@ def read_source(rel_path: str) -> tuple[list[str], str | None]:
     return text.splitlines(), text
 
 
-def def_index(text: str) -> dict[str, tuple[int, int, int]]:
-    """qualname -> (lineno, end_lineno, col_offset), built by explicit walk."""
-    index: dict[str, tuple[int, int, int]] = {}
+def def_index(text: str) -> dict[str, list[tuple[int, int, int]]]:
+    """qualname -> [(lineno, end_lineno, col_offset), ...] in source order."""
+    index: dict[str, list[tuple[int, int, int]]] = {}
     stack: list[tuple[ast.AST, str]] = [(ast.parse(text), "")]
     while stack:
         node, prefix = stack.pop()
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 qualname = prefix + child.name
-                index[qualname] = (child.lineno, child.end_lineno or child.lineno, child.col_offset)
+                index.setdefault(qualname, []).append(
+                    (child.lineno, child.end_lineno or child.lineno, child.col_offset)
+                )
                 sep = "." if isinstance(child, ast.ClassDef) else ".<locals>."
                 stack.append((child, qualname + sep))
             else:
                 stack.append((child, prefix))
+    for spans in index.values():
+        spans.sort()
     return index
 
 
@@ -128,7 +132,9 @@ def expected_fields(anchor: dict[str, Any], rel_path: str) -> dict[str, int]:
         return {"line": line, "col": lines[line - 1].index(anchor["line_contains"])}
     assert text is not None, f"{rel_path} is not UTF-8; only 'line'/'module' anchors apply"
     if kind == "def":
-        line, end_line, col = def_index(text)[anchor["qualname"]]
+        line, end_line, col = def_index(text)[anchor["qualname"]][
+            anchor.get("occurrence", 1) - 1
+        ]
         return {"line": line, "end_line": end_line, "col": col}
     target_line = nth_line(lines, anchor["line_contains"], anchor.get("occurrence", 1))
     if kind == "stmt":
@@ -194,10 +200,14 @@ def check_case(case_dir: Path) -> tuple[int, list[str]]:
             assert text is not None
             index = def_index(text)
             qualname = record["qualname"]
-            if qualname not in index:
-                problems.append(f"{rel}{pointer}: no def/class {qualname!r} in {rel_path}")
+            # `m::func#2` is the second `def func` in source order.
+            ordinal = int(record["id"].rsplit("#", 1)[1]) if "#" in record["id"] else 1
+            if len(index.get(qualname, [])) < ordinal:
+                problems.append(
+                    f"{rel}{pointer}: no def/class {qualname!r} #{ordinal} in {rel_path}"
+                )
                 continue
-            line, end_line, col = index[qualname]
+            line, end_line, col = index[qualname][ordinal - 1]
             truth = {"line": line, "end_line": end_line, "col": col}
         # Route 2 -- everything else, via its anchor.
         elif pointer in anchors:

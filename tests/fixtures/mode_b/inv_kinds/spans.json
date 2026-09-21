@@ -1,0 +1,88 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "import sys",
+      "occurrence": 1
+    },
+    "/elements/10/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "MyClass.my_property"
+    },
+    "/elements/11/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "outer"
+    },
+    "/elements/12/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "outer.<locals>.inner"
+    },
+    "/elements/13/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "with_closure"
+    },
+    "/elements/14/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "with_closure.<locals>.closure"
+    },
+    "/elements/2/span": {
+      "kind": "stmt",
+      "line_contains": "from typing import Optional",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "stmt",
+      "line_contains": "GLOBAL_VAR = 42",
+      "occurrence": 1
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "simple_func"
+    },
+    "/elements/5/span": {
+      "kind": "line",
+      "line_contains": "param: int",
+      "occurrence": 1
+    },
+    "/elements/6/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "MyClass"
+    },
+    "/elements/7/span": {
+      "kind": "stmt",
+      "line_contains": "class_var = 100",
+      "occurrence": 1
+    },
+    "/elements/8/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "MyClass.__init__"
+    },
+    "/elements/9/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "MyClass.regular_method"
+    },
+    "/unresolved/0/span": {
+      "kind": "stmt",
+      "line_contains": "from typing import Optional",
+      "occurrence": 1
+    },
+    "/unresolved/1/span": {
+      "kind": "stmt",
+      "line_contains": "import sys",
+      "occurrence": 1
+    }
+  }
+}

@@ -121,6 +121,26 @@ FS_MUTATION_EVENTS: frozenset[str] = frozenset(
 
 _OPEN_EVENTS: frozenset[str] = frozenset({"open", "os.open"})
 
+#: ``multiprocessing``'s "spawn" start method launches the child by calling
+#: ``_posixsubprocess.fork_exec`` directly (see ``multiprocessing.util.
+#: spawnv_passfds``), bypassing ``subprocess.Popen.__init__`` entirely --
+#: which is the only place the "subprocess.Popen" audit event is actually
+#: raised. Nothing in ``PROCESS_EVENTS`` fires for it: verified empirically,
+#: not assumed (see the harness build report). The one place this path is
+#: reliably observable is the ``import`` of the backend module that performs
+#: it, which every start method loads lazily, only once a process is about
+#: to actually be launched -- so that import is where this control gates
+#: multiprocessing, declared through the same mechanism as everything else
+#: in ``declared_process_names``, via the literal token ``"multiprocessing"``.
+_MULTIPROCESSING_LAUNCH_MODULES: frozenset[str] = frozenset(
+    {
+        "multiprocessing.popen_spawn_posix",
+        "multiprocessing.popen_spawn_win32",
+        "multiprocessing.popen_forkserver",
+        "multiprocessing.forkserver",
+    }
+)
+
 #: Fired only by ``Harness._selftest_audit_hook``. Never a real Python event,
 #: so it cannot collide with anything the target might legitimately do; it
 #: exists purely to prove the hook is wired to the active context before a
@@ -296,6 +316,9 @@ class SandboxContext:
         if event in PROCESS_EVENTS:
             self._handle_process(event, args)
             return
+        if event == "import":
+            self._handle_import(event, args)
+            return
         if event in _OPEN_EVENTS:
             self._handle_open(event, args)
             return
@@ -319,6 +342,18 @@ class SandboxContext:
         detail = f"{event} args={_safe_repr(args)}"
         self._record_blocked("process", detail)
         raise BlockedOperation(f"process spawn blocked (not declared in run config): {event}")
+
+    def _handle_import(self, event: str, args: tuple[object, ...]) -> None:
+        module = args[0] if args else None
+        if not isinstance(module, str) or module not in _MULTIPROCESSING_LAUNCH_MODULES:
+            return
+        if "multiprocessing" in self.declared_process_names:
+            return
+        detail = f"import {module!r} (multiprocessing process-launch backend)"
+        self._record_blocked("process", detail)
+        raise BlockedOperation(
+            f"process spawn blocked (not declared in run config): import {module}"
+        )
 
     def _handle_open(self, event: str, args: tuple[object, ...]) -> None:
         path, is_write = _classify_open(event, args)

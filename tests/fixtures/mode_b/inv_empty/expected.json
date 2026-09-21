@@ -1,22 +1,30 @@
 {
+  "case_id": "inv_empty",
+  "element_count": 1,
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "",
       "id": "inv_empty",
       "kind": "MODULE",
-      "name": "inv_empty",
-      "qualname": "",
       "module": "inv_empty",
-      "span": {
-        "path": "tests/fixtures/mode_b/inv_empty/__init__.py",
-        "line": 1
-      },
+      "name": "inv_empty",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/inv_empty/__init__.py"
+      }
     }
   ],
+  "notes": [
+    "content_hash is the SHA-256 of zero bytes: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.",
+    "span.line is 1 by definition: a module begins at its first byte even when the file has no lines."
+  ],
+  "proves": "A zero-byte file produces exactly one MODULE element, not a crash.",
   "unresolved": []
 }

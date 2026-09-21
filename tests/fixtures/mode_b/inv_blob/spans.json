@@ -1,0 +1,19 @@
+{
+  "byte_sizes": {
+    "/elements/1": {
+      "kind": "str_assign",
+      "path": "tests/fixtures/mode_b/inv_blob/__init__.py",
+      "target": "DATA"
+    }
+  },
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "DATA = ",
+      "occurrence": 1
+    }
+  }
+}

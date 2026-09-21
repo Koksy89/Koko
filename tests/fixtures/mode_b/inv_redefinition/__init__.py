@@ -1,4 +1,4 @@
-"""Module with redefined names."""
+"""Module with a name defined twice."""
 
 
 def func():

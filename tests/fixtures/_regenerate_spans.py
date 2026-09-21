@@ -93,7 +93,7 @@ class Source:
             self.decodable = False
         self.lines = self.text.splitlines()
         self._tree: ast.AST | None = None
-        self._defs: dict[str, ast.AST] | None = None
+        self._defs: dict[str, list[ast.AST]] | None = None
 
     @property
     def tree(self) -> ast.AST:
@@ -102,11 +102,17 @@ class Source:
         return self._tree
 
     @property
-    def defs(self) -> dict[str, ast.AST]:
-        """Map Python-convention qualname -> def/class node."""
+    def defs(self) -> dict[str, list[ast.AST]]:
+        """Map Python-convention qualname -> def/class nodes, in source order.
+
+        A list, not a single node: `inv_redefinition` defines the same name
+        twice on purpose, so an anchor disambiguates with `occurrence`.
+        """
         if self._defs is None:
-            found: dict[str, ast.AST] = {}
+            found: dict[str, list[ast.AST]] = {}
             _collect_defs(self.tree, "", found)
+            for nodes in found.values():
+                nodes.sort(key=lambda n: n.lineno)
             self._defs = found
         return self._defs
 
@@ -123,13 +129,11 @@ class Source:
         )
 
 
-def _collect_defs(node: ast.AST, prefix: str, out: dict[str, ast.AST]) -> None:
+def _collect_defs(node: ast.AST, prefix: str, out: dict[str, list[ast.AST]]) -> None:
     for child in ast.iter_child_nodes(node):
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             qualname = f"{prefix}{child.name}"
-            if qualname in out:
-                raise LookupError(f"duplicate qualname {qualname!r}; anchor is ambiguous")
-            out[qualname] = child
+            out.setdefault(qualname, []).append(child)
             inner = (
                 f"{qualname}."
                 if isinstance(child, ast.ClassDef)
@@ -154,12 +158,14 @@ def resolve_span(anchor: dict[str, Any], source: Source) -> dict[str, int | None
 
     if kind == "def":
         qualname = anchor["qualname"]
-        node = source.defs.get(qualname)
-        if node is None:
+        nodes = source.defs.get(qualname, [])
+        occurrence = anchor.get("occurrence", 1)
+        if len(nodes) < occurrence:
             raise LookupError(
-                f"{source.path}: no def/class {qualname!r}; "
+                f"{source.path}: no def/class {qualname!r} #{occurrence}; "
                 f"have {sorted(source.defs)}"
             )
+        node = nodes[occurrence - 1]
         return {
             "line": node.lineno,  # type: ignore[attr-defined]
             "end_line": node.end_lineno,  # type: ignore[attr-defined]

@@ -4,44 +4,46 @@ import sys
 from typing import Optional
 
 
-GLOBAL_VAR = 42  # ASSIGNMENT
+GLOBAL_VAR = 42
 
 
-def simple_func(param: int) -> None:  # FUNCTION with PARAMETER
+def simple_func(param: int) -> None:
     """A function."""
-    x = 10  # local ASSIGNMENT
+    x = 10
 
 
-class MyClass:  # CLASS
+class MyClass:
     """A class."""
 
-    class_var = 100  # ASSIGNMENT
+    class_var = 100
 
-    def __init__(self, value: str) -> None:  # METHOD with PARAMETER
+    def __init__(self, value: str) -> None:
         """Initialize."""
-        self.instance_var = value  # ASSIGNMENT
+        self.instance_var = value
 
-    def regular_method(self, x: int) -> str:  # METHOD with PARAMETER
+    def regular_method(self, x: int) -> str:
         """A regular method."""
         return str(x)
 
     @property
-    def my_property(self) -> int:  # PROPERTY
+    def my_property(self) -> int:
         """A property."""
         return self.instance_var
 
 
 def outer() -> None:
-    """Function with nested function."""
-    def inner() -> None:  # nested FUNCTION
+    """Function with a nested function."""
+    def inner() -> None:
         pass
 
     return inner
 
 
-def with_closure() -> callable:
-    """Create a closure."""
+def with_closure() -> Optional[object]:
+    """Create a closure over `y`."""
     y = 5
-    def closure() -> int:  # closure FUNCTION
+
+    def closure() -> int:
         return y
+
     return closure

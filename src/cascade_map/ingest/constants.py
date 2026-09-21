@@ -41,11 +41,15 @@ EXCLUDED_DIR_NAMES = frozenset(
     }
 )
 
-# Never target content: the fixture corpus's own sidecar expectation file
-# (FIXTURES.md), sitting beside source files inside every mode_b/mode_a case
-# directory. A real target tree has no reason to contain this exact name;
-# excluding it keeps fixture metadata out of the inventory it is grading.
-EXCLUDED_FILE_NAMES = frozenset({"expected.json"})
+# Never target content: the fixture corpus's own sidecar files (FIXTURES.md),
+# sitting beside source files inside mode_b/mode_a case directories --
+# `expected.json` (the hand-written expectation) and `spans.json` (auxiliary
+# span/byte-size metadata some cases carry alongside it). A real target tree
+# has no reason to contain either exact name; excluding them keeps fixture
+# metadata out of the inventory it is grading. Fixture *source* config files
+# used by a case under test (e.g. `wiring.json`, `config.json`) are not on
+# this list and are ingested normally.
+EXCLUDED_FILE_NAMES = frozenset({"expected.json", "spans.json"})
 
 # Non-Python config/data file extensions ingested as DATA_FILE (+ CONFIG_KEY
 # for the structured formats: JSON, YAML, INI).

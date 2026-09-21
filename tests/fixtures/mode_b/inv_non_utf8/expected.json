@@ -1,14 +1,20 @@
 {
+  "case_id": "inv_non_utf8",
   "elements": [],
+  "proves": "A file that is not valid UTF-8 yields exactly one DECODE_ERROR Unresolved record, no elements, and the run continues.",
   "unresolved": [
     {
+      "attempted": [
+        "AST_DIRECT"
+      ],
+      "description": "UnicodeDecodeError: byte 0xff is not valid UTF-8",
       "id": "inv_non_utf8",
       "reason": "DECODE_ERROR",
       "span": {
-        "path": "tests/fixtures/mode_b/inv_non_utf8/__init__.py",
-        "line": 1
-      },
-      "description": "Unable to decode file as UTF-8"
+        "col": 0,
+        "line": 2,
+        "path": "tests/fixtures/mode_b/inv_non_utf8/__init__.py"
+      }
     }
   ]
 }

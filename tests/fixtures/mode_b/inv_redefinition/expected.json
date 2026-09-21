@@ -1,59 +1,70 @@
 {
+  "case_id": "inv_redefinition",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "inv_redefinition",
       "kind": "MODULE",
-      "name": "inv_redefinition",
-      "qualname": "",
       "module": "inv_redefinition",
-      "span": {
-        "path": "tests/fixtures/mode_b/inv_redefinition/__init__.py",
-        "line": 1
-      },
+      "name": "inv_redefinition",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "docstring": "Module with redefined names.",
-      "content_hash_asserted": false
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/inv_redefinition/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "First definition.",
       "id": "inv_redefinition::func",
       "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
       "module": "inv_redefinition",
-      "span": {
-        "path": "tests/fixtures/mode_b/inv_redefinition/__init__.py",
-        "line": 5
-      },
+      "name": "func",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "docstring": "First definition.",
-      "content_hash_asserted": false
+      "qualname": "func",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/inv_redefinition/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Redefined in conditional.",
       "id": "inv_redefinition::func#2",
       "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
       "module": "inv_redefinition",
-      "span": {
-        "path": "tests/fixtures/mode_b/inv_redefinition/__init__.py",
-        "line": 10
-      },
+      "name": "func",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "docstring": "Redefined in conditional.",
-      "content_hash_asserted": false
+      "qualname": "func",
+      "signature": "()",
+      "span": {
+        "col": 4,
+        "end_line": 12,
+        "line": 10,
+        "path": "tests/fixtures/mode_b/inv_redefinition/__init__.py"
+      }
     }
   ],
+  "ordered_ids_for_name_func": [
+    "inv_redefinition::func",
+    "inv_redefinition::func#2"
+  ],
+  "proves": "A name defined twice yields `m::func` then `m::func#2`, in source order. The first occurrence never gains a suffix, so adding the second definition later does not rename the first.",
   "unresolved": []
 }

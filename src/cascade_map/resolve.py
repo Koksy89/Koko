@@ -45,7 +45,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Mapping, Sequence
+from typing import Any, Iterable, Sequence
 
 from .contracts.interfaces import (
     Confidence,
@@ -747,6 +747,7 @@ class Resolver:
         self._export_cache: dict[tuple[str, str], _Binding] = {}
         self._mro_cache: dict[tuple[str, str], tuple[tuple[tuple[str, str], ...], bool]] = {}
         self._scope_cache: dict[str, dict[str, _Binding]] = {}
+        self._star_cache: dict[tuple[str, _ImportSpec], dict[str, _Binding]] = {}
         self._subclasses: dict[tuple[str, str], list[tuple[str, str]]] = defaultdict(list)
         self._registry_keys: dict[str, list[str]] = defaultdict(list)
         self._stats: dict[str, int] = defaultdict(int)
@@ -791,6 +792,7 @@ class Resolver:
         self._export_cache.clear()
         self._mro_cache.clear()
         self._scope_cache.clear()
+        self._star_cache.clear()
         self._subclasses.clear()
         self._registry_keys.clear()
         self._stats.clear()
@@ -1152,6 +1154,25 @@ class Resolver:
                 confidence=Confidence.UNKNOWN,
                 note="; ".join(b for b in [note, "name not found in target module"] if b),
             )
+        if spec.level:
+            # A relative import always names something inside the tree. If the
+            # tree has no such module the reference is dangling, and claiming
+            # an edge to an invented absolute module would be an over-link.
+            return _Binding(
+                kind=_BKind.UNKNOWN,
+                module_name=target_module,
+                method=method,
+                confidence=Confidence.UNKNOWN,
+                note="; ".join(
+                    b
+                    for b in [
+                        note,
+                        f"relative import resolves to {target_module!r}, which is not "
+                        "in the inventory",
+                    ]
+                    if b
+                ),
+            )
         # external module
         return _Binding(
             kind=_BKind.CALLABLE,
@@ -1164,6 +1185,19 @@ class Resolver:
         )
 
     def _star_bindings(self, summary: _ModuleSum, spec: _ImportSpec) -> dict[str, _Binding]:
+        """Names a ``from x import *`` binds. Memoised, so the residue record
+        is written once however many times the scope is rebuilt."""
+        cache_key = (summary.name, spec)
+        cached = self._star_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        result = self._star_bindings_uncached(summary, spec)
+        self._star_cache[cache_key] = result
+        return result
+
+    def _star_bindings_uncached(
+        self, summary: _ModuleSum, spec: _ImportSpec
+    ) -> dict[str, _Binding]:
         target_module = (
             _relative_module(summary.name, summary.is_package, spec.level, spec.module)
             if spec.level
@@ -2320,7 +2354,9 @@ class _CallResolver(ast.NodeVisitor):
 
     def visit_If(self, node: ast.If) -> None:
         self.visit(node.test)
-        type_checking = _is_type_checking(node.test)
+        type_checking = _is_type_checking(node.test) and not (
+            isinstance(node.test, ast.Name) and node.test.id in self.s.assigns
+        )
         self.cond_depth += 1
         if type_checking:
             self.tc_depth += 1
@@ -2582,6 +2618,10 @@ class _CallResolver(ast.NodeVisitor):
             return
         if tail in {"entry_points", "iter_entry_points", "load_entry_point"}:
             self._entry_points_call(node, dotted)
+            return
+
+        accessor = self._registry_accessor(node)
+        if accessor is not None:
             return
 
         if isinstance(func, ast.Call):
@@ -3007,6 +3047,71 @@ class _CallResolver(ast.NodeVisitor):
             (Method.REGISTRY_MEMBERSHIP, Method.CONFIG_STRING_MATCH),
         )
 
+    def _registry_accessor(self, node: ast.Call) -> _Binding | None:
+        """``REGISTRY.get("a")`` -- a lookup that *returns* a member.
+
+        Returns ``None`` when the call is not a registry lookup, so the caller
+        falls through to ordinary resolution. Memoised on node identity so the
+        REFERENCES edge is written once.
+        """
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr not in {"get", "pop", "setdefault"}:
+            return None
+        if not node.args:
+            return None
+        base = self._eval(func.value)
+        if base.kind is not _BKind.REGISTRY or base.registry_key is None:
+            return None
+        cached = self._dynamic_cache.get(id(node))
+        if cached is not None:
+            return cached
+        module, name = base.registry_key
+        reg = self.r._modules[module].registries.get(name)
+        key_val = self._eval_str(node.args[0])
+        result: _Binding = _UNKNOWN_BINDING
+        if reg is not None and key_val.closed and len(key_val.literals) == 1:
+            literal = key_val.literals[0]
+            text = reg.entries.get(literal, "")
+            member = self.r._binding_for_dotted(text, module) if text else _UNKNOWN_BINDING
+            if member.target_id and member.kind in (_BKind.CALLABLE, _BKind.CLASS):
+                if id(node) not in self._suppress_reference:
+                    self._emit(
+                        EdgeKind.REFERENCES,
+                        member.target_id,
+                        Method.REGISTRY_MEMBERSHIP,
+                        Confidence.PROBABLE,
+                        node,
+                        note=f"{name}.{func.attr}({literal!r})",
+                    )
+                result = _Binding(
+                    kind=member.kind,
+                    target_id=member.target_id,
+                    class_key=member.class_key,
+                    method=Method.REGISTRY_MEMBERSHIP,
+                    confidence=Confidence.PROBABLE,
+                )
+        if result.kind is _BKind.UNKNOWN:
+            members = self._registry_members(reg, module) if reg is not None else []
+            self._unresolved(
+                node,
+                UnresolvedReason.AMBIGUOUS,
+                (
+                    f"{name}.{func.attr}(...) with a key that is not a traceable "
+                    "literal; no edge claimed"
+                ),
+                (Method.REGISTRY_MEMBERSHIP, Method.DATAFLOW),
+                candidates=members,
+                candidate_confidence=Confidence.PROBABLE if members else Confidence.UNKNOWN,
+            )
+            result = _Binding(
+                kind=_BKind.CANDIDATES,
+                candidates=tuple(members),
+                method=Method.REGISTRY_MEMBERSHIP,
+                confidence=Confidence.UNKNOWN,
+            )
+        self._dynamic_cache[id(node)] = result
+        return result
+
     def _registry_call(self, binding: _Binding, node: ast.Call, label: str) -> None:
         assert binding.registry_key is not None
         module, name = binding.registry_key
@@ -3187,6 +3292,9 @@ class _CallResolver(ast.NodeVisitor):
                 return self._getattr_call(node)
             if tail in {"import_module", "__import__"}:
                 return self._import_module_call(node, arg_index=0)
+            accessor = self._registry_accessor(node)
+            if accessor is not None:
+                return accessor
             inner = self._resolve_dotted(dotted) if dotted else self._eval(func)
             if inner.kind is _BKind.CLASS and inner.class_key is not None:
                 return _Binding(

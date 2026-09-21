@@ -1,14 +1,20 @@
 {
+  "case_id": "inv_syntax_error",
   "elements": [],
+  "proves": "An unparseable file yields exactly one SYNTAX_ERROR Unresolved record with its location, no elements at all, and the run continues.",
   "unresolved": [
     {
+      "attempted": [
+        "AST_DIRECT"
+      ],
+      "description": "SyntaxError: the list opened on the previous line is never closed, so the parser reports the failure at the `return` that follows",
       "id": "inv_syntax_error",
       "reason": "SYNTAX_ERROR",
       "span": {
-        "path": "tests/fixtures/mode_b/inv_syntax_error/__init__.py",
-        "line": 5
-      },
-      "description": "Syntax error: unexpected EOF while parsing"
+        "col": 0,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/inv_syntax_error/__init__.py"
+      }
     }
   ]
 }

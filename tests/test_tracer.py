@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import inspect
 import json
 import posixpath
 import sys
@@ -68,6 +69,7 @@ from cascade_map.tracer import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODE_A = REPO_ROOT / "tests" / "fixtures" / "mode_a"
 TRACER_PKG = REPO_ROOT / "src" / "cascade_map" / "tracer"
+THIS_FILE = Path(__file__).name
 
 AST = Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN)
 
@@ -1171,3 +1173,275 @@ def test_recordings_round_trip_unchanged() -> None:
     recording = branch_recording(13)
     text = recording.dumps()
     assert Recording.loads(text).dumps() == text
+
+
+# ---------------------------------------------------------------------------
+# live collection probes
+#
+# The collector's line handling -- branches, handlers, feature writes -- and
+# its live capture path cannot be reached through the fixture corpus today:
+# every Mode A case except `run_linear` is still a `def func(): pass`
+# placeholder with an empty expectation (card 8). Rather than ship those code
+# paths untested, they are exercised against these four probe functions defined
+# right here. No fixture and no target code is involved; when card 8 fills the
+# corpus in, `test_mode_a_fixture_matches_its_expectation` grades the same
+# behaviour against hand-written expectations.
+# ---------------------------------------------------------------------------
+
+
+def _branching_probe(value: int) -> str:
+    if value > 5:
+        result = "high"
+    else:
+        result = "low"
+    return result
+
+
+def _raising_probe() -> str:
+    try:
+        raise ValueError("boom")
+    except ValueError:
+        return "caught"
+
+
+def _feature_probe() -> dict[str, int]:
+    row: dict[str, int] = {}
+    row["score"] = 42
+    return row
+
+
+def _payload_probe(api_key: str, frame: Any) -> Any:
+    return frame
+
+
+def line_of(function: Any, needle: str) -> int:
+    lines, start = inspect.getsourcelines(function)
+    for offset, text in enumerate(lines):
+        if needle in text:
+            return start + offset
+    raise AssertionError(f"{needle!r} not found in {function.__name__}")
+
+
+def span_of(function: Any) -> tuple[int, int]:
+    lines, start = inspect.getsourcelines(function)
+    return start, start + len(lines) - 1
+
+
+def probe_element(function: Any, element_id: str) -> Element:
+    start, end = span_of(function)
+    return element(element_id, function.__name__, THIS_FILE, start, end, module="probes")
+
+
+def collect(index: StaticIndex, call: Any, **kwargs: Any) -> tuple[Tracer, RunRecord, Recording]:
+    run = make_run()
+    tracer = Tracer(index, **kwargs)
+    with tracer.collector(run) as collector:
+        call()
+    recording = collector.recording()
+    tracer.hold(run, recording)
+    return tracer, run, recording
+
+
+def branch_index() -> StaticIndex:
+    cond = line_of(_branching_probe, "if value >")
+    high = line_of(_branching_probe, '"high"')
+    low = line_of(_branching_probe, '"low"')
+    return StaticIndex(
+        root=str(Path(__file__).resolve().parent),
+        elements=[probe_element(_branching_probe, "probes::_branching_probe")],
+        cfg_blocks=[
+            CFGBlock("pb1", "probes::_branching_probe", BlockKind.BRANCH, SourceSpan(THIS_FILE, cond), AST),
+            CFGBlock("pb2", "probes::_branching_probe", BlockKind.NORMAL, SourceSpan(THIS_FILE, high), AST),
+            CFGBlock("pb3", "probes::_branching_probe", BlockKind.NORMAL, SourceSpan(THIS_FILE, low), AST),
+        ],
+        cfg_edges=[
+            CFGEdge("pe1", "pb1", "pb2", condition="value > 5", taken_when=True),
+            CFGEdge("pe2", "pb1", "pb3", condition="value > 5", taken_when=False),
+        ],
+        decisions=[
+            DecisionPoint(
+                id="pd1",
+                element_id="probes::_branching_probe",
+                condition_source="value > 5",
+                reads_ids=("@feature:value",),
+                outcomes=(("high", "pb2"), ("low", "pb3")),
+                is_sink=True,
+            )
+        ],
+    )
+
+
+@pytest.mark.parametrize("value,expected", [(7, "high"), (1, "low")])
+def test_live_branch_records_the_path_actually_taken(value: int, expected: str) -> None:
+    index = branch_index()
+    tracer, run, _ = collect(index, lambda: _branching_probe(value))
+    result = tracer.result(run)
+    branch = next(event for event in result.events if event.kind is EventKind.BRANCH)
+    assert branch.branch_taken == expected
+    assert branch.values["value"].repr_text == str(value)
+    assert branch.element_id == "probes::_branching_probe"
+    decision = next(event for event in result.events if event.kind is EventKind.DECISION)
+    assert decision.branch_taken == expected
+
+
+def test_live_exception_is_recorded_with_where_it_was_caught() -> None:
+    start, end = span_of(_raising_probe)
+    handler = line_of(_raising_probe, "except ValueError")
+    index = StaticIndex(
+        root=str(Path(__file__).resolve().parent),
+        elements=[probe_element(_raising_probe, "probes::_raising_probe")],
+        cfg_blocks=[
+            CFGBlock(
+                "ph1",
+                "probes::_raising_probe",
+                BlockKind.HANDLER,
+                SourceSpan(THIS_FILE, handler, end),
+                AST,
+            )
+        ],
+    )
+    tracer, run, _ = collect(index, _raising_probe)
+    result = tracer.result(run)
+    raised = next(event for event in result.events if event.kind is EventKind.EXCEPTION)
+    assert raised.element_id == "probes::_raising_probe"
+    assert raised.values["exception_type"].repr_text == "'ValueError'"
+    assert "boom" in raised.values["exception_message"].repr_text
+    assert raised.provenance is not None
+    assert "disposition=CAUGHT" in raised.provenance.note
+    returned = next(event for event in result.events if event.kind is EventKind.RETURN)
+    assert returned.values["return_value"].repr_text == "'caught'"
+
+
+def test_live_feature_write_is_read_out_of_the_running_frame() -> None:
+    write_line = line_of(_feature_probe, '"score"')
+    index = StaticIndex(
+        root=str(Path(__file__).resolve().parent),
+        elements=[probe_element(_feature_probe, "probes::_feature_probe")],
+        lineage=[
+            LineageEdge(
+                id="pl1",
+                kind=LineageKind.CONTAINER_WRITE,
+                source_id="probes::_feature_probe",
+                target_id="@feature:score",
+                provenance=AST,
+                span=SourceSpan(THIS_FILE, write_line),
+            )
+        ],
+    )
+    tracer, run, _ = collect(index, _feature_probe)
+    write = next(
+        event for event in tracer.result(run).events if event.kind is EventKind.FEATURE_WRITE
+    )
+    assert write.element_id == "@feature:score"
+    assert write.values["score"].repr_text == "42"
+
+
+def test_live_capture_redacts_and_summarizes_at_the_moment_of_capture() -> None:
+    index = StaticIndex(
+        root=str(Path(__file__).resolve().parent),
+        elements=[probe_element(_payload_probe, "probes::_payload_probe")],
+    )
+    frame = FakeFrame(1_000_000)
+    tracer, run, recording = collect(index, lambda: _payload_probe("s3cret", frame))
+    call = next(
+        event for event in tracer.result(run).events if event.kind is EventKind.CALL
+    )
+    assert call.values["api_key"].status is CaptureStatus.REDACTED
+    assert call.values["frame"].status is CaptureStatus.SUMMARIZED
+    assert call.values["frame"].shape == "(1000000, 3)"
+    assert call.values["frame"].original_size == 24_000_000
+    assert "s3cret" not in recording.dumps()
+    assert len(recording.dumps()) < 20_000
+
+
+# ---------------------------------------------------------------------------
+# contract and corpus conformance
+# ---------------------------------------------------------------------------
+
+#: The `run_*` cases FIXTURES.md specifies. Each is graded by
+#: `test_mode_a_fixture_matches_its_expectation` as soon as it declares events.
+FIXTURES_RUN_CASES = (
+    "run_branching",
+    "run_contradiction",
+    "run_exception",
+    "run_large_frame",
+    "run_linear",
+    "run_nondeterministic",
+    "run_redaction",
+    "run_replay",
+    "run_unmapped",
+    "run_values",
+)
+
+#: Cases that are still `def func(): pass` with an empty expectation. They are
+#: covered here by constructed recordings and live probes instead. When card 8
+#: fills one in, this test fails so the real fixture is graded rather than
+#: quietly skipped.
+PLACEHOLDER_CASES = (
+    "run_branching",
+    "run_contradiction",
+    "run_exception",
+    "run_large_frame",
+    "run_nondeterministic",
+    "run_redaction",
+    "run_replay",
+    "run_unmapped",
+    "run_values",
+)
+
+
+def test_every_fixtures_run_case_exists() -> None:
+    missing = [name for name in FIXTURES_RUN_CASES if not (MODE_A / name).is_dir()]
+    assert not missing, f"FIXTURES.md Mode A cases with no fixture: {missing}"
+
+
+def test_placeholder_cases_are_named_not_hidden() -> None:
+    filled = [
+        name
+        for name in PLACEHOLDER_CASES
+        if json.loads((MODE_A / name / "expected.json").read_text(encoding="utf-8")).get(
+            "events"
+        )
+    ]
+    assert not filled, (
+        "these Mode A fixtures now declare expected events and are graded directly by "
+        f"test_mode_a_fixture_matches_its_expectation; drop them from PLACEHOLDER_CASES: {filled}"
+    )
+
+
+def test_the_controls_card_eleven_reports_satisfy_the_tracer() -> None:
+    """Card 11's harness names its controls network/filesystem/process."""
+    run = make_run(
+        controls={
+            "network": True,
+            "filesystem": True,
+            "process": True,
+            "environment": True,
+            "external_clients": True,
+        }
+    )
+    assert refusal_reason(run) == ""
+    TraceCollector(run, StaticIndex(root="/nowhere"))
+
+
+def test_emitted_events_match_the_trace_event_schema(tmp_path: Path) -> None:
+    schema = json.loads(
+        (REPO_ROOT / "src" / "cascade_map" / "contracts" / "schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    definition = schema["$defs"]["TraceEvent"]
+    assert schema["artifacts"]["runtime/events.jsonl"]["sortKey"] == "event_id"
+    result = Tracer(decision_index()).materialise(make_run(), branch_recording(13))
+    text = Tracer(decision_index()).emit(result, tmp_path)["events.jsonl"]
+    assert text.endswith("\n")
+    for line in text.splitlines():
+        payload = json.loads(line)
+        assert set(payload) <= set(definition["properties"])
+        for field in definition["required"]:
+            assert field in payload, field
+        assert isinstance(payload["sequence"], int)
+        for capture in payload["values"].values():
+            assert capture["status"] in ("FULL", "SUMMARIZED", "REDACTED", "DROPPED")
+            if capture["status"] != "FULL":
+                assert capture["reason"]

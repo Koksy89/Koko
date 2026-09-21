@@ -1415,7 +1415,10 @@ class _ModuleWalker:
             local = self.env.get(key)
             if local:
                 if index == 0:
-                    confidence = Confidence.RESOLVED if len(local) == 1 else Confidence.PROBABLE
+                    # One definition reaches this read in this scope: nothing is
+                    # inferred, so CERTAIN. Several reach it (a branch merge or a
+                    # loop): PROBABLE, and said so.
+                    confidence = Confidence.CERTAIN if len(local) == 1 else Confidence.PROBABLE
                     note = "" if len(local) == 1 else f"{_OVER}reaching definitions merged at a branch"
                     return tuple(_Src(node_id, confidence, note) for node_id in sorted(local))
                 every = tuple(sorted(set(local) | set(self.mod.all_defs.get(key, ()))))

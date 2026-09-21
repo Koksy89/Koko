@@ -25,13 +25,15 @@ from cascade_map.contracts.interfaces import (
 from .cache import Cache
 from .constants import MAX_FILE_BYTES
 from .data_files import parse_data_file
-from .hashing import sha256_hex, sha256_text
+from .hashing import locate_byte_offset, sha256_hex, sha256_text
 from .python_module import parse_python_file
 from .walker import module_dotted_name, walk
 
 
 def _default_cache_dir() -> Path:
     return Path.cwd() / ".cascade_map" / "cache"
+
+
 
 
 class Ingestor:
@@ -128,12 +130,14 @@ class Ingestor:
         try:
             source = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
+            line, col = locate_byte_offset(raw, exc.start)
             return [], [
                 Unresolved(
                     id=module,
                     reason=UnresolvedReason.DECODE_ERROR,
-                    span=SourceSpan(path=relkey, line=1),
+                    span=SourceSpan(path=relkey, line=line, col=col),
                     description=f"{relkey} is not valid UTF-8: {exc}",
+                    attempted=(Method.AST_DIRECT,),
                 )
             ]
         try:
@@ -145,6 +149,7 @@ class Ingestor:
                     reason=UnresolvedReason.SYNTAX_ERROR,
                     span=SourceSpan(path=relkey, line=exc.lineno or 1, col=exc.offset),
                     description=str(exc),
+                    attempted=(Method.AST_DIRECT,),
                 )
             ]
         return parse_python_file(module, relkey, source, raw, tree, local_top_names)
