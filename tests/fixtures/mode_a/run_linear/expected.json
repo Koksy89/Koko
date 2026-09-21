@@ -6,9 +6,16 @@
       "name": "run_linear",
       "qualname": "",
       "module": "run_linear",
-      "span": {"path": "tests/fixtures/mode_a/run_linear/__init__.py", "line": 1},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_a/run_linear/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "run_linear::step_one",
@@ -16,9 +23,16 @@
       "name": "step_one",
       "qualname": "step_one",
       "module": "run_linear",
-      "span": {"path": "tests/fixtures/mode_a/run_linear/__init__.py", "line": 4},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_a/run_linear/__init__.py",
+        "line": 4
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "run_linear::step_two",
@@ -26,9 +40,16 @@
       "name": "step_two",
       "qualname": "step_two",
       "module": "run_linear",
-      "span": {"path": "tests/fixtures/mode_a/run_linear/__init__.py", "line": 9},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_a/run_linear/__init__.py",
+        "line": 9
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "run_linear::main",
@@ -36,9 +57,16 @@
       "name": "main",
       "qualname": "main",
       "module": "run_linear",
-      "span": {"path": "tests/fixtures/mode_a/run_linear/__init__.py", "line": 14},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_a/run_linear/__init__.py",
+        "line": 14
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     }
   ],
   "events": [
@@ -69,7 +97,11 @@
       "depth": 1,
       "caller_event_id": "evt_1",
       "values": {
-        "return_value": {"status": "FULL", "repr_text": "1", "type_name": "int"}
+        "return_value": {
+          "status": "FULL",
+          "repr_text": "1",
+          "type_name": "int"
+        }
       }
     },
     {
@@ -90,7 +122,11 @@
       "depth": 1,
       "caller_event_id": "evt_1",
       "values": {
-        "return_value": {"status": "FULL", "repr_text": "3", "type_name": "int"}
+        "return_value": {
+          "status": "FULL",
+          "repr_text": "3",
+          "type_name": "int"
+        }
       }
     },
     {
@@ -102,7 +138,11 @@
       "depth": 0,
       "caller_event_id": "",
       "values": {
-        "return_value": {"status": "FULL", "repr_text": "3", "type_name": "int"}
+        "return_value": {
+          "status": "FULL",
+          "repr_text": "3",
+          "type_name": "int"
+        }
       }
     }
   ]

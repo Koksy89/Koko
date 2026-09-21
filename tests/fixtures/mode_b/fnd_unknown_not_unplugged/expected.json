@@ -25,7 +25,7 @@
       "module": "fnd_unknown_not_unplugged",
       "span": {
         "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
-        "line": 10
+        "line": 9
       },
       "provenance": {
         "method": "AST_DIRECT",
@@ -42,15 +42,15 @@
       "module": "fnd_unknown_not_unplugged",
       "span": {
         "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
-        "line": 11
+        "line": 10
       },
       "provenance": {
         "method": "AST_DIRECT",
         "confidence": "CERTAIN"
       },
       "content_hash": null,
-      "parent_id": "fnd_unknown_not_unplugged::Handler",
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "parent_id": "fnd_unknown_not_unplugged::Handler"
     },
     {
       "id": "fnd_unknown_not_unplugged::process",
@@ -60,7 +60,7 @@
       "module": "fnd_unknown_not_unplugged",
       "span": {
         "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
-        "line": 20
+        "line": 18
       },
       "provenance": {
         "method": "AST_DIRECT",
@@ -72,17 +72,45 @@
   ],
   "unresolved": [
     {
-      "id": "getattr_call_21",
+      "id": "getattr_call_20",
       "reason": "DYNAMIC_NAME",
       "span": {
         "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
-        "line": 21
+        "line": 20
       },
       "description": "getattr with computed attribute name",
       "candidate_ids": [
         "fnd_unknown_not_unplugged::Handler::helper"
       ],
-      "candidate_confidence": "PROBABLE"
+      "candidate_confidence": "PROBABLE",
+      "candidates_asserted": true
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_module_handler_instantiate",
+      "kind": "INSTANTIATES",
+      "source_id": "fnd_unknown_not_unplugged",
+      "target_id": "fnd_unknown_not_unplugged::Handler",
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "call_site": {
+        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
+        "line": 15
+      }
+    },
+    {
+      "id": "edge_process_entry",
+      "kind": "CALLS",
+      "source_id": "fnd_unknown_not_unplugged",
+      "target_id": "fnd_unknown_not_unplugged::process",
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "call_site": null
     }
   ],
   "findings": []

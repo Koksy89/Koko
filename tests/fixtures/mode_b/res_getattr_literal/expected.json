@@ -1,0 +1,59 @@
+{
+  "elements": [
+    {
+      "id": "res_getattr_literal",
+      "kind": "MODULE",
+      "name": "res_getattr_literal",
+      "qualname": "",
+      "module": "res_getattr_literal",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_getattr_literal::Obj",
+      "kind": "CLASS",
+      "name": "Obj",
+      "qualname": "Obj",
+      "module": "res_getattr_literal",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_getattr_literal::Obj::method",
+      "kind": "METHOD",
+      "name": "method",
+      "qualname": "Obj.method",
+      "module": "res_getattr_literal",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py",
+        "line": 3
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "parent_id": "res_getattr_literal::Obj"
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

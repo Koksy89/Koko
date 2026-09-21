@@ -1,0 +1,24 @@
+{
+  "elements": [
+    {
+      "id": "res_import_relative",
+      "kind": "MODULE",
+      "name": "res_import_relative",
+      "qualname": "",
+      "module": "res_import_relative",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_import_relative/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

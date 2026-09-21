@@ -1,0 +1,58 @@
+{
+  "elements": [
+    {
+      "id": "res_registry_dict",
+      "kind": "MODULE",
+      "name": "res_registry_dict",
+      "qualname": "",
+      "module": "res_registry_dict",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_registry_dict/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_registry_dict::handler_a",
+      "kind": "FUNCTION",
+      "name": "handler_a",
+      "qualname": "handler_a",
+      "module": "res_registry_dict",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_registry_dict/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_registry_dict::handler_b",
+      "kind": "FUNCTION",
+      "name": "handler_b",
+      "qualname": "handler_b",
+      "module": "res_registry_dict",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_registry_dict/__init__.py",
+        "line": 5
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

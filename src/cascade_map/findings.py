@@ -60,16 +60,27 @@ _STRUCTURAL_EDGE_KINDS = {
     EdgeKind.IMPORTS,
 }
 
-# Element kinds worth reporting as unreachable / decision-irrelevant. Leaf
-# facts like PARAMETER, IMPORT or ASSIGNMENT are too fine-grained to report
-# on their own -- their containing FUNCTION/METHOD/CLASS carries the finding.
+# Element kinds worth reporting as unreachable / decision-irrelevant.
+#
+# Deliberately excludes MODULE and CLASS: a module is routinely loaded by
+# something outside the graph card 5 sees (the interpreter's own import of
+# the entry script, a package __init__), and a class is usually only ever
+# "used" through side-effecting module-level instantiation
+# (`handler = Handler()`) that card 2 may not always turn into an edge --
+# flagging the class itself on top of that gap doubles a false positive
+# rather than catching a new one. Its methods, which do get called, are
+# covered directly. This is a precision-first scope narrowing, not full
+# coverage of every ElementKind; see the card's final report.
 _REPORTABLE_KINDS = {
-    ElementKind.MODULE,
-    ElementKind.CLASS,
     ElementKind.FUNCTION,
     ElementKind.METHOD,
     ElementKind.PROPERTY,
 }
+
+# Config wiring commonly names a CLASS directly (`"class": "Handler"`), so
+# the config-specific detectors look at a wider set than plain reachability
+# does.
+_CONFIG_REPORTABLE_KINDS = _REPORTABLE_KINDS | {ElementKind.CLASS}
 
 _CONFIG_EXTENSIONS = (".json", ".yaml", ".yml", ".ini", ".cfg", ".toml")
 
@@ -311,7 +322,7 @@ class Findings:
 
         out: list[Finding] = []
         for el in self._elements:
-            if el.kind not in _REPORTABLE_KINDS:
+            if el.kind not in _CONFIG_REPORTABLE_KINDS:
                 continue
             config_in = by_config_target.get(el.id, [])
             if not config_in:

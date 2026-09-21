@@ -1,13 +1,13 @@
 {
   "elements": [
     {
-      "id": "inv_blob",
+      "id": "res_import_cycle.a",
       "kind": "MODULE",
-      "name": "inv_blob",
+      "name": "a",
       "qualname": "",
-      "module": "inv_blob",
+      "module": "res_import_cycle.a",
       "span": {
-        "path": "tests/fixtures/mode_b/inv_blob/__init__.py",
+        "path": "tests/fixtures/mode_b/res_import_cycle/a.py",
         "line": 1
       },
       "provenance": {
@@ -15,27 +15,27 @@
         "confidence": "CERTAIN"
       },
       "content_hash": null,
-      "docstring": "Module with a large embedded blob.",
       "content_hash_asserted": false
     },
     {
-      "id": "inv_blob::@blob#1",
-      "kind": "BLOB",
-      "name": "@blob#1",
-      "qualname": "@blob#1",
-      "module": "inv_blob",
+      "id": "res_import_cycle.b",
+      "kind": "MODULE",
+      "name": "b",
+      "qualname": "",
+      "module": "res_import_cycle.b",
       "span": {
-        "path": "tests/fixtures/mode_b/inv_blob/__init__.py",
-        "line": 3
+        "path": "tests/fixtures/mode_b/res_import_cycle/b.py",
+        "line": 1
       },
       "provenance": {
         "method": "AST_DIRECT",
         "confidence": "CERTAIN"
       },
       "content_hash": null,
-      "byte_size": 1048576,
       "content_hash_asserted": false
     }
   ],
-  "unresolved": []
+  "unresolved": [],
+  "edges": [],
+  "findings": []
 }

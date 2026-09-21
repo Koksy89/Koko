@@ -1,0 +1,24 @@
+{
+  "elements": [
+    {
+      "id": "res_import_star",
+      "kind": "MODULE",
+      "name": "res_import_star",
+      "qualname": "",
+      "module": "res_import_star",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

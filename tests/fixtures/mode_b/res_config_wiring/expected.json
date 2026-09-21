@@ -1,0 +1,59 @@
+{
+  "elements": [
+    {
+      "id": "res_config_wiring",
+      "kind": "MODULE",
+      "name": "res_config_wiring",
+      "qualname": "",
+      "module": "res_config_wiring",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_config_wiring::Component",
+      "kind": "CLASS",
+      "name": "Component",
+      "qualname": "Component",
+      "module": "res_config_wiring",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_config_wiring::Component::process",
+      "kind": "METHOD",
+      "name": "process",
+      "qualname": "Component.process",
+      "module": "res_config_wiring",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py",
+        "line": 3
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "parent_id": "res_config_wiring::Component"
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

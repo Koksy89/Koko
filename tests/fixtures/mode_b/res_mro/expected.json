@@ -1,0 +1,129 @@
+{
+  "elements": [
+    {
+      "id": "res_mro",
+      "kind": "MODULE",
+      "name": "res_mro",
+      "qualname": "",
+      "module": "res_mro",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_mro::A",
+      "kind": "CLASS",
+      "name": "A",
+      "qualname": "A",
+      "module": "res_mro",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_mro::A::method",
+      "kind": "METHOD",
+      "name": "method",
+      "qualname": "A.method",
+      "module": "res_mro",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
+        "line": 3
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "parent_id": "res_mro::A"
+    },
+    {
+      "id": "res_mro::B",
+      "kind": "CLASS",
+      "name": "B",
+      "qualname": "B",
+      "module": "res_mro",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
+        "line": 7
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_mro::B::method",
+      "kind": "METHOD",
+      "name": "method",
+      "qualname": "B.method",
+      "module": "res_mro",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
+        "line": 8
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "parent_id": "res_mro::B"
+    },
+    {
+      "id": "res_mro::C",
+      "kind": "CLASS",
+      "name": "C",
+      "qualname": "C",
+      "module": "res_mro",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
+        "line": 12
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_mro::C::method",
+      "kind": "METHOD",
+      "name": "method",
+      "qualname": "C.method",
+      "module": "res_mro",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
+        "line": 13
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "parent_id": "res_mro::C"
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

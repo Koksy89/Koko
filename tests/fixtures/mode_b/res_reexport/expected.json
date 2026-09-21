@@ -1,0 +1,58 @@
+{
+  "elements": [
+    {
+      "id": "res_reexport",
+      "kind": "MODULE",
+      "name": "res_reexport",
+      "qualname": "",
+      "module": "res_reexport",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_reexport/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_reexport.impl",
+      "kind": "MODULE",
+      "name": "impl",
+      "qualname": "",
+      "module": "res_reexport.impl",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_reexport/impl.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_reexport.impl::Helper",
+      "kind": "CLASS",
+      "name": "Helper",
+      "qualname": "Helper",
+      "module": "res_reexport.impl",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_reexport/impl.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

@@ -1,0 +1,34 @@
+{
+  "elements": [
+    {
+      "id": "res_config_dangling",
+      "kind": "MODULE",
+      "name": "res_config_dangling",
+      "qualname": "",
+      "module": "res_config_dangling",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_config_dangling/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "dangling_config_ref",
+      "reason": "MISSING_TARGET",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_config_dangling/config.json",
+        "line": 1
+      },
+      "description": "Config references nonexistent NonExistentClass"
+    }
+  ],
+  "edges": [],
+  "findings": []
+}

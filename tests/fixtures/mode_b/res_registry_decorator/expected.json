@@ -1,0 +1,79 @@
+{
+  "elements": [
+    {
+      "id": "res_registry_decorator",
+      "kind": "MODULE",
+      "name": "res_registry_decorator",
+      "qualname": "",
+      "module": "res_registry_decorator",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_registry_decorator::register",
+      "kind": "FUNCTION",
+      "name": "register",
+      "qualname": "register",
+      "module": "res_registry_decorator",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py",
+        "line": 4
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_registry_decorator::register::decorator",
+      "kind": "FUNCTION",
+      "name": "decorator",
+      "qualname": "register.<locals>.decorator",
+      "module": "res_registry_decorator",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py",
+        "line": 5
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "parent_id": "res_registry_decorator::register"
+    },
+    {
+      "id": "res_registry_decorator::operation",
+      "kind": "FUNCTION",
+      "name": "operation",
+      "qualname": "operation",
+      "module": "res_registry_decorator",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py",
+        "line": 10
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "decorators": [
+        "register"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

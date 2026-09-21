@@ -126,7 +126,7 @@ def _unresolved(d: dict) -> Unresolved:
     )
 
 
-def _edge(d: dict) -> Edge:
+def _edge_from_json(d: dict) -> Edge:
     return Edge(
         id=d["id"],
         kind=EdgeKind(d["kind"]),
@@ -160,7 +160,7 @@ def test_fixture_cases(case: str) -> None:
     data = _load_case(case)
     elements = [_element(e) for e in data["elements"]]
     unresolved = [_unresolved(u) for u in data.get("unresolved", [])]
-    edges = [_edge(e) for e in data.get("edges", [])]
+    edges = [_edge_from_json(e) for e in data.get("edges", [])]
     entries = _entry_ids_for(elements, edges)
 
     findings = Findings(
@@ -189,11 +189,14 @@ def _el(
     module: str = "m",
     line: int = 1,
     parent_id: str = "",
-    content_hash: str = "h",
+    content_hash: str | None = None,
     path: str = "m.py",
 ) -> Element:
     nm = name if name is not None else id_.rsplit("::", 1)[-1]
     qn = qualname if qualname is not None else (id_.split("::", 1)[1] if "::" in id_ else "")
+    # Unique per element by default, so unrelated test elements never
+    # collide in the DUPLICATED_LOGIC detector by accident.
+    ch = content_hash if content_hash is not None else f"hash-of-{id_}"
     return Element(
         id=id_,
         kind=kind,
@@ -202,7 +205,7 @@ def _el(
         module=module,
         span=SourceSpan(path=path, line=line),
         provenance=Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN),
-        content_hash=content_hash,
+        content_hash=ch,
         parent_id=parent_id,
     )
 

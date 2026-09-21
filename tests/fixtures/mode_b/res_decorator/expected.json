@@ -1,0 +1,79 @@
+{
+  "elements": [
+    {
+      "id": "res_decorator",
+      "kind": "MODULE",
+      "name": "res_decorator",
+      "qualname": "",
+      "module": "res_decorator",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_decorator::decorator",
+      "kind": "FUNCTION",
+      "name": "decorator",
+      "qualname": "decorator",
+      "module": "res_decorator",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "res_decorator::decorator::wrapper",
+      "kind": "FUNCTION",
+      "name": "wrapper",
+      "qualname": "decorator.<locals>.wrapper",
+      "module": "res_decorator",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py",
+        "line": 3
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "parent_id": "res_decorator::decorator"
+    },
+    {
+      "id": "res_decorator::decorated",
+      "kind": "FUNCTION",
+      "name": "decorated",
+      "qualname": "decorated",
+      "module": "res_decorator",
+      "span": {
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py",
+        "line": 8
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "decorators": [
+        "decorator"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}
