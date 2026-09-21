@@ -393,8 +393,13 @@ class RuntimeStore:
         # Observed execution order is sequence, not event_id -- the two are
         # expected to agree (card 12 mints event_id in trace order) but
         # sequence is the field the contract defines as the order.
+        # Filtered to records that have an event_id, matching events_by_id --
+        # a record missing its required id cannot be looked up by one, so it
+        # is excluded here the same way a nameless element is excluded from
+        # ArtifactStore.elements_by_id (never from .raw, which keeps it).
         self.events_ordered = sorted(
-            events, key=lambda e: (e.get("sequence", 0), e.get("event_id", ""))
+            (e for e in events if "event_id" in e),
+            key=lambda e: (e.get("sequence", 0), e.get("event_id", "")),
         )
         self.unmapped_events = [e for e in events if e.get("kind") == "UNMAPPED"]
 

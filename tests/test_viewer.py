@@ -16,15 +16,20 @@ from pathlib import Path
 import pytest
 
 from cascade_map.contracts.interfaces import (
+    AlignmentVerdict,
     Barrier,
+    BlockedAttempt,
+    CaptureStatus,
     ChangeKind,
     Confidence,
+    Contradiction,
     DecisionPoint,
     DocRecord,
     Edge,
     EdgeKind,
     Element,
     ElementKind,
+    EventKind,
     Finding,
     FindingKind,
     Impact,
@@ -32,17 +37,24 @@ from cascade_map.contracts.interfaces import (
     IntentStatus,
     LineageEdge,
     LineageKind,
+    MappingReport,
     Method,
+    NarrativeStep,
+    NondeterminismObservation,
     OrderKind,
     OrderNode,
     Provenance,
     Reachability,
     ReachabilityState,
+    RunRecord,
     SCHEMA_VERSION,
     Slice,
     SourceSpan,
+    TraceEvent,
     Unresolved,
     UnresolvedReason,
+    ValueCapture,
+    Verdict,
     VersionChange,
     canonical_dumps,
     canonical_jsonl,
@@ -51,17 +63,30 @@ from cascade_map.contracts.interfaces import (
 )
 from cascade_map.viewer import (
     ArtifactStore,
+    RuntimeStore,
     browser_view,
     cascade_view,
     callgraph_view,
+    contradictions_view,
+    decision_branch_view,
     diff_view,
     doc_record_view,
     element_detail,
     element_reachability,
+    event_detail_view,
     findings_view,
     lineage_view,
+    list_runs,
+    mapping_view,
+    narrative_view,
+    nondeterminism_view,
+    observed_order_view,
     render_site,
     render_to_file,
+    render_to_file_with_runtime,
+    runtime_overview_view,
+    unmapped_events_view,
+    verdicts_view,
 )
 
 MODULE = "pkg.mod"
@@ -704,3 +729,536 @@ def test_viewer_source_never_references_the_target_or_executes() -> None:
         text = path.read_text(encoding="utf-8")
         for token in forbidden:
             assert token not in text, f"{token!r} found in {path}"
+
+
+# ---------------------------------------------------------------------------
+# Phase A: the runtime overlay
+#
+# Same discipline as build_fixture above -- a hand-authored artifact set
+# using the real contract types, since cards 11-14 exist independently of
+# this one. Nothing here is read from an actual harness or tracer run.
+# ---------------------------------------------------------------------------
+
+RUN_ID = "run_0001"
+
+_RUNTIME_PROV = Provenance(
+    method=Method.RUNTIME_OBSERVED, confidence=Confidence.CERTAIN, run_id=RUN_ID,
+)
+
+
+def _runtime_prov(*event_ids: str) -> Provenance:
+    return Provenance(
+        method=Method.RUNTIME_OBSERVED, confidence=Confidence.CERTAIN,
+        run_id=RUN_ID, event_ids=event_ids,
+    )
+
+
+def build_runtime_fixture(root: Path, run_id: str = RUN_ID) -> None:
+    """Write a small, hand-authored runtime overlay to
+    ``root/runtime/<run_id>/``, keyed onto the same element IDs
+    ``build_fixture`` already wrote to *root*."""
+    rundir = root / "runtime" / run_id
+    rundir.mkdir(parents=True, exist_ok=True)
+
+    events = [
+        TraceEvent(
+            event_id="evt_00000001", run_id=run_id, kind=EventKind.CALL,
+            element_id=INGEST_ID, sequence=1, depth=0,
+            values={"raw": ValueCapture(status=CaptureStatus.FULL, repr_text="{'n': 3}", type_name="dict")},
+            provenance=_runtime_prov("evt_00000001"),
+        ),
+        TraceEvent(
+            event_id="evt_00000002", run_id=run_id, kind=EventKind.RETURN,
+            element_id=INGEST_ID, sequence=2, depth=0, caller_event_id="evt_00000001",
+            values={
+                "result": ValueCapture(
+                    status=CaptureStatus.SUMMARIZED, repr_text="[list of 500 items] (truncated)",
+                    type_name="list", original_size=500, reason="exceeds per-value cap",
+                ),
+            },
+            provenance=_runtime_prov("evt_00000002"),
+        ),
+        TraceEvent(
+            event_id="evt_00000003", run_id=run_id, kind=EventKind.CALL,
+            element_id=COMPUTE_ID, sequence=3, depth=0,
+            provenance=_runtime_prov("evt_00000003"),
+        ),
+        TraceEvent(
+            event_id="evt_00000004", run_id=run_id, kind=EventKind.FEATURE_WRITE,
+            element_id=COMPUTE_ID, sequence=4, depth=0,
+            values={
+                "score": ValueCapture(
+                    status=CaptureStatus.REDACTED, repr_text="<redacted>",
+                    reason="declared sensitive by the intent registry",
+                ),
+                "raw_frame": ValueCapture(
+                    status=CaptureStatus.DROPPED, repr_text="",
+                    original_size=2_000_000, reason="exceeds the absolute per-value cap",
+                ),
+            },
+            provenance=_runtime_prov("evt_00000004"),
+        ),
+        TraceEvent(
+            event_id="evt_00000005", run_id=run_id, kind=EventKind.RETURN,
+            element_id=COMPUTE_ID, sequence=5, depth=0, caller_event_id="evt_00000003",
+            provenance=_runtime_prov("evt_00000005"),
+        ),
+        TraceEvent(
+            event_id="evt_00000006", run_id=run_id, kind=EventKind.CALL,
+            element_id=DECIDE_ID, sequence=6, depth=0,
+            provenance=_runtime_prov("evt_00000006"),
+        ),
+        TraceEvent(
+            event_id="evt_00000007", run_id=run_id, kind=EventKind.DECISION,
+            element_id=DECIDE_ID, sequence=7, depth=0, branch_taken="high",
+            provenance=_runtime_prov("evt_00000007"),
+        ),
+        TraceEvent(
+            event_id="evt_00000008", run_id=run_id, kind=EventKind.RETURN,
+            element_id=DECIDE_ID, sequence=8, depth=0, caller_event_id="evt_00000006",
+            provenance=_runtime_prov("evt_00000008"),
+        ),
+        TraceEvent(
+            event_id="evt_00000009", run_id=run_id, kind=EventKind.UNMAPPED,
+            element_id="", sequence=9, depth=0,
+            provenance=Provenance(
+                method=Method.RUNTIME_OBSERVED, confidence=Confidence.CERTAIN, run_id=run_id,
+                event_ids=("evt_00000009",),
+                span=SourceSpan(path="pkg/mod.py", line=42),
+                note="dynamic getattr dispatch resolved to no static candidate",
+            ),
+        ),
+    ]
+
+    run_record = RunRecord(
+        run_id=run_id,
+        target_hashes={"pkg/mod.py": "hashmod"},
+        graph_hash="graphhash1",
+        scenario="scenario_smoke",
+        interpreter="python3.11",
+        controls_active={"network": True, "filesystem_writes": True, "process_spawn": True},
+        blocked=(
+            BlockedAttempt(
+                id="blocked:1", kind="network",
+                detail="outbound HTTPS attempt to api.example.com",
+                element_id=COMPUTE_ID, event_id="evt_00000003",
+            ),
+        ),
+        unguaranteed=(
+            "a direct call to the interpreter's low-level process-spawn primitive "
+            "bypasses sys.audit",
+            "a child process permitted by declared_process_names is unaudited once running",
+        ),
+        sandbox_dir="sandbox/run_0001",
+    )
+
+    mapping = MappingReport(
+        run_id=run_id, total_events=9, mapped_events=8, unmapped_events=1,
+        unmapped_by_reason={"dynamic_dispatch": 1},
+    )
+
+    contradictions = [
+        Contradiction(
+            id="contra:1", element_id=COMPUTE_ID,
+            claim="edge:compute->decide predicts compute_score calls decide directly",
+            observation="compute_score returned to its caller; decide was invoked from a "
+                         "different call site than the static edge records",
+            provenance=_runtime_prov("evt_00000005", "evt_00000006"),
+            static_evidence_ids=("edge:compute->decide",),
+        ),
+    ]
+
+    nondeterminism = [
+        NondeterminismObservation(
+            id="nondet:1", element_id=COMPUTE_ID, kind="clock",
+            detail="compute_score reads time.time() to seed a jitter factor",
+            provenance=_runtime_prov("evt_00000004"),
+        ),
+    ]
+
+    verdicts = [
+        AlignmentVerdict(
+            id="verdict:1", element_id=DECIDE_ID, intent_id="intent:decide",
+            verdict=Verdict.ALIGNED,
+            expectation="decide the final outcome from the computed score",
+            observation="decide read score and branched 'high' as expected",
+            evidence_ids=("evt_00000007",),
+            provenance=_runtime_prov("evt_00000007"),
+        ),
+        AlignmentVerdict(
+            id="verdict:2", element_id=EVALUATE_ID, intent_id="intent:evaluate-not-exercised",
+            verdict=Verdict.NOT_EXERCISED,
+            expectation="RuleSet.evaluate should apply the configured rules",
+            observation="no event in this run entered RuleSet.evaluate",
+            evidence_ids=(),
+            provenance=_RUNTIME_PROV,
+        ),
+    ]
+
+    narrative = [
+        NarrativeStep(
+            id="narr:1", run_id=run_id, sequence=1, phase="segment 1",
+            text="ingest ran once and produced a raw payload.",
+            element_ids=(INGEST_ID,), event_ids=("evt_00000001", "evt_00000002"),
+        ),
+        NarrativeStep(
+            id="narr:2", run_id=run_id, sequence=2, phase="segment 2",
+            text="compute_score derived a score from the payload.",
+            element_ids=(COMPUTE_ID,), event_ids=("evt_00000003", "evt_00000004", "evt_00000005"),
+            model_prose="This step turns raw signals into a single confidence number.",
+            model_id="claude-haiku-4-5-20251001",
+        ),
+        NarrativeStep(
+            id="narr:3", run_id=run_id, sequence=3, phase="segment 3",
+            text="decide branched 'high' and returned the final decision.",
+            element_ids=(DECIDE_ID,), event_ids=("evt_00000006", "evt_00000007", "evt_00000008"),
+        ),
+    ]
+
+    (rundir / "run.json").write_text(canonical_dumps(run_record), encoding="utf-8")
+    (rundir / "mapping.json").write_text(canonical_dumps(mapping), encoding="utf-8")
+    (rundir / "events.jsonl").write_text(canonical_jsonl(events, sort_key="event_id"), encoding="utf-8")
+    (rundir / "contradictions.jsonl").write_text(canonical_jsonl(contradictions), encoding="utf-8")
+    (rundir / "nondeterminism.jsonl").write_text(canonical_jsonl(nondeterminism), encoding="utf-8")
+    (rundir / "verdicts.jsonl").write_text(canonical_jsonl(verdicts), encoding="utf-8")
+    (rundir / "narrative.jsonl").write_text(canonical_jsonl(narrative), encoding="utf-8")
+
+
+@pytest.fixture()
+def runtime_store(tmp_path: Path) -> tuple[ArtifactStore, RuntimeStore]:
+    build_fixture(tmp_path)
+    build_runtime_fixture(tmp_path)
+    return ArtifactStore.load(tmp_path), RuntimeStore.load(tmp_path, RUN_ID)
+
+
+# -- loading ------------------------------------------------------------
+
+
+def test_runtime_store_loads_and_indexes_everything(runtime_store) -> None:
+    _store, rstore = runtime_store
+    assert all(rstore.available.values())
+    assert len(rstore.events_ordered) == 9
+    assert [e["event_id"] for e in rstore.events_ordered][:3] == [
+        "evt_00000001", "evt_00000002", "evt_00000003",
+    ]
+    assert {e["event_id"] for e in rstore.events_by_element[COMPUTE_ID]} == {
+        "evt_00000003", "evt_00000004", "evt_00000005",
+    }
+    assert len(rstore.unmapped_events) == 1
+    assert rstore.unmapped_events[0]["event_id"] == "evt_00000009"
+
+
+def test_list_runs_finds_run_directories(tmp_path: Path) -> None:
+    assert list_runs(tmp_path) == []
+    build_fixture(tmp_path)
+    build_runtime_fixture(tmp_path, run_id="run_a")
+    build_runtime_fixture(tmp_path, run_id="run_b")
+    assert list_runs(tmp_path) == ["run_a", "run_b"]
+
+
+def test_runtime_store_missing_run_degrades_gracefully(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    empty = RuntimeStore.load(tmp_path, "no-such-run")
+    assert all(v is False for v in empty.available.values())
+    assert empty.events_ordered == []
+    assert runtime_overview_view(empty) == {"available": False, "run_id": "no-such-run"}
+    assert mapping_view(empty) == {"available": False, "run_id": "no-such-run"}
+    assert observed_order_view(empty) == []
+    assert unmapped_events_view(empty) == []
+    assert contradictions_view(empty) == []
+    assert nondeterminism_view(empty) == []
+    assert verdicts_view(empty) == []
+    assert narrative_view(empty) == []
+    # rendering with this empty overlay must not crash
+    store = ArtifactStore.load(tmp_path)
+    html = render_site(store, empty)
+    assert "<table" in html
+
+
+def test_runtime_store_malformed_jsonl_line_is_reported(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(tmp_path)
+    events_path = tmp_path / "runtime" / RUN_ID / "events.jsonl"
+    events_path.write_text("not json\n" + events_path.read_text(encoding="utf-8"), encoding="utf-8")
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    assert any(e.line_number == 1 and "events.jsonl" in e.file for e in rstore.errors)
+    assert len(rstore.events_ordered) == 9  # the valid lines still loaded
+
+
+def test_runtime_store_malformed_run_json_is_reported(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(tmp_path)
+    (tmp_path / "runtime" / RUN_ID / "run.json").write_text("{not valid json", encoding="utf-8")
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    assert rstore.run_record is None
+    assert rstore.available["run"] is True  # file exists; content failed to parse
+    assert any(e.line_number == 0 and "run.json" in e.file for e in rstore.errors)
+
+
+# -- run overview: unguaranteed and blocked -----------------------------
+
+
+def test_runtime_overview_surfaces_unguaranteed_and_blocked(runtime_store) -> None:
+    _store, rstore = runtime_store
+    overview = runtime_overview_view(rstore)
+    assert overview["available"] is True
+    assert len(overview["unguaranteed"]) == 2
+    assert "sys.audit" in overview["unguaranteed"][0]
+    assert overview["blocked"][0]["kind"] == "network"
+    assert overview["refused"] is False
+
+
+def test_html_render_unguaranteed_appears_before_events(runtime_store) -> None:
+    """The owner needs to see what a run could not guarantee before what it
+    observed -- not buried in a footer."""
+    store, rstore = runtime_store
+    html = render_site(store, rstore)
+    unguaranteed_pos = html.index("could not close")
+    events_pos = html.index("Events and captured values")
+    assert unguaranteed_pos < events_pos
+    blocked_pos = html.index("Blocked attempts")
+    assert blocked_pos < events_pos
+
+
+# -- mapping rate ---------------------------------------------------------
+
+
+def test_mapping_view_computes_rate_from_reported_counts(runtime_store) -> None:
+    _store, rstore = runtime_store
+    m = mapping_view(rstore)
+    assert m["total_events"] == 9
+    assert m["mapped_events"] == 8
+    assert abs(m["mapping_rate"] - (8 / 9)) < 1e-9
+    assert m["unmapped_by_reason"] == {"dynamic_dispatch": 1}
+
+
+def test_mapping_view_zero_events_has_no_rate(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    rundir = tmp_path / "runtime" / RUN_ID
+    rundir.mkdir(parents=True)
+    mapping = MappingReport(run_id=RUN_ID, total_events=0, mapped_events=0, unmapped_events=0, unmapped_by_reason={})
+    (rundir / "mapping.json").write_text(canonical_dumps(mapping), encoding="utf-8")
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    assert mapping_view(rstore)["mapping_rate"] is None
+
+
+# -- captured values and CaptureStatus ------------------------------------
+
+
+def test_event_detail_view_exposes_capture_status_and_original_size(runtime_store) -> None:
+    _store, rstore = runtime_store
+    detail = event_detail_view(rstore, "evt_00000002")
+    assert detail["values"]["result"]["status"] == "SUMMARIZED"
+    assert detail["values"]["result"]["original_size"] == 500
+
+    dropped = event_detail_view(rstore, "evt_00000004")
+    assert dropped["values"]["raw_frame"]["status"] == "DROPPED"
+    assert dropped["values"]["raw_frame"]["original_size"] == 2_000_000
+    assert dropped["values"]["score"]["status"] == "REDACTED"
+
+    full = event_detail_view(rstore, "evt_00000001")
+    assert full["values"]["raw"]["status"] == "FULL"
+
+
+def test_event_detail_view_unknown_id_is_none(runtime_store) -> None:
+    _store, rstore = runtime_store
+    assert event_detail_view(rstore, "evt_no_such_event") is None
+
+
+def test_html_render_non_full_capture_never_reads_as_complete(runtime_store) -> None:
+    store, rstore = runtime_store
+    html = render_site(store, rstore)
+    # every non-FULL status badge carries the disclosure text
+    assert html.count("not the complete value") >= 3  # SUMMARIZED, REDACTED, DROPPED
+    assert "original size 500" in html
+    assert "original size 2000000" in html
+
+
+# -- unmapped events --------------------------------------------------------
+
+
+def test_unmapped_events_view_carries_location_and_reason(runtime_store) -> None:
+    _store, rstore = runtime_store
+    unmapped = unmapped_events_view(rstore)
+    assert len(unmapped) == 1
+    assert unmapped[0]["event_id"] == "evt_00000009"
+    assert unmapped[0]["location"] == {"path": "pkg/mod.py", "line": 42, "end_line": None, "col": None}
+    assert "no static candidate" in unmapped[0]["reason"]
+
+
+# -- decision branches: observed vs. declared -------------------------------
+
+
+def test_decision_branch_view_separates_observed_from_not_observed(runtime_store) -> None:
+    store, rstore = runtime_store
+    dv = decision_branch_view(store, rstore, "decision:decide")
+    assert dv["declared_outcomes"] == [("high", "order:merge"), ("low", "order:merge")]
+    assert [o["branch_taken"] for o in dv["observed"]] == ["high"]
+    assert dv["not_observed_labels"] == ["low"]
+
+
+def test_decision_branch_view_unknown_decision_is_none(runtime_store) -> None:
+    store, rstore = runtime_store
+    assert decision_branch_view(store, rstore, "decision:does-not-exist") is None
+
+
+# -- contradictions: never merged, both readings shown ----------------------
+
+
+def test_contradictions_view_keeps_both_readings_distinct(runtime_store) -> None:
+    _store, rstore = runtime_store
+    contradictions = contradictions_view(rstore)
+    assert len(contradictions) == 1
+    c = contradictions[0]
+    assert "compute_score calls decide directly" in c["claim"]
+    assert "different call site" in c["observation"]
+    assert c["claim"] != c["observation"]
+    assert c["static_evidence_ids"] == ["edge:compute->decide"]
+    assert c["run_id"] == RUN_ID
+
+
+def test_html_render_contradiction_shows_both_readings_in_one_row(runtime_store) -> None:
+    store, rstore = runtime_store
+    html = render_site(store, rstore)
+    assert "contradiction-row" in html
+    assert "compute_score calls decide directly" in html
+    assert "different call site" in html
+
+
+# -- nondeterminism -----------------------------------------------------
+
+
+def test_nondeterminism_view_reads_observed_property(runtime_store) -> None:
+    _store, rstore = runtime_store
+    nd = nondeterminism_view(rstore)
+    assert len(nd) == 1
+    assert nd[0]["kind"] == "clock"
+    assert nd[0]["element_id"] == COMPUTE_ID
+
+
+# -- alignment verdicts: NOT_EXERCISED distinct from ALIGNED -----------------
+
+
+def test_verdicts_view_reports_not_exercised_distinctly(runtime_store) -> None:
+    _store, rstore = runtime_store
+    verdicts = verdicts_view(rstore)
+    by_id = {v["id"]: v for v in verdicts}
+    assert by_id["verdict:1"]["verdict"] == "ALIGNED"
+    assert by_id["verdict:2"]["verdict"] == "NOT_EXERCISED"
+    assert by_id["verdict:1"]["verdict"] != by_id["verdict:2"]["verdict"]
+
+
+def test_html_render_not_exercised_is_visually_distinct_from_aligned(runtime_store) -> None:
+    store, rstore = runtime_store
+    html = render_site(store, rstore)
+    assert "verdict-ALIGNED" in html
+    assert "verdict-NOT_EXERCISED" in html
+    assert "verdict-ALIGNED" != "verdict-NOT_EXERCISED"
+
+
+# -- narrative: anchored to elements and events ------------------------------
+
+
+def test_narrative_view_is_anchored_and_separates_model_prose(runtime_store) -> None:
+    _store, rstore = runtime_store
+    steps = narrative_view(rstore)
+    assert len(steps) == 3
+    assert steps[0]["element_ids"] == [INGEST_ID]
+    assert steps[0]["event_ids"] == ["evt_00000001", "evt_00000002"]
+    assert steps[1]["model_prose"]
+    assert steps[1]["model_id"] == "claude-haiku-4-5-20251001"
+    assert steps[0]["model_prose"] == ""  # no model prose for this step: shown as absent, not empty-but-present
+
+
+def test_html_render_narrative_labels_model_prose(runtime_store) -> None:
+    store, rstore = runtime_store
+    html = render_site(store, rstore)
+    assert "MODEL-WRITTEN" in html
+    assert "confidence number" in html  # the model prose text itself
+
+
+# -- observed order beside static order, both tagged with run id -----------
+
+
+def test_observed_order_view_is_sorted_by_sequence(runtime_store) -> None:
+    _store, rstore = runtime_store
+    order = observed_order_view(rstore)
+    assert [e["sequence"] for e in order] == list(range(1, 10))
+    assert all(e["run_id"] == RUN_ID for e in order)
+
+
+def test_html_render_runtime_evidence_is_visually_distinct_and_tagged(runtime_store) -> None:
+    store, rstore = runtime_store
+    html = render_site(store, rstore)
+    assert "runtime-evidence" in html
+    assert "runtime-section" in html
+    assert f"run: {RUN_ID}" in html
+    # the phase B page (no rstore) never mentions a run id at all
+    baseline = render_site(store)
+    assert RUN_ID not in baseline
+    assert "runtime-section" not in baseline
+
+
+# -- determinism and offline discipline, extended to the overlay ------------
+
+
+def test_html_render_with_runtime_is_deterministic(runtime_store) -> None:
+    store, rstore = runtime_store
+    first = render_site(store, rstore)
+    second = render_site(store, rstore)
+    assert first == second
+
+
+def test_html_render_with_runtime_has_no_network_reference(runtime_store) -> None:
+    store, rstore = runtime_store
+    html = render_site(store, rstore)
+    for forbidden in ("http://", "https://", "cdn.", "<script src=", "fetch(", "XMLHttpRequest"):
+        assert forbidden not in html
+
+
+_EVT_HREF_RE = re.compile(r'href="#evt-([^"]*)"')
+_EVT_ANCHOR_RE = re.compile(r'id="evt-([^"]*)"')
+
+
+def test_html_render_event_links_resolve_to_anchors(runtime_store) -> None:
+    store, rstore = runtime_store
+    html = render_site(store, rstore)
+    hrefs = set(_EVT_HREF_RE.findall(html))
+    anchors = set(_EVT_ANCHOR_RE.findall(html))
+    assert anchors, "no event anchors rendered"
+    dangling = hrefs - anchors
+    assert not dangling, f"event links with no matching anchor: {sorted(dangling)}"
+    assert anchors == set(rstore.events_by_id)
+
+    # element links inside the runtime overlay still resolve to the same
+    # #el-<id> anchors the static page already renders -- no second linking
+    # scheme for the same kind of ID.
+    el_hrefs = set(_HREF_RE.findall(html))
+    el_anchors = set(_ANCHOR_RE.findall(html))
+    assert not (el_hrefs - el_anchors)
+
+
+def test_render_to_file_with_runtime_writes_overlay(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(tmp_path)
+    out_path = tmp_path / "view.html"
+    store, rstore = render_to_file_with_runtime(tmp_path, out_path, RUN_ID)
+    written = out_path.read_text(encoding="utf-8")
+    assert written == render_site(store, rstore)
+    assert rstore is not None
+    assert f"run: {RUN_ID}" in written
+
+
+def test_render_to_file_without_run_id_is_unchanged_from_phase_b(tmp_path: Path) -> None:
+    """render_to_file's phase B return shape (a bare ArtifactStore) and
+    output must be unaffected by phase A existing."""
+    build_fixture(tmp_path)
+    build_runtime_fixture(tmp_path)  # present on disk, but not requested
+    out_path = tmp_path / "view.html"
+    returned_store = render_to_file(tmp_path, out_path)
+    assert isinstance(returned_store, ArtifactStore)
+    written = out_path.read_text(encoding="utf-8")
+    assert written == render_site(returned_store)
+    assert RUN_ID not in written
+
+

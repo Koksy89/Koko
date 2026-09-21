@@ -234,7 +234,26 @@ class Harness:
                 # observer.start() itself never ran, there is nothing to
                 # stop, so it is only entered once start() has succeeded.
                 if observer is not None:
-                    observer.start()
+                    # What the observer receives: everything verified so
+                    # far (real controls_active, real unguaranteed, the
+                    # real run_id), with blocked=() because nothing has
+                    # happened yet -- not a record fabricated before
+                    # verification, which is what card 12's own refusal
+                    # check exists to catch.
+                    pre_execution_record = RunRecord(
+                        run_id=run_id,
+                        target_hashes=target_hashes,
+                        graph_hash=graph_hash,
+                        scenario=scenario,
+                        interpreter=sys.version,
+                        controls_active=dict(controls),
+                        blocked=(),
+                        unguaranteed=UNGUARANTEED_LIMITS,
+                        sandbox_dir=sandbox_dir,
+                        refused=False,
+                        refusal_reason="",
+                    )
+                    observer.start(pre_execution_record)
                     try:
                         self._run_scenario(spec)
                     finally:

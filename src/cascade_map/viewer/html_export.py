@@ -646,8 +646,15 @@ def render_site(store: ArtifactStore, rstore: RuntimeStore | None = None) -> str
         if manifest
         else "no manifest.json found"
     )
+    title = (
+        "CASCADE-MAP &mdash; static + runtime view"
+        if rstore is not None
+        else "CASCADE-MAP &mdash; static view"
+    )
+    runtime_nav = '<a href="#runtime">Runtime overlay</a>' if rstore is not None else ""
+    runtime_section = _render_runtime_section(store, rstore) if rstore is not None else ""
     sections = f"""
-<header><h1>CASCADE-MAP &mdash; static view</h1><p>{manifest_line}</p></header>
+<header><h1>{title}</h1><p>{manifest_line}</p></header>
 <nav>
 <a href="#browser">Elements</a>
 <a href="#cascade">Cascade order</a>
@@ -656,6 +663,7 @@ def render_site(store: ArtifactStore, rstore: RuntimeStore | None = None) -> str
 <a href="#diff">Version diff</a>
 <a href="#details">Element detail</a>
 <a href="#availability">Artifact status</a>
+{runtime_nav}
 </nav>
 <main>
 <section id="availability"><h2>Artifact status</h2>{_render_available(store)}</section>
@@ -667,6 +675,7 @@ def render_site(store: ArtifactStore, rstore: RuntimeStore | None = None) -> str
 <section id="details"><h2>Element detail</h2>
 {''.join(_render_element_detail(store, eid) for eid in element_ids)}
 </section>
+{runtime_section}
 </main>
 """
     return (

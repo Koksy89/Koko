@@ -1263,13 +1263,17 @@ def test_declared_child_process_runs_unaudited_once_permitted(tmp_path: Path) ->
 # ---------------------------------------------------------------------------
 
 _OBSERVER_SOURCE = (
+    "import json\n"
     "class _RecordingObserver:\n"
     "    def __init__(self):\n"
     "        self.calls = []\n"
-    "    def start(self):\n"
+    "    def start(self, run):\n"
     "        self.calls.append('start')\n"
     "        with open('observer_events.log', 'a') as f:\n"
-    "            f.write('start\\n')\n"
+    "            f.write(\n"
+    "                'start:' + run.run_id + ':'\n"
+    "                + json.dumps(run.controls_active, sort_keys=True) + '\\n'\n"
+    "            )\n"
     "    def stop(self):\n"
     "        self.calls.append('stop')\n"
     "        with open('observer_events.log', 'a') as f:\n"
@@ -1289,8 +1293,13 @@ def test_observer_started_and_stopped_exactly_once_around_a_successful_run(
         label="observer_success",
     )
     assert record["refused"] is False
-    log = (sandbox_root / "observer_events.log").read_text()
-    assert log == "start\nstop\n"
+    lines = (sandbox_root / "observer_events.log").read_text().splitlines()
+    assert len(lines) == 2 and lines[1] == "stop"
+    # start() received the real, verified record -- not one fabricated
+    # before controls were checked: the same run_id and controls_active
+    # the harness itself produced for this run.
+    expected = f"start:{record['run_id']}:{json.dumps(record['controls_active'], sort_keys=True)}"
+    assert lines[0] == expected
     # The observed call itself still ran normally, inside the same window.
     assert (sandbox_root / "ran.txt").read_text() == "ok"
 
@@ -1305,8 +1314,9 @@ def test_observer_is_stopped_when_the_target_raises(tmp_path: Path) -> None:
     )
     # The scenario crashing is still a completed run, not a refusal.
     assert record["refused"] is False
-    log = (sandbox_root / "observer_events.log").read_text()
-    assert log == "start\nstop\n"
+    lines = (sandbox_root / "observer_events.log").read_text().splitlines()
+    assert len(lines) == 2 and lines[1] == "stop"
+    assert lines[0].startswith(f"start:{record['run_id']}:")
 
 
 def test_observer_is_started_inside_the_sandbox_window(tmp_path: Path) -> None:
@@ -1315,7 +1325,7 @@ def test_observer_is_started_inside_the_sandbox_window(tmp_path: Path) -> None:
     be blocked and recorded exactly like anything the target itself does."""
     observer_source = (
         "class _NetworkAttemptingObserver:\n"
-        "    def start(self):\n"
+        "    def start(self, run):\n"
         "        import socket\n"
         "        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
         "        s.settimeout(0.01)\n"
@@ -1344,9 +1354,11 @@ class _CountingObserver:
     def __init__(self) -> None:
         self.start_calls = 0
         self.stop_calls = 0
+        self.last_run: object | None = None
 
-    def start(self) -> None:
+    def start(self, run: object) -> None:
         self.start_calls += 1
+        self.last_run = run
 
     def stop(self) -> None:
         self.stop_calls += 1
