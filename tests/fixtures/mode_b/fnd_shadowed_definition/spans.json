@@ -1,0 +1,34 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "    return compute(value)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "compute"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 2,
+      "qualname": "compute"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "main"
+    },
+    "/findings/0/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "compute"
+    }
+  }
+}

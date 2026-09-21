@@ -1,117 +1,168 @@
 {
+  "case_id": "fnd_unknown_not_unplugged",
+  "edges": [
+    {
+      "call_site": {
+        "col": 10,
+        "end_line": 19,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py"
+      },
+      "id": "fnd_unknown_not_unplugged:e1",
+      "kind": "INSTANTIATES",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "fnd_unknown_not_unplugged",
+      "target_id": "fnd_unknown_not_unplugged::Handler"
+    }
+  ],
   "elements": [
     {
-      "id": "fnd_unknown_not_unplugged",
-      "kind": "MODULE",
-      "name": "fnd_unknown_not_unplugged",
-      "qualname": "",
-      "module": "fnd_unknown_not_unplugged",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "fnd_unknown_not_unplugged::Handler",
-      "kind": "CLASS",
-      "name": "Handler",
-      "qualname": "Handler",
-      "module": "fnd_unknown_not_unplugged",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
-        "line": 9
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "fnd_unknown_not_unplugged::Handler::helper",
-      "kind": "METHOD",
-      "name": "helper",
-      "qualname": "Handler.helper",
-      "module": "fnd_unknown_not_unplugged",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
-        "line": 10
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
       "content_hash_asserted": false,
-      "parent_id": "fnd_unknown_not_unplugged::Handler"
+      "id": "fnd_unknown_not_unplugged",
+      "kind": "MODULE",
+      "module": "fnd_unknown_not_unplugged",
+      "name": "fnd_unknown_not_unplugged",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "One method, reachable only by computed name.",
+      "id": "fnd_unknown_not_unplugged::Handler",
+      "kind": "CLASS",
+      "module": "fnd_unknown_not_unplugged",
+      "name": "Handler",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Handler",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Candidate of the computed getattr below.",
+      "id": "fnd_unknown_not_unplugged::Handler.helper",
+      "kind": "METHOD",
+      "module": "fnd_unknown_not_unplugged",
+      "name": "helper",
+      "parent_id": "fnd_unknown_not_unplugged::Handler",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Handler.helper",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "fnd_unknown_not_unplugged::handler",
+      "kind": "ASSIGNMENT",
+      "module": "fnd_unknown_not_unplugged",
+      "name": "handler",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "handler",
+      "span": {
+        "col": 0,
+        "end_line": 19,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Fetch a method by a name that is only known at runtime.",
       "id": "fnd_unknown_not_unplugged::process",
       "kind": "FUNCTION",
-      "name": "process",
-      "qualname": "process",
       "module": "fnd_unknown_not_unplugged",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
-        "line": 18
-      },
+      "name": "process",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "qualname": "process",
+      "signature": "(action_name)",
+      "span": {
+        "col": 0,
+        "end_line": 25,
+        "line": 22,
+        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py"
+      }
+    }
+  ],
+  "entry_ids": [
+    "fnd_unknown_not_unplugged"
+  ],
+  "finding_count_exact": 0,
+  "findings": [],
+  "must_not_contain_findings": [
+    {
+      "element_id": "fnd_unknown_not_unplugged::Handler.helper",
+      "kind": "UNREACHABLE_ELEMENT",
+      "why": "an unresolved call site lists it as a candidate; the answer is UNKNOWN, and reporting it unplugged would send the owner to delete a live method"
+    }
+  ],
+  "proves": "Zero findings. `Handler.helper` is unreached by resolved edges, but it is a candidate of an unresolved call site, so its reachability is UNKNOWN and no UNREACHABLE_ELEMENT may be raised. UNKNOWN and NO_SINK_PATH must never render the same.",
+  "reachability": [
+    {
+      "element_id": "fnd_unknown_not_unplugged::Handler.helper",
+      "id": "fnd_unknown_not_unplugged:r1",
+      "provenance": {
+        "confidence": "UNKNOWN",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "no resolved incoming edge, but it is a candidate of the unresolved call site at `getattr(handler, action_name)`; whether it runs cannot be decided statically",
+      "state": "UNKNOWN"
     }
   ],
   "unresolved": [
     {
-      "id": "getattr_call_20",
+      "attempted": [
+        "GETATTR_LITERAL",
+        "GETATTR_TRACED"
+      ],
+      "candidate_confidence": "UNKNOWN",
+      "candidate_ids": [
+        "fnd_unknown_not_unplugged::Handler.helper"
+      ],
+      "description": "the attribute name is the parameter `action_name`; every method of Handler is a candidate and none is claimed",
+      "id": "fnd_unknown_not_unplugged::process::getattr@action_name",
       "reason": "DYNAMIC_NAME",
       "span": {
-        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
-        "line": 20
-      },
-      "description": "getattr with computed attribute name",
-      "candidate_ids": [
-        "fnd_unknown_not_unplugged::Handler::helper"
-      ],
-      "candidate_confidence": "PROBABLE",
-      "candidates_asserted": true
-    }
-  ],
-  "edges": [
-    {
-      "id": "edge_module_handler_instantiate",
-      "kind": "INSTANTIATES",
-      "source_id": "fnd_unknown_not_unplugged",
-      "target_id": "fnd_unknown_not_unplugged::Handler",
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "call_site": {
-        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py",
-        "line": 15
+        "col": 13,
+        "end_line": 24,
+        "line": 24,
+        "path": "tests/fixtures/mode_b/fnd_unknown_not_unplugged/__init__.py"
       }
-    },
-    {
-      "id": "edge_process_entry",
-      "kind": "CALLS",
-      "source_id": "fnd_unknown_not_unplugged",
-      "target_id": "fnd_unknown_not_unplugged::process",
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "call_site": null
     }
-  ],
-  "findings": []
+  ]
 }

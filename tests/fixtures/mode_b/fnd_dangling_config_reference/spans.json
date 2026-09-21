@@ -1,0 +1,46 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "line",
+      "line_contains": "\"ThresholdRule\"",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "ThresholdRule"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "ThresholdRule.evaluate"
+    },
+    "/elements/3/span": {
+      "kind": "module"
+    },
+    "/elements/4/span": {
+      "kind": "line",
+      "line_contains": "\"ThresholdRule\"",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "line",
+      "line_contains": "\"MomentumRule\"",
+      "occurrence": 1
+    },
+    "/findings/0/span": {
+      "kind": "line",
+      "line_contains": "\"MomentumRule\"",
+      "occurrence": 1
+    },
+    "/unresolved/0/span": {
+      "kind": "line",
+      "line_contains": "\"MomentumRule\"",
+      "occurrence": 1
+    }
+  }
+}

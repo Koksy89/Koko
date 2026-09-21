@@ -1,0 +1,45 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "    return summarize(rows)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "expr",
+      "line_contains": "    return {\"total\": total(rows)}",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "legacy_report"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "main"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "summarize"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "total"
+    },
+    "/findings/0/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "legacy_report"
+    }
+  }
+}

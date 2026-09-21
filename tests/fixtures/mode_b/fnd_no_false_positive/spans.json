@@ -1,0 +1,35 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "    processed = process_input(raw_data)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "expr",
+      "line_contains": "    is_valid = validate_result(processed)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "main"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "process_input"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "validate_result"
+    }
+  }
+}

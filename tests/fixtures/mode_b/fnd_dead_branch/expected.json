@@ -1,24 +1,98 @@
 {
+  "case_id": "fnd_dead_branch",
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "fnd_dead_branch",
       "kind": "MODULE",
-      "name": "fnd_dead_branch",
-      "qualname": "",
       "module": "fnd_dead_branch",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_dead_branch/__init__.py",
-        "line": 1
-      },
+      "name": "fnd_dead_branch",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_dead_branch/__init__.py"
+      }
+    },
+    {
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "id": "fnd_dead_branch::DEBUG",
+      "kind": "ASSIGNMENT",
+      "module": "fnd_dead_branch",
+      "name": "DEBUG",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "DEBUG",
+      "span": {
+        "col": 0,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/fnd_dead_branch/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "One dead arm, one live branch.",
+      "id": "fnd_dead_branch::route",
+      "kind": "FUNCTION",
+      "module": "fnd_dead_branch",
+      "name": "route",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "route",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 10,
+        "path": "tests/fixtures/mode_b/fnd_dead_branch/__init__.py"
+      }
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "finding_count_exact": 1,
+  "findings": [
+    {
+      "element_id": "fnd_dead_branch::route",
+      "evidence_ids": [
+        "fnd_dead_branch::DEBUG"
+      ],
+      "hint": "delete the arm, or make DEBUG configurable if it is meant to be",
+      "id": "fnd_dead_branch:f1",
+      "kind": "DEAD_BRANCH",
+      "provenance": {
+        "confidence": "HEURISTIC",
+        "method": "CFG_REACHABILITY"
+      },
+      "span": {
+        "col": 4,
+        "end_line": 13,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/fnd_dead_branch/__init__.py"
+      },
+      "summary": "the body of `if DEBUG:` is unreachable: DEBUG is bound once at module level to the literal False and never rebound in the target"
+    }
+  ],
+  "must_not_contain_findings": [
+    {
+      "element_id": "fnd_dead_branch::route",
+      "kind": "DEAD_BRANCH",
+      "span_line_contains": "if value > 0:",
+      "why": "the condition reads a parameter; its value is unknown statically"
+    }
+  ],
+  "notes": [
+    "HEURISTIC, not RESOLVED: nothing in the target rebinds DEBUG, but an importer could set it before calling route. The finding is worth raising; claiming certainty about it is not."
+  ],
+  "proves": "Exactly one DEAD_BRANCH, on the `if DEBUG:` arm. `if value > 0:` depends on a parameter and must not fire -- reporting a live branch dead is how an owner deletes working code.",
+  "unresolved": []
 }

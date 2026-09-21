@@ -1,24 +1,152 @@
 {
-  "elements": [
+  "case_id": "fnd_shadowed_definition",
+  "edges": [
     {
-      "id": "fnd_shadowed",
-      "kind": "MODULE",
-      "name": "fnd_shadowed",
-      "qualname": "",
-      "module": "fnd_shadowed",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_shadowed/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 11,
+        "end_line": 16,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/fnd_shadowed_definition/__init__.py"
       },
+      "id": "fnd_shadowed_definition:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP",
+        "note": "the name resolves to the last binding in source order"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "fnd_shadowed_definition::main",
+      "target_id": "fnd_shadowed_definition::compute#2"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "fnd_shadowed_definition",
+      "kind": "MODULE",
+      "module": "fnd_shadowed_definition",
+      "name": "fnd_shadowed_definition",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_shadowed_definition/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "First definition. Shadowed by the one below; no call can ever reach it.",
+      "id": "fnd_shadowed_definition::compute",
+      "kind": "FUNCTION",
+      "module": "fnd_shadowed_definition",
+      "name": "compute",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "compute",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/fnd_shadowed_definition/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Second definition. This is what the name is bound to.",
+      "id": "fnd_shadowed_definition::compute#2",
+      "kind": "FUNCTION",
+      "module": "fnd_shadowed_definition",
+      "name": "compute",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "compute",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/fnd_shadowed_definition/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Calls the surviving definition.",
+      "id": "fnd_shadowed_definition::main",
+      "kind": "FUNCTION",
+      "module": "fnd_shadowed_definition",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/fnd_shadowed_definition/__init__.py"
+      }
+    }
+  ],
+  "entry_ids": [
+    "fnd_shadowed_definition::main"
+  ],
+  "finding_count_exact": 1,
+  "findings": [
+    {
+      "element_id": "fnd_shadowed_definition::compute",
+      "evidence_ids": [
+        "fnd_shadowed_definition::compute",
+        "fnd_shadowed_definition::compute#2"
+      ],
+      "hint": "delete the first definition, or rename one of the two if both are wanted",
+      "id": "fnd_shadowed_definition:f1",
+      "kind": "SHADOWED_DEFINITION",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/fnd_shadowed_definition/__init__.py"
+      },
+      "summary": "compute is redefined at module level, so this definition is never the one the name resolves to"
+    }
+  ],
+  "must_not_contain_edges": [
+    {
+      "source_id": "fnd_shadowed_definition::main",
+      "target_id": "fnd_shadowed_definition::compute",
+      "why": "the first definition is dead at the point of the call"
+    }
+  ],
+  "must_not_contain_findings": [
+    {
+      "element_id": "fnd_shadowed_definition::compute#2",
+      "kind": "SHADOWED_DEFINITION",
+      "why": "it is the definition that wins"
+    },
+    {
+      "element_id": "fnd_shadowed_definition::compute",
+      "kind": "UNREACHABLE_ELEMENT",
+      "why": "the cause is shadowing; reporting it as a missing call site sends the owner to the wrong place"
+    }
+  ],
+  "proves": "Exactly one SHADOWED_DEFINITION, on the first `compute` (`...::compute`, no ordinal suffix -- the first occurrence never gains one). The second (`...::compute#2`) is the live definition and must not fire. The finding must not be an UNREACHABLE_ELEMENT: the cause is shadowing, and naming it wrongly sends the owner looking for a missing call site.",
+  "unresolved": []
 }

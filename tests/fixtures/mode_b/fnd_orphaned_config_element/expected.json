@@ -1,24 +1,277 @@
 {
-  "elements": [
+  "case_id": "fnd_orphaned_config_element",
+  "edges": [
     {
-      "id": "fnd_orphaned",
-      "kind": "MODULE",
-      "name": "fnd_orphaned",
-      "qualname": "",
-      "module": "fnd_orphaned",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_orphaned/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 4,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/pipeline.json"
       },
+      "id": "fnd_orphaned_config_element:e1",
+      "kind": "CONFIGURES",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "HEURISTIC",
+        "method": "CONFIG_STRING_MATCH"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "@file:tests/fixtures/mode_b/fnd_orphaned_config_element/pipeline.json::/stages/0",
+      "target_id": "fnd_orphaned_config_element::WiredStage"
+    },
+    {
+      "call_site": {
+        "col": 0,
+        "end_line": 31,
+        "line": 26,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/__init__.py"
+      },
+      "id": "fnd_orphaned_config_element:e2",
+      "kind": "INHERITS",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "source_id": "fnd_orphaned_config_element::OrphanStage",
+      "target_id": "fnd_orphaned_config_element::Stage"
+    },
+    {
+      "call_site": {
+        "col": 0,
+        "end_line": 23,
+        "line": 18,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/__init__.py"
+      },
+      "id": "fnd_orphaned_config_element:e3",
+      "kind": "INHERITS",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "source_id": "fnd_orphaned_config_element::WiredStage",
+      "target_id": "fnd_orphaned_config_element::Stage"
     }
   ],
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "fnd_orphaned_config_element",
+      "kind": "MODULE",
+      "module": "fnd_orphaned_config_element",
+      "name": "fnd_orphaned_config_element",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Named by nothing.",
+      "id": "fnd_orphaned_config_element::OrphanStage",
+      "kind": "CLASS",
+      "module": "fnd_orphaned_config_element",
+      "name": "OrphanStage",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "OrphanStage",
+      "span": {
+        "col": 0,
+        "end_line": 31,
+        "line": 26,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Do the work.",
+      "id": "fnd_orphaned_config_element::OrphanStage.run",
+      "kind": "METHOD",
+      "module": "fnd_orphaned_config_element",
+      "name": "run",
+      "parent_id": "fnd_orphaned_config_element::OrphanStage",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "OrphanStage.run",
+      "signature": "(self, payload)",
+      "span": {
+        "col": 4,
+        "end_line": 31,
+        "line": 29,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Base for every pipeline stage.",
+      "id": "fnd_orphaned_config_element::Stage",
+      "kind": "CLASS",
+      "module": "fnd_orphaned_config_element",
+      "name": "Stage",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Stage",
+      "span": {
+        "col": 0,
+        "end_line": 15,
+        "line": 10,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Override me.",
+      "id": "fnd_orphaned_config_element::Stage.run",
+      "kind": "METHOD",
+      "module": "fnd_orphaned_config_element",
+      "name": "run",
+      "parent_id": "fnd_orphaned_config_element::Stage",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Stage.run",
+      "signature": "(self, payload)",
+      "span": {
+        "col": 4,
+        "end_line": 15,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Named by pipeline.json.",
+      "id": "fnd_orphaned_config_element::WiredStage",
+      "kind": "CLASS",
+      "module": "fnd_orphaned_config_element",
+      "name": "WiredStage",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "WiredStage",
+      "span": {
+        "col": 0,
+        "end_line": 23,
+        "line": 18,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Do the work.",
+      "id": "fnd_orphaned_config_element::WiredStage.run",
+      "kind": "METHOD",
+      "module": "fnd_orphaned_config_element",
+      "name": "run",
+      "parent_id": "fnd_orphaned_config_element::WiredStage",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "WiredStage.run",
+      "signature": "(self, payload)",
+      "span": {
+        "col": 4,
+        "end_line": 23,
+        "line": 21,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/fnd_orphaned_config_element/pipeline.json",
+      "kind": "DATA_FILE",
+      "module": "",
+      "name": "pipeline.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/pipeline.json"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/fnd_orphaned_config_element/pipeline.json::/stages/0",
+      "kind": "CONFIG_KEY",
+      "module": "",
+      "name": "0",
+      "parent_id": "@file:tests/fixtures/mode_b/fnd_orphaned_config_element/pipeline.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/pipeline.json"
+      }
+    }
+  ],
+  "finding_count_exact": 1,
+  "findings": [
+    {
+      "element_id": "fnd_orphaned_config_element::OrphanStage",
+      "evidence_ids": [
+        "fnd_orphaned_config_element:e1",
+        "fnd_orphaned_config_element:e2"
+      ],
+      "hint": "either add it to pipeline.json or delete it; check other deployments' configs before removing",
+      "id": "fnd_orphaned_config_element:f1",
+      "kind": "ORPHANED_CONFIG_ELEMENT",
+      "provenance": {
+        "confidence": "HEURISTIC",
+        "method": "CONFIG_STRING_MATCH"
+      },
+      "span": {
+        "col": 0,
+        "end_line": 31,
+        "line": 26,
+        "path": "tests/fixtures/mode_b/fnd_orphaned_config_element/__init__.py"
+      },
+      "summary": "OrphanStage is a Stage subclass in a tree wired by pipeline.json, and no config key names it"
+    }
+  ],
+  "must_not_contain_findings": [
+    {
+      "element_id": "fnd_orphaned_config_element::WiredStage",
+      "kind": "ORPHANED_CONFIG_ELEMENT",
+      "why": "pipeline.json names it"
+    },
+    {
+      "element_id": "fnd_orphaned_config_element::Stage",
+      "kind": "ORPHANED_CONFIG_ELEMENT",
+      "why": "a base class is reached by inheritance, not by wiring"
+    }
+  ],
+  "notes": [
+    "HEURISTIC, not RESOLVED: 'no config names it' is only evidence of an orphan in a tree where config is how components get wired, and another deployment's config file may name it."
+  ],
+  "proves": "Exactly one ORPHANED_CONFIG_ELEMENT, on OrphanStage: a component shaped exactly like a wired one, in a tree whose components are wired by config, that no config key names. `Stage` is a base class reached by inheritance and must not fire; `WiredStage` is wired and must not fire.",
   "unresolved": [],
-  "edges": [],
-  "findings": []
+  "wiring_files": [
+    "tests/fixtures/mode_b/fnd_orphaned_config_element/pipeline.json"
+  ]
 }

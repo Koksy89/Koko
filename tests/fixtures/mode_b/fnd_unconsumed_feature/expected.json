@@ -1,24 +1,242 @@
 {
-  "elements": [
+  "case_id": "fnd_unconsumed_feature",
+  "declared_sink_ids": [
+    "fnd_unconsumed_feature::decide"
+  ],
+  "edges": [
     {
-      "id": "fnd_unconsumed",
-      "kind": "MODULE",
-      "name": "fnd_unconsumed",
-      "qualname": "",
-      "module": "fnd_unconsumed",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_unconsumed/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 11,
+        "end_line": 19,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
       },
+      "id": "fnd_unconsumed_feature:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "fnd_unconsumed_feature::run",
+      "target_id": "fnd_unconsumed_feature::build_features"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 19,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      },
+      "id": "fnd_unconsumed_feature:e2",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "fnd_unconsumed_feature::run",
+      "target_id": "fnd_unconsumed_feature::decide"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "fnd_unconsumed_feature",
+      "kind": "MODULE",
+      "module": "fnd_unconsumed_feature",
+      "name": "fnd_unconsumed_feature",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Two features written into the same dict.",
+      "id": "fnd_unconsumed_feature::build_features",
+      "kind": "FUNCTION",
+      "module": "fnd_unconsumed_feature",
+      "name": "build_features",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "build_features",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "THE SINK. Reads momentum only.",
+      "id": "fnd_unconsumed_feature::decide",
+      "kind": "FUNCTION",
+      "module": "fnd_unconsumed_feature",
+      "name": "decide",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "decide",
+      "signature": "(features)",
+      "span": {
+        "col": 0,
+        "end_line": 14,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Entry point.",
+      "id": "fnd_unconsumed_feature::run",
+      "kind": "FUNCTION",
+      "module": "fnd_unconsumed_feature",
+      "name": "run",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "run",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 19,
+        "line": 17,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@feature:momentum",
+      "kind": "FEATURE",
+      "module": "",
+      "name": "momentum",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@feature:stale_ratio",
+      "kind": "FEATURE",
+      "module": "",
+      "name": "stale_ratio",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      }
+    }
+  ],
+  "entry_ids": [
+    "fnd_unconsumed_feature::run"
+  ],
+  "finding_count_exact": 1,
+  "findings": [
+    {
+      "element_id": "@feature:stale_ratio",
+      "evidence_ids": [
+        "fnd_unconsumed_feature:l2"
+      ],
+      "hint": "either wire it into the decision or stop computing it",
+      "id": "fnd_unconsumed_feature:f1",
+      "kind": "UNCONSUMED_FEATURE",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DATAFLOW"
+      },
+      "span": {
+        "col": 4,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      },
+      "summary": "stale_ratio is written but never read: no lineage edge leaves it"
+    }
+  ],
+  "lineage": [
+    {
+      "id": "fnd_unconsumed_feature:l1",
+      "kind": "CONTAINER_WRITE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "fnd_unconsumed_feature::build_features.<param>.rows",
+      "span": {
+        "col": 4,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      },
+      "target_id": "@feature:momentum"
+    },
+    {
+      "id": "fnd_unconsumed_feature:l2",
+      "kind": "CONTAINER_WRITE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "fnd_unconsumed_feature::build_features.<param>.rows",
+      "span": {
+        "col": 4,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      },
+      "target_id": "@feature:stale_ratio"
+    },
+    {
+      "id": "fnd_unconsumed_feature:l3",
+      "kind": "READS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "@feature:momentum",
+      "span": {
+        "col": 4,
+        "end_line": 14,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/fnd_unconsumed_feature/__init__.py"
+      },
+      "target_id": "fnd_unconsumed_feature::decide"
+    }
+  ],
+  "must_not_contain_findings": [
+    {
+      "element_id": "@feature:momentum",
+      "kind": "UNCONSUMED_FEATURE",
+      "why": "the sink reads it"
+    }
+  ],
+  "proves": "Exactly one UNCONSUMED_FEATURE, on @feature:stale_ratio. It is written and never read by anything -- not the decision, not another feature, not a return value the caller inspects. @feature:momentum is read by the sink and must not fire: a per-container lineage model would see both as 'the features dict is used' and report neither.",
+  "unresolved": []
 }

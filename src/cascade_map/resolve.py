@@ -1828,8 +1828,37 @@ class Resolver:
     def _resolve_configs(self) -> None:
         for path in self._config_files:
             declared = path in self.declared_configs
-            for pointer, value, key_name in self._config_strings(path):
-                self._match_config_string(path, pointer, value, key_name, declared)
+            strings = self._config_strings(path)
+            lines = self._config_lines(path)
+            for pointer, value, key_name in strings:
+                self._match_config_string(
+                    path, pointer, value, key_name, declared, self._value_span(path, lines, value)
+                )
+
+    def _config_lines(self, path: str) -> list[str]:
+        full = Path(path) if Path(path).is_absolute() else self.root / path
+        try:
+            return full.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            return []
+
+    def _value_span(self, path: str, lines: Sequence[str], value: str) -> SourceSpan:
+        """Point at the line and column the string actually occupies.
+
+        A config finding that names the file but not the line sends the owner
+        hunting through it; the exact key is the whole point of
+        ``config_key_id``.
+        """
+        needle = f'"{value}"'
+        for index, line in enumerate(lines):
+            col = line.find(needle)
+            if col < 0:
+                col = line.find(f"'{value}'")
+            if col < 0 and value in line:
+                col = line.find(value)
+            if col >= 0:
+                return SourceSpan(path=path, line=index + 1, col=col)
+        return SourceSpan(path=path, line=1)
 
     def _config_strings(self, path: str) -> list[tuple[str, str, str]]:
         full = Path(path) if Path(path).is_absolute() else self.root / path
@@ -1885,7 +1914,13 @@ class Resolver:
         return out
 
     def _match_config_string(
-        self, path: str, pointer: str, value: str, key_name: str, declared: bool
+        self,
+        path: str,
+        pointer: str,
+        value: str,
+        key_name: str,
+        declared: bool,
+        span: SourceSpan,
     ) -> None:
         text = value.strip()
         if not text or len(text) > 200 or " " in text:
@@ -1908,7 +1943,7 @@ class Resolver:
                 target,
                 Method.CONFIG_STRING_MATCH,
                 confidence,
-                call_site=SourceSpan(path=path, line=1),
+                call_site=span,
                 note=(
                     f"config key {pointer} = {text!r} matched by {how}; "
                     + ("owner-declared wiring file" if declared else "auto-detected config file")
@@ -1919,7 +1954,7 @@ class Resolver:
             self._record_unresolved(
                 owner=source_id,
                 reason=UnresolvedReason.AMBIGUOUS,
-                span=SourceSpan(path=path, line=1),
+                span=span,
                 description=(
                     f"config key {pointer} = {text!r} matches more than one element; "
                     "no edge claimed"
@@ -1934,10 +1969,10 @@ class Resolver:
             self._record_unresolved(
                 owner=source_id,
                 reason=UnresolvedReason.MISSING_TARGET,
-                span=SourceSpan(path=path, line=1),
+                span=span,
                 description=(
-                    f"config key {pointer} = {text!r} names no element in the "
-                    "inventory: a dangling config reference"
+                    f"config key {pointer} holds {text!r}; no element in the "
+                    "target has that name"
                 ),
                 attempted=(Method.CONFIG_STRING_MATCH, Method.NAME_HEURISTIC),
                 candidates=near,
@@ -2632,19 +2667,12 @@ class _CallResolver(ast.NodeVisitor):
                         EdgeKind.IMPORTS,
                         binding.target_id,
                         Method.IMPORT_STAR,
-                        binding.confidence,
+                        Confidence.RESOLVED,
                         node,
-                        note=f"bound as {name!r} by star import",
+                        note=f"bound as {name!r} by `import *` via __all__",
                     )
         else:
-            self._emit(
-                EdgeKind.IMPORTS,
-                make_id(target_module) if target_module else "",
-                Method.IMPORT_STAR,
-                Confidence.PROBABLE,
-                node,
-                note="star import from outside the inventory; bound names unknown",
-            )
+            self._third_party(node, f"*@{target_module}", target_module, Method.IMPORT_STAR)
 
     def visit_If(self, node: ast.If) -> None:
         self.visit(node.test)
@@ -2849,6 +2877,7 @@ class _CallResolver(ast.NodeVisitor):
                     UnresolvedReason.DYNAMIC_NAME,
                     f"{tail}() builds code at runtime; its target cannot be named statically",
                     (Method.AST_DIRECT,),
+                    site=f"{tail}@runtime-code",
                 )
                 return
             if tail == "getattr":
@@ -2916,6 +2945,7 @@ class _CallResolver(ast.NodeVisitor):
                 UnresolvedReason.DYNAMIC_NAME,
                 f"call target {_text(func)!r} is a computed expression",
                 (Method.SCOPE_LOOKUP,),
+                site=f"call@{_text(func)}",
             )
             return
 
@@ -3068,6 +3098,7 @@ class _CallResolver(ast.NodeVisitor):
                 (Method.MRO_DISPATCH,),
                 candidates=[binding.target_id, *overrides],
                 candidate_confidence=Confidence.PROBABLE,
+                site=f"dispatch@{attr}",
             )
 
     def _unresolved_call(self, node: ast.Call, label: str) -> None:
@@ -3258,6 +3289,7 @@ class _CallResolver(ast.NodeVisitor):
                 (Method.GETATTR_LITERAL, Method.DATAFLOW),
                 candidates=[value.target_id],
                 candidate_confidence=Confidence.HEURISTIC,
+                site="setattr@unknown-receiver",
             )
             return
         if name_val.closed and len(name_val.literals) == 1:
@@ -3279,6 +3311,7 @@ class _CallResolver(ast.NodeVisitor):
                 (Method.GETATTR_LITERAL, Method.GETATTR_TRACED),
                 candidates=[value.target_id],
                 candidate_confidence=Confidence.PROBABLE,
+                site="setattr@computed-name",
             )
 
     def _import_module_call(self, node: ast.Call, arg_index: int) -> _Binding:
@@ -3413,6 +3446,7 @@ class _CallResolver(ast.NodeVisitor):
             (Method.IMPORTLIB_LITERAL, Method.NAME_HEURISTIC),
             candidates=candidates,
             candidate_confidence=Confidence.HEURISTIC if candidates else Confidence.UNKNOWN,
+            site=f"discovery@{dotted}",
         )
 
     def _entry_points_call(self, node: ast.Call, dotted: str) -> None:
@@ -3434,6 +3468,7 @@ class _CallResolver(ast.NodeVisitor):
                 + "; the targets are outside the source tree"
             ),
             (Method.REGISTRY_MEMBERSHIP, Method.CONFIG_STRING_MATCH),
+            site=f"entry_points@{group or dotted}",
         )
 
     def _registry_accessor(self, node: ast.Call) -> _Binding | None:
@@ -3491,6 +3526,7 @@ class _CallResolver(ast.NodeVisitor):
                 (Method.REGISTRY_MEMBERSHIP, Method.DATAFLOW),
                 candidates=members,
                 candidate_confidence=Confidence.PROBABLE if members else Confidence.UNKNOWN,
+                site=f"registry@{name}.{func.attr}",
             )
             result = _Binding(
                 kind=_BKind.CANDIDATES,
@@ -3569,6 +3605,7 @@ class _CallResolver(ast.NodeVisitor):
                 UnresolvedReason.DYNAMIC_NAME,
                 "super() outside a class body",
                 (Method.MRO_DISPATCH,),
+                site=f"super@{attr}",
             )
             return
         key = self.class_stack[-1]
@@ -3591,6 +3628,7 @@ class _CallResolver(ast.NodeVisitor):
                 (Method.MRO_DISPATCH,),
                 candidates=self._name_candidates(attr, (ElementKind.METHOD,)),
                 candidate_confidence=Confidence.HEURISTIC,
+                site=f"super@{attr}",
             )
             return
         single = complete and self._single_inheritance(key)
@@ -3617,6 +3655,7 @@ class _CallResolver(ast.NodeVisitor):
                 (Method.MRO_DISPATCH,),
                 candidates=[target],
                 candidate_confidence=Confidence.PROBABLE,
+                site=f"super@{attr}",
             )
 
     def _single_inheritance(self, key: tuple[str, str]) -> bool:

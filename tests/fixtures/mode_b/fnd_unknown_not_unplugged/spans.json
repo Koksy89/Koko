@@ -1,0 +1,40 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "handler = Handler()",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Handler"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Handler.helper"
+    },
+    "/elements/3/span": {
+      "kind": "stmt",
+      "line_contains": "handler = Handler()",
+      "occurrence": 1
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "process"
+    },
+    "/unresolved/0/span": {
+      "kind": "expr",
+      "line_contains": "    method = getattr(handler, action_name)",
+      "node": "Call",
+      "occurrence": 1
+    }
+  }
+}

@@ -17,15 +17,15 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 | 1 | Ingestion & inventory | ingestion-builder | **DONE** (PASS, round 2) |
 | 2 | Resolution & call graph | resolver-engineer | building — **precision 37.8%, watch this** |
 | 3 | CFG, cascade ordering, decisions | cascade-engineer | building — 15 tests red |
-| 4 | Data/feature lineage & slicing | lineage-engineer | building |
+| 4 | Data/feature lineage & slicing | lineage-engineer | on hold — corpus freeze |
 | 5 | Unplugged detection & hints | findings-builder | **DONE** (PASS, round 2) |
 | 6 | Version diff & impact | diff-impact-builder | built, awaiting verification |
 | 16 | Documentation records & completeness gate | docs-builder | **DONE** (PASS) |
 | 15 | Viewer (phase B) | viewer-builder | **DONE** (PASS, round 2, phase B only) |
 | 11 | Safe execution harness | harness-builder | **FAILED x2 — final round** |
-| 12 | Runtime tracer & value capture | tracer-engineer | built, awaiting verification |
+| 12 | Runtime tracer & value capture | tracer-engineer | **DONE** (PASS, 3 recorded gaps) |
 | 13 | Intent registry & alignment | alignment-engineer | **DONE** (PASS, round 2) |
-| 14 | Execution narrative | narrative-builder | reworked, awaiting verification |
+| 14 | Execution narrative | narrative-builder | **DONE** (PASS, round 2) |
 | 10 | CLI, integration & validation | the lead | not started |
 
 ## What exists
@@ -97,6 +97,20 @@ for exactly this reason: a confident wrong edge costs the owner more than an hon
 
 If card 2 cannot get precision high, the correct outcome is fewer edges and more
 `UNKNOWN` records, not more edges.
+
+## Recorded gaps on passed cards
+
+Card 12 passed with three gaps that are real and should not be forgotten:
+
+1. `test_every_event_carries_runtime_provenance_with_run_and_event_id` is a `for` loop
+   with no preceding `assert events`. It passes on empty output. Being fixed.
+2. The `UNMAPPED` paths are exercised only through hand-constructed recordings fed to
+   `materialise` directly, never through a live `TraceCollector` under `sys.settrace`
+   meeting genuinely dynamic or ambiguous code.
+3. The "100% mapping rate" rests on `run_linear` — three functions, no branches, no
+   external calls, six events. Thin. Not strong evidence until richer fixtures land.
+
+Gaps 2 and 3 are blocked on card 8's corpus and are not card 12's to fix.
 
 ## Lessons carried forward
 

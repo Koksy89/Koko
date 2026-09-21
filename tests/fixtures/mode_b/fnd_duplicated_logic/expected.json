@@ -1,24 +1,195 @@
 {
-  "elements": [
+  "case_id": "fnd_duplicated_logic",
+  "edges": [
     {
-      "id": "fnd_duplicated_logic",
-      "kind": "MODULE",
-      "name": "fnd_duplicated_logic",
-      "qualname": "",
-      "module": "fnd_duplicated_logic",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 11,
+        "end_line": 30,
+        "line": 30,
+        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py"
       },
+      "id": "fnd_duplicated_logic:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "fnd_duplicated_logic::run",
+      "target_id": "fnd_duplicated_logic::score_alpha"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 30,
+        "line": 30,
+        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py"
+      },
+      "id": "fnd_duplicated_logic:e2",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "fnd_duplicated_logic::run",
+      "target_id": "fnd_duplicated_logic::score_beta"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 30,
+        "line": 30,
+        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py"
+      },
+      "id": "fnd_duplicated_logic:e3",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "fnd_duplicated_logic::run",
+      "target_id": "fnd_duplicated_logic::score_gamma"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "fnd_duplicated_logic",
+      "kind": "MODULE",
+      "module": "fnd_duplicated_logic",
+      "name": "fnd_duplicated_logic",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "All three are called, so none of them is unreachable.",
+      "id": "fnd_duplicated_logic::run",
+      "kind": "FUNCTION",
+      "module": "fnd_duplicated_logic",
+      "name": "run",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "run",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 30,
+        "line": 28,
+        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Weighted sum.",
+      "id": "fnd_duplicated_logic::score_alpha",
+      "kind": "FUNCTION",
+      "module": "fnd_duplicated_logic",
+      "name": "score_alpha",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "score_alpha",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Weighted sum, copy-pasted.",
+      "id": "fnd_duplicated_logic::score_beta",
+      "kind": "FUNCTION",
+      "module": "fnd_duplicated_logic",
+      "name": "score_beta",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "score_beta",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 17,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Similar shape, different arithmetic: not a duplicate.",
+      "id": "fnd_duplicated_logic::score_gamma",
+      "kind": "FUNCTION",
+      "module": "fnd_duplicated_logic",
+      "name": "score_gamma",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "score_gamma",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 25,
+        "line": 20,
+        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py"
+      }
+    }
+  ],
+  "entry_ids": [
+    "fnd_duplicated_logic::run"
+  ],
+  "finding_count_exact": 1,
+  "findings": [
+    {
+      "element_id": "fnd_duplicated_logic::score_alpha",
+      "evidence_ids": [
+        "fnd_duplicated_logic::score_alpha",
+        "fnd_duplicated_logic::score_beta"
+      ],
+      "hint": "keep one and call it from the other, or explain why the copy has to stay independent",
+      "id": "fnd_duplicated_logic:f1",
+      "kind": "DUPLICATED_LOGIC",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "STRUCTURAL_MATCH"
+      },
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py"
+      },
+      "summary": "score_alpha and score_beta have identical bodies: same statements, same operators, same constants"
+    }
+  ],
+  "must_not_contain_findings": [
+    {
+      "element_id": "fnd_duplicated_logic::score_gamma",
+      "kind": "DUPLICATED_LOGIC",
+      "why": "it multiplies by 3, not 2; a structural match that normalises constants away would wrongly pair it with the other two"
+    }
+  ],
+  "notes": [
+    "One finding for the pair, not two. Reporting each half separately doubles the owner's work list for one problem."
+  ],
+  "proves": "Exactly one DUPLICATED_LOGIC, pairing score_alpha with score_beta: identical statement structure, identical operators, identical constants. score_gamma has the same shape but multiplies by 3, so it is not a duplicate -- a structural match that ignores constants would fire on it, which is the false positive this case guards.",
+  "unresolved": []
 }

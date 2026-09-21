@@ -1,14 +1,18 @@
-"""
-Fixture proving that reachable-via-dynamic-call is UNKNOWN, not unplugged.
+"""Reachable only through an unresolved call site: UNKNOWN, not unplugged.
 
-The function `helper` is reached only through `getattr` with a computed name.
-It must be marked reachable (via UNKNOWN edge), not reported as unplugged.
+`Handler.helper` has no resolved caller. The only thing that could call it is
+`getattr(handler, action_name)`, whose name is a parameter -- so the resolver
+records an UNKNOWN with `helper` among its candidates. An unplugged-detector
+that walks resolved edges only will find `helper` unreached and report it as
+dead code, which is wrong: the honest answer is "I could not tell".
 """
 
 
 class Handler:
+    """One method, reachable only by computed name."""
+
     def helper(self):
-        """Reachable only through computed getattr."""
+        """Candidate of the computed getattr below."""
         return 42
 
 
@@ -16,6 +20,6 @@ handler = Handler()
 
 
 def process(action_name):
-    """Call helper via computed name."""
+    """Fetch a method by a name that is only known at runtime."""
     method = getattr(handler, action_name)
     return method()

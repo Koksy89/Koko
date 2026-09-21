@@ -1,0 +1,66 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "line",
+      "line_contains": "\"WiredStage\"",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "OrphanStage"
+    },
+    "/edges/2/call_site": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "WiredStage"
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "OrphanStage"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "OrphanStage.run"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Stage"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Stage.run"
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "WiredStage"
+    },
+    "/elements/6/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "WiredStage.run"
+    },
+    "/elements/7/span": {
+      "kind": "module"
+    },
+    "/elements/8/span": {
+      "kind": "line",
+      "line_contains": "\"WiredStage\"",
+      "occurrence": 1
+    },
+    "/findings/0/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "OrphanStage"
+    }
+  }
+}

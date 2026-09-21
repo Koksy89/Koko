@@ -1,24 +1,189 @@
 {
-  "elements": [
+  "case_id": "fnd_dangling_config_reference",
+  "edges": [
     {
-      "id": "fnd_dangling",
-      "kind": "MODULE",
-      "name": "fnd_dangling",
-      "qualname": "",
-      "module": "fnd_dangling",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_dangling/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 4,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json"
       },
+      "id": "fnd_dangling_config_reference:e1",
+      "kind": "CONFIGURES",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "HEURISTIC",
+        "method": "CONFIG_STRING_MATCH"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json::/rules/0",
+      "target_id": "fnd_dangling_config_reference::ThresholdRule"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "fnd_dangling_config_reference",
+      "kind": "MODULE",
+      "module": "fnd_dangling_config_reference",
+      "name": "fnd_dangling_config_reference",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_dangling_config_reference/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Named by rules.json and present in the target.",
+      "id": "fnd_dangling_config_reference::ThresholdRule",
+      "kind": "CLASS",
+      "module": "fnd_dangling_config_reference",
+      "name": "ThresholdRule",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ThresholdRule",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/fnd_dangling_config_reference/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Apply the rule.",
+      "id": "fnd_dangling_config_reference::ThresholdRule.evaluate",
+      "kind": "METHOD",
+      "module": "fnd_dangling_config_reference",
+      "name": "evaluate",
+      "parent_id": "fnd_dangling_config_reference::ThresholdRule",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ThresholdRule.evaluate",
+      "signature": "(self, value)",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/fnd_dangling_config_reference/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json",
+      "kind": "DATA_FILE",
+      "module": "",
+      "name": "rules.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json::/rules/0",
+      "kind": "CONFIG_KEY",
+      "module": "",
+      "name": "0",
+      "parent_id": "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json::/rules/1",
+      "kind": "CONFIG_KEY",
+      "module": "",
+      "name": "1",
+      "parent_id": "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json"
+      }
+    }
+  ],
+  "finding_count_exact": 1,
+  "findings": [
+    {
+      "element_id": "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json::/rules/1",
+      "evidence_ids": [
+        "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json::/rules/1"
+      ],
+      "hint": "the rule was renamed or deleted without updating rules.json, or it lives in a component outside this tree",
+      "id": "fnd_dangling_config_reference:f1",
+      "kind": "DANGLING_CONFIG_REFERENCE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CONFIG_STRING_MATCH"
+      },
+      "span": {
+        "col": 4,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json"
+      },
+      "summary": "rules.json /rules/1 names \"MomentumRule\", which the target does not define"
+    }
+  ],
+  "must_not_contain_edges": [
+    {
+      "source_id": "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json::/rules/1",
+      "target_id": "fnd_dangling_config_reference::ThresholdRule",
+      "why": "the only class present is not the one the key names"
+    }
+  ],
+  "must_not_contain_findings": [
+    {
+      "element_id": "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json::/rules/0",
+      "kind": "DANGLING_CONFIG_REFERENCE",
+      "why": "ThresholdRule exists and the key resolves"
+    }
+  ],
+  "proves": "Exactly one DANGLING_CONFIG_REFERENCE, on the config key holding \"MomentumRule\" -- a name no element in the target defines. The finding points at the key, not at the file, so the owner can find the line. The sibling key naming ThresholdRule resolves and must not fire.",
+  "unresolved": [
+    {
+      "attempted": [
+        "CONFIG_STRING_MATCH",
+        "NAME_HEURISTIC"
+      ],
+      "description": "config key /rules/1 holds \"MomentumRule\"; no class, function or module in the target has that name",
+      "id": "@file:tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json::/rules/1",
+      "reason": "MISSING_TARGET",
+      "span": {
+        "col": 4,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/fnd_dangling_config_reference/rules.json"
+      }
+    }
+  ]
 }

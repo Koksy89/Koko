@@ -1,104 +1,130 @@
 {
-  "elements": [
-    {
-      "id": "fnd_no_false_positive",
-      "kind": "MODULE",
-      "name": "fnd_no_false_positive",
-      "qualname": "",
-      "module": "fnd_no_false_positive",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "fnd_no_false_positive::process_input",
-      "kind": "FUNCTION",
-      "name": "process_input",
-      "qualname": "process_input",
-      "module": "fnd_no_false_positive",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
-        "line": 9
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "fnd_no_false_positive::validate_result",
-      "kind": "FUNCTION",
-      "name": "validate_result",
-      "qualname": "validate_result",
-      "module": "fnd_no_false_positive",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
-        "line": 14
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "fnd_no_false_positive::main",
-      "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
-      "module": "fnd_no_false_positive",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
-        "line": 19
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    }
+  "case_id": "fnd_no_false_positive",
+  "declared_sink_ids": [
+    "fnd_no_false_positive::validate_result"
   ],
-  "unresolved": [],
   "edges": [
     {
-      "id": "edge_main_process",
-      "kind": "CALLS",
-      "source_id": "fnd_no_false_positive::main",
-      "target_id": "fnd_no_false_positive::process_input",
-      "provenance": {
-        "method": "SCOPE_LOOKUP",
-        "confidence": "RESOLVED"
-      },
       "call_site": {
-        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
-        "line": 20
+        "col": 16,
+        "end_line": 21,
+        "line": 21,
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py"
+      },
+      "id": "fnd_no_false_positive:e1",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "fnd_no_false_positive::main",
+      "target_id": "fnd_no_false_positive::process_input"
+    },
+    {
+      "call_site": {
+        "col": 15,
+        "end_line": 22,
+        "line": 22,
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py"
+      },
+      "id": "fnd_no_false_positive:e2",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "fnd_no_false_positive::main",
+      "target_id": "fnd_no_false_positive::validate_result"
+    }
+  ],
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "fnd_no_false_positive",
+      "kind": "MODULE",
+      "module": "fnd_no_false_positive",
+      "name": "fnd_no_false_positive",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py"
       }
     },
     {
-      "id": "edge_main_validate",
-      "kind": "CALLS",
-      "source_id": "fnd_no_false_positive::main",
-      "target_id": "fnd_no_false_positive::validate_result",
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Entry point.",
+      "id": "fnd_no_false_positive::main",
+      "kind": "FUNCTION",
+      "module": "fnd_no_false_positive",
+      "name": "main",
       "provenance": {
-        "method": "SCOPE_LOOKUP",
-        "confidence": "RESOLVED"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "call_site": {
-        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
-        "line": 21
+      "qualname": "main",
+      "signature": "(raw_data)",
+      "span": {
+        "col": 0,
+        "end_line": 23,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Called by main.",
+      "id": "fnd_no_false_positive::process_input",
+      "kind": "FUNCTION",
+      "module": "fnd_no_false_positive",
+      "name": "process_input",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "process_input",
+      "signature": "(data)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Called by main; its result is the decision.",
+      "id": "fnd_no_false_positive::validate_result",
+      "kind": "FUNCTION",
+      "module": "fnd_no_false_positive",
+      "name": "validate_result",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "validate_result",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py"
       }
     }
   ],
-  "findings": []
+  "entry_ids": [
+    "fnd_no_false_positive",
+    "fnd_no_false_positive::main"
+  ],
+  "finding_count_exact": 0,
+  "findings": [],
+  "proves": "Zero findings, of any kind. This is the precision guard for card 5: an unplugged detector that fires here is wrong, and a false unplugged finding costs the owner more than an honest gap.",
+  "unresolved": []
 }

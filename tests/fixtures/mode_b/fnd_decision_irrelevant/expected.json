@@ -1,24 +1,261 @@
 {
-  "elements": [
+  "case_id": "fnd_decision_irrelevant",
+  "declared_sink_ids": [
+    "fnd_decision_irrelevant::final_decision"
+  ],
+  "edges": [
     {
-      "id": "fnd_decision_irrelevant",
-      "kind": "MODULE",
-      "name": "fnd_decision_irrelevant",
-      "qualname": "",
-      "module": "fnd_decision_irrelevant",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_decision_irrelevant/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 22,
+        "end_line": 16,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/fnd_decision_irrelevant/__init__.py"
       },
+      "id": "fnd_decision_irrelevant:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "fnd_decision_irrelevant::final_decision",
+      "target_id": "fnd_decision_irrelevant::score"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 22,
+        "line": 22,
+        "path": "tests/fixtures/mode_b/fnd_decision_irrelevant/__init__.py"
+      },
+      "id": "fnd_decision_irrelevant:e2",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "fnd_decision_irrelevant::main",
+      "target_id": "fnd_decision_irrelevant::final_decision"
+    },
+    {
+      "call_site": {
+        "col": 4,
+        "end_line": 21,
+        "line": 21,
+        "path": "tests/fixtures/mode_b/fnd_decision_irrelevant/__init__.py"
+      },
+      "id": "fnd_decision_irrelevant:e3",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "fnd_decision_irrelevant::main",
+      "target_id": "fnd_decision_irrelevant::write_audit_log"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "fnd_decision_irrelevant",
+      "kind": "MODULE",
+      "module": "fnd_decision_irrelevant",
+      "name": "fnd_decision_irrelevant",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_decision_irrelevant/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "THE SINK.",
+      "id": "fnd_decision_irrelevant::final_decision",
+      "kind": "FUNCTION",
+      "module": "fnd_decision_irrelevant",
+      "name": "final_decision",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "final_decision",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/fnd_decision_irrelevant/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Entry point: calls the audit, then decides.",
+      "id": "fnd_decision_irrelevant::main",
+      "kind": "FUNCTION",
+      "module": "fnd_decision_irrelevant",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 22,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/fnd_decision_irrelevant/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Feeds the sink.",
+      "id": "fnd_decision_irrelevant::score",
+      "kind": "FUNCTION",
+      "module": "fnd_decision_irrelevant",
+      "name": "score",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "score",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/fnd_decision_irrelevant/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Runs on every request. Its result is read by nothing the sink touches.",
+      "id": "fnd_decision_irrelevant::write_audit_log",
+      "kind": "FUNCTION",
+      "module": "fnd_decision_irrelevant",
+      "name": "write_audit_log",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "write_audit_log",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/fnd_decision_irrelevant/__init__.py"
+      }
+    }
+  ],
+  "entry_ids": [
+    "fnd_decision_irrelevant::main"
+  ],
+  "finding_count_exact": 1,
+  "findings": [
+    {
+      "element_id": "fnd_decision_irrelevant::write_audit_log",
+      "evidence_ids": [
+        "fnd_decision_irrelevant:e3",
+        "fnd_decision_irrelevant:r4"
+      ],
+      "hint": "expected for logging and telemetry; confirm it is not meant to feed a feature before treating it as safe to change",
+      "id": "fnd_decision_irrelevant:f1",
+      "kind": "DECISION_IRRELEVANT",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/fnd_decision_irrelevant/__init__.py"
+      },
+      "summary": "write_audit_log runs on every path through main, and no value it produces reaches final_decision"
+    }
+  ],
+  "must_not_contain_findings": [
+    {
+      "element_id": "fnd_decision_irrelevant::write_audit_log",
+      "kind": "UNREACHABLE_ELEMENT",
+      "why": "main calls it; it runs on every request"
+    },
+    {
+      "element_id": "fnd_decision_irrelevant::score",
+      "kind": "DECISION_IRRELEVANT",
+      "why": "its result is the decision condition"
+    }
+  ],
+  "proves": "Exactly one DECISION_IRRELEVANT, on write_audit_log. It is *not* unreachable -- main calls it on every run -- but nothing it produces reaches the sink. The two conditions are different and the finding kinds must not be swapped: 'never runs' and 'runs but cannot change the answer' lead the owner to opposite actions.",
+  "reachability": [
+    {
+      "element_id": "fnd_decision_irrelevant::final_decision",
+      "id": "fnd_decision_irrelevant:r1",
+      "path_ids": [
+        "fnd_decision_irrelevant::final_decision"
+      ],
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "it is the sink",
+      "sink_ids": [
+        "fnd_decision_irrelevant::final_decision"
+      ],
+      "state": "REACHES_SINK"
+    },
+    {
+      "element_id": "fnd_decision_irrelevant::main",
+      "id": "fnd_decision_irrelevant:r2",
+      "path_ids": [
+        "fnd_decision_irrelevant::main",
+        "fnd_decision_irrelevant::final_decision"
+      ],
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "sink_ids": [
+        "fnd_decision_irrelevant::final_decision"
+      ],
+      "state": "REACHES_SINK"
+    },
+    {
+      "element_id": "fnd_decision_irrelevant::score",
+      "id": "fnd_decision_irrelevant:r3",
+      "path_ids": [
+        "fnd_decision_irrelevant::score",
+        "fnd_decision_irrelevant::final_decision"
+      ],
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "its result is the decision condition",
+      "sink_ids": [
+        "fnd_decision_irrelevant::final_decision"
+      ],
+      "state": "REACHES_SINK"
+    },
+    {
+      "element_id": "fnd_decision_irrelevant::write_audit_log",
+      "id": "fnd_decision_irrelevant:r4",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "called by main, but its return value is discarded and it writes nothing the sink or its inputs read",
+      "state": "NO_SINK_PATH"
+    }
+  ],
+  "unresolved": []
 }

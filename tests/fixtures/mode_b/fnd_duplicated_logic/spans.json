@@ -1,0 +1,51 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "    return score_alpha(rows), score_beta(rows), score_gamma(rows)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "expr",
+      "line_contains": "    return score_alpha(rows), score_beta(rows), score_gamma(rows)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/2/call_site": {
+      "kind": "expr",
+      "line_contains": "    return score_alpha(rows), score_beta(rows), score_gamma(rows)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "run"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "score_alpha"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "score_beta"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "score_gamma"
+    },
+    "/findings/0/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "score_alpha"
+    }
+  }
+}

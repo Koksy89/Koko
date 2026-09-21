@@ -1,24 +1,243 @@
 {
-  "elements": [
+  "case_id": "fnd_unreachable_element",
+  "declared_sink_ids": [
+    "fnd_unreachable_element::summarize"
+  ],
+  "edges": [
     {
-      "id": "fnd_unreachable",
-      "kind": "MODULE",
-      "name": "fnd_unreachable",
-      "qualname": "",
-      "module": "fnd_unreachable",
-      "span": {
-        "path": "tests/fixtures/mode_b/fnd_unreachable/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 11,
+        "end_line": 26,
+        "line": 26,
+        "path": "tests/fixtures/mode_b/fnd_unreachable_element/__init__.py"
       },
+      "id": "fnd_unreachable_element:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "fnd_unreachable_element::main",
+      "target_id": "fnd_unreachable_element::summarize"
+    },
+    {
+      "call_site": {
+        "col": 21,
+        "end_line": 16,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/fnd_unreachable_element/__init__.py"
+      },
+      "id": "fnd_unreachable_element:e2",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "fnd_unreachable_element::summarize",
+      "target_id": "fnd_unreachable_element::total"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "fnd_unreachable_element",
+      "kind": "MODULE",
+      "module": "fnd_unreachable_element",
+      "name": "fnd_unreachable_element",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/fnd_unreachable_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Nothing in the target reaches this. Superseded by summarize.",
+      "id": "fnd_unreachable_element::legacy_report",
+      "kind": "FUNCTION",
+      "module": "fnd_unreachable_element",
+      "name": "legacy_report",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "legacy_report",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 21,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/fnd_unreachable_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Entry point.",
+      "id": "fnd_unreachable_element::main",
+      "kind": "FUNCTION",
+      "module": "fnd_unreachable_element",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 26,
+        "line": 24,
+        "path": "tests/fixtures/mode_b/fnd_unreachable_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Called by main.",
+      "id": "fnd_unreachable_element::summarize",
+      "kind": "FUNCTION",
+      "module": "fnd_unreachable_element",
+      "name": "summarize",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "summarize",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/fnd_unreachable_element/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Called by summarize.",
+      "id": "fnd_unreachable_element::total",
+      "kind": "FUNCTION",
+      "module": "fnd_unreachable_element",
+      "name": "total",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "total",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/fnd_unreachable_element/__init__.py"
+      }
+    }
+  ],
+  "entry_ids": [
+    "fnd_unreachable_element::main"
+  ],
+  "finding_count_exact": 1,
+  "findings": [
+    {
+      "element_id": "fnd_unreachable_element::legacy_report",
+      "evidence_ids": [
+        "fnd_unreachable_element:r1"
+      ],
+      "hint": "confirm it is not an externally invoked entry point, then remove it or wire it in",
+      "id": "fnd_unreachable_element:f1",
+      "kind": "UNREACHABLE_ELEMENT",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "span": {
+        "col": 0,
+        "end_line": 21,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/fnd_unreachable_element/__init__.py"
+      },
+      "summary": "legacy_report is defined but nothing in the target reaches it"
+    }
+  ],
+  "must_not_contain_findings": [
+    {
+      "element_id": "fnd_unreachable_element::main",
+      "kind": "UNREACHABLE_ELEMENT",
+      "why": "it is a declared entry point"
+    },
+    {
+      "element_id": "fnd_unreachable_element::total",
+      "kind": "UNREACHABLE_ELEMENT",
+      "why": "reached transitively through summarize"
+    }
+  ],
+  "proves": "Exactly one UNREACHABLE_ELEMENT, on `legacy_report`. `total` is reached transitively (main -> summarize -> total) and must not fire; `main` is an entry point and must not fire either, even though nothing calls it.",
+  "reachability": [
+    {
+      "element_id": "fnd_unreachable_element::legacy_report",
+      "id": "fnd_unreachable_element:r1",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "no incoming edge of any kind, and no unresolved call site lists it as a candidate",
+      "state": "NO_SINK_PATH"
+    },
+    {
+      "element_id": "fnd_unreachable_element::main",
+      "id": "fnd_unreachable_element:r2",
+      "path_ids": [
+        "fnd_unreachable_element::main",
+        "fnd_unreachable_element::summarize"
+      ],
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "sink_ids": [
+        "fnd_unreachable_element::summarize"
+      ],
+      "state": "REACHES_SINK"
+    },
+    {
+      "element_id": "fnd_unreachable_element::summarize",
+      "id": "fnd_unreachable_element:r3",
+      "path_ids": [
+        "fnd_unreachable_element::summarize"
+      ],
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "it is the sink",
+      "sink_ids": [
+        "fnd_unreachable_element::summarize"
+      ],
+      "state": "REACHES_SINK"
+    },
+    {
+      "element_id": "fnd_unreachable_element::total",
+      "id": "fnd_unreachable_element:r4",
+      "path_ids": [
+        "fnd_unreachable_element::total",
+        "fnd_unreachable_element::summarize"
+      ],
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "sink_ids": [
+        "fnd_unreachable_element::summarize"
+      ],
+      "state": "REACHES_SINK"
+    }
+  ],
+  "unresolved": []
 }
