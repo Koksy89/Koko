@@ -73,7 +73,7 @@
   },
   "lineage": [
     {
-      "id": "lin_assign_chain:l1",
+      "id": "lin_assign_chain:l01",
       "kind": "ASSIGNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -89,7 +89,7 @@
       "target_id": "lin_assign_chain::chain.<locals>.x"
     },
     {
-      "id": "lin_assign_chain:l2",
+      "id": "lin_assign_chain:l02",
       "kind": "ASSIGNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -105,7 +105,7 @@
       "target_id": "lin_assign_chain::chain.<locals>.y"
     },
     {
-      "id": "lin_assign_chain:l3",
+      "id": "lin_assign_chain:l03",
       "kind": "MUTATES",
       "provenance": {
         "confidence": "RESOLVED",

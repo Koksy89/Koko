@@ -184,7 +184,7 @@
   },
   "lineage": [
     {
-      "id": "lin_barrier:l1",
+      "id": "lin_barrier:l01",
       "kind": "PARAMETER_BINDING",
       "provenance": {
         "confidence": "RESOLVED",
@@ -200,7 +200,7 @@
       "target_id": "lin_barrier::build_expression.<param>.multiplier"
     },
     {
-      "id": "lin_barrier:l2",
+      "id": "lin_barrier:l02",
       "kind": "PARAMETER_BINDING",
       "provenance": {
         "confidence": "RESOLVED",
@@ -216,7 +216,7 @@
       "target_id": "lin_barrier::evaluate.<param>.expression"
     },
     {
-      "id": "lin_barrier:l3",
+      "id": "lin_barrier:l03",
       "kind": "PARAMETER_BINDING",
       "provenance": {
         "confidence": "RESOLVED",
@@ -232,7 +232,7 @@
       "target_id": "lin_barrier::evaluate.<param>.value"
     },
     {
-      "id": "lin_barrier:l4",
+      "id": "lin_barrier:l04",
       "kind": "READS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -248,7 +248,7 @@
       "target_id": "lin_barrier::evaluate.<locals>.<barrier>"
     },
     {
-      "id": "lin_barrier:l5",
+      "id": "lin_barrier:l05",
       "kind": "ASSIGNS",
       "provenance": {
         "confidence": "UNKNOWN",

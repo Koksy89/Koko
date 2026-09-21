@@ -116,7 +116,7 @@
   },
   "lineage": [
     {
-      "id": "lin_closure:l1",
+      "id": "lin_closure:l01",
       "kind": "CONTAINER_WRITE",
       "provenance": {
         "confidence": "RESOLVED",
@@ -132,7 +132,7 @@
       "target_id": "lin_closure::make_counter.<locals>.state[count]"
     },
     {
-      "id": "lin_closure:l2",
+      "id": "lin_closure:l02",
       "kind": "MUTATES",
       "provenance": {
         "confidence": "RESOLVED",
@@ -148,7 +148,7 @@
       "target_id": "lin_closure::make_counter.<locals>.state[count]"
     },
     {
-      "id": "lin_closure:l3",
+      "id": "lin_closure:l03",
       "kind": "MUTATES",
       "provenance": {
         "confidence": "RESOLVED",
@@ -164,7 +164,7 @@
       "target_id": "lin_closure::make_counter.<locals>.state[count]"
     },
     {
-      "id": "lin_closure:l4",
+      "id": "lin_closure:l04",
       "kind": "ASSIGNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -180,7 +180,7 @@
       "target_id": "lin_closure::make_counter.<locals>.alias"
     },
     {
-      "id": "lin_closure:l5",
+      "id": "lin_closure:l05",
       "kind": "MUTATES",
       "provenance": {
         "confidence": "RESOLVED",
@@ -196,7 +196,7 @@
       "target_id": "lin_closure::make_counter.<locals>.state[count]"
     },
     {
-      "id": "lin_closure:l6",
+      "id": "lin_closure:l06",
       "kind": "READS",
       "provenance": {
         "confidence": "RESOLVED",

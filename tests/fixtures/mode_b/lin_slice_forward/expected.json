@@ -176,7 +176,7 @@
   },
   "lineage": [
     {
-      "id": "lin_slice_forward:l1",
+      "id": "lin_slice_forward:l01",
       "kind": "PARAMETER_BINDING",
       "provenance": {
         "confidence": "RESOLVED",
@@ -192,7 +192,7 @@
       "target_id": "lin_slice_forward::transform.<param>.raw"
     },
     {
-      "id": "lin_slice_forward:l2",
+      "id": "lin_slice_forward:l02",
       "kind": "ASSIGNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -208,7 +208,7 @@
       "target_id": "lin_slice_forward::transform.<locals>.doubled"
     },
     {
-      "id": "lin_slice_forward:l3",
+      "id": "lin_slice_forward:l03",
       "kind": "ASSIGNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -224,7 +224,7 @@
       "target_id": "lin_slice_forward::transform.<locals>.shifted"
     },
     {
-      "id": "lin_slice_forward:l4",
+      "id": "lin_slice_forward:l04",
       "kind": "RETURNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -240,7 +240,7 @@
       "target_id": "lin_slice_forward::transform"
     },
     {
-      "id": "lin_slice_forward:l5",
+      "id": "lin_slice_forward:l05",
       "kind": "READS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -273,11 +273,11 @@
       "confidence": "RESOLVED",
       "direction": "forward",
       "edge_ids": [
-        "lin_slice_forward:l1",
-        "lin_slice_forward:l2",
-        "lin_slice_forward:l3",
-        "lin_slice_forward:l4",
-        "lin_slice_forward:l5"
+        "lin_slice_forward:l01",
+        "lin_slice_forward:l02",
+        "lin_slice_forward:l03",
+        "lin_slice_forward:l04",
+        "lin_slice_forward:l05"
       ],
       "id": "lin_slice_forward:s1",
       "member_ids": [

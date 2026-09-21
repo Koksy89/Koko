@@ -217,7 +217,7 @@
       "target_id": "lin_params::scale.<param>.options[offset]"
     },
     {
-      "id": "lin_params:l4",
+      "id": "lin_params:l04",
       "kind": "ASSIGNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -233,7 +233,7 @@
       "target_id": "lin_params::scale.<locals>.bumped"
     },
     {
-      "id": "lin_params:l5",
+      "id": "lin_params:l05",
       "kind": "ASSIGNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -249,7 +249,7 @@
       "target_id": "lin_params::scale.<locals>.bumped"
     },
     {
-      "id": "lin_params:l6",
+      "id": "lin_params:l06",
       "kind": "ASSIGNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -265,7 +265,7 @@
       "target_id": "lin_params::scale.<locals>.bumped#2"
     },
     {
-      "id": "lin_params:l7",
+      "id": "lin_params:l07",
       "kind": "ASSIGNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -281,7 +281,7 @@
       "target_id": "lin_params::scale.<locals>.bumped#2"
     },
     {
-      "id": "lin_params:l8",
+      "id": "lin_params:l08",
       "kind": "RETURNS",
       "provenance": {
         "confidence": "RESOLVED",
