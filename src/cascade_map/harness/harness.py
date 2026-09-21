@@ -218,6 +218,7 @@ class Harness:
         original_dont_write_bytecode = sys.dont_write_bytecode
         installed_modules: dict[str, object | None] = {}
         scenario_failure: ScenarioFailure | None = None
+        observer_failure: ScenarioFailure | None = None
         try:
             os.environ.clear()
             os.environ.update(filtered_env)
@@ -266,11 +267,50 @@ class Harness:
                         refused=False,
                         refusal_reason="",
                     )
-                    observer.start(pre_execution_record)
+                    # The observer is not exempt from misbehaving -- that is
+                    # the whole reason `observer_failure` exists. Caught
+                    # locally, not left to the outer `except Exception`
+                    # below, which is for this method's own setup/teardown
+                    # and would otherwise discard it exactly like the defect
+                    # this replaces. BlockedOperation/HarnessRefusal are not
+                    # "the observer misbehaving" -- an observer that itself
+                    # trips a control is judged the same way the target
+                    # would be, so those propagate to the handlers that
+                    # already exist for them.
+                    observer_started = False
+                    try:
+                        observer.start(pre_execution_record)
+                        observer_started = True
+                    except (BlockedOperation, HarnessRefusal):
+                        raise
+                    except Exception as exc:  # noqa: BLE001
+                        # start() failed: the run was not observed at all.
+                        # The scenario still runs -- an unrelated bug in
+                        # what is watching it is not a reason to refuse or
+                        # to skip running the target -- so this falls
+                        # through to the same _run_scenario call below,
+                        # and stop() is never attempted, since nothing
+                        # started.
+                        observer_failure = self._build_observer_failure("start", exc)
                     try:
                         self._run_scenario(spec)
                     finally:
-                        observer.stop()
+                        if observer_started:
+                            try:
+                                observer.stop()
+                            except (BlockedOperation, HarnessRefusal):
+                                raise
+                            except Exception as exc:  # noqa: BLE001
+                                # stop() failed: unlike a start() failure,
+                                # the run may have been observed for most
+                                # of its duration -- a different, milder
+                                # finding, but still one the owner needs,
+                                # so it is recorded rather than assumed
+                                # harmless because "card 12's stop() never
+                                # raises" is a guarantee about card 12, not
+                                # about every observer this harness might
+                                # ever be given.
+                                observer_failure = self._build_observer_failure("stop", exc)
                 else:
                     self._run_scenario(spec)
         except BlockedOperation:
