@@ -16,13 +16,13 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 | 8 | Fixture corpus | fixture-writer | rebuilt, awaiting verification |
 | 1 | Ingestion & inventory | ingestion-builder | **DONE** (PASS, round 2) |
 | 2 | Resolution & call graph | resolver-engineer | **DONE** (PASS — precision 100%, recall 100%) |
-| 3 | CFG, cascade ordering, decisions | cascade-engineer | FAILED — contract conformance, reworking |
-| 4 | Data/feature lineage & slicing | lineage-engineer | on hold — corpus freeze |
+| 3 | CFG, cascade ordering, decisions | cascade-engineer | **DONE** (PASS, round 2) |
+| 4 | Data/feature lineage & slicing | lineage-engineer | re-grading against the settled corpus |
 | 5 | Unplugged detection & hints | findings-builder | **DONE** (PASS, round 2) |
 | 6 | Version diff & impact | diff-impact-builder | **DONE** (PASS, 1 contract follow-up) |
 | 16 | Documentation records & completeness gate | docs-builder | **DONE** (PASS) |
 | 15 | Viewer (phase B) | viewer-builder | **DONE** (PASS, round 2, phase B only) |
-| 11 | Safe execution harness | harness-builder | **FAILED x2 — final round** |
+| 11 | Safe execution harness | harness-builder | architecture sound; populating `unguaranteed` |
 | 12 | Runtime tracer & value capture | tracer-engineer | **DONE** (PASS, 3 recorded gaps) |
 | 13 | Intent registry & alignment | alignment-engineer | **DONE** (PASS, round 2) |
 | 14 | Execution narrative | narrative-builder | **DONE** (PASS, round 2) |

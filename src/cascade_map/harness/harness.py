@@ -27,6 +27,26 @@ from .sandbox import SandboxContext, activate
 
 __all__ = ["Harness"]
 
+#: Escape paths this harness knows it cannot close, named in every run
+#: record -- see ``RunRecord.unguaranteed`` in the contract. Both are
+#: demonstrated, not theoretical (``tests/test_harness.py``); an empty
+#: ``unguaranteed`` would be a false claim of complete coverage, which
+#: constraint 7 does not allow. Worded for the owner reading ``run.json``,
+#: not for a developer reading this source.
+UNGUARANTEED_LIMITS: tuple[str, ...] = (
+    "A process launched by calling the interpreter's low-level process-spawn "
+    "primitive directly (bypassing Python's subprocess module) is invisible "
+    "to every control this harness has: it can run, unblocked and "
+    "unrecorded. Closing this needs isolation underneath this harness "
+    "itself -- a container, a sandboxed OS user, or similar -- not "
+    "something this harness's own checks can guarantee alone.",
+    "A process this run explicitly declared and permitted to spawn is not "
+    "supervised once it is running: it is a separate program with none of "
+    "this harness's controls attached, so anything it does on its own -- "
+    "reach the network, write files, spawn further processes -- happens "
+    "unblocked and unrecorded by this harness.",
+)
+
 
 class Harness:
     """Implements ``HarnessCard`` (``cascade_map.contracts.interfaces``)."""
