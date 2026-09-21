@@ -6,9 +6,16 @@
       "name": "fnd_no_false_positive",
       "qualname": "",
       "module": "fnd_no_false_positive",
-      "span": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 1},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "fnd_no_false_positive::process_input",
@@ -16,9 +23,16 @@
       "name": "process_input",
       "qualname": "process_input",
       "module": "fnd_no_false_positive",
-      "span": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 8},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
+        "line": 9
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "fnd_no_false_positive::validate_result",
@@ -26,9 +40,16 @@
       "name": "validate_result",
       "qualname": "validate_result",
       "module": "fnd_no_false_positive",
-      "span": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 13},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
+        "line": 14
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "fnd_no_false_positive::main",
@@ -36,9 +57,16 @@
       "name": "main",
       "qualname": "main",
       "module": "fnd_no_false_positive",
-      "span": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 18},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
+        "line": 19
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     }
   ],
   "unresolved": [],
@@ -48,16 +76,28 @@
       "kind": "CALLS",
       "source_id": "fnd_no_false_positive::main",
       "target_id": "fnd_no_false_positive::process_input",
-      "provenance": {"method": "SCOPE_LOOKUP", "confidence": "RESOLVED"},
-      "call_site": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 20}
+      "provenance": {
+        "method": "SCOPE_LOOKUP",
+        "confidence": "RESOLVED"
+      },
+      "call_site": {
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
+        "line": 20
+      }
     },
     {
       "id": "edge_main_validate",
       "kind": "CALLS",
       "source_id": "fnd_no_false_positive::main",
       "target_id": "fnd_no_false_positive::validate_result",
-      "provenance": {"method": "SCOPE_LOOKUP", "confidence": "RESOLVED"},
-      "call_site": {"path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py", "line": 21}
+      "provenance": {
+        "method": "SCOPE_LOOKUP",
+        "confidence": "RESOLVED"
+      },
+      "call_site": {
+        "path": "tests/fixtures/mode_b/fnd_no_false_positive/__init__.py",
+        "line": 21
+      }
     }
   ],
   "findings": []

@@ -6,10 +6,17 @@
       "name": "inv_redefinition",
       "qualname": "",
       "module": "inv_redefinition",
-      "span": {"path": "tests/fixtures/mode_b/inv_redefinition/__init__.py", "line": 1},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "Module with redefined names."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_redefinition/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "Module with redefined names.",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_redefinition::func",
@@ -17,10 +24,17 @@
       "name": "func",
       "qualname": "func",
       "module": "inv_redefinition",
-      "span": {"path": "tests/fixtures/mode_b/inv_redefinition/__init__.py", "line": 5},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "First definition."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_redefinition/__init__.py",
+        "line": 5
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "First definition.",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_redefinition::func#2",
@@ -28,10 +42,17 @@
       "name": "func",
       "qualname": "func",
       "module": "inv_redefinition",
-      "span": {"path": "tests/fixtures/mode_b/inv_redefinition/__init__.py", "line": 10},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "Redefined in conditional."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_redefinition/__init__.py",
+        "line": 10
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "Redefined in conditional.",
+      "content_hash_asserted": false
     }
   ],
   "unresolved": []

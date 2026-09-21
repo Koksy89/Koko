@@ -844,4 +844,32 @@ class AlignmentCard(Protocol):
 
 
 class NarrativeCard(Protocol):
-    def narrate(self, events: Sequence[TraceEvent]) -> Sequence[NarrativeStep]: ...
+    def narrate(
+        self,
+        events: Sequence[TraceEvent],
+        order_nodes: Sequence[OrderNode],
+        decisions: Sequence[DecisionPoint],
+        run: RunRecord,
+    ) -> Sequence[NarrativeStep]:
+        """Render a trace as an ordered, anchored account of the run.
+
+        The static structures are parameters rather than fields copied onto
+        each event, because WORKPLAN card 14 requires things a trace alone
+        cannot supply:
+
+        * **Cascade phase.** `EventKind` distinguishes a feature write from a
+          decision, but nothing in it separates ingestion from data
+          engineering. That grouping lives in card 3's `OrderNode`s.
+        * **Branches not taken.** A trace records the branch that ran.
+          `DecisionPoint.outcomes` is the only record of the ones that did not,
+          and reporting them is explicitly part of this card.
+        * **Blocked side-effect attempts.** These are card 11 findings and live
+          on `RunRecord`, not on any event.
+
+        Passing them in keeps one source of truth. Denormalising a `phase`
+        field onto every `TraceEvent` would duplicate card 3's answer into
+        card 12's output, where it would drift -- the same reason
+        ARCHITECTURE.md makes runtime evidence an overlay rather than a second
+        graph.
+        """
+        ...

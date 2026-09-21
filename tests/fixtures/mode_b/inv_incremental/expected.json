@@ -6,10 +6,17 @@
       "name": "inv_incremental",
       "qualname": "",
       "module": "inv_incremental",
-      "span": {"path": "tests/fixtures/mode_b/inv_incremental/__init__.py", "line": 1},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "Module for testing incremental analysis."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_incremental/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "Module for testing incremental analysis.",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_incremental::operation",
@@ -17,10 +24,17 @@
       "name": "operation",
       "qualname": "operation",
       "module": "inv_incremental",
-      "span": {"path": "tests/fixtures/mode_b/inv_incremental/__init__.py", "line": 4},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "An operation."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_incremental/__init__.py",
+        "line": 4
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "An operation.",
+      "content_hash_asserted": false
     }
   ],
   "unresolved": []

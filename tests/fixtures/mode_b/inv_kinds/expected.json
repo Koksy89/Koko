@@ -6,9 +6,16 @@
       "name": "inv_kinds",
       "qualname": "",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 1},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::GLOBAL_VAR",
@@ -16,9 +23,16 @@
       "name": "GLOBAL_VAR",
       "qualname": "GLOBAL_VAR",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 7},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 7
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::simple_func",
@@ -26,11 +40,18 @@
       "name": "simple_func",
       "qualname": "simple_func",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 11},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 10
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
       "signature": "(param: int) -> None",
-      "docstring": "A function."
+      "docstring": "A function.",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::MyClass",
@@ -38,10 +59,17 @@
       "name": "MyClass",
       "qualname": "MyClass",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 17},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "A class."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 15
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "A class.",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::MyClass::class_var",
@@ -49,10 +77,17 @@
       "name": "class_var",
       "qualname": "MyClass.class_var",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 20},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "parent_id": "inv_kinds::MyClass"
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 20
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "parent_id": "inv_kinds::MyClass",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::MyClass::__init__",
@@ -60,12 +95,19 @@
       "name": "__init__",
       "qualname": "MyClass.__init__",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 22},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 20
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
       "signature": "(self, value: str) -> None",
       "docstring": "Initialize.",
-      "parent_id": "inv_kinds::MyClass"
+      "parent_id": "inv_kinds::MyClass",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::MyClass::regular_method",
@@ -73,12 +115,19 @@
       "name": "regular_method",
       "qualname": "MyClass.regular_method",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 26},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 24
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
       "signature": "(self, x: int) -> str",
       "docstring": "A regular method.",
-      "parent_id": "inv_kinds::MyClass"
+      "parent_id": "inv_kinds::MyClass",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::MyClass::my_property",
@@ -86,12 +135,21 @@
       "name": "my_property",
       "qualname": "MyClass.my_property",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 29},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "decorators": ["property"],
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 29
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "decorators": [
+        "property"
+      ],
       "docstring": "A property.",
-      "parent_id": "inv_kinds::MyClass"
+      "parent_id": "inv_kinds::MyClass",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::outer",
@@ -99,10 +157,17 @@
       "name": "outer",
       "qualname": "outer",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 34},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "Function with nested function."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 34
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "Function with nested function.",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::outer::inner",
@@ -110,10 +175,17 @@
       "name": "inner",
       "qualname": "outer.<locals>.inner",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 36},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "parent_id": "inv_kinds::outer"
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 36
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "parent_id": "inv_kinds::outer",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::with_closure",
@@ -121,10 +193,17 @@
       "name": "with_closure",
       "qualname": "with_closure",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 41},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "Create a closure."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 42
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "Create a closure.",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_kinds::with_closure::closure",
@@ -132,23 +211,36 @@
       "name": "closure",
       "qualname": "with_closure.<locals>.closure",
       "module": "inv_kinds",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 44},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "parent_id": "inv_kinds::with_closure"
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 44
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "parent_id": "inv_kinds::with_closure",
+      "content_hash_asserted": false
     }
   ],
   "unresolved": [
     {
       "id": "inv_kinds::sys",
       "reason": "MISSING_TARGET",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 3},
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 3
+      },
       "description": "Import 'sys' not found"
     },
     {
       "id": "inv_kinds::Optional",
       "reason": "MISSING_TARGET",
-      "span": {"path": "tests/fixtures/mode_b/inv_kinds/__init__.py", "line": 4},
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_kinds/__init__.py",
+        "line": 4
+      },
       "description": "Import 'Optional' not found (from typing)"
     }
   ]

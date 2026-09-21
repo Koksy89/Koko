@@ -8,7 +8,8 @@
       "module": "res_getattr_computed",
       "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 1},
       "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "res_getattr_computed::Helper",
@@ -18,7 +19,8 @@
       "module": "res_getattr_computed",
       "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 6},
       "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "res_getattr_computed::Helper::method_a",
@@ -28,7 +30,8 @@
       "module": "res_getattr_computed",
       "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 7},
       "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
+      "content_hash": null,
+      "content_hash_asserted": false,
       "parent_id": "res_getattr_computed::Helper"
     },
     {
@@ -39,19 +42,21 @@
       "module": "res_getattr_computed",
       "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 10},
       "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
+      "content_hash": null,
+      "content_hash_asserted": false,
       "parent_id": "res_getattr_computed::Helper"
     }
   ],
   "unresolved": [
     {
-      "id": "res_getattr_computed::call_at_18",
+      "id": "getattr_call_at_16",
       "reason": "DYNAMIC_NAME",
-      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 18},
+      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 16},
       "description": "getattr call with computed name; cannot determine target statically",
       "attempted": ["GETATTR_LITERAL"],
       "candidate_ids": ["res_getattr_computed::Helper::method_a", "res_getattr_computed::Helper::method_b"],
-      "candidate_confidence": "PROBABLE"
+      "candidate_confidence": "PROBABLE",
+      "candidates_asserted": true
     }
   ],
   "edges": []

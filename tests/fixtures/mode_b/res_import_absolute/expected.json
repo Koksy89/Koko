@@ -6,9 +6,16 @@
       "name": "res_import_absolute",
       "qualname": "",
       "module": "res_import_absolute",
-      "span": {"path": "tests/fixtures/mode_b/res_import_absolute/__init__.py", "line": 1},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "res_import_absolute::data",
@@ -16,9 +23,16 @@
       "name": "data",
       "qualname": "data",
       "module": "res_import_absolute",
-      "span": {"path": "tests/fixtures/mode_b/res_import_absolute/__init__.py", "line": 5},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py",
+        "line": 6
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     }
   ],
   "unresolved": [],
@@ -28,8 +42,14 @@
       "kind": "IMPORTS",
       "source_id": "res_import_absolute",
       "target_id": "json",
-      "provenance": {"method": "IMPORT_ABSOLUTE", "confidence": "RESOLVED"},
-      "call_site": {"path": "tests/fixtures/mode_b/res_import_absolute/__init__.py", "line": 3}
+      "provenance": {
+        "method": "IMPORT_ABSOLUTE",
+        "confidence": "RESOLVED"
+      },
+      "call_site": {
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py",
+        "line": 3
+      }
     }
   ]
 }

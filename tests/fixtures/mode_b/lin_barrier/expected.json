@@ -8,7 +8,8 @@
       "module": "lin_barrier",
       "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 1},
       "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "lin_barrier::compute_expression",
@@ -16,9 +17,10 @@
       "name": "compute_expression",
       "qualname": "compute_expression",
       "module": "lin_barrier",
-      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 8},
+      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 9},
       "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "lin_barrier::evaluate",
@@ -26,9 +28,10 @@
       "name": "evaluate",
       "qualname": "evaluate",
       "module": "lin_barrier",
-      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 15},
+      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 16},
       "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "lin_barrier::process",
@@ -36,17 +39,18 @@
       "name": "process",
       "qualname": "process",
       "module": "lin_barrier",
-      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 22},
+      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 23},
       "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "content_hash": null,
+      "content_hash_asserted": false
     }
   ],
   "unresolved": [],
   "barriers": [
     {
-      "id": "barrier_eval_20",
+      "id": "barrier_eval_19",
       "element_id": "lin_barrier::evaluate",
-      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 20},
+      "span": {"path": "tests/fixtures/mode_b/lin_barrier/__init__.py", "line": 19},
       "reason": "DYNAMIC_NAME",
       "description": "eval() call; dynamically executed code is not statically traceable"
     }

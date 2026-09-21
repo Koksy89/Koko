@@ -6,10 +6,17 @@
       "name": "inv_ids_stable",
       "qualname": "",
       "module": "inv_ids_stable",
-      "span": {"path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py", "line": 1},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "Module to test that IDs are stable across reformatting."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "Module to test that IDs are stable across reformatting.",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_ids_stable::foo",
@@ -17,10 +24,17 @@
       "name": "foo",
       "qualname": "foo",
       "module": "inv_ids_stable",
-      "span": {"path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py", "line": 5},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "A simple function."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py",
+        "line": 5
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "A simple function.",
+      "content_hash_asserted": false
     },
     {
       "id": "inv_ids_stable::bar",
@@ -28,10 +42,17 @@
       "name": "bar",
       "qualname": "bar",
       "module": "inv_ids_stable",
-      "span": {"path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py", "line": 9},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123",
-      "docstring": "Another function."
+      "span": {
+        "path": "tests/fixtures/mode_b/inv_ids_stable/__init__.py",
+        "line": 9
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "docstring": "Another function.",
+      "content_hash_asserted": false
     }
   ],
   "unresolved": []

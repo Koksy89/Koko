@@ -24,7 +24,6 @@ from typing import Any, Mapping, Sequence
 
 from cascade_map.contracts.interfaces import (
     AlignmentVerdict,
-    Confidence,
     DecisionPoint,
     DocRecord,
     Edge,
@@ -38,11 +37,9 @@ from cascade_map.contracts.interfaces import (
     OrderNode,
     Provenance,
     Slice,
-    SourceSpan,
     TraceEvent,
     VersionChange,
     combine,
-    make_id,
 )
 from cascade_map.enrichment import EnrichmentClient
 
@@ -264,11 +261,11 @@ class DocumentationBuilder:
         for finding in self._findings:
             self._findings_by_element.setdefault(finding.element_id, []).append(finding.id)
 
-        self._changes_by_element: dict[str, list[str]] = {}
+        self._changes_by_element: dict[str, set[str]] = {}
         for change in self._changes:
-            for element_id in (change.before_id, change.after_id):
+            for element_id in {change.before_id, change.after_id}:
                 if element_id:
-                    self._changes_by_element.setdefault(element_id, []).append(change.id)
+                    self._changes_by_element.setdefault(element_id, set()).add(change.id)
 
         self._adjacency: dict[str, list[str]] = {}
         for edge in self._edges:

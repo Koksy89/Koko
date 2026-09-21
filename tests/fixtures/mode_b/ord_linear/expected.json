@@ -6,9 +6,16 @@
       "name": "ord_linear",
       "qualname": "",
       "module": "ord_linear",
-      "span": {"path": "tests/fixtures/mode_b/ord_linear/__init__.py", "line": 1},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "ord_linear::first",
@@ -16,9 +23,16 @@
       "name": "first",
       "qualname": "first",
       "module": "ord_linear",
-      "span": {"path": "tests/fixtures/mode_b/ord_linear/__init__.py", "line": 4},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py",
+        "line": 4
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "ord_linear::second",
@@ -26,9 +40,16 @@
       "name": "second",
       "qualname": "second",
       "module": "ord_linear",
-      "span": {"path": "tests/fixtures/mode_b/ord_linear/__init__.py", "line": 8},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py",
+        "line": 8
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "ord_linear::third",
@@ -36,9 +57,16 @@
       "name": "third",
       "qualname": "third",
       "module": "ord_linear",
-      "span": {"path": "tests/fixtures/mode_b/ord_linear/__init__.py", "line": 12},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py",
+        "line": 12
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     },
     {
       "id": "ord_linear::main",
@@ -46,9 +74,16 @@
       "name": "main",
       "qualname": "main",
       "module": "ord_linear",
-      "span": {"path": "tests/fixtures/mode_b/ord_linear/__init__.py", "line": 16},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": "abc123"
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py",
+        "line": 16
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
     }
   ],
   "unresolved": [],
@@ -56,9 +91,17 @@
     {
       "id": "order_linear",
       "kind": "SEQUENCE",
-      "element_ids": ["ord_linear::first", "ord_linear::second", "ord_linear::third", "ord_linear::main"],
+      "element_ids": [
+        "ord_linear::first",
+        "ord_linear::second",
+        "ord_linear::third",
+        "ord_linear::main"
+      ],
       "children": [],
-      "provenance": {"method": "CFG_REACHABILITY", "confidence": "CERTAIN"}
+      "provenance": {
+        "method": "CFG_REACHABILITY",
+        "confidence": "CERTAIN"
+      }
     }
   ]
 }
