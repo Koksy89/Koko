@@ -18,8 +18,12 @@ or modify them.
 
 ## Status
 
-Scaffolding only. No analysis code has been written yet — see `docs/STATUS.md`, which is
-the single place to resume from.
+**Mode B (static) is complete and gated. Mode A (runtime) is not built.**
+
+`cascade-map analyze` reads your engine and produces a map. It never executes it.
+`cascade-map trace` refuses, because the runtime half does not exist yet.
+
+See `docs/STATUS.md` to resume.
 
 ## Setup
 
@@ -48,6 +52,61 @@ installed, named `.venv-target`. Mode B does not need it. Nothing may run under 
 interpreter except the harness.
 
 Then fill in `docs/design/TARGET_PROFILE.md`.
+
+## Running it on your engine
+
+    cascade-map analyze target_engine/ --out out/first
+
+That is the whole thing. It parses your code with `ast` and writes the map. **Nothing in
+your engine is imported, executed or evaluated** — a hook blocks it, and the sentinel
+fixture proves it on every run.
+
+It works with no configuration. Where an owner input is blank it detects candidates and
+prints them as **proposals**, never as facts:
+
+    Detected, NOT confirmed — these are proposals for you:
+      decision_sink  engine.rules::final_decision  (HEURISTIC)
+
+The one answer worth giving it up front is your decision sink — the function that returns,
+or variable that holds, your engine's final decision. Four of the analyses grade relevance
+by "can this reach the decision", so it changes the whole map:
+
+    cascade-map analyze target_engine/ \
+        --entry "run_m5::main" \
+        --sink  "engine.rules::final_decision" \
+        --config "config/wiring.json" \
+        --out out/first
+
+Then look at it:
+
+    cascade-map view out/first
+
+One offline HTML page. No network, no CDN.
+
+### Reading the output
+
+The summary ends with a confidence census. It is the most important thing on the screen:
+
+      CERTAIN          18    4%
+      RESOLVED        268   62%
+      PROBABLE        111   26%
+      HEURISTIC        18    4%
+      UNKNOWN          11    2%
+
+A map that is mostly `RESOLVED` is a different object from one that is mostly `HEURISTIC`,
+and you should not have to open a file to find out which you have. `unresolved` and
+`barriers` counts are honest gaps — places the tool says "I could not tell" rather than
+guessing. A high `unresolved` count usually means dynamic wiring it could not follow;
+pointing `--config` at the files that name components by string is what fixes it.
+
+### If the gate fails
+
+    GATE FAILED: N elements have an incomplete documentation record.
+
+The run exits non-zero and still writes the artifacts so you can see what is missing. That
+is deliberate: a partial map reporting success is worse than one that refuses, because you
+would act on it either way. `--no-gate` writes anyway and exits 0 — use it to look, not to
+trust.
 
 ## The engine guard
 
