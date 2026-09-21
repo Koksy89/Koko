@@ -112,8 +112,32 @@ def _assert_subset(expected: dict, actual: dict, path: str = "") -> None:
         assert actual_value == expected_value, f"{here}: expected {expected_value!r}, got {actual_value!r}"
 
 
+def _normalize_expected_span_paths(expected: dict, case_id: str) -> dict:
+    """`SourceSpan.path` is root-relative (contract; see the path-normalization
+    note below), but every fixture's expected.json hand-writes it relative to
+    the *repository* root instead (e.g. "tests/fixtures/mode_b/inv_kinds/
+    __init__.py"), because that is what reading the file on disk shows. Since
+    tests call `inventory(root=_case_dir(case_id))`, the fixture's path is
+    always that same case-dir prefix plus the true root-relative path -- this
+    strips it so the comparison checks the same fact `inventory()` now emits.
+    """
+    prefix = _case_dir(case_id).as_posix() + "/"
+
+    def _strip(node):
+        if isinstance(node, dict):
+            if "path" in node and isinstance(node["path"], str) and node["path"].startswith(prefix):
+                node = {**node, "path": node["path"][len(prefix) :]}
+            return {k: _strip(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [_strip(v) for v in node]
+        return node
+
+    return _strip(expected)
+
+
 def _check_case(case_id: str, tmp_path: Path) -> tuple[list, list]:
     expected = json.loads((_case_dir(case_id) / "expected.json").read_text())
+    expected = _normalize_expected_span_paths(expected, case_id)
     elements, unresolved = _run_case(case_id, tmp_path)
 
     from cascade_map.contracts.interfaces import make_id
@@ -293,6 +317,7 @@ def test_inv_ids_stable(tmp_path: Path) -> None:
 def test_inv_syntax_error_fixture_case(tmp_path: Path) -> None:
     assert _has_case("inv_syntax_error")
     expected = json.loads((_case_dir("inv_syntax_error") / "expected.json").read_text())
+    expected = _normalize_expected_span_paths(expected, "inv_syntax_error")
     elements, unresolved = _run_case("inv_syntax_error", tmp_path)
 
     # A file that fails to parse contributes no elements at all -- not even a
@@ -332,6 +357,7 @@ def test_syntax_error_is_unresolved_not_a_crash(tmp_path: Path) -> None:
 def test_inv_non_utf8_fixture_case(tmp_path: Path) -> None:
     assert _has_case("inv_non_utf8")
     expected = json.loads((_case_dir("inv_non_utf8") / "expected.json").read_text())
+    expected = _normalize_expected_span_paths(expected, "inv_non_utf8")
     elements, unresolved = _run_case("inv_non_utf8", tmp_path)
 
     assert elements == [], "a non-UTF-8 file must not produce a partial element list"
@@ -491,6 +517,57 @@ def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
     assert canonical_jsonl(unresolved1) == canonical_jsonl(unresolved2)
 
 
+def test_span_path_is_identical_for_relative_and_absolute_root(tmp_path: Path) -> None:
+    """The property the contract is really asserting: SourceSpan.path is
+    root-relative, so analysing the same tree via a relative root and via its
+    absolute form must emit byte-identical artifacts -- no absolute path may
+    leak through (constraint 4; ARCHITECTURE.md reserves absolute paths for
+    run_meta.json, outside the byte-identical guarantee)."""
+    root = tmp_path / "same_tree"
+    root.mkdir()
+    (root / "__init__.py").write_text('"""m."""\n\ndef f():\n    return 1\n')
+    (root / "wiring.json").write_text(json.dumps({"k": "m.f"}))
+    sub = root / "pkg"
+    sub.mkdir()
+    (sub / "mod.py").write_text("class C:\n    def method(self):\n        pass\n")
+
+    relative_root = os.path.relpath(root, Path.cwd())
+    absolute_root = str(root.resolve())
+    assert relative_root != absolute_root, "the test must actually exercise two different root spellings"
+
+    rel_elements, rel_unresolved = inventory(relative_root, cache_dir=tmp_path / "cache_rel")
+    abs_elements, abs_unresolved = inventory(absolute_root, cache_dir=tmp_path / "cache_abs")
+
+    assert len(rel_elements) > 3, "must have actually analysed real content"
+    for e in rel_elements + abs_elements:
+        assert not e.span.path.startswith("/"), f"{e.id}: absolute path leaked into span.path: {e.span.path!r}"
+        assert str(tmp_path) not in e.span.path, f"{e.id}: tmp_path prefix leaked into span.path: {e.span.path!r}"
+
+    rel_bytes = canonical_jsonl(rel_elements) + canonical_jsonl(rel_unresolved)
+    abs_bytes = canonical_jsonl(abs_elements) + canonical_jsonl(abs_unresolved)
+    assert rel_bytes == abs_bytes, "relative-root and absolute-root runs over the same tree must be byte-identical"
+
+
+def test_symlink_escaping_root_is_unresolved_not_absolute(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.py"
+    outside.write_text("def g():\n    pass\n")
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "__init__.py").write_text('"""m."""\n')
+    try:
+        (root / "escaped.py").symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks unavailable in this environment")
+
+    elements, unresolved = inventory(str(root), cache_dir=tmp_path / "cache")
+    assert elements, "the root's own __init__.py must still be analysed despite the escaping symlink"
+    for e in elements:
+        assert not e.span.path.startswith("/"), e.span.path
+    escapes = [u for u in unresolved if u.reason == UnresolvedReason.AMBIGUOUS]
+    assert escapes, "a symlink resolving outside root must be a named Unresolved record"
+    assert "escaped.py" in escapes[0].description or "outside.py" in escapes[0].description
+
+
 def test_cold_cache_matches_warm_cache_on_whole_corpus(tmp_path: Path) -> None:
     cold_elements, cold_unresolved = inventory(str(MODE_B), cache_dir=tmp_path / "cache_a")
     warm_elements, warm_unresolved = inventory(str(MODE_B), cache_dir=tmp_path / "cache_a")
@@ -539,7 +616,10 @@ def test_json_config_file_yields_data_file_and_config_keys(tmp_path: Path) -> No
     data_files = [e for e in elements if e.kind == ElementKind.DATA_FILE]
     config_keys = [e for e in elements if e.kind == ElementKind.CONFIG_KEY]
     assert len(data_files) == 1
-    assert data_files[0].id == f"@file:{(root / 'wiring.json').as_posix()}"
+    assert data_files[0].id == "@file:wiring.json", (
+        "@file: ids embed span.path, which is root-relative -- must not leak "
+        "the absolute tmp_path prefix"
+    )
     matching = [e for e in config_keys if e.signature == "m.MyClass"]
     assert matching, "the wired class name must be recoverable from a CONFIG_KEY element"
     assert matching[0].parent_id == data_files[0].id

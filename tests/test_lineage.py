@@ -16,19 +16,15 @@ recall:
 * Fixtures are read as text and parsed. Nothing in this file imports or executes
   a fixture; `test_no_target_code_is_executed` proves it with the sentinel.
 
-Two places where this card knowingly differs from the corpus, both reported to
-the lead rather than papered over:
+One place where this card still adds an ID the corpus does not describe: a
+lambda has no element in card 1's inventory, so its parameter node
+(`...<lambda1>.<param>.value`) is minted here, and reads inside a lambda are
+attributed to the enclosing function instead.
 
-1. `lin_slice_backward:s1` lists five members. This card's backward slice of the
-   same root has seven: it also resolves the call from `decide`, so `decide`'s
-   parameters are in the slice. Card 8's `lineage` list does not contain that
-   call, so their slice could not. `test_fixture_lin_slice_backward` asserts
-   their five are present, that the two extras are each justified by an emitted
-   edge, and that `noise` and `unused` -- the precision point of the case -- are
-   absent.
-2. A lambda has no element in card 1's inventory, so its parameter node
-   (`...<lambda1>.<param>.value`) is an ID this card mints. Reads inside a lambda
-   are attributed to the enclosing function instead.
+Two earlier disagreements with the corpus are closed: lineage has one node per
+binding (settled by the lead, in `local_id`), and the backward slice of
+`lin_slice_backward` crosses the call boundary (card 8 corrected its
+expectation). Both are now graded as written, with no exceptions carried here.
 """
 
 from __future__ import annotations
@@ -205,42 +201,7 @@ def barrier_alias(case: str, barriers: Sequence[Barrier]) -> dict[str, str]:
     return mapping
 
 
-#: Records where card 8's expectation predates the lead's ruling that lineage
-#: has one node per *binding*. The ruling makes this card the reference, so each
-#: record is graded against the corrected fact rather than skipped. Card 8 is
-#: updating the fixture; when it does, these entries stop applying and
-#: `test_declared_divergences_are_still_needed` fails so they get removed.
-CORPUS_DIVERGENCES: dict[str, dict[str, str]] = {
-    # `bumped` is rebound at line 8, so the value written there is `bumped#2`.
-    "lin_params:l6": {
-        "target_id": "lin_params::scale.<locals>.bumped#2",
-        "why": "per-binding nodes: line 8 rebinds `bumped`",
-    },
-    # `return bumped` is reached by the binding at line 6 *or* the one at line 8,
-    # so the edge from either rests on a branch: PROBABLE, not RESOLVED.
-    "lin_params:l7": {
-        "confidence": "PROBABLE",
-        "why": "per-binding nodes: two definitions reach this return",
-    },
-}
-
-
-def apply_divergence(record: dict) -> dict:
-    override = CORPUS_DIVERGENCES.get(record["id"])
-    if not override:
-        return record
-    corrected = json.loads(json.dumps(record))
-    for field, value in override.items():
-        if field == "why":
-            continue
-        if field == "confidence":
-            corrected["provenance"]["confidence"] = value
-        else:
-            corrected[field] = value
-    return corrected
-
-
-def corpus_hits(case: str, *, corrected: bool = True) -> tuple[int, int, list[str]]:
+def corpus_hits(case: str) -> tuple[int, int, list[str]]:
     """(matched, expected, failures) for one fixture's `lineage` records."""
     tracer = fixture_tracer(case)
     alias = barrier_alias(case, tracer.barriers)
@@ -248,8 +209,6 @@ def corpus_hits(case: str, *, corrected: bool = True) -> tuple[int, int, list[st
     for edge in tracer.lineage_edges:
         by_pair.setdefault((edge.source_id, edge.target_id), []).append(edge)
     records = expectation(case).get("lineage", [])
-    if corrected:
-        records = [apply_divergence(record) for record in records]
     failures: list[str] = []
     matched = 0
     for record in records:
@@ -305,11 +264,7 @@ def test_every_fixtures_md_lineage_case_exists() -> None:
 
 @pytest.mark.parametrize("case", LINEAGE_CASES)
 def test_corpus_expected_lineage(case: str) -> None:
-    """Every hand-written lineage record, with its kind, provenance and span.
-
-    Graded against `CORPUS_DIVERGENCES`-corrected expectations: two records in
-    `lin_params` predate the ruling on per-binding nodes.
-    """
+    """Every hand-written lineage record, with its kind, provenance and span."""
     matched, total, failures = corpus_hits(case)
     assert total, f"{case}/expected.json carries no lineage records to grade"
     assert not failures, "\n".join(failures)
@@ -449,27 +404,22 @@ def test_fixture_lin_closure_alias_writes_the_same_cell() -> None:
 
 
 def test_fixture_lin_slice_backward() -> None:
-    """Exact where the corpus is exact; a superset only where it resolves more."""
+    """Exact: the members, the hop count, the sink and the confidence."""
     spec = expectation("lin_slice_backward")["slices"][0]
     tracer = fixture_tracer("lin_slice_backward", sinks=spec["reaches_sink_ids"])
     sliced = tracer.slice(spec["root_id"], spec["direction"])
-    assert set(spec["member_ids"]) <= set(sliced.member_ids)
+    assert sorted(sliced.member_ids) == sorted(spec["member_ids"])
+    assert len(sliced.edge_ids) == len(spec["edge_ids"])
     assert list(sliced.reaches_sink_ids) == spec["reaches_sink_ids"]
     assert str(sliced.confidence) == spec["confidence"]
-    # the precision the case exists for
+    # the precision the case exists for: `noise` binds `compute.<param>.noise`,
+    # which reaches `unused` and nothing else
+    assert "lin_slice_backward::decide.<param>.noise" not in sliced.member_ids
     assert "lin_slice_backward::compute.<param>.noise" not in sliced.member_ids
     assert "lin_slice_backward::compute.<locals>.unused" not in sliced.member_ids
-    # every member beyond card 8's list is justified by an edge in the slice
-    extra = set(sliced.member_ids) - set(spec["member_ids"]) - {spec["root_id"]}
-    assert extra == {
-        "lin_slice_backward::decide.<param>.a",
-        "lin_slice_backward::decide.<param>.b",
-    }
-    assert extra
-    for member in sorted(extra):
-        assert any(
-            tracer._edges[edge_id].source_id == member for edge_id in sliced.edge_ids
-        ), member
+    # the slice crosses the call boundary: that is what makes it an answer to
+    # "what feeds the decision input" rather than "what feeds z inside compute"
+    assert "lin_slice_backward::decide.<param>.a" in sliced.member_ids
 
 
 def test_fixture_lin_slice_forward() -> None:
@@ -660,46 +610,15 @@ def test_complete_edge_set(case: str) -> None:
     assert emitted == COMPLETE[case]
 
 
-def test_declared_divergences_are_exactly_the_ruling() -> None:
-    """Each declared divergence must fail as written and pass once corrected.
-
-    Both halves matter: the first proves the divergence is real, the second
-    proves the correction is the whole of it and nothing else is being waved
-    through.
-    """
-    assert CORPUS_DIVERGENCES
-    for case in LINEAGE_CASES:
-        raw = {
-            failure.split(": ")[0].split("/")[-1]
-            for failure in corpus_hits(case, corrected=False)[2]
-        }
-        corrected = {
-            failure.split(": ")[0].split("/")[-1]
-            for failure in corpus_hits(case, corrected=True)[2]
-        }
-        assert not corrected, f"{case}: {sorted(corrected)}"
-        declared = {
-            record_id
-            for record_id in CORPUS_DIVERGENCES
-            if record_id.startswith(f"{case}:")
-        }
-        assert declared == raw, (
-            f"{case}: declared {sorted(declared)} but the fixture disagrees on "
-            f"{sorted(raw)}"
-        )
-
-
 def test_report_precision_and_recall(capsys: pytest.CaptureFixture[str]) -> None:
     """The two numbers this card is graded on, measured and printed."""
     matched = expected = 0
-    as_written = 0
     failures: list[str] = []
     for case in LINEAGE_CASES:
         case_matched, case_expected, case_failures = corpus_hits(case)
         matched += case_matched
         expected += case_expected
         failures.extend(case_failures)
-        as_written += corpus_hits(case, corrected=False)[0]
 
     forbidden_total = forbidden_present = 0
     for case in LINEAGE_CASES:
@@ -723,10 +642,7 @@ def test_report_precision_and_recall(capsys: pytest.CaptureFixture[str]) -> None
     with capsys.disabled():
         print(
             f"\nlineage corpus recall {matched}/{expected} = {recall}"
-            f" over {len(LINEAGE_CASES)} lin_* cases"
-            f" (as card 8 wrote them: {as_written}/{expected}; the"
-            f" {expected - as_written} difference is the per-binding ruling,"
-            f" declared in CORPUS_DIVERGENCES)"
+            f" over {len(LINEAGE_CASES)} lin_* cases, graded as written"
         )
         print(
             f"lineage exact-set precision {correct}/{emitted} = {precision}, "
