@@ -1142,7 +1142,18 @@ class RunObserver(Protocol):
     run with something watching.
     """
 
-    def start(self) -> None: ...
+    def start(self, run: RunRecord) -> None:
+        """Begin observing. Receives the record the harness has just built.
+
+        The record is passed in rather than handed over at construction
+        because it is only complete once the harness has verified its
+        controls: it carries `controls_active`, `unguaranteed` and the
+        deterministic `run_id`. Card 12 refuses to trace a run whose controls
+        are not active, and that refusal is only meaningful against the record
+        the harness actually produced -- an observer built beforehand would be
+        checking values nobody had verified yet.
+        """
+        ...
 
     def stop(self) -> None: ...
 

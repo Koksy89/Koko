@@ -106,6 +106,51 @@ def _badge(confidence: str | None) -> str:
     return f'<span class="badge conf-{escape(confidence)}">{escape(confidence)}</span>'
 
 
+# ---------------------------------------------------------------------------
+# Phase A -- runtime overlay rendering.
+#
+# Every element in this section carries a run-tag and the "runtime-evidence"
+# class so it is visually distinct from static evidence at all times, per
+# the phase A contract. Nothing here merges a runtime fact into a static
+# one; contradictions are rendered as two readings side by side (see
+# _render_contradictions), never as a silent overwrite.
+# ---------------------------------------------------------------------------
+
+
+def _run_tag(run_id: str | None) -> str:
+    run_id = run_id or "unknown-run"
+    return f'<span class="run-tag" title="RUNTIME_OBSERVED">run: {escape(run_id)}</span>'
+
+
+def _event_ref(rstore: RuntimeStore, event_id: str | None) -> str:
+    if not event_id:
+        return ""
+    if event_id in rstore.events_by_id:
+        return f'<a href="#evt-{escape(event_id)}"><code>{escape(event_id)}</code></a>'
+    return f"<code>{escape(event_id)}</code>"
+
+
+def _event_refs(rstore: RuntimeStore, ids: Iterable[str]) -> str:
+    return ", ".join(_event_ref(rstore, i) for i in sorted(set(ids)) if i) or "&mdash;"
+
+
+def _status_badge(status: str | None, original_size: int) -> str:
+    if not status:
+        return ""
+    label = escape(status)
+    if status != "FULL":
+        label += " (not the complete value)"
+        if original_size:
+            label += f", original size {original_size}"
+    return f'<span class="badge status-{escape(status)}">{label}</span>'
+
+
+def _verdict_badge(verdict: str | None) -> str:
+    if not verdict:
+        return ""
+    return f'<span class="badge verdict-{escape(verdict)}">{escape(verdict)}</span>'
+
+
 def _reach_badge(info: dict[str, Any]) -> str:
     state = info.get("state") or "UNKNOWN"
     source = info.get("source") or ""
@@ -314,8 +359,285 @@ def _render_element_detail(store: ArtifactStore, element_id: str) -> str:
     return f"<div class='element-detail'>{header}{body}</div>"
 
 
-def render_site(store: ArtifactStore) -> str:
-    """Render the whole offline HTML page for one artifact root."""
+def _render_span(span: dict[str, Any] | None) -> str:
+    if not span:
+        return "&mdash;"
+    path = escape(str(span.get("path", "")))
+    line = span.get("line", "")
+    return f"{path}:{line}"
+
+
+def _render_run_overview(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    overview = views.runtime_overview_view(rstore)
+    if not overview["available"]:
+        return "<p class='missing'>run.json not available for this run -- run overview cannot be shown.</p>"
+    unguaranteed_rows = "".join(
+        f"<li>{escape(u)}</li>" for u in overview["unguaranteed"]
+    ) or "<li>none disclosed by this run record</li>"
+    blocked_rows = "".join(
+        "<tr>"
+        f"<td>{escape(b.get('id', ''))}</td><td>{escape(b.get('kind', ''))}</td>"
+        f"<td>{escape(b.get('detail', ''))}</td><td>{_ref(store, b.get('element_id'))}</td>"
+        f"<td>{_event_ref(rstore, b.get('event_id'))}</td>"
+        "</tr>"
+        for b in overview["blocked"]
+    ) or "<tr><td colspan='5'>none recorded</td></tr>"
+    refusal = (
+        f"<p class='missing'><b>This run refused to start:</b> {escape(overview['refusal_reason'])}</p>"
+        if overview["refused"]
+        else ""
+    )
+    controls_rows = "".join(
+        f"<tr><td>{escape(k)}</td><td>{'active' if v else 'NOT active'}</td></tr>"
+        for k, v in sorted(overview["controls_active"].items())
+    )
+    return (
+        f"<div class='unguaranteed-block runtime-evidence'>{_run_tag(overview['run_id'])}"
+        f"{refusal}"
+        "<h4>Escape paths this harness could not close (read this first)</h4>"
+        f"<ul>{unguaranteed_rows}</ul>"
+        "<h4>Blocked attempts</h4>"
+        "<table><tr><th>id</th><th>kind</th><th>detail</th><th>element</th><th>event</th></tr>"
+        f"{blocked_rows}</table></div>"
+        f"<p class='runtime-evidence'>scenario: {escape(overview['scenario'])} | "
+        f"interpreter: {escape(overview['interpreter'])} | "
+        f"sandbox: {escape(overview['sandbox_dir'])} | "
+        f"graph_hash: {escape(overview['graph_hash'])}</p>"
+        f"<table class='runtime-evidence'><tr><th>control</th><th>status</th></tr>{controls_rows}</table>"
+    )
+
+
+def _render_mapping(rstore: RuntimeStore) -> str:
+    m = views.mapping_view(rstore)
+    if not m["available"]:
+        return "<p class='missing'>mapping.json not available -- mapping rate cannot be shown.</p>"
+    rate = m["mapping_rate"]
+    rate_text = "n/a (no events)" if rate is None else f"{rate:.4f}"
+    reasons = "".join(
+        f"<tr><td>{escape(k)}</td><td>{v}</td></tr>"
+        for k, v in sorted(m["unmapped_by_reason"].items())
+    ) or "<tr><td colspan='2'>none</td></tr>"
+    return (
+        f"<p class='runtime-evidence'>{_run_tag(m['run_id'])} "
+        f"mapped {m['mapped_events']} / {m['total_events']} events "
+        f"(rate {rate_text}); unmapped: {m['unmapped_events']}</p>"
+        "<table class='runtime-evidence'><tr><th>unmapped reason</th><th>count</th></tr>"
+        f"{reasons}</table>"
+    )
+
+
+def _render_observed_order(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = "".join(
+        "<tr class='runtime-evidence'>"
+        f"<td>{e['sequence']}</td><td>{_event_ref(rstore, e['event_id'])}</td>"
+        f"<td>{escape(e['kind'] or '')}</td><td>{_ref(store, e['element_id'])}</td>"
+        f"<td>{e['depth']}</td><td>{escape(e['branch_taken'] or '')}</td>"
+        f"<td>{_run_tag(e['run_id'])}</td>"
+        "</tr>"
+        for e in views.observed_order_view(rstore)
+    )
+    return (
+        "<table><tr><th>sequence</th><th>event</th><th>kind</th><th>element</th>"
+        f"<th>depth</th><th>branch taken</th><th>run</th></tr>{rows}</table>"
+    )
+
+
+def _render_events(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = []
+    for summary in views.observed_order_view(rstore):
+        detail = views.event_detail_view(rstore, summary["event_id"])
+        assert detail is not None
+        value_rows = "".join(
+            "<tr>"
+            f"<td>{escape(name)}</td><td>{_status_badge(v['status'], v['original_size'])}</td>"
+            f"<td><code>{escape(v['repr_text'])}</code></td><td>{escape(v['type_name'])}</td>"
+            f"<td>{escape(v['shape'])}</td><td>{escape(v['reason'])}</td>"
+            "</tr>"
+            for name, v in sorted(detail["values"].items())
+        ) or "<tr><td colspan='6'>no captured values</td></tr>"
+        rows.append(
+            f"<div class='element-detail runtime-evidence' id='evt-{escape(detail['event_id'])}'>"
+            f"<p><b>{escape(detail['event_id'])}</b> {_run_tag(detail['run_id'])} "
+            f"kind: {escape(detail['kind'] or '')} | element: {_ref(store, detail['element_id'])} | "
+            f"sequence: {detail['sequence']} | depth: {detail['depth']} | "
+            f"caller: {_event_ref(rstore, detail['caller_event_id'])}"
+            f"{' | branch taken: ' + escape(detail['branch_taken']) if detail['branch_taken'] else ''}"
+            f"{' | note: ' + escape(detail['note']) if detail['note'] else ''}</p>"
+            "<table><tr><th>name</th><th>status</th><th>repr</th><th>type</th>"
+            f"<th>shape</th><th>reason</th></tr>{value_rows}</table></div>"
+        )
+    return "".join(rows) or "<p class='missing'>no events in this run.</p>"
+
+
+def _render_unmapped(rstore: RuntimeStore) -> str:
+    rows = "".join(
+        "<tr class='runtime-evidence'>"
+        f"<td>{_event_ref(rstore, u['event_id'])}</td><td>{escape(u['kind'] or '')}</td>"
+        f"<td>{_render_span(u['location'])}</td><td>{escape(u['reason'] or '')}</td>"
+        f"<td>{_run_tag(u['run_id'])}</td>"
+        "</tr>"
+        for u in views.unmapped_events_view(rstore)
+    )
+    if not rows:
+        return "<p>no UNMAPPED events in this run.</p>"
+    return (
+        "<table><tr><th>event</th><th>kind</th><th>location</th><th>reason</th>"
+        f"<th>run</th></tr>{rows}</table>"
+    )
+
+
+def _render_decision_branches(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = []
+    for decision_id in sorted(store.decisions_by_id):
+        dv = views.decision_branch_view(store, rstore, decision_id)
+        if dv is None:
+            continue
+        declared = ", ".join(f"{escape(label)} -> {escape(target)}" for label, target in dv["declared_outcomes"])
+        observed = "".join(
+            f"<li>{escape(o['branch_taken'])} (event {_event_ref(rstore, o['event_id'])}) {_run_tag(o['run_id'])}</li>"
+            for o in dv["observed"]
+        ) or "<li>not observed in this run</li>"
+        not_observed = ", ".join(escape(l) for l in dv["not_observed_labels"]) or "&mdash;"
+        rows.append(
+            "<div class='element-detail runtime-evidence'>"
+            f"<p><b>{escape(decision_id)}</b> ({_ref(store, dv['element_id'])})<br>"
+            f"declared outcomes: {declared}<br>"
+            f"observed: <ul>{observed}</ul>"
+            f"declared but not observed: {not_observed}</p></div>"
+        )
+    return "".join(rows) or "<p>no decisions.jsonl available.</p>"
+
+
+def _render_contradictions(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = "".join(
+        "<tr class='contradiction-row'>"
+        f"<td>{escape(c['id'] or '')}</td><td>{_ref(store, c['element_id'])}</td>"
+        f"<td>{escape(c['claim'] or '')}</td><td>{escape(c['observation'] or '')}</td>"
+        f"<td>{_refs(store, c['static_evidence_ids'])}</td>"
+        f"<td>{_event_refs(rstore, c['event_ids'])}</td><td>{_run_tag(c['run_id'])}</td>"
+        "</tr>"
+        for c in views.contradictions_view(rstore)
+    )
+    if not rows:
+        return "<p>no contradictions recorded for this run.</p>"
+    return (
+        "<table><tr><th>id</th><th>element</th><th>static claim</th>"
+        "<th>runtime observation</th><th>static evidence</th><th>events</th>"
+        f"<th>run</th></tr>{rows}</table>"
+    )
+
+
+def _render_nondeterminism(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = "".join(
+        "<tr class='runtime-evidence'>"
+        f"<td>{escape(n['id'] or '')}</td><td>{_ref(store, n['element_id'])}</td>"
+        f"<td>{escape(n['kind'] or '')}</td><td>{escape(n['detail'] or '')}</td>"
+        f"<td>{_event_refs(rstore, n['event_ids'])}</td><td>{_run_tag(n['run_id'])}</td>"
+        "</tr>"
+        for n in views.nondeterminism_view(rstore)
+    )
+    if not rows:
+        return "<p>no nondeterminism observed in this run.</p>"
+    return (
+        "<table><tr><th>id</th><th>element</th><th>kind</th><th>detail</th>"
+        f"<th>events</th><th>run</th></tr>{rows}</table>"
+    )
+
+
+def _render_verdicts(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = "".join(
+        "<tr class='runtime-evidence'>"
+        f"<td>{escape(v['id'] or '')}</td><td>{_ref(store, v['element_id'])}</td>"
+        f"<td>{escape(v['intent_id'] or '')}</td><td>{_verdict_badge(v['verdict'])}</td>"
+        f"<td>{escape(v['expectation'] or '')}</td><td>{escape(v['observation'] or '')}</td>"
+        f"<td>{_event_refs(rstore, v['event_ids'])}</td><td>{_run_tag(v['run_id'])}</td>"
+        "</tr>"
+        for v in views.verdicts_view(rstore)
+    )
+    if not rows:
+        return "<p>no alignment verdicts recorded for this run.</p>"
+    return (
+        "<table><tr><th>id</th><th>element</th><th>intent</th><th>verdict</th>"
+        "<th>expectation</th><th>observation</th><th>events</th>"
+        f"<th>run</th></tr>{rows}</table>"
+    )
+
+
+def _render_narrative(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    items = []
+    for s in views.narrative_view(rstore):
+        model = (
+            f"<div class='model-prose'>{escape(s['model_prose'])}<br>"
+            f"<small>model: {escape(s['model_id'] or 'unknown')}</small></div>"
+            if s["model_prose"]
+            else ""
+        )
+        items.append(
+            "<li class='runtime-evidence'>"
+            f"<b>[{escape(s['phase'])}]</b> {escape(s['text'])} {_run_tag(s['run_id'])}<br>"
+            f"elements: {_refs(store, s['element_ids'])} | events: {_event_refs(rstore, s['event_ids'])}"
+            f"{model}</li>"
+        )
+    if not items:
+        return "<p>no narrative.jsonl available for this run.</p>"
+    return f"<ol>{''.join(items)}</ol>"
+
+
+def _render_runtime_section(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    other_runs = [r for r in list_runs(store.root) if r != rstore.run_id]
+    other_runs_note = (
+        f"<p>other runs available but not shown here: {', '.join(escape(r) for r in other_runs)}</p>"
+        if other_runs
+        else ""
+    )
+    errors = "".join(
+        f"<li>{escape(e.file)}:{e.line_number}: {escape(e.reason)}</li>" for e in rstore.errors
+    )
+    error_block = f"<p class='missing'>Load errors:</p><ul>{errors}</ul>" if errors else ""
+    avail_rows = "".join(
+        f"<tr><td>{escape(name)}</td><td>{'present' if present else 'missing -- section degrades'}</td></tr>"
+        for name in sorted(rstore.available)
+        for present in [rstore.available[name]]
+    )
+    return f"""
+<section id="runtime" class="runtime-section">
+<h2>Runtime overlay {_run_tag(rstore.run_id)}</h2>
+{other_runs_note}
+<table><tr><th>runtime artifact</th><th>status</th></tr>{avail_rows}</table>
+{error_block}
+<h3>Run record</h3>
+{_render_run_overview(store, rstore)}
+<h3>Mapping rate</h3>
+{_render_mapping(rstore)}
+<h3>Observed execution order</h3>
+<p>Compare against the static cascade order in the "Cascade order" section above --
+shown separately, never merged.</p>
+{_render_observed_order(store, rstore)}
+<h3>Events and captured values</h3>
+{_render_events(store, rstore)}
+<h3>Unmapped events</h3>
+{_render_unmapped(rstore)}
+<h3>Decision branches: observed vs. declared</h3>
+{_render_decision_branches(store, rstore)}
+<h3>Contradictions</h3>
+{_render_contradictions(store, rstore)}
+<h3>Nondeterminism observed</h3>
+{_render_nondeterminism(store, rstore)}
+<h3>Alignment verdicts</h3>
+{_render_verdicts(store, rstore)}
+<h3>Execution narrative</h3>
+{_render_narrative(store, rstore)}
+</section>
+"""
+
+
+def render_site(store: ArtifactStore, rstore: RuntimeStore | None = None) -> str:
+    """Render the whole offline HTML page for one artifact root.
+
+    *rstore* is phase A: when given, a runtime overlay section is appended,
+    visually distinct (the ``runtime-evidence`` / ``runtime-section`` CSS
+    classes) and tagged with its run ID throughout. Omitting it renders
+    exactly the phase B page."""
     element_ids = sorted(store.elements_by_id)
     manifest = store.manifest
     manifest_line = (
