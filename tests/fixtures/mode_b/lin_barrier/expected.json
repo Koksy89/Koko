@@ -1,10 +1,11 @@
 {
   "barrier_count_exact": 1,
+  "barrier_id_must_be_inside_the_id_space": "local_id(element_id, \"<barrier>\", n): an @barrier:... ID outside the space cannot be sorted or grouped with the element it interrupts",
   "barriers": [
     {
       "description": "eval() executes a string assembled at runtime; what it reads and writes cannot be determined statically, so value flow ends here rather than being stitched across to `result`",
       "element_id": "lin_barrier::evaluate",
-      "id": "lin_barrier:b1",
+      "id": "lin_barrier::evaluate.<locals>.<barrier>",
       "reason": "DYNAMIC_NAME",
       "span": {
         "col": 13,
@@ -170,13 +171,16 @@
     }
   ],
   "id_conventions": {
-    "attribute": "<module>::<qualname>.<locals>.<name>.<attr>",
-    "dict_key": "<module>::<qualname>.<locals>.<name>[<key>]",
-    "instance_attribute": "<module>::<Class>.<attr>",
-    "local_variable": "<module>::<qualname>.<locals>.<name>",
-    "named_feature": "@feature:<name>",
-    "note": "interfaces.py defines no ID for a local variable, dict key or attribute, and card 1 mints no element for them. These extend make_id's qualname space; card 8 reports the gap rather than changing the contract.",
-    "parameter": "<module>::<qualname>.<param>.<name>"
+    "attribute": "attr_id(node_id, attr) -> <node>.<attr>",
+    "augmented_assignment_is_the_exception": "`y += 1` reads and writes the same value in place, so it is a MUTATES edge from the node to itself and mints no new node.",
+    "barrier": "local_id(element_id, \"<barrier>\", ordinal)",
+    "dict_key": "key_id(node_id, key) -> <node>[<key>]",
+    "edge_span": "the statement where the flow happens, not where either endpoint was defined -- the endpoints already record that",
+    "instance_attribute": "attr_id(class_element_id, attr) -> <module>::<Class>.<attr>",
+    "local_variable": "local_id(element_id, name, ordinal) -> <element>.<locals>.<name>[#n]",
+    "named_feature": "feature_id(name) -> @feature:<name>",
+    "one_node_per_binding": "Each rebinding of a name is its own node, numbered #n in source order. Merging them would put `a` in the backward slice of `x` after `x = a; x = b` -- a value that provably cannot reach the point being queried, and a false positive in the one question a backward slice answers.",
+    "parameter": "param_id(element_id, name) -> <element>.<param>.<name>"
   },
   "lineage": [
     {
@@ -241,14 +245,35 @@
         "line": 11,
         "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
       },
-      "target_id": "lin_barrier:b1"
+      "target_id": "lin_barrier::evaluate.<locals>.<barrier>"
+    },
+    {
+      "id": "lin_barrier:l5",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "UNKNOWN",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_barrier::evaluate.<locals>.<barrier>",
+      "span": {
+        "col": 4,
+        "end_line": 11,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/lin_barrier/__init__.py"
+      },
+      "target_id": "lin_barrier::evaluate.<locals>.result"
     }
   ],
   "must_not_contain_lineage": [
     {
       "source_id": "lin_barrier::evaluate.<param>.value",
       "target_id": "lin_barrier::evaluate.<locals>.result",
-      "why": "the only path runs through eval; asserting it would be a dependency the analysis cannot see"
+      "why": "the only path runs through eval; a direct edge would stitch across the barrier and assert a dependency the analysis cannot see"
+    },
+    {
+      "source_id": "lin_barrier::evaluate.<param>.expression",
+      "target_id": "lin_barrier::evaluate.<locals>.result",
+      "why": "same: flow reaches the barrier node and is not followed past it"
     }
   ],
   "proves": "`eval(expression)` is where value flow stops being traceable. The analysis must emit a Barrier at that call with reason DYNAMIC_NAME and end the slice there -- not stitch an edge from `value` to `result`, which would claim a dependency it cannot see, nor drop the flow silently, which would claim there is none.",

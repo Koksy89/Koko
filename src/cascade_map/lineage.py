@@ -10,20 +10,21 @@ Node identity (all through the contract's helpers)
 
 ===========================  =================================================
 module-level binding         ``make_id(module, name, ordinal)``
-class-level binding          ``make_id(module, "Class.name")``
+class-level binding          ``make_id(module, "Class.name", ordinal)``
 function / method            ``make_id(module, qualname)``
 nested function              ``local_id(parent_element_id, name)``
 local variable               ``local_id(element_id, name, ordinal)``
-parameter                    ``<element_id>.<param>.<name>``
+parameter (incl. lambda)     ``param_id(element_id, name)``
 dict key                     ``key_id(container_node, key)``
 attribute                    ``attr_id(object_node, attr)``
 instance attribute           ``attr_id(class_element_id, attr)``
 named feature / column       ``feature_id(name)``
+barrier                      ``local_id(element_id, "<barrier>", ordinal)``
 ===========================  =================================================
 
-``interfaces.py`` has no helper for a parameter node; ``_param_id`` below mints
-``<element_id>.<param>.<name>``, the convention card 1 and card 8 both use. That
-gap is reported, not papered over.
+An attribute node carries no ordinal: ``attr_id`` takes none, so every write to
+``self.threshold`` is one node. That is the contract's shape, and it is the one
+place this card does not have a node per binding.
 
 The decisions that make a slice worth reading
 
@@ -40,15 +41,25 @@ The decisions that make a slice worth reading
    reflection with a computed name and opaque third-party calls emit a
    ``Barrier``; flow runs *through* it at ``UNKNOWN`` confidence. Nothing is
    stitched across: a slice that crosses one lists it and drops to ``UNKNOWN``.
-5. **Reaching definitions.** Each *rebinding* of a name is its own node
-   (``#n`` in source order). An augmented assignment is a MUTATES edge from the
-   node to itself: ``y += 1`` changes ``y``, it does not create a new ``y``.
+5. **Reaching definitions, one node per binding.** Each *rebinding* of a name
+   is its own node (``#n`` in source order) and a read links to the definitions
+   that actually reach it. Merging them would put ``a`` in the backward slice of
+   ``x`` after ``x = a; x = b``, which is a false positive in the one question
+   this card answers. An augmented assignment is the exception the contract
+   intends: ``y += 1`` reads and writes the same value in place, so it is a
+   MUTATES edge from the node to itself and mints no new node.
 6. **An edge's span is the statement where the flow happens** -- not where either
    endpoint was defined, which the endpoints already record.
 7. **A literal written into a structure originates at the enclosing element.**
    ``self.mode = "off"`` is an ATTRIBUTE_WRITE from the method that wrote it, so
    the write is never invisible. A literal into a plain local emits nothing: the
    local's own element already says where it is.
+
+   The cost, stated: a function element is then both the origin of the literals
+   written inside it and the node its own returns arrive at. A slice that enters
+   such a node through a literal edge can continue backward into what the
+   function returns, which widens it. The direct edges stay exact; only
+   multi-hop reach through an element node is affected.
 
 Approximations are labelled in the edge provenance note: every edge whose note
 starts with ``over-approximate:`` prefers reach to precision, and
@@ -92,6 +103,7 @@ from .contracts.interfaces import (
     key_id,
     local_id,
     make_id,
+    param_id,
 )
 
 __all__ = [
@@ -170,17 +182,6 @@ _FRAME_NAMES = frozenset({"df", "frame", "dataframe", "data_frame"})
 
 _OVER = "over-approximate: "
 _INSTANCE = ".@instance"
-_PARAM = ".<param>."
-
-
-def _param_id(element_id: str, name: str) -> str:
-    """ID for a parameter node.
-
-    ``interfaces.py`` defines no helper for this and card 1 mints the PARAMETER
-    element with exactly this shape, so card 4 matches it rather than inventing a
-    second namespace. Reported as a contract gap.
-    """
-    return f"{element_id}{_PARAM}{name}"
 
 
 def _stronger(first: Confidence, second: Confidence) -> Confidence:
@@ -316,7 +317,7 @@ class _PrePass:
 
     def _node_id(self, owner: _ScopeCtx, name: str, ordinal: int, kind: str) -> str:
         if kind == "parameter":
-            return _param_id(owner.element_id, name)
+            return param_id(owner.element_id, name)
         if owner.kind == "module":
             return make_id(self.info.module, name, ordinal)
         if owner.kind == "class":
@@ -339,17 +340,13 @@ class _PrePass:
         info = self.info
         scope = owner if owner is not None else self._owner(ctx, name)
         key = (scope.key, name)
-        existing = info.all_defs.get(key)
-        if kind in ("function", "class") or not existing:
-            # `#n` separates a *redefinition* -- two `def`s of one name, which
-            # card 1 also inventories separately. A variable rebound in the same
-            # scope stays one node: the corpus models `y += 10` and a plain
-            # reassignment as changes to the same value, not new values.
-            ordinal = info.counter.get(key, 0) + 1
-            info.counter[key] = ordinal
-            node_id = self._node_id(scope, name, ordinal, kind)
-        else:
-            node_id = existing[0]
+        # One node per *binding*, not per name: `x = expensive()` followed by
+        # `x = simple()` are different values, and merging them puts a value in
+        # a slice that provably cannot reach the query. Settled by the lead;
+        # see `local_id` in the contracts.
+        ordinal = info.counter.get(key, 0) + 1
+        info.counter[key] = ordinal
+        node_id = self._node_id(scope, name, ordinal, kind)
         if node_id not in info.def_meta:
             info.all_defs.setdefault(key, []).append(node_id)
             info.def_meta[node_id] = _Def(
@@ -641,6 +638,8 @@ class LineageTracer:
         self._container_keys: dict[str, set[str]] = {}
         self._mutated_params: set[str] = set()
         self._param_bindings: list[tuple[str, tuple[_Src, ...], SourceSpan, str]] = []
+        self._barrier_counts: dict[str, int] = {}
+        self._barrier_ordinals: dict[tuple[str, int, int | None, str], str] = {}
         self._out: dict[str, tuple[tuple[str, str], ...]] = {}
         self._in: dict[str, tuple[tuple[str, str], ...]] = {}
         self._slice_cache: dict[str, Slice] = {}
@@ -951,16 +950,22 @@ class LineageTracer:
         self, element_id: str, span: SourceSpan, reason: UnresolvedReason,
         description: str,
     ) -> str:
-        col = span.col if span.col is not None else 0
-        base = f"@barrier:{element_id}@{span.line}:{col}"
-        barrier_id = base
-        suffix = 2
-        while (
-            barrier_id in self._barriers
-            and self._barriers[barrier_id].description != description
-        ):
-            barrier_id = f"{base}#{suffix}"
-            suffix += 1
+        """Mint a barrier node inside the element it interrupts.
+
+        `local_id(element, "<barrier>", n)` keeps the ID in the same space as
+        every other node: a reader who meets it in a slice can resolve the
+        element it belongs to, which an out-of-space `@barrier:...` ID does not
+        allow. `n` numbers the barriers of one element in source order, so the
+        ID is structural rather than positional and survives a reformat.
+        """
+        key = (element_id, span.line, span.col, description)
+        known = self._barrier_ordinals.get(key)
+        if known is not None:
+            return known
+        ordinal = self._barrier_counts.get(element_id, 0) + 1
+        self._barrier_counts[element_id] = ordinal
+        barrier_id = local_id(element_id, "<barrier>", ordinal)
+        self._barrier_ordinals[key] = barrier_id
         if barrier_id not in self._barriers:
             self._barriers[barrier_id] = Barrier(
                 id=barrier_id,

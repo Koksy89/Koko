@@ -72,10 +72,20 @@
     },
     "/lineage/6/span": {
       "kind": "stmt",
-      "line_contains": "    return bumped",
+      "line_contains": "        bumped = bumped + options[\"offset\"]",
       "occurrence": 1
     },
     "/lineage/7/span": {
+      "kind": "stmt",
+      "line_contains": "    return bumped",
+      "occurrence": 1
+    },
+    "/lineage/8/span": {
+      "kind": "stmt",
+      "line_contains": "    return bumped",
+      "occurrence": 1
+    },
+    "/lineage/9/span": {
       "kind": "stmt",
       "line_contains": "    scaled = scale(raw, factor=3, offset=5)",
       "occurrence": 1

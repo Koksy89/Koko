@@ -29,34 +29,69 @@
       "occurrence": 1,
       "qualname": "decide"
     },
+    "/elements/6/span": {
+      "kind": "line",
+      "line_contains": "def decide(a, b, noise):",
+      "occurrence": 1
+    },
+    "/elements/7/span": {
+      "kind": "line",
+      "line_contains": "def decide(a, b, noise):",
+      "occurrence": 1
+    },
+    "/elements/8/span": {
+      "kind": "line",
+      "line_contains": "def decide(a, b, noise):",
+      "occurrence": 1
+    },
     "/lineage/0/span": {
       "kind": "stmt",
-      "line_contains": "    x = a + 1",
+      "line_contains": "    return \"enter\" if compute(a, b, noise) > 5 else \"hold\"",
       "occurrence": 1
     },
     "/lineage/1/span": {
       "kind": "stmt",
-      "line_contains": "    y = b * 2",
+      "line_contains": "    return \"enter\" if compute(a, b, noise) > 5 else \"hold\"",
       "occurrence": 1
     },
     "/lineage/2/span": {
       "kind": "stmt",
-      "line_contains": "    unused = noise * 99",
+      "line_contains": "    return \"enter\" if compute(a, b, noise) > 5 else \"hold\"",
       "occurrence": 1
     },
     "/lineage/3/span": {
       "kind": "stmt",
-      "line_contains": "    z = x + y",
+      "line_contains": "    x = a + 1",
       "occurrence": 1
     },
     "/lineage/4/span": {
       "kind": "stmt",
-      "line_contains": "    z = x + y",
+      "line_contains": "    y = b * 2",
       "occurrence": 1
     },
     "/lineage/5/span": {
       "kind": "stmt",
+      "line_contains": "    unused = noise * 99",
+      "occurrence": 1
+    },
+    "/lineage/6/span": {
+      "kind": "stmt",
+      "line_contains": "    z = x + y",
+      "occurrence": 1
+    },
+    "/lineage/7/span": {
+      "kind": "stmt",
+      "line_contains": "    z = x + y",
+      "occurrence": 1
+    },
+    "/lineage/8/span": {
+      "kind": "stmt",
       "line_contains": "    return z",
+      "occurrence": 1
+    },
+    "/lineage/9/span": {
+      "kind": "stmt",
+      "line_contains": "    return \"enter\" if compute(a, b, noise) > 5 else \"hold\"",
       "occurrence": 1
     }
   }

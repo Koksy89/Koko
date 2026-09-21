@@ -156,17 +156,20 @@
     }
   ],
   "id_conventions": {
-    "attribute": "<module>::<qualname>.<locals>.<name>.<attr>",
-    "dict_key": "<module>::<qualname>.<locals>.<name>[<key>]",
-    "instance_attribute": "<module>::<Class>.<attr>",
-    "local_variable": "<module>::<qualname>.<locals>.<name>",
-    "named_feature": "@feature:<name>",
-    "note": "interfaces.py defines no ID for a local variable, dict key or attribute, and card 1 mints no element for them. These extend make_id's qualname space; card 8 reports the gap rather than changing the contract.",
-    "parameter": "<module>::<qualname>.<param>.<name>"
+    "attribute": "attr_id(node_id, attr) -> <node>.<attr>",
+    "augmented_assignment_is_the_exception": "`y += 1` reads and writes the same value in place, so it is a MUTATES edge from the node to itself and mints no new node.",
+    "barrier": "local_id(element_id, \"<barrier>\", ordinal)",
+    "dict_key": "key_id(node_id, key) -> <node>[<key>]",
+    "edge_span": "the statement where the flow happens, not where either endpoint was defined -- the endpoints already record that",
+    "instance_attribute": "attr_id(class_element_id, attr) -> <module>::<Class>.<attr>",
+    "local_variable": "local_id(element_id, name, ordinal) -> <element>.<locals>.<name>[#n]",
+    "named_feature": "feature_id(name) -> @feature:<name>",
+    "one_node_per_binding": "Each rebinding of a name is its own node, numbered #n in source order. Merging them would put `a` in the backward slice of `x` after `x = a; x = b` -- a value that provably cannot reach the point being queried, and a false positive in the one question a backward slice answers.",
+    "parameter": "param_id(element_id, name) -> <element>.<param>.<name>"
   },
   "lineage": [
     {
-      "id": "lin_params:l1",
+      "id": "lin_params:l01",
       "kind": "PARAMETER_BINDING",
       "provenance": {
         "confidence": "RESOLVED",
@@ -182,7 +185,7 @@
       "target_id": "lin_params::scale.<param>.value"
     },
     {
-      "id": "lin_params:l2",
+      "id": "lin_params:l02",
       "kind": "PARAMETER_BINDING",
       "provenance": {
         "confidence": "RESOLVED",
@@ -198,7 +201,7 @@
       "target_id": "lin_params::scale.<param>.factor"
     },
     {
-      "id": "lin_params:l3",
+      "id": "lin_params:l03",
       "kind": "PARAMETER_BINDING",
       "provenance": {
         "confidence": "RESOLVED",
@@ -252,6 +255,22 @@
         "confidence": "RESOLVED",
         "method": "DATAFLOW"
       },
+      "source_id": "lin_params::scale.<locals>.bumped",
+      "span": {
+        "col": 8,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/lin_params/__init__.py"
+      },
+      "target_id": "lin_params::scale.<locals>.bumped#2"
+    },
+    {
+      "id": "lin_params:l7",
+      "kind": "ASSIGNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
       "source_id": "lin_params::scale.<param>.options[offset]",
       "span": {
         "col": 8,
@@ -259,10 +278,10 @@
         "line": 8,
         "path": "tests/fixtures/mode_b/lin_params/__init__.py"
       },
-      "target_id": "lin_params::scale.<locals>.bumped"
+      "target_id": "lin_params::scale.<locals>.bumped#2"
     },
     {
-      "id": "lin_params:l7",
+      "id": "lin_params:l8",
       "kind": "RETURNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -278,7 +297,23 @@
       "target_id": "lin_params::scale"
     },
     {
-      "id": "lin_params:l8",
+      "id": "lin_params:l09",
+      "kind": "RETURNS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "DATAFLOW"
+      },
+      "source_id": "lin_params::scale.<locals>.bumped#2",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/lin_params/__init__.py"
+      },
+      "target_id": "lin_params::scale"
+    },
+    {
+      "id": "lin_params:l10",
       "kind": "RETURNS",
       "provenance": {
         "confidence": "RESOLVED",
@@ -295,7 +330,9 @@
     }
   ],
   "notes": [
-    "l2 and l3 start at the calling function rather than at a variable: the values 3 and 5 are literals at the call site, so the caller is the origin of the value."
+    "l02 and l03 start at the calling function rather than at a variable: the values 3 and 5 are literals at the call site, so the caller is the origin of the value.",
+    "`bumped` is rebound inside the `if`, so the second binding is its own node, `bumped#2`. One node with a self-edge would put `factor` and `value` in the backward slice of the offset-adjusted result even on the path where the `if` did not run.",
+    "Both bindings reach `return bumped`: #2 when the offset was applied, #1 when it was not. Two RETURNS edges, not one -- picking either alone would drop a real path."
   ],
   "proves": "A positional argument binds to `value`, an explicit keyword binds to `factor`, and `offset=5` -- which matches no declared parameter -- lands inside **options under the key `offset`. The return value flows back to the caller's local. Losing the **options key means losing the only path from the call site to `options[\\'offset\\']`.",
   "unresolved": []

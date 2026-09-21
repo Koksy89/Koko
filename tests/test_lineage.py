@@ -66,6 +66,7 @@ from cascade_map.contracts.interfaces import (
     key_id,
     local_id,
     make_id,
+    param_id,
 )
 from cascade_map.lineage import LineageTracer
 
@@ -188,7 +189,7 @@ def barrier_alias(case: str, barriers: Sequence[Barrier]) -> dict[str, str]:
     """Map card 8's barrier IDs onto the ones this card mints.
 
     Barrier IDs are not in the contract's ID space -- card 8 writes
-    `lin_barrier:b1`, this card writes `@barrier:<element>@<line>:<col>` -- so
+    `lin_barrier:b1`, this card writes `local_id(element, "<barrier>", n)` -- so
     they are matched on element, reason and line, and the mapping is explicit.
     """
     mapping = {}
@@ -204,7 +205,42 @@ def barrier_alias(case: str, barriers: Sequence[Barrier]) -> dict[str, str]:
     return mapping
 
 
-def corpus_hits(case: str) -> tuple[int, int, list[str]]:
+#: Records where card 8's expectation predates the lead's ruling that lineage
+#: has one node per *binding*. The ruling makes this card the reference, so each
+#: record is graded against the corrected fact rather than skipped. Card 8 is
+#: updating the fixture; when it does, these entries stop applying and
+#: `test_declared_divergences_are_still_needed` fails so they get removed.
+CORPUS_DIVERGENCES: dict[str, dict[str, str]] = {
+    # `bumped` is rebound at line 8, so the value written there is `bumped#2`.
+    "lin_params:l6": {
+        "target_id": "lin_params::scale.<locals>.bumped#2",
+        "why": "per-binding nodes: line 8 rebinds `bumped`",
+    },
+    # `return bumped` is reached by the binding at line 6 *or* the one at line 8,
+    # so the edge from either rests on a branch: PROBABLE, not RESOLVED.
+    "lin_params:l7": {
+        "confidence": "PROBABLE",
+        "why": "per-binding nodes: two definitions reach this return",
+    },
+}
+
+
+def apply_divergence(record: dict) -> dict:
+    override = CORPUS_DIVERGENCES.get(record["id"])
+    if not override:
+        return record
+    corrected = json.loads(json.dumps(record))
+    for field, value in override.items():
+        if field == "why":
+            continue
+        if field == "confidence":
+            corrected["provenance"]["confidence"] = value
+        else:
+            corrected[field] = value
+    return corrected
+
+
+def corpus_hits(case: str, *, corrected: bool = True) -> tuple[int, int, list[str]]:
     """(matched, expected, failures) for one fixture's `lineage` records."""
     tracer = fixture_tracer(case)
     alias = barrier_alias(case, tracer.barriers)
@@ -212,6 +248,8 @@ def corpus_hits(case: str) -> tuple[int, int, list[str]]:
     for edge in tracer.lineage_edges:
         by_pair.setdefault((edge.source_id, edge.target_id), []).append(edge)
     records = expectation(case).get("lineage", [])
+    if corrected:
+        records = [apply_divergence(record) for record in records]
     failures: list[str] = []
     matched = 0
     for record in records:
@@ -267,7 +305,11 @@ def test_every_fixtures_md_lineage_case_exists() -> None:
 
 @pytest.mark.parametrize("case", LINEAGE_CASES)
 def test_corpus_expected_lineage(case: str) -> None:
-    """Every hand-written lineage record, with its kind, provenance and span."""
+    """Every hand-written lineage record, with its kind, provenance and span.
+
+    Graded against `CORPUS_DIVERGENCES`-corrected expectations: two records in
+    `lin_params` predate the ruling on per-binding nodes.
+    """
     matched, total, failures = corpus_hits(case)
     assert total, f"{case}/expected.json carries no lineage records to grade"
     assert not failures, "\n".join(failures)
@@ -445,12 +487,21 @@ def test_fixture_lin_slice_forward() -> None:
 
 def test_fixture_lin_params_kwargs_key_is_reachable_from_the_call_site() -> None:
     tracer = fixture_tracer("lin_params")
-    options_key = key_id("lin_params::scale.<param>.options", "offset")
+    options_key = key_id(param_id("lin_params::scale", "options"), "offset")
     forward = tracer.slice("lin_params::caller", "forward")
     assert options_key in forward.member_ids
-    backward = tracer.slice("lin_params::scale.<locals>.bumped", "backward")
-    assert options_key in backward.member_ids
-    assert "lin_params::caller.<param>.raw" in backward.member_ids
+    second = tracer.slice("lin_params::scale.<locals>.bumped#2", "backward")
+    assert options_key in second.member_ids
+    assert "lin_params::caller.<param>.raw" in second.member_ids
+    # the first binding of `bumped` was made before the offset was read, and a
+    # per-binding model keeps that straight: the offset feeds the second binding
+    # and only the second
+    assert has(
+        tracer, LineageKind.ASSIGNS, options_key, "lin_params::scale.<locals>.bumped#2"
+    )
+    assert not has(
+        tracer, LineageKind.ASSIGNS, options_key, "lin_params::scale.<locals>.bumped"
+    )
 
 
 def test_fixture_lin_assign_chain_walrus_and_unpacking() -> None:
@@ -463,6 +514,66 @@ def test_fixture_lin_assign_chain_walrus_and_unpacking() -> None:
     assert local_id(chain, "a") in backward.member_ids
     assert local_id(chain, "b") in backward.member_ids
     assert f"{chain}.<param>.seed" in backward.member_ids
+
+
+def test_an_overwritten_value_is_not_in_the_slice_of_what_replaced_it(
+    tmp_path: Path,
+) -> None:
+    """The shape the per-binding ruling exists for.
+
+    `x = expensive(); x = simple()` with no read in between: `expensive` cannot
+    reach the returned value, so it must not appear in its backward slice. One
+    node per name would put it there and send the owner to optimise code that
+    changes nothing.
+    """
+    src = (
+        "def expensive(a):\n    return a\n\n\n"
+        "def simple(b):\n    return b\n\n\n"
+        "def run(costly, cheap):\n"
+        "    x = expensive(costly)\n"
+        "    x = simple(cheap)\n"
+        "    return x\n"
+    )
+    tracer = analyze(tmp_path, {"ov": src})
+    backward = tracer.slice("ov::run", "backward")
+    assert "ov::run.<param>.cheap" in backward.member_ids
+    assert "ov::simple" in backward.member_ids
+    assert "ov::run.<param>.costly" not in backward.member_ids
+    assert "ov::expensive" not in backward.member_ids
+    # both bindings exist as nodes, and the discarded one is still inspectable
+    discarded = tracer.slice(local_id("ov::run", "x"), "backward")
+    assert "ov::run.<param>.costly" in discarded.member_ids
+    assert local_id("ov::run", "x", 2) != local_id("ov::run", "x")
+
+
+def test_augmented_assignment_stays_one_node(tmp_path: Path) -> None:
+    """`y += 1` reads and writes the same value: MUTATES, no new binding."""
+    src = "def run(seed):\n    y = seed\n    y += 1\n    return y\n"
+    tracer = analyze(tmp_path, {"aug": src})
+    node = local_id("aug::run", "y")
+    assert has(tracer, LineageKind.MUTATES, node, node)
+    assert local_id("aug::run", "y", 2) not in {
+        edge.target_id for edge in tracer.lineage_edges
+    }
+    backward = tracer.slice("aug::run", "backward")
+    assert "aug::run.<param>.seed" in backward.member_ids
+
+
+def test_barrier_ids_are_in_the_contract_id_space(tmp_path: Path) -> None:
+    """A barrier ID a reader cannot resolve is a dead end in the artifact."""
+    src = (
+        "def run(expr):\n    first = eval(expr)\n"
+        "    second = eval(expr)\n    return first + second\n"
+    )
+    tracer = analyze(tmp_path, {"bar": src})
+    assert len(tracer.barriers) == 2
+    ids = sorted(barrier.id for barrier in tracer.barriers)
+    assert ids == [
+        local_id("bar::run", "<barrier>"),
+        local_id("bar::run", "<barrier>", 2),
+    ]
+    for barrier in tracer.barriers:
+        assert barrier.id.startswith(barrier.element_id + ".")
 
 
 # ---------------------------------------------------------------------------
@@ -490,16 +601,24 @@ COMPLETE: dict[str, set[tuple[str, str, str]]] = {
         ("READS", f"{_C}.<locals>.total", _C),  # the branch condition reads it
         ("RETURNS", f"{_C}.<locals>.total", _C),
     },
-    # scale(value, factor=2, **options) called as scale(raw, factor=3, offset=5)
+    # scale(value, factor=2, **options) called as scale(raw, factor=3, offset=5).
+    # `bumped` is bound at line 6 and rebound at line 8, so it is two nodes and
+    # the return is reached by either.
     "lin_params": {
         ("PARAMETER_BINDING", f"{_P}caller.<param>.raw", f"{_P}scale.<param>.value"),
         ("PARAMETER_BINDING", f"{_P}caller", f"{_P}scale.<param>.factor"),
         ("PARAMETER_BINDING", f"{_P}caller", f"{_P}scale.<param>.options[offset]"),
         ("ASSIGNS", f"{_P}scale.<param>.value", f"{_P}scale.<locals>.bumped"),
         ("ASSIGNS", f"{_P}scale.<param>.factor", f"{_P}scale.<locals>.bumped"),
-        ("ASSIGNS", f"{_P}scale.<param>.options[offset]", f"{_P}scale.<locals>.bumped"),
         ("READS", f"{_P}scale.<param>.options", f"{_P}scale"),  # `"offset" in options`
+        ("ASSIGNS", f"{_P}scale.<locals>.bumped", f"{_P}scale.<locals>.bumped#2"),
+        (
+            "ASSIGNS",
+            f"{_P}scale.<param>.options[offset]",
+            f"{_P}scale.<locals>.bumped#2",
+        ),
         ("RETURNS", f"{_P}scale.<locals>.bumped", f"{_P}scale"),
+        ("RETURNS", f"{_P}scale.<locals>.bumped#2", f"{_P}scale"),
         ("RETURNS", f"{_P}scale", f"{_P}caller.<locals>.scaled"),
         ("RETURNS", f"{_P}caller.<locals>.scaled", f"{_P}caller"),
     },
@@ -541,15 +660,46 @@ def test_complete_edge_set(case: str) -> None:
     assert emitted == COMPLETE[case]
 
 
+def test_declared_divergences_are_exactly_the_ruling() -> None:
+    """Each declared divergence must fail as written and pass once corrected.
+
+    Both halves matter: the first proves the divergence is real, the second
+    proves the correction is the whole of it and nothing else is being waved
+    through.
+    """
+    assert CORPUS_DIVERGENCES
+    for case in LINEAGE_CASES:
+        raw = {
+            failure.split(": ")[0].split("/")[-1]
+            for failure in corpus_hits(case, corrected=False)[2]
+        }
+        corrected = {
+            failure.split(": ")[0].split("/")[-1]
+            for failure in corpus_hits(case, corrected=True)[2]
+        }
+        assert not corrected, f"{case}: {sorted(corrected)}"
+        declared = {
+            record_id
+            for record_id in CORPUS_DIVERGENCES
+            if record_id.startswith(f"{case}:")
+        }
+        assert declared == raw, (
+            f"{case}: declared {sorted(declared)} but the fixture disagrees on "
+            f"{sorted(raw)}"
+        )
+
+
 def test_report_precision_and_recall(capsys: pytest.CaptureFixture[str]) -> None:
     """The two numbers this card is graded on, measured and printed."""
     matched = expected = 0
+    as_written = 0
     failures: list[str] = []
     for case in LINEAGE_CASES:
         case_matched, case_expected, case_failures = corpus_hits(case)
         matched += case_matched
         expected += case_expected
         failures.extend(case_failures)
+        as_written += corpus_hits(case, corrected=False)[0]
 
     forbidden_total = forbidden_present = 0
     for case in LINEAGE_CASES:
@@ -574,6 +724,9 @@ def test_report_precision_and_recall(capsys: pytest.CaptureFixture[str]) -> None
         print(
             f"\nlineage corpus recall {matched}/{expected} = {recall}"
             f" over {len(LINEAGE_CASES)} lin_* cases"
+            f" (as card 8 wrote them: {as_written}/{expected}; the"
+            f" {expected - as_written} difference is the per-binding ruling,"
+            f" declared in CORPUS_DIVERGENCES)"
         )
         print(
             f"lineage exact-set precision {correct}/{emitted} = {precision}, "
@@ -887,7 +1040,6 @@ def test_ids_come_from_the_contract_helpers(tmp_path: Path) -> None:
     for node in sorted(nodes):
         assert (
             node.startswith("@feature:")
-            or node.startswith("@barrier:")
             or node.startswith("@file:")
             or node.startswith("cascade")
         ), node

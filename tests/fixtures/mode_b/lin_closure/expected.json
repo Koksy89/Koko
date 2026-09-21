@@ -103,13 +103,16 @@
     }
   ],
   "id_conventions": {
-    "attribute": "<module>::<qualname>.<locals>.<name>.<attr>",
-    "dict_key": "<module>::<qualname>.<locals>.<name>[<key>]",
-    "instance_attribute": "<module>::<Class>.<attr>",
-    "local_variable": "<module>::<qualname>.<locals>.<name>",
-    "named_feature": "@feature:<name>",
-    "note": "interfaces.py defines no ID for a local variable, dict key or attribute, and card 1 mints no element for them. These extend make_id's qualname space; card 8 reports the gap rather than changing the contract.",
-    "parameter": "<module>::<qualname>.<param>.<name>"
+    "attribute": "attr_id(node_id, attr) -> <node>.<attr>",
+    "augmented_assignment_is_the_exception": "`y += 1` reads and writes the same value in place, so it is a MUTATES edge from the node to itself and mints no new node.",
+    "barrier": "local_id(element_id, \"<barrier>\", ordinal)",
+    "dict_key": "key_id(node_id, key) -> <node>[<key>]",
+    "edge_span": "the statement where the flow happens, not where either endpoint was defined -- the endpoints already record that",
+    "instance_attribute": "attr_id(class_element_id, attr) -> <module>::<Class>.<attr>",
+    "local_variable": "local_id(element_id, name, ordinal) -> <element>.<locals>.<name>[#n]",
+    "named_feature": "feature_id(name) -> @feature:<name>",
+    "one_node_per_binding": "Each rebinding of a name is its own node, numbered #n in source order. Merging them would put `a` in the backward slice of `x` after `x = a; x = b` -- a value that provably cannot reach the point being queried, and a false positive in the one question a backward slice answers.",
+    "parameter": "param_id(element_id, name) -> <element>.<param>.<name>"
   },
   "lineage": [
     {

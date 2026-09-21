@@ -66,6 +66,11 @@
       "kind": "stmt",
       "line_contains": "    result = eval(expression)",
       "occurrence": 1
+    },
+    "/lineage/4/span": {
+      "kind": "stmt",
+      "line_contains": "    result = eval(expression)",
+      "occurrence": 1
     }
   }
 }
