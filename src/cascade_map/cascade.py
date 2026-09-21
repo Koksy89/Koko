@@ -27,6 +27,12 @@ Three artifacts' worth of facts come out of one pass over the target's AST:
     ternary, assertion and tree-model call, with its condition source, the
     elements the condition reads, and where each outcome leads.
 
+``candidates.jsonl`` / ``unresolved.jsonl``
+    What the owner left blank and this card worked out anyway -- entry points
+    and decision sinks, with the evidence each rests on -- and everything it
+    could not settle. Both ride in :meth:`CascadeAnalyzer.order`'s return
+    value, not behind an accessor a caller could forget to call.
+
 ``reachability.jsonl``
     One :class:`~.contracts.interfaces.Reachability` per inventoried element --
     module, class, function, parameter, blob, all of them. The bias is

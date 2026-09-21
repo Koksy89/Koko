@@ -73,6 +73,9 @@ __all__ = [
     "AlignmentVerdict",
     "NarrativeStep",
     "make_id",
+    "local_id",
+    "key_id",
+    "attr_id",
     "feature_id",
     "file_id",
     "config_key_id",
@@ -220,6 +223,35 @@ def make_id(module: str, qualname: str = "", ordinal: int = 1) -> str:
     """
     base = f"{module}::{qualname}" if qualname else module
     return base if ordinal <= 1 else f"{base}#{ordinal}"
+
+
+def local_id(element_id: str, name: str, ordinal: int = 1) -> str:
+    """ID for a local binding inside a function.
+
+    Card 4 needs a node per *binding*, not per name: `y` before and after
+    `y += 1` are different values and must not share a slice. The `#n` suffix
+    carries that, the same way it separates redefinitions in `make_id`.
+
+    The `<locals>` segment mirrors Python's own `__qualname__` convention and
+    keeps a local from colliding with an attribute of the same name, which
+    `attr_id` would otherwise produce.
+    """
+    base = f"{element_id}.<locals>.{name}"
+    return base if ordinal <= 1 else f"{base}#{ordinal}"
+
+
+def key_id(node_id: str, key: str) -> str:
+    """ID for one key inside a container node.
+
+    `d["price"]` is its own lineage node so that a slice of one key never drags
+    in its siblings -- the distinction the owner actually reasons in.
+    """
+    return f"{node_id}[{key}]"
+
+
+def attr_id(node_id: str, attr: str) -> str:
+    """ID for an attribute of an object node, e.g. `self.threshold`."""
+    return f"{node_id}.{attr}"
 
 
 def feature_id(name: str) -> str:

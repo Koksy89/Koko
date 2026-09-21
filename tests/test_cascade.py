@@ -1215,7 +1215,8 @@ if __name__ == "__main__":
         assert candidate.evidence and all(isinstance(line, str) for line in candidate.evidence)
         assert candidate.provenance.confidence is Confidence.PROBABLE
         assert "auto-detected" in candidate.provenance.note
-    assert any('__main__" guard' in line for line in candidates[0].evidence)
+    for candidate in candidates:
+        assert any("__main__" in line for line in candidate.evidence), candidate.evidence
     assert run.analyzer.entry_ids() == ("run_m5", "run_m5::main")
     assert list(run.candidates) == list(run.analyzer.candidates()), (
         "the accessor and the return value must not be able to disagree"
@@ -1352,23 +1353,44 @@ def test_rank_agrees_with_combine() -> None:
 
 @pytest.mark.parametrize("case", CARD3_CASES)
 def test_two_runs_are_byte_identical(case: str) -> None:
+    """Identical *and* non-empty.
+
+    Two runs that both produce nothing are byte-identical too, so the
+    comparison is anchored to the records the case must contain: one block and
+    one reachability record per element, and every element accounted for.
+    """
     payload = expectation(case)
     elements, edges = case_elements(case), case_edges(case)
     entry = payload.get("entry_ids", [])
     sinks = payload.get("declared_sink_ids", [])
     first = C.CascadeAnalyzer(REPO_ROOT, sink_ids=sinks)
-    first.order(elements, edges, entry)
+    produced = first.order(elements, edges, entry)
     second = C.CascadeAnalyzer(REPO_ROOT, sink_ids=sinks)
     second.order(list(reversed(elements)), list(reversed(edges)), entry)
-    assert first.artifacts() == second.artifacts(), case
-    assert set(first.artifacts()) == {
+
+    blocks, cfg_edges, order_nodes, _decisions, reach, _candidates, _unresolved = produced
+    bodies = [e for e in elements if e.kind in C.CFG_ELEMENT_KINDS]
+    assert len(reach) == len(elements), case
+    assert len(blocks) >= 2 * len(bodies), f"{case}: every body needs an ENTRY and an EXIT block"
+    assert len(cfg_edges) >= len(bodies)
+    assert len(order_nodes) > len(bodies)
+    assert {b.element_id for b in blocks} == {e.id for e in bodies}, case
+
+    artifacts = first.artifacts()
+    assert artifacts == second.artifacts(), case
+    assert set(artifacts) == {
         "cfg_blocks.jsonl",
         "cfg_edges.jsonl",
         "order.jsonl",
         "decisions.jsonl",
         "reachability.jsonl",
+        "candidates.jsonl",
+        "unresolved.jsonl",
     }
-    for text in first.artifacts().values():
+    for name in ("cfg_blocks.jsonl", "cfg_edges.jsonl", "order.jsonl", "reachability.jsonl"):
+        assert artifacts[name].count("\n") >= 1, f"{case}/{name} is empty"
+    assert artifacts["reachability.jsonl"].count("\n") == len(elements), case
+    for text in artifacts.values():
         assert text == "" or text.endswith("\n")
 
 
@@ -1414,13 +1436,38 @@ def test_reachability_jsonl_round_trips_deterministically() -> None:
 def test_the_card_satisfies_the_cascade_card_protocol() -> None:
     card: CascadeCard = C.CascadeAnalyzer(REPO_ROOT)
     outcome = card.order(case_elements("ord_linear"), case_edges("ord_linear"), ["ord_linear::main"])
-    assert len(outcome) == 5
-    blocks, cfg_edges, order, decisions, reach = outcome
+    assert len(outcome) == 7, "blocks, cfg edges, order, decisions, reachability, candidates, unresolved"
+    blocks, cfg_edges, order, decisions, reach, candidates, unresolved = outcome
+    assert blocks and cfg_edges and order and reach
     assert all(isinstance(b, CFGBlock) for b in blocks)
     assert all(isinstance(e, CFGEdge) for e in cfg_edges)
     assert all(isinstance(n, OrderNode) for n in order)
     assert all(isinstance(d, DecisionPoint) for d in decisions)
     assert all(isinstance(r, Reachability) for r in reach)
+    assert all(isinstance(c, DetectedCandidate) for c in candidates)
+    assert all(isinstance(u, Unresolved) for u in unresolved)
+    assert {c.role for c in candidates} <= {C.ROLE_ENTRY_POINT, C.ROLE_DECISION_SINK}
+    assert [c.id for c in candidates] == sorted(c.id for c in candidates)
+    assert [u.id for u in unresolved] == sorted(u.id for u in unresolved)
+
+
+def test_candidates_and_unresolved_ride_in_the_return_value() -> None:
+    """A caller that only unpacks `order()` still gets both. Constraint 3."""
+    run = Result("dec_sink", sinks=[])
+    assert run.candidates, "a blank TARGET_PROFILE sink must produce a reported candidate"
+    assert [c.element_id for c in run.candidates if c.role == C.ROLE_DECISION_SINK] == [
+        "dec_sink::final_decision"
+    ]
+    assert [c.element_id for c in run.candidates if c.role == C.ROLE_ENTRY_POINT] == [
+        "dec_sink::main"
+    ]
+    assert list(run.candidates) == list(run.analyzer.candidates())
+    assert list(run.unresolved) == list(run.analyzer.unresolved())
+    blank = Result("cfg_shapes", sinks=[], entry=[])
+    assert [u.id for u in blank.unresolved][:2] == [
+        "@cascade::entry:none",
+        "@cascade::sink:none",
+    ], "nothing detected is itself reported, not silence"
 
 
 def test_sentinel_is_never_executed() -> None:

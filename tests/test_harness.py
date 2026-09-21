@@ -1020,12 +1020,21 @@ def test_multiprocessing_spawn_is_blocked(tmp_path: Path) -> None:
 
 
 def test_declared_multiprocessing_is_allowed(tmp_path: Path) -> None:
+    # multiprocessing's "spawn" method pickles the target by module-qualified
+    # name and re-imports it in the child, so it needs a real module on disk
+    # -- a `python -c` script has no importable `__main__` for the child to
+    # find it in.
+    mp_target_dir = tmp_path / "mp_target_module"
+    mp_target_dir.mkdir(parents=True, exist_ok=True)
+    (mp_target_dir / "mp_target.py").write_text("def mp_noop():\n    pass\n")
+
     result = _probe(
         tmp_path,
-        "import multiprocessing\n"
-        + _MP_NOOP_DEF
-        + "with activate(ctx):\n"
-        "    p = multiprocessing.get_context('spawn').Process(target=_mp_noop)\n"
+        "import multiprocessing, sys\n"
+        f"sys.path.insert(0, {str(mp_target_dir)!r})\n"
+        "import mp_target\n"
+        "with activate(ctx):\n"
+        "    p = multiprocessing.get_context('spawn').Process(target=mp_target.mp_noop)\n"
         "    p.start()\n"
         "    p.join(timeout=10)\n"
         "    assert p.exitcode == 0, p.exitcode\n",
@@ -1079,4 +1088,49 @@ def test_direct_posixsubprocess_fork_exec_is_a_verified_known_gap(tmp_path: Path
     # Documents the gap rather than hiding it: this is what "not closed"
     # looks like. A future fix that closes it should change this assertion,
     # not delete the test.
+    assert result["blocked"] == []
+
+
+def test_declared_child_process_runs_unaudited_once_permitted(tmp_path: Path) -> None:
+    """Declaring a token in ``declared_process_names`` permits *spawning*
+    that process -- it extends no control into it. Once running, a child is
+    a genuinely separate interpreter with no audit hook installed at all, so
+    its own operations are neither blocked nor recorded, in either
+    direction. Proven, not assumed: the child here connects a real socket
+    back to a listener the parent set up before ``activate``, and that
+    connection completes -- if the child's own network use were somehow
+    still being enforced, this would hang or raise instead.
+    """
+    python = os.path.basename(sys.executable)
+    result = _probe(
+        tmp_path,
+        "import socket, subprocess, sys, threading\n"
+        "server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+        "server.bind(('127.0.0.1', 0))\n"
+        "server.listen(1)\n"
+        "port = server.getsockname()[1]\n"
+        "received = {}\n"
+        "def accept_one():\n"
+        "    conn, _ = server.accept()\n"
+        "    received['data'] = conn.recv(1024)\n"
+        "    conn.close()\n"
+        "acceptor = threading.Thread(target=accept_one)\n"
+        "acceptor.start()\n"
+        "child_code = (\n"
+        "    'import socket\\n'\n"
+        "    's = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\\n'\n"
+        "    's.connect((\\'127.0.0.1\\', ' + str(port) + '))\\n'\n"
+        "    's.sendall(b\\'unaudited-child\\')\\n'\n"
+        "    's.close()\\n'\n"
+        ")\n"
+        "with activate(ctx):\n"
+        "    subprocess.run([sys.executable, '-c', child_code], check=True, timeout=10)\n"
+        "acceptor.join(timeout=10)\n"
+        "server.close()\n"
+        "assert received.get('data') == b'unaudited-child', received\n",
+        declared_process_names=frozenset({python}),
+        label="declared_child_unaudited",
+    )
+    # Neither the parent's spawn nor the child's own socket use is recorded:
+    # declaring a process token permits only the spawn, nothing beyond it.
     assert result["blocked"] == []

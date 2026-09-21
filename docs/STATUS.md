@@ -13,10 +13,10 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 
 | Card | Scope | Subagent | Status |
 |---|---|---|---|
-| 8 | Fixture corpus | fixture-writer | **FAILED x2 — rebuilding** (escalated) |
+| 8 | Fixture corpus | fixture-writer | rebuilt, awaiting verification |
 | 1 | Ingestion & inventory | ingestion-builder | **DONE** (PASS, round 2) |
-| 2 | Resolution & call graph | resolver-engineer | building — **precision 37.8%, watch this** |
-| 3 | CFG, cascade ordering, decisions | cascade-engineer | building — 15 tests red |
+| 2 | Resolution & call graph | resolver-engineer | **DONE** (PASS — precision 100%, recall 100%) |
+| 3 | CFG, cascade ordering, decisions | cascade-engineer | FAILED — contract conformance, reworking |
 | 4 | Data/feature lineage & slicing | lineage-engineer | on hold — corpus freeze |
 | 5 | Unplugged detection & hints | findings-builder | **DONE** (PASS, round 2) |
 | 6 | Version diff & impact | diff-impact-builder | **DONE** (PASS, 1 contract follow-up) |
@@ -84,19 +84,18 @@ is the second time the same principle has bitten — the first was a `__pycache_
 directory written into the corpus by a harness test. Both are consequences of running
 thirteen builders in one tree, which was my call.
 
-## The thing to watch
+## The keystone resolved
 
-Card 2's own corpus test currently reports **37.8% precision** on its call graph, with 34
-of its tests red. It is still building, so this is it measuring itself honestly rather
-than a verdict — but it is the number that matters most in the whole build.
+Card 2 now measures **100% precision and 100% recall** over 109 edges, re-derived
+independently by verification rather than read from its report. The earlier 37.8% was
+card 8's rebuild moving the corpus underneath it, not a defect in the card.
 
-Cards 3, 4, 5 and 6 all rest on card 2's edges. At 37.8% precision the map would be
-mostly wrong in a way that looks authoritative, and every downstream card would inherit
-it with a confidence it does not deserve. Precision was named the priority over recall
-for exactly this reason: a confident wrong edge costs the owner more than an honest gap.
-
-If card 2 cannot get precision high, the correct outcome is fewer edges and more
-`UNKNOWN` records, not more edges.
+One caveat to keep: the 17 `res_*` fixture *programs* are card 8's, which is independent,
+but the *expected edge sets* are card 2's own, plus 14 further programs it wrote itself.
+Verification spot-checked method and confidence on six edges of different kinds against
+the fixture source and built its own over-linking trap, which the resolver passed. That
+is good evidence, not proof. The number is trustworthy for edges of the shapes the corpus
+contains; the real target will contain shapes it does not.
 
 ## Recorded gaps on passed cards
 
