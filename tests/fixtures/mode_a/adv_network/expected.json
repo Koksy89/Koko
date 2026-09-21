@@ -1,0 +1,22 @@
+{
+  "elements": [
+    {
+      "id": "adv_network",
+      "kind": "MODULE",
+      "name": "adv_network",
+      "qualname": "",
+      "module": "adv_network",
+      "span": {
+        "path": "tests/fixtures/mode_a/adv_network/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

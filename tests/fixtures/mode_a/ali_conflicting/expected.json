@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "ali_conflicting",
+      "kind": "MODULE",
+      "name": "ali_conflicting",
+      "qualname": "",
+      "module": "ali_conflicting",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_conflicting/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ali_conflicting::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ali_conflicting",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_conflicting/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

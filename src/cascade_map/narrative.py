@@ -1,40 +1,41 @@
 """Card 14 — the execution narrative.
 
-Renders a recorded run (``Sequence[TraceEvent]``, card 12's output) as an
-ordered, anchored account of what executed. See ``NarrativeCard`` in
-``cascade_map.contracts.interfaces`` for the binding contract.
+Renders a recorded run as an ordered, anchored account of what executed. See
+``NarrativeCard`` in ``cascade_map.contracts.interfaces`` for the binding
+contract; its docstring explains why the static structures (``OrderNode``,
+``DecisionPoint``, ``RunRecord``) are parameters here rather than fields
+denormalised onto ``TraceEvent`` -- one source of truth per fact, the same
+reason runtime evidence is an overlay rather than a second graph.
 
-## What this module can and cannot derive from ``TraceEvent`` alone
+## What each parameter buys this module
 
-``narrate()`` receives only the event stream -- no static graph (no
-``Element``, ``OrderNode``, ``DecisionPoint``, ``CFGEdge``) and no
-``RunRecord``. That bounds what "structured by cascade phase" and "report
-what did not happen" can honestly mean here:
+* ``events`` (card 12): what ran, in what order, with what values, at each
+  depth.
+* ``order_nodes`` (card 3): the cascade's structural phases. This module
+  reads the single tree root's ``children``, in order, as the run's
+  top-level segments -- e.g. ingestion, then data engineering, then feature
+  engineering -- and assigns each element the segment that contains it.
+  ``EventKind`` still wins for signals it carries directly (a feature write
+  is "feature engineering" outright; a decision or an exception is its own
+  phase) -- the segment lookup only classifies plain calls and returns.
+* ``decisions`` (card 3): ``DecisionPoint.condition_source``, ``reads_ids``
+  and ``outcomes`` turn a bare "branch_taken" into the condition as written,
+  the branches not taken, and (via ``is_sink``) which decision is the run's
+  final one.
+* ``run`` (card 11): ``RunRecord.blocked`` is the only place a blocked
+  side-effect attempt lives, and ``RunRecord.refused``/``refusal_reason``
+  say plainly that nothing ran at all.
 
-* Phase is assigned from ``EventKind`` alone, because that is the only
-  phase-relevant signal ``TraceEvent`` carries. ``CALL``/``RETURN``/``BRANCH``
-  land in a single "execution" bucket: the contract gives no way to tell an
-  ingestion call from a data-engineering call without the static cascade
-  order card 3 computed. See the contract-change note in the card 14 report.
-* "What did not happen" is reported only insofar as the trace itself shows
-  it: a value arriving ``SUMMARIZED``/``REDACTED``/``DROPPED``, an exception
-  that the trace shows execution continuing past (swallowed) versus one nothing
-  follows (propagated), and ``UNMAPPED`` events. Branches *not* taken and
-  elements *never entered* require ``DecisionPoint``/``OrderNode`` from card 3,
-  which ``narrate()`` does not receive; when an event's own ``branch_taken``
-  names an outcome, the branch is reported, but the full menu of outcomes not
-  taken is not reconstructable from events alone. Likewise, blocked
-  side-effect attempts live on ``RunRecord.blocked``, not on ``TraceEvent``,
-  and so cannot be reported unless the tracer surfaces them as trace events
-  (e.g. an ``EXCEPTION`` event) -- another contract-change note.
+Nothing here infers intent or invents causation the trace does not show
+(that is card 13). Every ``NarrativeStep`` carries at least one concrete
+anchor -- an element ID, an event ID, or both -- so a claim about something
+that *did not* happen (an element never entered, a blocked write, a run that
+refused to start) is still traceable to the record that says so, even
+without a ``TraceEvent`` behind it.
 
-Everything this module *does* emit is anchored: every ``NarrativeStep``
-carries the element IDs and event IDs it was built from, and nothing here
-infers intent or invents causation the trace does not show (that is card 13).
-
-Determinism: given the same event sequence, ``narrate()`` returns
-byte-identical ``NarrativeStep`` text and IDs every time. No wall-clock time,
-randomness or iteration over unordered containers.
+Determinism: given the same events, order_nodes, decisions and run,
+``narrate()`` returns byte-identical ``NarrativeStep``s every time,
+regardless of the input sequences' own ordering.
 """
 
 from __future__ import annotations
@@ -44,8 +45,11 @@ from typing import Sequence
 
 from cascade_map.contracts.interfaces import (
     CaptureStatus,
+    DecisionPoint,
     EventKind,
     NarrativeStep,
+    OrderNode,
+    RunRecord,
     TraceEvent,
     ValueCapture,
 )
@@ -54,23 +58,36 @@ __all__ = ["Narrator"]
 
 
 # ---------------------------------------------------------------------------
-# Phase assignment -- derivable purely from EventKind, see module docstring.
+# Phase names.
 # ---------------------------------------------------------------------------
 
-_PHASE_EXECUTION = "execution"
+_PHASE_ROOT_FALLBACK = ("ingestion", "data engineering", "feature engineering")
+"""Positional names for the cascade's top-level segments, taken from the
+order-node tree structure -- see ``_segment_index_by_element``. Overflow
+segments beyond this list fold into the last name."""
+
 _PHASE_FEATURE = "feature engineering"
 _PHASE_DECISION = "decision logic"
 _PHASE_FINAL = "final decision"
 _PHASE_EXCEPTION = "exception"
 _PHASE_UNMAPPED = "unmapped"
+_PHASE_BLOCKED = "blocked side effects"
+_PHASE_NOT_ENTERED = "not entered"
+_PHASE_UNCLASSIFIED = "execution"
+"""A call/return on an element no order-node segment claims. Honest fallback,
+not a guess: card 3 simply did not place this element in the cascade order."""
 
 _PHASE_ORDER = (
-    _PHASE_EXECUTION,
-    _PHASE_FEATURE,
+    "ingestion",
+    "data engineering",
+    "feature engineering",
     _PHASE_DECISION,
     _PHASE_FINAL,
+    _PHASE_UNCLASSIFIED,
     _PHASE_EXCEPTION,
     _PHASE_UNMAPPED,
+    _PHASE_BLOCKED,
+    _PHASE_NOT_ENTERED,
 )
 
 _LOOP_THRESHOLD = 3
@@ -78,16 +95,56 @@ _LOOP_THRESHOLD = 3
 rather than narrated one step per iteration."""
 
 
-def _base_phase(kind: EventKind) -> str:
-    if kind is EventKind.FEATURE_WRITE:
-        return _PHASE_FEATURE
-    if kind is EventKind.DECISION:
-        return _PHASE_DECISION
-    if kind is EventKind.EXCEPTION:
-        return _PHASE_EXCEPTION
-    if kind is EventKind.UNMAPPED:
-        return _PHASE_UNMAPPED
-    return _PHASE_EXECUTION
+def _phase_name_for_segment(index: int) -> str:
+    if index < len(_PHASE_ROOT_FALLBACK):
+        return _PHASE_ROOT_FALLBACK[index]
+    return _PHASE_ROOT_FALLBACK[-1]
+
+
+def _segment_index_by_element(order_nodes: Sequence[OrderNode]) -> dict[str, int]:
+    """Map each element ID to the index of its top-level cascade segment.
+
+    The order-node tree's single root -- a node no other node lists as a
+    child -- is read as a SEQUENCE whose ``children``, in order, are the
+    cascade's top-level segments. Each segment's element IDs (collected by
+    walking its own children recursively) map to that segment's index.
+
+    If the graph has no single unambiguous root (empty, disconnected, or
+    more than one root-less node), each root-less node is its own segment,
+    taken in the order the caller supplied -- still deterministic, just
+    unable to claim a single sequence the way one root's ``children`` can.
+    """
+    if not order_nodes:
+        return {}
+    by_id = {node.id: node for node in order_nodes}
+    is_child: set[str] = set()
+    for node in order_nodes:
+        is_child.update(node.children)
+    roots = [node for node in order_nodes if node.id not in is_child]
+    if not roots:
+        roots = list(order_nodes)
+
+    if len(roots) == 1 and roots[0].children:
+        segment_roots = [by_id[cid] for cid in roots[0].children if cid in by_id]
+    else:
+        segment_roots = roots
+
+    mapping: dict[str, int] = {}
+    for index, seg_root in enumerate(segment_roots):
+        stack = [seg_root]
+        seen_nodes: set[str] = set()
+        while stack:
+            node = stack.pop()
+            if node.id in seen_nodes:
+                continue
+            seen_nodes.add(node.id)
+            for element_id in node.element_ids:
+                mapping.setdefault(element_id, index)
+            for child_id in node.children:
+                child = by_id.get(child_id)
+                if child is not None:
+                    stack.append(child)
+    return mapping
 
 
 def _value_clause(name: str, capture: ValueCapture) -> str:
@@ -102,7 +159,6 @@ def _value_clause(name: str, capture: ValueCapture) -> str:
     if capture.status is CaptureStatus.REDACTED:
         reason = capture.reason or "no reason recorded"
         return f"{base} [REDACTED: {reason}]"
-    # DROPPED
     reason = capture.reason or "no reason recorded"
     return f"{name}=<dropped> [DROPPED: {reason}]"
 
@@ -150,14 +206,22 @@ def _subtree_end(events: list[TraceEvent], call_index: int) -> int:
 class Narrator:
     """Implements ``NarrativeCard``."""
 
-    def narrate(self, events: Sequence[TraceEvent]) -> list[NarrativeStep]:
+    def narrate(
+        self,
+        events: Sequence[TraceEvent],
+        order_nodes: Sequence[OrderNode],
+        decisions: Sequence[DecisionPoint],
+        run: RunRecord,
+    ) -> list[NarrativeStep]:
+        if run.refused:
+            return [self._refusal_step(run)]
+
         ordered = sorted(events, key=lambda e: e.sequence)
-        if not ordered:
-            return []
-        run_id = ordered[0].run_id
+        run_id = run.run_id or (ordered[0].run_id if ordered else "")
         self._all_events = ordered
 
-        last_decision_event_id = self._last_decision_event_id(ordered)
+        segment_by_element = _segment_index_by_element(order_nodes)
+        decision_by_element = {d.element_id: d for d in decisions}
 
         leaves: list[NarrativeStep] = []
         i = 0
@@ -166,16 +230,35 @@ class Narrator:
             if event.kind is EventKind.CALL:
                 loop_len = self._loop_run_length(ordered, i)
                 if loop_len >= _LOOP_THRESHOLD:
-                    step, consumed = self._summarise_loop(ordered, i, loop_len, run_id)
+                    step, consumed = self._summarise_loop(
+                        ordered, i, loop_len, run_id, segment_by_element
+                    )
                     leaves.append(step)
                     i += consumed
                     continue
-            leaves.append(self._leaf_step(event, run_id, last_decision_event_id))
+            leaves.append(self._leaf_step(event, run_id, segment_by_element, decision_by_element))
             i += 1
+
+        leaves.extend(self._not_entered_steps(order_nodes, ordered, run_id))
+        leaves.extend(self._blocked_steps(run, run_id))
 
         return self._group_by_phase(leaves, run_id)
 
-    # -- loop detection -----------------------------------------------------
+    # -- refusal --------------------------------------------------------------
+
+    def _refusal_step(self, run: RunRecord) -> NarrativeStep:
+        reason = run.refusal_reason or "<no reason recorded>"
+        return NarrativeStep(
+            id=f"nar:{run.run_id}:refused",
+            run_id=run.run_id,
+            sequence=1,
+            phase="refused",
+            text=f"Run refused to start: {reason}.",
+            element_ids=(),
+            event_ids=(run.run_id,) if run.run_id else (),
+        )
+
+    # -- loop detection -------------------------------------------------------
 
     def _loop_run_length(self, events: list[TraceEvent], start: int) -> int:
         """Number of consecutive sibling-level repeats of the CALL at *start*.
@@ -195,7 +278,12 @@ class Narrator:
         return count
 
     def _summarise_loop(
-        self, events: list[TraceEvent], start: int, loop_len: int, run_id: str
+        self,
+        events: list[TraceEvent],
+        start: int,
+        loop_len: int,
+        run_id: str,
+        segment_by_element: dict[str, int],
     ) -> tuple[NarrativeStep, int]:
         site = _site_of(events[start])
         iteration_spans: list[tuple[int, int]] = []
@@ -232,7 +320,11 @@ class Narrator:
         for pos in called_out:
             lo, _hi = iteration_spans[pos]
             call_event = events[lo]
-            label = "first" if pos == 0 else ("last" if pos == loop_len - 1 else f"iteration {pos + 1}")
+            label = (
+                "first"
+                if pos == 0
+                else ("last" if pos == loop_len - 1 else f"iteration {pos + 1}")
+            )
             repr_text = reprs[pos]
             if repr_text is not None:
                 detail_parts.append(f"{label} (event {call_event.event_id}) returned {repr_text}")
@@ -251,46 +343,64 @@ class Narrator:
                 all_event_ids.append(events[idx].event_id)
                 all_element_ids.add(events[idx].element_id)
 
+        index = segment_by_element.get(site.element_id)
+        phase = _PHASE_UNCLASSIFIED if index is None else _phase_name_for_segment(index)
+
         step = NarrativeStep(
             id=f"nar:{run_id}:loop:{events[start].event_id}",
             run_id=run_id,
             sequence=0,
-            phase=_base_phase(events[start].kind),
+            phase=phase,
             text=text,
             element_ids=tuple(sorted(all_element_ids)),
             event_ids=tuple(all_event_ids),
         )
         return step, consumed
 
-    # -- leaf narration -------------------------------------------------------
-
-    def _last_decision_event_id(self, events: list[TraceEvent]) -> str:
-        last = ""
-        last_seq = -1
-        for event in events:
-            if event.kind is EventKind.DECISION and event.sequence > last_seq:
-                last = event.event_id
-                last_seq = event.sequence
-        return last
+    # -- leaf narration ---------------------------------------------------------
 
     def _leaf_step(
-        self, event: TraceEvent, run_id: str, last_decision_event_id: str
+        self,
+        event: TraceEvent,
+        run_id: str,
+        segment_by_element: dict[str, int],
+        decision_by_element: dict[str, DecisionPoint],
     ) -> NarrativeStep:
-        text = self._render_text(event)
-        phase = _base_phase(event.kind)
-        if event.kind is EventKind.DECISION and event.event_id == last_decision_event_id:
-            phase = _PHASE_FINAL
+        phase = self._phase_for_event(event, segment_by_element, decision_by_element)
+        text = self._render_text(event, decision_by_element)
         return NarrativeStep(
             id=f"nar:{run_id}:{event.event_id}",
             run_id=run_id,
             sequence=0,
             phase=phase,
             text=text,
-            element_ids=(event.element_id,),
+            element_ids=(event.element_id,) if event.element_id else (),
             event_ids=(event.event_id,),
         )
 
-    def _render_text(self, event: TraceEvent) -> str:
+    def _phase_for_event(
+        self,
+        event: TraceEvent,
+        segment_by_element: dict[str, int],
+        decision_by_element: dict[str, DecisionPoint],
+    ) -> str:
+        if event.kind is EventKind.FEATURE_WRITE:
+            return _PHASE_FEATURE
+        if event.kind is EventKind.EXCEPTION:
+            return _PHASE_EXCEPTION
+        if event.kind is EventKind.UNMAPPED:
+            return _PHASE_UNMAPPED
+        if event.kind is EventKind.DECISION:
+            decision = decision_by_element.get(event.element_id)
+            if decision is not None and decision.is_sink:
+                return _PHASE_FINAL
+            return _PHASE_DECISION
+        index = segment_by_element.get(event.element_id)
+        if index is None:
+            return _PHASE_UNCLASSIFIED
+        return _phase_name_for_segment(index)
+
+    def _render_text(self, event: TraceEvent, decision_by_element: dict[str, DecisionPoint]) -> str:
         values = _values_clause(event)
         if event.kind is EventKind.CALL:
             return f"Called {event.element_id}."
@@ -303,16 +413,13 @@ class Narrator:
             reads = f" (read {values})" if values else ""
             return f"Branch at {event.element_id} took '{branch}'{reads}."
         if event.kind is EventKind.DECISION:
-            branch = event.branch_taken or "<unrecorded>"
-            reads = f" reads {values}" if values else ""
-            return f"Decision at {event.element_id}{reads}; took branch '{branch}'."
+            return self._render_decision(event, decision_by_element)
         if event.kind is EventKind.FEATURE_WRITE:
             if values:
                 return f"Feature write at {event.element_id}: {values}."
             return f"Feature write at {event.element_id}."
         if event.kind is EventKind.EXCEPTION:
-            swallowed = self._swallowed
-            outcome = "swallowed (execution continued)" if swallowed(event) else "propagated"
+            outcome = "swallowed (execution continued)" if self._swallowed(event) else "propagated"
             detail = f" -- {values}" if values else ""
             return f"Exception at {event.element_id}{detail} ({outcome})."
         # UNMAPPED
@@ -320,8 +427,31 @@ class Narrator:
         target = event.element_id or "<no static element>"
         return f"Unmapped event at {target}{detail}: does not map to any static element."
 
+    def _render_decision(
+        self, event: TraceEvent, decision_by_element: dict[str, DecisionPoint]
+    ) -> str:
+        values = _values_clause(event)
+        branch = event.branch_taken or "<unrecorded>"
+        decision = decision_by_element.get(event.element_id)
+        if decision is None:
+            reads = f" reads {values}" if values else ""
+            return f"Decision at {event.element_id}{reads}; took branch '{branch}'."
+        condition = decision.condition_source or "<condition not recorded>"
+        if values:
+            reads = f" reads {values}"
+        elif decision.reads_ids:
+            reads = f" reads {', '.join(decision.reads_ids)}"
+        else:
+            reads = ""
+        labels = [label for label, _target in decision.outcomes]
+        not_taken = [label for label in labels if label != branch]
+        not_taken_clause = f"; did not take: {', '.join(not_taken)}" if not_taken else ""
+        return (
+            f"Decision at {event.element_id}: condition `{condition}`{reads}; "
+            f"took branch '{branch}'{not_taken_clause}."
+        )
+
     def _swallowed(self, event: TraceEvent) -> bool:
-        # Set on the instance in narrate(); default False if unavailable.
         following = getattr(self, "_all_events", None)
         if following is None:
             return False
@@ -330,7 +460,50 @@ class Narrator:
                 return True
         return False
 
-    # -- phase grouping ------------------------------------------------------
+    # -- what did not happen ---------------------------------------------------
+
+    def _not_entered_steps(
+        self, order_nodes: Sequence[OrderNode], events: list[TraceEvent], run_id: str
+    ) -> list[NarrativeStep]:
+        all_elements: set[str] = set()
+        for node in order_nodes:
+            all_elements.update(node.element_ids)
+        seen = {e.element_id for e in events if e.element_id}
+        never_entered = sorted(all_elements - seen)
+        return [
+            NarrativeStep(
+                id=f"nar:{run_id}:not_entered:{element_id}",
+                run_id=run_id,
+                sequence=0,
+                phase=_PHASE_NOT_ENTERED,
+                text=f"{element_id} was part of the cascade order but no event in this run "
+                f"observed it: it was never entered.",
+                element_ids=(element_id,),
+                event_ids=(),
+            )
+            for element_id in never_entered
+        ]
+
+    def _blocked_steps(self, run: RunRecord, run_id: str) -> list[NarrativeStep]:
+        steps = []
+        for attempt in sorted(run.blocked, key=lambda a: a.id):
+            element_ids = (attempt.element_id,) if attempt.element_id else ()
+            event_ids = (attempt.event_id,) if attempt.event_id else (attempt.id,)
+            where = f" at {attempt.element_id}" if attempt.element_id else ""
+            steps.append(
+                NarrativeStep(
+                    id=f"nar:{run_id}:blocked:{attempt.id}",
+                    run_id=run_id,
+                    sequence=0,
+                    phase=_PHASE_BLOCKED,
+                    text=f"Blocked side effect ({attempt.kind}){where}: {attempt.detail}.",
+                    element_ids=element_ids,
+                    event_ids=event_ids,
+                )
+            )
+        return steps
+
+    # -- phase grouping ---------------------------------------------------------
 
     def _group_by_phase(self, leaves: list[NarrativeStep], run_id: str) -> list[NarrativeStep]:
         by_phase: dict[str, list[NarrativeStep]] = {phase: [] for phase in _PHASE_ORDER}

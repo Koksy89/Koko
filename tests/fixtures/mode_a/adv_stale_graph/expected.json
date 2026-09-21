@@ -1,0 +1,22 @@
+{
+  "elements": [
+    {
+      "id": "adv_stale_graph",
+      "kind": "MODULE",
+      "name": "adv_stale_graph",
+      "qualname": "",
+      "module": "adv_stale_graph",
+      "span": {
+        "path": "tests/fixtures/mode_a/adv_stale_graph/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

@@ -218,10 +218,10 @@ def _render_element_detail(store: ArtifactStore, element_id: str) -> str:
     d = views.element_detail(store, element_id)
     el = d["element"]
     if el is None:
-        header = f"<h3 id='el-{escape(element_id)}'>{escape(element_id)} <span class='missing'>(no Element record)</span></h3>"
+        header = f'<h3 id="el-{escape(element_id)}">{escape(element_id)} <span class="missing">(no Element record)</span></h3>'
     else:
         header = (
-            f"<h3 id='el-{escape(element_id)}'>{escape(el['qualname'] or el['name'] or element_id)}"
+            f'<h3 id="el-{escape(element_id)}">{escape(el["qualname"] or el["name"] or element_id)}'
             f" <small>{escape(el['kind'] or '')}</small> {_badge(el['confidence'])}</h3>"
             f"<p>module: {escape(el['module'] or '')} | id: <code>{escape(element_id)}</code></p>"
         )

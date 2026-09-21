@@ -1,0 +1,41 @@
+{
+  "elements": [
+    {
+      "id": "cfg_shortcircuit",
+      "kind": "MODULE",
+      "name": "cfg_shortcircuit",
+      "qualname": "",
+      "module": "cfg_shortcircuit",
+      "span": {
+        "path": "tests/fixtures/mode_b/cfg_shortcircuit/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "cfg_shortcircuit::check",
+      "kind": "FUNCTION",
+      "name": "check",
+      "qualname": "check",
+      "module": "cfg_shortcircuit",
+      "span": {
+        "path": "tests/fixtures/mode_b/cfg_shortcircuit/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

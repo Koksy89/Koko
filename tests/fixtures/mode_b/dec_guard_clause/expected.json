@@ -1,0 +1,41 @@
+{
+  "elements": [
+    {
+      "id": "dec_guard_clause",
+      "kind": "MODULE",
+      "name": "dec_guard_clause",
+      "qualname": "",
+      "module": "dec_guard_clause",
+      "span": {
+        "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "dec_guard_clause::validate",
+      "kind": "FUNCTION",
+      "name": "validate",
+      "qualname": "validate",
+      "module": "dec_guard_clause",
+      "span": {
+        "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

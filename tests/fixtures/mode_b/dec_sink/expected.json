@@ -1,0 +1,58 @@
+{
+  "elements": [
+    {
+      "id": "dec_sink",
+      "kind": "MODULE",
+      "name": "dec_sink",
+      "qualname": "",
+      "module": "dec_sink",
+      "span": {
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "dec_sink::get_decision",
+      "kind": "FUNCTION",
+      "name": "get_decision",
+      "qualname": "get_decision",
+      "module": "dec_sink",
+      "span": {
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "dec_sink::FINAL_DECISION",
+      "kind": "ASSIGNMENT",
+      "name": "FINAL_DECISION",
+      "qualname": "FINAL_DECISION",
+      "module": "dec_sink",
+      "span": {
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py",
+        "line": 6
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

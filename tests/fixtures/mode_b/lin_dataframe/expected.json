@@ -1,0 +1,41 @@
+{
+  "elements": [
+    {
+      "id": "lin_dataframe",
+      "kind": "MODULE",
+      "name": "lin_dataframe",
+      "qualname": "",
+      "module": "lin_dataframe",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "lin_dataframe::transform",
+      "kind": "FUNCTION",
+      "name": "transform",
+      "qualname": "transform",
+      "module": "lin_dataframe",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_dataframe/__init__.py",
+        "line": 3
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

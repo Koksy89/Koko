@@ -44,6 +44,8 @@ __all__ = [
     "CFGEdge",
     "OrderKind",
     "OrderNode",
+    "ReachabilityState",
+    "Reachability",
     "DecisionPoint",
     "LineageKind",
     "LineageEdge",
@@ -461,6 +463,47 @@ class OrderNode:
     provenance: Provenance | None = None
 
 
+class ReachabilityState(StrEnum):
+    REACHES_SINK = "REACHES_SINK"
+    NO_SINK_PATH = "NO_SINK_PATH"
+    UNKNOWN = "UNKNOWN"
+    """An unresolved call site lies on the way, or no decision sink is known.
+    Distinct from NO_SINK_PATH, and the distinction is the point: "I could not
+    tell" must never render the same as "this reaches nothing"."""
+
+
+@dataclass(frozen=True, slots=True)
+class Reachability:
+    """Whether an element can reach a decision sink. Card 3 emits one per element.
+
+    This exists because "every element is marked for decision reachability" had
+    no canonical carrier. Card 5 and card 15 each needed the answer, found no
+    field holding it, and derived their own -- which is precisely the second
+    source of truth ARCHITECTURE.md exists to prevent.
+
+    It belongs to card 3, not to `Element`: card 1 mints elements before any
+    call graph exists and cannot know this.
+
+    WORKPLAN card 3 requires a bias toward REACHES_SINK when an edge is
+    uncertain, because a false "unreachable" sends the owner to delete live
+    code. `reason` records why, and `provenance.confidence` carries the
+    weakest edge the verdict rests on.
+    """
+
+    id: str
+    element_id: str
+    state: ReachabilityState
+    provenance: Provenance
+    sink_ids: tuple[str, ...] = ()
+    path_ids: tuple[str, ...] = ()
+    """One representative path to a sink. Not every path -- that is unbounded.
+    Callers that need all paths walk the order graph themselves."""
+
+    reason: str = ""
+    """Required when state is UNKNOWN, or when a bias toward REACHES_SINK was
+    applied. An unexplained UNKNOWN is a gate failure, not a verdict."""
+
+
 @dataclass(frozen=True, slots=True)
 class DecisionPoint:
     id: str
@@ -793,8 +836,16 @@ class CascadeCard(Protocol):
     def order(
         self, elements: Sequence[Element], edges: Sequence[Edge], entry_ids: Sequence[str]
     ) -> tuple[
-        Sequence[CFGBlock], Sequence[CFGEdge], Sequence[OrderNode], Sequence[DecisionPoint]
-    ]: ...
+        Sequence[CFGBlock],
+        Sequence[CFGEdge],
+        Sequence[OrderNode],
+        Sequence[DecisionPoint],
+        Sequence[Reachability],
+    ]:
+        """Blocks, edges, ordering, decision points, and one Reachability per
+        element. The last is what cards 5 and 15 read to answer "does this
+        drive the final decision" -- neither may derive its own."""
+        ...
 
 
 class LineageCard(Protocol):

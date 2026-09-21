@@ -1,0 +1,75 @@
+{
+  "elements": [
+    {
+      "id": "ord_unordered",
+      "kind": "MODULE",
+      "name": "ord_unordered",
+      "qualname": "",
+      "module": "ord_unordered",
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ord_unordered::op1",
+      "kind": "FUNCTION",
+      "name": "op1",
+      "qualname": "op1",
+      "module": "ord_unordered",
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ord_unordered::op2",
+      "kind": "FUNCTION",
+      "name": "op2",
+      "qualname": "op2",
+      "module": "ord_unordered",
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py",
+        "line": 4
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ord_unordered::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ord_unordered",
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py",
+        "line": 6
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

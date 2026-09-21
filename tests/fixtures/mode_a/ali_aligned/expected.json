@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "ali_aligned",
+      "kind": "MODULE",
+      "name": "ali_aligned",
+      "qualname": "",
+      "module": "ali_aligned",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_aligned/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ali_aligned::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ali_aligned",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_aligned/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

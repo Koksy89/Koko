@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-from .constants import CONFIG_EXTENSIONS, EXCLUDED_DIR_NAMES
+from .constants import CONFIG_EXTENSIONS, EXCLUDED_DIR_NAMES, EXCLUDED_FILE_NAMES
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +53,8 @@ def walk(root: str) -> Iterator[DiscoveredFile]:
     _walk_dir(root_path, found)
     found.sort(key=lambda p: p.as_posix())
     for path in found:
+        if path.name in EXCLUDED_FILE_NAMES:
+            continue
         suffix = path.suffix.lower()
         if suffix == ".py":
             yield DiscoveredFile(path=path, kind="python")

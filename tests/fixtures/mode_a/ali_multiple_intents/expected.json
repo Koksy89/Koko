@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "ali_multiple_intents",
+      "kind": "MODULE",
+      "name": "ali_multiple_intents",
+      "qualname": "",
+      "module": "ali_multiple_intents",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_multiple_intents/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ali_multiple_intents::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ali_multiple_intents",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_multiple_intents/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

@@ -1,0 +1,41 @@
+{
+  "elements": [
+    {
+      "id": "ord_cycle",
+      "kind": "MODULE",
+      "name": "ord_cycle",
+      "qualname": "",
+      "module": "ord_cycle",
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ord_cycle::recursive",
+      "kind": "FUNCTION",
+      "name": "recursive",
+      "qualname": "recursive",
+      "module": "ord_cycle",
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

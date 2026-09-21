@@ -1,0 +1,41 @@
+{
+  "elements": [
+    {
+      "id": "lin_slice_forward",
+      "kind": "MODULE",
+      "name": "lin_slice_forward",
+      "qualname": "",
+      "module": "lin_slice_forward",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "lin_slice_forward::transform",
+      "kind": "FUNCTION",
+      "name": "transform",
+      "qualname": "transform",
+      "module": "lin_slice_forward",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_slice_forward/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

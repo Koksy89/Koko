@@ -1,0 +1,22 @@
+{
+  "elements": [
+    {
+      "id": "adv_write_escape",
+      "kind": "MODULE",
+      "name": "adv_write_escape",
+      "qualname": "",
+      "module": "adv_write_escape",
+      "span": {
+        "path": "tests/fixtures/mode_a/adv_write_escape/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

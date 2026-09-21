@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "ali_coverage",
+      "kind": "MODULE",
+      "name": "ali_coverage",
+      "qualname": "",
+      "module": "ali_coverage",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_coverage/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ali_coverage::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ali_coverage",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_coverage/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

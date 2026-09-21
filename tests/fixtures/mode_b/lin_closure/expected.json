@@ -1,0 +1,59 @@
+{
+  "elements": [
+    {
+      "id": "lin_closure",
+      "kind": "MODULE",
+      "name": "lin_closure",
+      "qualname": "",
+      "module": "lin_closure",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_closure/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "lin_closure::outer",
+      "kind": "FUNCTION",
+      "name": "outer",
+      "qualname": "outer",
+      "module": "lin_closure",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_closure/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "lin_closure::outer::inner",
+      "kind": "FUNCTION",
+      "name": "inner",
+      "qualname": "outer.<locals>.inner",
+      "module": "lin_closure",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_closure/__init__.py",
+        "line": 3
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "parent_id": "lin_closure::outer"
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

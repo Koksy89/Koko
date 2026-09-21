@@ -1,0 +1,24 @@
+{
+  "elements": [
+    {
+      "id": "fnd_orphaned",
+      "kind": "MODULE",
+      "name": "fnd_orphaned",
+      "qualname": "",
+      "module": "fnd_orphaned",
+      "span": {
+        "path": "tests/fixtures/mode_b/fnd_orphaned/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

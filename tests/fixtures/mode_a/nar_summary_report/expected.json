@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "nar_summary_report",
+      "kind": "MODULE",
+      "name": "nar_summary_report",
+      "qualname": "",
+      "module": "nar_summary_report",
+      "span": {
+        "path": "tests/fixtures/mode_a/nar_summary_report/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "nar_summary_report::process",
+      "kind": "FUNCTION",
+      "name": "process",
+      "qualname": "process",
+      "module": "nar_summary_report",
+      "span": {
+        "path": "tests/fixtures/mode_a/nar_summary_report/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

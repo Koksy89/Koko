@@ -1,0 +1,41 @@
+{
+  "elements": [
+    {
+      "id": "dec_rule_cascade",
+      "kind": "MODULE",
+      "name": "dec_rule_cascade",
+      "qualname": "",
+      "module": "dec_rule_cascade",
+      "span": {
+        "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "dec_rule_cascade::decide",
+      "kind": "FUNCTION",
+      "name": "decide",
+      "qualname": "decide",
+      "module": "dec_rule_cascade",
+      "span": {
+        "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

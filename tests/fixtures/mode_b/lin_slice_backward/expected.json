@@ -1,0 +1,41 @@
+{
+  "elements": [
+    {
+      "id": "lin_slice_backward",
+      "kind": "MODULE",
+      "name": "lin_slice_backward",
+      "qualname": "",
+      "module": "lin_slice_backward",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "lin_slice_backward::compute",
+      "kind": "FUNCTION",
+      "name": "compute",
+      "qualname": "compute",
+      "module": "lin_slice_backward",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_slice_backward/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

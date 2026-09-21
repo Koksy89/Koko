@@ -1,0 +1,24 @@
+{
+  "elements": [
+    {
+      "id": "fnd_dangling",
+      "kind": "MODULE",
+      "name": "fnd_dangling",
+      "qualname": "",
+      "module": "fnd_dangling",
+      "span": {
+        "path": "tests/fixtures/mode_b/fnd_dangling/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

@@ -1,0 +1,41 @@
+{
+  "elements": [
+    {
+      "id": "lin_container",
+      "kind": "MODULE",
+      "name": "lin_container",
+      "qualname": "",
+      "module": "lin_container",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "lin_container::setup",
+      "kind": "FUNCTION",
+      "name": "setup",
+      "qualname": "setup",
+      "module": "lin_container",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_container/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

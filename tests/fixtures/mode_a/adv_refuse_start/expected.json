@@ -1,0 +1,22 @@
+{
+  "elements": [
+    {
+      "id": "adv_refuse_start",
+      "kind": "MODULE",
+      "name": "adv_refuse_start",
+      "qualname": "",
+      "module": "adv_refuse_start",
+      "span": {
+        "path": "tests/fixtures/mode_a/adv_refuse_start/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

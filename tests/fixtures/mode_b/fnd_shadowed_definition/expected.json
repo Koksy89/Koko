@@ -1,0 +1,24 @@
+{
+  "elements": [
+    {
+      "id": "fnd_shadowed",
+      "kind": "MODULE",
+      "name": "fnd_shadowed",
+      "qualname": "",
+      "module": "fnd_shadowed",
+      "span": {
+        "path": "tests/fixtures/mode_b/fnd_shadowed/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

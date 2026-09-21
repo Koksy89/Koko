@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "nar_deterministic",
+      "kind": "MODULE",
+      "name": "nar_deterministic",
+      "qualname": "",
+      "module": "nar_deterministic",
+      "span": {
+        "path": "tests/fixtures/mode_a/nar_deterministic/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "nar_deterministic::process",
+      "kind": "FUNCTION",
+      "name": "process",
+      "qualname": "process",
+      "module": "nar_deterministic",
+      "span": {
+        "path": "tests/fixtures/mode_a/nar_deterministic/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

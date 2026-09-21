@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "ali_proposed",
+      "kind": "MODULE",
+      "name": "ali_proposed",
+      "qualname": "",
+      "module": "ali_proposed",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_proposed/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ali_proposed::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ali_proposed",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_proposed/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

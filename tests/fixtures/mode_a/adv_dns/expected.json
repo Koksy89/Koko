@@ -1,0 +1,22 @@
+{
+  "elements": [
+    {
+      "id": "adv_dns",
+      "kind": "MODULE",
+      "name": "adv_dns",
+      "qualname": "",
+      "module": "adv_dns",
+      "span": {
+        "path": "tests/fixtures/mode_a/adv_dns/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

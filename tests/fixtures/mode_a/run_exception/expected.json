@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "run_exception",
+      "kind": "MODULE",
+      "name": "run_exception",
+      "qualname": "",
+      "module": "run_exception",
+      "span": {
+        "path": "tests/fixtures/mode_a/run_exception/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "run_exception::func",
+      "kind": "FUNCTION",
+      "name": "func",
+      "qualname": "func",
+      "module": "run_exception",
+      "span": {
+        "path": "tests/fixtures/mode_a/run_exception/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

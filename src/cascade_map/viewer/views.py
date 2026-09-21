@@ -14,8 +14,7 @@ on -- that reachability is the point of the viewer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from cascade_map.contracts.interfaces import Confidence
 

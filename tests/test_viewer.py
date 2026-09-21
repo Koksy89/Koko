@@ -244,6 +244,8 @@ def build_fixture(root: Path) -> None:
         "elements.jsonl": canonical_jsonl(elements),
         "unresolved.jsonl": canonical_jsonl(unresolved),
         "edges.jsonl": canonical_jsonl(edges),
+        "cfg_blocks.jsonl": canonical_jsonl([]),
+        "cfg_edges.jsonl": canonical_jsonl([]),
         "order.jsonl": canonical_jsonl(order_nodes),
         "decisions.jsonl": canonical_jsonl(decisions),
         "lineage.jsonl": canonical_jsonl(lineage),
@@ -504,7 +506,9 @@ def test_element_detail_links_every_kind_of_evidence(store: ArtifactStore) -> No
     assert "decision:decide" in detail["decision_as_condition"]
     assert detail["doc_record"] is not None
     assert "intent:decide" in detail["intent_ids"]
-    assert "change:1" in detail["change_ids_before"]
+    compute_detail = element_detail(store, COMPUTE_ID)
+    assert "change:1" in compute_detail["change_ids_before"]
+    assert "change:1" in compute_detail["change_ids_after"]
 
 
 def test_element_detail_unknown_id_is_explicit_not_a_crash(store: ArtifactStore) -> None:

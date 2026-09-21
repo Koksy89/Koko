@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "ali_not_exercised",
+      "kind": "MODULE",
+      "name": "ali_not_exercised",
+      "qualname": "",
+      "module": "ali_not_exercised",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_not_exercised/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ali_not_exercised::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ali_not_exercised",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_not_exercised/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

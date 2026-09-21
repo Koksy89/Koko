@@ -42,7 +42,7 @@
       "module": "cfg_shapes",
       "span": {
         "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py",
-        "line": 11
+        "line": 12
       },
       "provenance": {
         "method": "AST_DIRECT",
@@ -59,7 +59,7 @@
       "module": "cfg_shapes",
       "span": {
         "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py",
-        "line": 19
+        "line": 20
       },
       "provenance": {
         "method": "AST_DIRECT",
@@ -76,7 +76,7 @@
       "module": "cfg_shapes",
       "span": {
         "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py",
-        "line": 28
+        "line": 29
       },
       "provenance": {
         "method": "AST_DIRECT",

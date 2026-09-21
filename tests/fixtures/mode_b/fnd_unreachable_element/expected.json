@@ -1,0 +1,24 @@
+{
+  "elements": [
+    {
+      "id": "fnd_unreachable",
+      "kind": "MODULE",
+      "name": "fnd_unreachable",
+      "qualname": "",
+      "module": "fnd_unreachable",
+      "span": {
+        "path": "tests/fixtures/mode_b/fnd_unreachable/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

@@ -1,0 +1,22 @@
+{
+  "elements": [
+    {
+      "id": "adv_subprocess",
+      "kind": "MODULE",
+      "name": "adv_subprocess",
+      "qualname": "",
+      "module": "adv_subprocess",
+      "span": {
+        "path": "tests/fixtures/mode_a/adv_subprocess/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

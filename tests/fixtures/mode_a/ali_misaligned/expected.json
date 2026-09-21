@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "ali_misaligned",
+      "kind": "MODULE",
+      "name": "ali_misaligned",
+      "qualname": "",
+      "module": "ali_misaligned",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_misaligned/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ali_misaligned::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ali_misaligned",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_misaligned/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

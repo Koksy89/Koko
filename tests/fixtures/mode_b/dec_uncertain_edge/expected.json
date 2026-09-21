@@ -1,0 +1,58 @@
+{
+  "elements": [
+    {
+      "id": "dec_uncertain_edge",
+      "kind": "MODULE",
+      "name": "dec_uncertain_edge",
+      "qualname": "",
+      "module": "dec_uncertain_edge",
+      "span": {
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "dec_uncertain_edge::possible_path",
+      "kind": "FUNCTION",
+      "name": "possible_path",
+      "qualname": "possible_path",
+      "module": "dec_uncertain_edge",
+      "span": {
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "dec_uncertain_edge::make_choice",
+      "kind": "FUNCTION",
+      "name": "make_choice",
+      "qualname": "make_choice",
+      "module": "dec_uncertain_edge",
+      "span": {
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py",
+        "line": 4
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

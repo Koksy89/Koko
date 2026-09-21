@@ -1,0 +1,75 @@
+{
+  "elements": [
+    {
+      "id": "ord_branching",
+      "kind": "MODULE",
+      "name": "ord_branching",
+      "qualname": "",
+      "module": "ord_branching",
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ord_branching::path_a",
+      "kind": "FUNCTION",
+      "name": "path_a",
+      "qualname": "path_a",
+      "module": "ord_branching",
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ord_branching::path_b",
+      "kind": "FUNCTION",
+      "name": "path_b",
+      "qualname": "path_b",
+      "module": "ord_branching",
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py",
+        "line": 4
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ord_branching::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ord_branching",
+      "span": {
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py",
+        "line": 6
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

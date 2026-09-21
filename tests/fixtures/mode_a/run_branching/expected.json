@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "run_branching",
+      "kind": "MODULE",
+      "name": "run_branching",
+      "qualname": "",
+      "module": "run_branching",
+      "span": {
+        "path": "tests/fixtures/mode_a/run_branching/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "run_branching::func",
+      "kind": "FUNCTION",
+      "name": "func",
+      "qualname": "func",
+      "module": "run_branching",
+      "span": {
+        "path": "tests/fixtures/mode_a/run_branching/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}

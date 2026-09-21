@@ -1,0 +1,41 @@
+{
+  "elements": [
+    {
+      "id": "lin_feature_named",
+      "kind": "MODULE",
+      "name": "lin_feature_named",
+      "qualname": "",
+      "module": "lin_feature_named",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_feature_named/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "lin_feature_named::process",
+      "kind": "FUNCTION",
+      "name": "process",
+      "qualname": "process",
+      "module": "lin_feature_named",
+      "span": {
+        "path": "tests/fixtures/mode_b/lin_feature_named/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

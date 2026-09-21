@@ -1,0 +1,24 @@
+{
+  "elements": [
+    {
+      "id": "fnd_duplicated_logic",
+      "kind": "MODULE",
+      "name": "fnd_duplicated_logic",
+      "qualname": "",
+      "module": "fnd_duplicated_logic",
+      "span": {
+        "path": "tests/fixtures/mode_b/fnd_duplicated_logic/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

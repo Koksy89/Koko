@@ -1,0 +1,24 @@
+{
+  "elements": [
+    {
+      "id": "fnd_dead_branch",
+      "kind": "MODULE",
+      "name": "fnd_dead_branch",
+      "qualname": "",
+      "module": "fnd_dead_branch",
+      "span": {
+        "path": "tests/fixtures/mode_b/fnd_dead_branch/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "unresolved": [],
+  "edges": [],
+  "findings": []
+}

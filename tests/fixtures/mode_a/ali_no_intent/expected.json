@@ -1,0 +1,39 @@
+{
+  "elements": [
+    {
+      "id": "ali_no_intent",
+      "kind": "MODULE",
+      "name": "ali_no_intent",
+      "qualname": "",
+      "module": "ali_no_intent",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_no_intent/__init__.py",
+        "line": 1
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    },
+    {
+      "id": "ali_no_intent::main",
+      "kind": "FUNCTION",
+      "name": "main",
+      "qualname": "main",
+      "module": "ali_no_intent",
+      "span": {
+        "path": "tests/fixtures/mode_a/ali_no_intent/__init__.py",
+        "line": 2
+      },
+      "provenance": {
+        "method": "AST_DIRECT",
+        "confidence": "CERTAIN"
+      },
+      "content_hash": null,
+      "content_hash_asserted": false
+    }
+  ],
+  "events": []
+}
