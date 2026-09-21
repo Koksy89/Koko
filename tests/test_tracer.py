@@ -70,6 +70,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MODE_A = REPO_ROOT / "tests" / "fixtures" / "mode_a"
 TRACER_PKG = REPO_ROOT / "src" / "cascade_map" / "tracer"
 THIS_FILE = Path(__file__).name
+EXPECTED_ARTIFACTS = {
+    "events.jsonl",
+    "contradictions.jsonl",
+    "nondeterminism.jsonl",
+    "mapping.json",
+}
 
 AST = Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN)
 
@@ -393,6 +399,7 @@ def test_every_bounded_capture_announces_itself() -> None:
         "broken": Exploding(),
         "password": "hunter2",
     }
+    assert len(values) == 6
     for name, value in values.items():
         capture = capture_value(name, value)
         assert capture.status is not CaptureStatus.FULL, name
@@ -547,7 +554,9 @@ def test_the_tracer_cannot_start_a_process() -> None:
         "startfile",
     }
     forbidden_builtins = {"eval", "exec", "compile", "__import__"}
-    for source in sorted(TRACER_PKG.glob("*.py")):
+    sources = sorted(TRACER_PKG.glob("*.py"))
+    assert len(sources) >= 9, f"the tracer package has no sources to check: {sources}"
+    for source in sources:
         tree = ast.parse(source.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -583,6 +592,8 @@ def assert_expected_events(expected: dict[str, Any], actual: Iterable[Any]) -> N
     declared field is compared exactly.
     """
     by_sequence = {event.sequence: event for event in actual}
+    assert expected.get("events"), "nothing to grade: the expectation declares no events"
+    assert by_sequence, "nothing was traced"
     id_map: dict[str, str] = {}
     for want in expected.get("events", []):
         got = by_sequence.get(want["sequence"])
@@ -661,7 +672,9 @@ def test_every_event_carries_runtime_provenance_with_run_and_event_id() -> None:
     case = linear_case()
     _, index = load_case(case)
     tracer, run, _ = run_case(case, index)
-    for event in tracer.result(run).events:
+    events = tracer.result(run).events
+    assert len(events) == 6, "a loop over an empty trace would assert nothing"
+    for event in events:
         assert event.provenance is not None
         assert event.provenance.method is Method.RUNTIME_OBSERVED
         assert event.provenance.run_id == run.run_id
@@ -702,6 +715,7 @@ def test_replaying_a_recorded_run_is_byte_identical(tmp_path: Path) -> None:
     files_a = first.emit(first.result(run), out_a)
     files_b = second.emit(second.result(run), out_b)
     assert files_a == files_b
+    assert set(files_a) == EXPECTED_ARTIFACTS
     for name in files_a:
         assert (out_a / name).read_bytes() == (out_b / name).read_bytes()
     assert Recording.read(path).dumps() == recording.dumps()
@@ -1153,15 +1167,12 @@ def test_the_overlay_is_written_deterministically(tmp_path: Path) -> None:
     result = Tracer(decision_index()).materialise(make_run(), branch_recording(13))
     tracer = Tracer(decision_index())
     files = tracer.emit(result, tmp_path / "runtime" / "run_001")
-    assert set(files) == {
-        "events.jsonl",
-        "contradictions.jsonl",
-        "nondeterminism.jsonl",
-        "mapping.json",
-    }
+    assert set(files) == EXPECTED_ARTIFACTS
     again = tracer.emit(result, tmp_path / "runtime" / "again")
     assert files == again
-    for line in files["events.jsonl"].splitlines():
+    lines = files["events.jsonl"].splitlines()
+    assert len(lines) == len(result.events) == 5
+    for line in lines:
         payload = json.loads(line)
         assert payload["provenance"]["method"] == "RUNTIME_OBSERVED"
         assert payload["provenance"]["run_id"] == "run_001"
@@ -1435,7 +1446,9 @@ def test_emitted_events_match_the_trace_event_schema(tmp_path: Path) -> None:
     result = Tracer(decision_index()).materialise(make_run(), branch_recording(13))
     text = Tracer(decision_index()).emit(result, tmp_path)["events.jsonl"]
     assert text.endswith("\n")
-    for line in text.splitlines():
+    lines = text.splitlines()
+    assert len(lines) == len(result.events) == 5
+    for line in lines:
         payload = json.loads(line)
         assert set(payload) <= set(definition["properties"])
         for field in definition["required"]:

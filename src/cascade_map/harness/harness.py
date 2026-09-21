@@ -43,6 +43,15 @@ class Harness:
         target_hashes = compute_target_hashes(self.config.target_root)
         current_graph_hash = compute_graph_hash(target_hashes)
         run_id = compute_run_id(scenario, graph_hash, self._config_fingerprint())
+        sandbox_dir = str(self.config.sandbox_root)
+
+        # Registered unconditionally, before anything else: the harness's own
+        # bookkeeping (creating this directory, writing run.json once the run
+        # is over) must never be at the mercy of whichever sandbox a *prior*
+        # run in this process left active -- see sandbox.py's module
+        # docstring for why enforcement does not clear itself automatically.
+        register_trusted_root(str(self.config.sandbox_root))
+        register_trusted_root(str(self.config.mode_b_out_dir))
 
         controls = {
             "network": False,
@@ -61,6 +70,7 @@ class Harness:
                 interpreter=sys.version,
                 controls_active=dict(controls),
                 blocked=(),
+                sandbox_dir=sandbox_dir,
                 refused=True,
                 refusal_reason=reason,
             )
@@ -128,7 +138,9 @@ class Harness:
         controls["external_clients"] = True
 
         # 5. Execute, inside the sandbox, with everything above in force.
-        record = self._execute(run_id, target_hashes, graph_hash, scenario, spec, ctx, controls, filtered_env)
+        record = self._execute(
+            run_id, target_hashes, graph_hash, scenario, spec, ctx, controls, filtered_env, sandbox_dir
+        )
         self._write_run_record(record)
         return record
 
@@ -144,6 +156,7 @@ class Harness:
         ctx: SandboxContext,
         controls: dict[str, bool],
         filtered_env: dict[str, str],
+        sandbox_dir: str,
     ) -> RunRecord:
         original_env = dict(os.environ)
         original_cwd = os.getcwd()
@@ -199,6 +212,7 @@ class Harness:
             interpreter=sys.version,
             controls_active=dict(controls),
             blocked=blocked,
+            sandbox_dir=sandbox_dir,
             refused=False,
             refusal_reason="",
         )

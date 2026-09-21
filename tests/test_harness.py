@@ -47,10 +47,28 @@ import pytest
 from cascade_map.contracts import canonical_dumps
 from cascade_map.harness import Harness, RunConfig, ScenarioSpec
 from cascade_map.harness.hashing import compute_graph_hash, compute_target_hashes
-from cascade_map.harness.sandbox import SandboxContext, activate
+from cascade_map.harness.sandbox import SandboxContext, _reset_for_tests, activate
 
 FIXTURES_ROOT = Path(__file__).parent / "fixtures"
 FIXTURES_MODE_A = FIXTURES_ROOT / "mode_a"
+
+
+@pytest.fixture(autouse=True)
+def _clean_sandbox_state_between_tests():
+    """Enforcement in ``sandbox.py`` deliberately never clears itself (see
+    its module docstring) -- correct for one ``cascade-map trace`` per
+    process, friction for this module's own suite, which runs many harness
+    sessions in one process on purpose. ``_reset_for_tests`` is not part of
+    the harness's public surface and no production code calls it; this
+    fixture is the one place it is used, so each test's own setup (writing
+    its own fixture files, before that test's own ``Harness.start()`` has
+    registered its own trusted roots) gets the same clean slate a fresh
+    process would have, and nothing this module's tests do leaks into
+    whatever pytest or another card's tests run next.
+    """
+    _reset_for_tests()
+    yield
+    _reset_for_tests()
 
 
 def _snapshot_fixtures_tree() -> dict[str, str]:

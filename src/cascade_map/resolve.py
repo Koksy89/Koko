@@ -1163,6 +1163,25 @@ class Resolver:
     def registry_members(self, container_id: str) -> tuple[tuple[str, Method], ...]:
         return tuple(self._registry_members.get(container_id, ()))
 
+    def registry_binding(self, module: str, name: str) -> _Binding | None:
+        """A REGISTRY binding for *name*, or ``None`` if it holds no callables.
+
+        A module-level dict that holds data is a dict, not a registry. Calling
+        it one would turn every ``x.get(k)`` in the engine into a dispatch.
+        """
+        summary = self._modules.get(module)
+        reg = summary.registries.get(name) if summary else None
+        if reg is None or not self._registry_members.get(reg.element_id):
+            return None
+        return _Binding(
+            kind=_BKind.REGISTRY,
+            target_id=reg.element_id,
+            registry_key=(module, name),
+            method=Method.REGISTRY_MEMBERSHIP,
+            confidence=Confidence.RESOLVED,
+            builtin_type=reg.container if reg.container in _BUILTIN_TYPES else "",
+        )
+
     # -- emission -------------------------------------------------------
 
     def _emit(
@@ -1253,16 +1272,11 @@ class Resolver:
             for exported, binding in self._star_bindings(summary, spec).items():
                 scope.setdefault(exported, binding)
         for name in sorted(summary.registries):
-            reg = summary.registries[name]
             if name in scope:
                 continue
-            scope[name] = _Binding(
-                kind=_BKind.REGISTRY,
-                target_id=reg.element_id,
-                registry_key=(module, name),
-                method=Method.REGISTRY_MEMBERSHIP,
-                confidence=Confidence.RESOLVED,
-            )
+            binding = self.registry_binding(module, name)
+            if binding is not None:
+                scope[name] = binding
         for name in sorted(summary.assigns):
             if name in scope:
                 continue
@@ -1538,15 +1552,10 @@ class Resolver:
                     external=inner.external,
                     note="re-exported",
                 )
-        elif name in summary.registries:
-            reg = summary.registries[name]
-            result = _Binding(
-                kind=_BKind.REGISTRY,
-                target_id=reg.element_id,
-                registry_key=(module, name),
-                method=Method.REGISTRY_MEMBERSHIP,
-                confidence=Confidence.RESOLVED,
-            )
+        elif self.registry_binding(module, name) is not None:
+            found = self.registry_binding(module, name)
+            assert found is not None
+            result = found
         elif name in summary.assigns:
             result = self._binding_from_assign_text(module, summary.assigns[name])
         else:
@@ -2765,18 +2774,14 @@ class _CallResolver(ast.NodeVisitor):
 
     def _assign_target(self, target: ast.expr, binding: _Binding, node: ast.AST) -> None:
         if isinstance(target, ast.Name):
-            if binding.kind is _BKind.UNKNOWN and self.scope.kind == "module":
+            if binding.kind in (_BKind.UNKNOWN, _BKind.BUILTIN) and self.scope.kind == "module":
                 # A container literal evaluates to nothing on its own, but the
-                # name still denotes the registry the summariser found.
-                registry = self.s.registries.get(target.id)
+                # name still denotes the registry the summariser found. The
+                # builtin type rides along, so `HANDLERS.items()` is still a
+                # dict method while `HANDLERS[key]` is still a dispatch.
+                registry = self.r.registry_binding(self.module, target.id)
                 if registry is not None:
-                    binding = _Binding(
-                        kind=_BKind.REGISTRY,
-                        target_id=registry.element_id,
-                        registry_key=(self.module, target.id),
-                        method=Method.REGISTRY_MEMBERSHIP,
-                        confidence=Confidence.RESOLVED,
-                    )
+                    binding = registry
             self._bind(target.id, binding)
             if self.scope.kind == "module" and binding.kind in (_BKind.CALLABLE, _BKind.CLASS):
                 alias_id = self.r._id_for(self.module, target.id, 1)

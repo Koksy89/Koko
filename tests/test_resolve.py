@@ -555,16 +555,48 @@ def _run_subset(
 ) -> tuple[list[Edge], list[Unresolved], Resolver]:
     """Inventory *root* but hand the resolver only one case's elements.
 
-    Keeps module names as the fixture's ``expected.json`` writes them
-    (``res_import_absolute``, not ``""``) without dragging the rest of the
-    corpus into the case under test.
+    Module names are relative to *root* (``res_import_absolute``, as the
+    fixture's ``expected.json`` writes them) while span paths stay relative to
+    the repository, which is card 1's convention and is what makes
+    ``config_key_id`` land on the path the expectation names.
     """
+    rel_root = root.relative_to(REPO_ROOT).as_posix()
     elements = [
-        e for e in _inventory(root) if e.span.path.split("/")[0] == prefix
+        _reroot(e, rel_root)
+        for e in _inventory(root)
+        if e.span.path.split("/")[0] == prefix
     ]
-    resolver = Resolver(root, config_paths=config_paths)
+    resolver = Resolver(
+        REPO_ROOT,
+        config_paths=[f"{rel_root}/{p}" for p in config_paths],
+    )
     edges, unresolved = resolver.resolve(elements)
     return list(edges), list(unresolved), resolver
+
+
+def _reroot(element: Element, rel_root: str) -> Element:
+    """Repository-relative span path, root-relative module name."""
+    span = element.span
+    return Element(
+        id=element.id,
+        kind=element.kind,
+        name=element.name,
+        qualname=element.qualname,
+        module=element.module,
+        span=SourceSpan(
+            path=f"{rel_root}/{span.path}",
+            line=span.line,
+            end_line=span.end_line,
+            col=span.col,
+        ),
+        provenance=element.provenance,
+        content_hash=element.content_hash,
+        decorators=element.decorators,
+        signature=element.signature,
+        docstring=element.docstring,
+        parent_id=element.parent_id,
+        byte_size=element.byte_size,
+    )
 
 
 def _fixture_run(

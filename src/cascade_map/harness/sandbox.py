@@ -454,6 +454,28 @@ def _is_trusted(path: str) -> bool:
     return any(real == root or real.startswith(root + os.sep) for root in _trusted_roots)
 
 
+def _reset_for_tests() -> None:
+    """Return to the same "no run has ever started in this process" state a
+    fresh interpreter has.
+
+    Not called anywhere in ``Harness`` or ``__init__.py``'s public surface --
+    this is not a force flag, and no production code path reaches it. It
+    exists because enforcement deliberately never clears itself (see the
+    module docstring), which is correct for a real ``cascade-map trace``
+    invocation, exiting as one process per run, and is friction for this
+    module's own test suite, which runs many runs in one process on purpose
+    to prove the escapes stay closed. Test files call this between tests --
+    see ``tests/test_harness.py`` -- so each test's own setup code gets the
+    same clean slate a fresh process would have, instead of being judged
+    against whatever a previous, unrelated test left active.
+    """
+    global _active_ctx
+    with _state_lock:
+        _active_ctx = None
+    with _trusted_roots_lock:
+        _trusted_roots.clear()
+
+
 def _dispatch(event: str, args: tuple[object, ...]) -> None:
     ctx = _active_ctx
     if ctx is None:
