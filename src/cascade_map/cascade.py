@@ -1576,10 +1576,10 @@ class CascadeAnalyzer:
     def _order_for_element(self, element_id: str) -> str:
         builder = self._builders[element_id]
         root_id = self._order_id(element_id)
-        children, confidence = self._emit_seq(builder.shape, element_id, "", root_id)
+        children, confidence = self._emit_seq(builder.shape, element_id, "")
         if builder.deferred:
             deferred_children, deferred_conf = self._emit_seq(
-                _SeqShape(children=list(builder.deferred)), element_id, "/deferred", root_id
+                _SeqShape(children=list(builder.deferred)), element_id, "/deferred"
             )
             node_id = self._emit(
                 self._order_id(element_id, "/deferred"),
@@ -1692,7 +1692,7 @@ class CascadeAnalyzer:
         if isinstance(shape, _LoopShape):
             return self._emit_loop(shape, element_id, path)
         if isinstance(shape, _SeqShape):
-            children, confidence = self._emit_seq(shape, element_id, path, "")
+            children, confidence = self._emit_seq(shape, element_id, path)
             if not children:
                 return None, Confidence.CERTAIN
             shape.node_id = self._order_id(element_id, path)
@@ -1787,7 +1787,7 @@ class CascadeAnalyzer:
         confidences: list[Confidence] = [Confidence.CERTAIN]
         for index, (label, arm) in enumerate(shape.arms):
             arm_path = f"{path}/arm{index}"
-            children, confidence = self._emit_seq(arm, element_id, arm_path, shape.node_id)
+            children, confidence = self._emit_seq(arm, element_id, arm_path)
             arm_id = self._emit(
                 self._order_id(element_id, arm_path),
                 OrderKind.SEQUENCE,
@@ -1819,7 +1819,7 @@ class CascadeAnalyzer:
     ) -> tuple[str | None, Confidence]:
         shape.node_id = self._order_id(element_id, path)
         body_children, confidence = self._emit_seq(
-            shape.body, element_id, f"{path}/body", shape.node_id
+            shape.body, element_id, f"{path}/body"
         )
         children = [
             self._emit(
@@ -1835,7 +1835,7 @@ class CascadeAnalyzer:
         ]
         if shape.orelse is not None:
             else_children, else_conf = self._emit_seq(
-                shape.orelse, element_id, f"{path}/else", shape.node_id
+                shape.orelse, element_id, f"{path}/else"
             )
             children.append(
                 self._emit(

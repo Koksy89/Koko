@@ -65,7 +65,6 @@ ENUM_FIELDS: dict[str, Any] = {
     "kind": None,  # resolved per collection below
     "method": Method,
     "confidence": Confidence,
-    "reason": UnresolvedReason,
     "state": ReachabilityState,
     "status": IntentStatus,
     "verdict": Verdict,
@@ -301,6 +300,20 @@ def audit_case(case_dir: Path) -> list[str]:
                 walk_enums(value, f"{where}/{index}")
 
     walk_enums(expected, "")
+
+    # `reason` is an UnresolvedReason on Unresolved and Barrier, and free text
+    # on Reachability -- so it is validated per collection, not generically.
+    for collection in ("unresolved", "barriers"):
+        for record in expected.get(collection, []):
+            if not isinstance(record, dict) or "reason" not in record:
+                continue
+            try:
+                UnresolvedReason(record["reason"])
+            except ValueError:
+                problems.append(
+                    f"{rel}: {collection} record {record.get('id')!r} has reason "
+                    f"{record['reason']!r}, not an UnresolvedReason"
+                )
 
     for collection in ("edges", "findings", "lineage", "unresolved", "barriers"):
         ids = [r["id"] for r in expected.get(collection, []) if isinstance(r, dict) and "id" in r]

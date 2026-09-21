@@ -5,13 +5,14 @@ Grading notes, stated plainly because the card is graded on precision and recall
 * All nine `lin_*` cases in `FIXTURES.md` are exercised against the real fixture
   sources in `tests/fixtures/mode_b/`, read as text and parsed, never imported or
   executed.
-* `GRADED` holds every case whose *complete* expected edge set is written out by
-  hand here, from reading the source: the eight non-barrier fixtures plus four
-  larger constructed cases that cover what the fixtures do not (`**kwargs`,
-  dataframe merge/groupby/apply, config-named features, alias mutation, sinks).
-  `test_precision_and_recall` grades against them: precision must be 1 -- a
-  confident wrong edge is the failure this card fears -- and recall is asserted
-  at 1 and printed.
+* `test_precision_and_recall` grades the *complete* expected edge set of every
+  case it can: the eight non-barrier fixtures (`FIXTURE_EXPECTED`) plus two
+  larger constructed cases (`GRADED`). Precision must be 1 -- a confident wrong
+  edge is the failure this card fears -- and recall is asserted at 1 and printed.
+* The fixtures are deliberately small, so the rest of the card's surface
+  (`**kwargs`, dataframe merge/groupby/apply, config-named features, alias
+  mutation, mutation through a parameter, decision sinks) is covered by the
+  constructed cases below, with expectations hand-written from reading them.
 
 **Known conflict, reported not papered over.** `mode_b/lin_assign_chain/
 expected.json` writes lineage node IDs as `module::function::variable`, while
@@ -144,19 +145,23 @@ def edges_between(tracer: LineageTracer, source: str, target: str) -> list[Linea
 # reading each fixture source.
 # ---------------------------------------------------------------------------
 
+# Node-ID prefixes, kept short so the expected sets stay readable.
+_P = "lin_assign_chain::process_data."
+_A = "lin_assign_chain::augmented_example."
+
 FIXTURE_EXPECTED: dict[str, set[tuple[str, str, str]]] = {
     # x = input_value; y = x + 1; z = y * 2; result = z - 1; return result
     # total = 0; total += data; total *= 2; return total
     "lin_assign_chain": {
-        ("ASSIGNS", "lin_assign_chain::process_data.input_value", "lin_assign_chain::process_data.x"),
-        ("ASSIGNS", "lin_assign_chain::process_data.x", "lin_assign_chain::process_data.y"),
-        ("ASSIGNS", "lin_assign_chain::process_data.y", "lin_assign_chain::process_data.z"),
-        ("ASSIGNS", "lin_assign_chain::process_data.z", "lin_assign_chain::process_data.result"),
-        ("RETURNS", "lin_assign_chain::process_data.result", "lin_assign_chain::process_data.@return"),
-        ("ASSIGNS", "lin_assign_chain::augmented_example.total", "lin_assign_chain::augmented_example.total#2"),
-        ("ASSIGNS", "lin_assign_chain::augmented_example.data", "lin_assign_chain::augmented_example.total#2"),
-        ("ASSIGNS", "lin_assign_chain::augmented_example.total#2", "lin_assign_chain::augmented_example.total#3"),
-        ("RETURNS", "lin_assign_chain::augmented_example.total#3", "lin_assign_chain::augmented_example.@return"),
+        ("ASSIGNS", f"{_P}input_value", f"{_P}x"),
+        ("ASSIGNS", f"{_P}x", f"{_P}y"),
+        ("ASSIGNS", f"{_P}y", f"{_P}z"),
+        ("ASSIGNS", f"{_P}z", f"{_P}result"),
+        ("RETURNS", f"{_P}result", f"{_P}@return"),
+        ("ASSIGNS", f"{_A}total", f"{_A}total#2"),
+        ("ASSIGNS", f"{_A}data", f"{_A}total#2"),
+        ("ASSIGNS", f"{_A}total#2", f"{_A}total#3"),
+        ("RETURNS", f"{_A}total#3", f"{_A}@return"),
     },
     # def process(x, y, **kwargs): z = x + y; return z
     "lin_params": {
@@ -419,7 +424,9 @@ def test_lin_container_attribute_write_on_self_and_on_an_object_share_a_node(
     tmp_path: Path,
 ) -> None:
     tracer = analyze(tmp_path, {"cont": CONTAINER_SRC})
-    assert has(tracer, LineageKind.ATTRIBUTE_WRITE, "cont::Holder.bump.delta", "cont::Holder.value#2")
+    assert has(
+        tracer, LineageKind.ATTRIBUTE_WRITE, "cont::Holder.bump.delta", "cont::Holder.value#2"
+    )
     backward = tracer.slice("cont::build.@return", "backward")
     assert "cont::build.beta" in backward.member_ids
     assert "cont::build.alpha" in backward.member_ids
@@ -932,9 +939,8 @@ def test_confidence_of_a_slice_is_combined_from_its_hops(tmp_path: Path) -> None
     tracer = analyze(tmp_path, {"p": PARAMS_SRC})
     backward = tracer.slice("p::blend.options", "backward")
     hops = [tracer._edges[eid].provenance.confidence for eid in backward.edge_ids]
-    assert backward.confidence is min(
-        hops, key=lambda c: ["UNKNOWN", "HEURISTIC", "PROBABLE", "RESOLVED", "CERTAIN"].index(str(c))
-    )
+    order = ["UNKNOWN", "HEURISTIC", "PROBABLE", "RESOLVED", "CERTAIN"]
+    assert backward.confidence is min(hops, key=lambda c: order.index(str(c)))
 
 
 def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
