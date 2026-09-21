@@ -1475,3 +1475,138 @@ def test_observer_never_started_when_audit_hook_cannot_be_verified(
     assert record.refused is True
     assert observer.start_calls == 0
     assert observer.stop_calls == 0
+
+
+# ---------------------------------------------------------------------------
+# ScenarioStageError -- the target's own failure, tagged import vs. call
+#
+# Currently caught and discarded by Harness._execute: RunRecord has no field
+# yet for "the scenario itself failed" (requested from the lead, see the
+# build report). These tests prove the stage-tagging is correct at the point
+# it is produced, ahead of the pending field that will carry it onward --
+# calling `_run_scenario` directly, never through `activate()`, so no
+# sandbox state is touched and these stay safe to run in-process.
+# ---------------------------------------------------------------------------
+
+
+def test_run_scenario_tags_an_import_failure_as_the_import_stage(tmp_path: Path) -> None:
+    from cascade_map.harness.errors import ScenarioStageError
+
+    target_root = tmp_path / "target_missing_module"
+    target_root.mkdir()  # deliberately empty: the module genuinely does not exist
+    config = RunConfig(
+        target_root=target_root,
+        mode_b_out_dir=tmp_path / "out",
+        sandbox_root=tmp_path / "sandbox",
+        scenarios={"s": ScenarioSpec(name="s", module="definitely_missing_module")},
+    )
+    harness = Harness(config)
+    with pytest.raises(ScenarioStageError) as excinfo:
+        harness._run_scenario(config.scenarios["s"])
+    assert excinfo.value.stage == "import"
+    assert isinstance(excinfo.value.original, ModuleNotFoundError)
+
+
+def test_run_scenario_tags_an_entry_point_failure_as_the_call_stage(tmp_path: Path) -> None:
+    from cascade_map.harness.errors import ScenarioStageError
+
+    target_root = tmp_path / "target_raising_entry_point"
+    target_root.mkdir()
+    (target_root / "raising_mod.py").write_text(
+        "def boom():\n    raise ValueError('scenario entry point failed')\n"
+    )
+    config = RunConfig(
+        target_root=target_root,
+        mode_b_out_dir=tmp_path / "out",
+        sandbox_root=tmp_path / "sandbox",
+        scenarios={"s": ScenarioSpec(name="s", module="raising_mod", function="boom")},
+    )
+    harness = Harness(config)
+    # A plain in-process import outside the sandbox: prevent a bytecode
+    # cache from landing next to the fixture-shaped target this test wrote.
+    original_dont_write_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        with pytest.raises(ScenarioStageError) as excinfo:
+            harness._run_scenario(config.scenarios["s"])
+    finally:
+        sys.dont_write_bytecode = original_dont_write_bytecode
+        sys.modules.pop("raising_mod", None)
+    assert excinfo.value.stage == "call"
+    assert isinstance(excinfo.value.original, ValueError)
+    assert "scenario entry point failed" in str(excinfo.value.original)
+
+
+def test_run_scenario_tags_a_missing_entry_point_as_the_call_stage(tmp_path: Path) -> None:
+    """A module that imports fine but does not have the declared entry
+    point (``getattr`` failure): also tagged "call", not "import" -- the
+    module itself loaded successfully. See the build report for the
+    separate question of whether this specific shape (module fine, name
+    on it wrong) should be closer to a refusal than a completed run.
+    """
+    from cascade_map.harness.errors import ScenarioStageError
+
+    target_root = tmp_path / "target_missing_entry_point"
+    target_root.mkdir()
+    (target_root / "importable_mod.py").write_text("x = 1\n")
+    config = RunConfig(
+        target_root=target_root,
+        mode_b_out_dir=tmp_path / "out",
+        sandbox_root=tmp_path / "sandbox",
+        scenarios={
+            "s": ScenarioSpec(name="s", module="importable_mod", function="does_not_exist")
+        },
+    )
+    harness = Harness(config)
+    original_dont_write_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        with pytest.raises(ScenarioStageError) as excinfo:
+            harness._run_scenario(config.scenarios["s"])
+    finally:
+        sys.dont_write_bytecode = original_dont_write_bytecode
+        sys.modules.pop("importable_mod", None)
+    assert excinfo.value.stage == "call"
+    assert isinstance(excinfo.value.original, AttributeError)
+
+
+def test_blocked_operation_and_harness_refusal_pass_through_run_scenario_unwrapped(
+    tmp_path: Path,
+) -> None:
+    """The two exceptions ``_execute`` already has dedicated handlers for
+    must not be caught up in the new wrapping -- proven directly against
+    ``_run_scenario``, not just inferred from the adv_* tests still passing.
+    """
+    from cascade_map.harness.errors import BlockedOperation, HarnessRefusal
+
+    target_root = tmp_path / "target_raises_harness_exceptions"
+    target_root.mkdir()
+    (target_root / "raises_blocked.py").write_text(
+        "from cascade_map.harness.errors import BlockedOperation\n"
+        "raise BlockedOperation('synthetic')\n"
+    )
+    (target_root / "raises_refusal.py").write_text(
+        "from cascade_map.harness.errors import HarnessRefusal\n"
+        "raise HarnessRefusal('synthetic')\n"
+    )
+    config = RunConfig(
+        target_root=target_root,
+        mode_b_out_dir=tmp_path / "out",
+        sandbox_root=tmp_path / "sandbox",
+        scenarios={
+            "blocked": ScenarioSpec(name="blocked", module="raises_blocked"),
+            "refusal": ScenarioSpec(name="refusal", module="raises_refusal"),
+        },
+    )
+    harness = Harness(config)
+    original_dont_write_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        with pytest.raises(BlockedOperation):
+            harness._run_scenario(config.scenarios["blocked"])
+        with pytest.raises(HarnessRefusal):
+            harness._run_scenario(config.scenarios["refusal"])
+    finally:
+        sys.dont_write_bytecode = original_dont_write_bytecode
+        sys.modules.pop("raises_blocked", None)
+        sys.modules.pop("raises_refusal", None)

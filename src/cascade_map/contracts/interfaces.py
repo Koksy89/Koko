@@ -60,6 +60,7 @@ __all__ = [
     "DocRecord",
     "RunRecord",
     "BlockedAttempt",
+    "ScenarioFailure",
     "CaptureStatus",
     "ValueCapture",
     "EventKind",
@@ -826,6 +827,37 @@ class BlockedAttempt:
 
 
 @dataclass(frozen=True, slots=True)
+class ScenarioFailure:
+    """The scenario raised. The run happened; it did not do what was asked.
+
+    Swallowing this silently was the most misleading behaviour in the tool. A
+    scenario pointed at the wrong root reported 524 events, 0 mapped, 0
+    blocked and exit 0 -- every event being the failed import's own machinery.
+    An owner reads that as "my engine ran and the static map was entirely
+    wrong" and goes hunting a bug in their analysis, when not one line of their
+    code executed.
+
+    `stage` separates the two cases because they are different problems.
+    `import` means the module could not be loaded at all. `call` means the
+    module imported and the named function was missing or raised -- and a clean
+    `AttributeError` there is a scenario-declaration error, not a fact about
+    the target.
+
+    An `import` failure stays a completed run rather than a refusal, on card
+    11's reasoning: a target whose own nested imports are broken is a genuine
+    finding about the target, and it cannot be reliably told apart from a
+    mis-declared root. Refusing would hide the more interesting of the two.
+    """
+
+    stage: str
+    exception_type: str
+    message: str
+    traceback: str = ""
+    """Bounded. Capped explicitly rather than silently truncated -- the same
+    rule `ValueCapture` follows, for the same reason."""
+
+
+@dataclass(frozen=True, slots=True)
 class RunRecord:
     run_id: str
     target_hashes: dict[str, str]
@@ -860,6 +892,9 @@ class RunRecord:
     sandbox_dir: str = ""
     """Where writes were redirected. Card 12 needs it to locate a recording,
     and the owner needs it to find what the run produced."""
+
+    scenario_failure: ScenarioFailure | None = None
+    """Set when the scenario raised. `None` means it completed."""
 
     refused: bool = False
     refusal_reason: str = ""

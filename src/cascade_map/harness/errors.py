@@ -28,3 +28,30 @@ class HarnessRefusal(Exception):
     turns it into a refused ``RunRecord``; it is exposed for callers that want
     to fail loudly instead.
     """
+
+
+class ScenarioStageError(Exception):
+    """The target's own code failed to run to completion, tagged with which
+    stage of reaching it failed.
+
+    ``stage`` is ``"import"`` (``spec.module`` itself, or something it
+    imports, never loaded -- possibly a wrong ``target_root`` or a typo'd
+    module name, not necessarily a defect in the target) or ``"call"``
+    (the module loaded, but the declared entry point does not exist on it,
+    or raised once called). ``original`` is the exception actually raised,
+    kept whole -- type, message and ``__traceback__`` are all still directly
+    inspectable on it.
+
+    Distinguishing the two matters to whoever reads the result: "your
+    module does not exist" and "your `main()` raised" are different
+    problems. ``_execute`` currently catches and discards this (``RunRecord``
+    has no field yet for "the scenario itself failed" -- requested from the
+    lead, see the build report); the stage is already correctly identified
+    here so wiring it into the record is a small, localized change once
+    that field exists.
+    """
+
+    def __init__(self, stage: str, original: BaseException) -> None:
+        super().__init__(str(original))
+        self.stage = stage
+        self.original = original

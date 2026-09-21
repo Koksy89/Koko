@@ -18,10 +18,16 @@ import sys
 import tempfile
 from pathlib import Path
 
-from cascade_map.contracts import BlockedAttempt, RunObserver, RunRecord, canonical_dumps
+from cascade_map.contracts import (
+    BlockedAttempt,
+    RunObserver,
+    RunRecord,
+    ScenarioFailure,
+    canonical_dumps,
+)
 
 from .config import RunConfig, ScenarioSpec
-from .errors import BlockedOperation, HarnessRefusal
+from .errors import BlockedOperation, HarnessRefusal, ScenarioStageError
 from .hashing import compute_graph_hash, compute_run_id, compute_target_hashes, config_fingerprint
 from .sandbox import SandboxContext, activate
 
@@ -261,10 +267,33 @@ class Harness:
                 else:
                     self._run_scenario(spec)
         except BlockedOperation:
-            pass  # already recorded on ctx; a blocked attempt, not a failed run
+            # Safe to discard: the denial is already a BlockedAttempt on
+            # ctx.blocked (see sandbox.py) by the time this is caught, so it
+            # reaches the RunRecord through `blocked` below. Nothing here is
+            # silently lost.
+            pass
         except HarnessRefusal:
             raise
-        except Exception:  # noqa: BLE001 - the scenario crashing is a completed run
+        except ScenarioStageError:
+            # NOT safe to discard the way BlockedOperation is: this has
+            # nowhere to go. `_run_scenario` already identifies whether the
+            # target never imported (`.stage == "import"` -- possibly a
+            # wrong `target_root` or a typo'd module name, not necessarily a
+            # target defect) or its entry point failed (`.stage == "call"`),
+            # and `.original` carries the real exception whole (type,
+            # message, `__traceback__`). RunRecord has no field yet for "the
+            # scenario itself failed", so all of that is still dropped here
+            # -- a target that never imported produces a record
+            # indistinguishable from a clean run that mapped nothing, a
+            # real, costly misreading reported upstream. Requested a field
+            # for this from the lead; wiring it in here is a small,
+            # localized change once it exists. See the build report.
+            pass
+        except Exception:  # noqa: BLE001 - genuinely unexpected: not a target failure
+            # Everything _run_scenario can raise from the target's own code
+            # is wrapped in ScenarioStageError above; reaching this instead
+            # means the failure was in this method's own setup/teardown
+            # (chdir, env, client stub installation), not in the scenario.
             pass
         finally:
             os.chdir(original_cwd)
@@ -299,10 +328,20 @@ class Harness:
         if path_added:
             sys.path.insert(0, target_root)
         try:
-            module = importlib.import_module(spec.module)
+            try:
+                module = importlib.import_module(spec.module)
+            except (BlockedOperation, HarnessRefusal):
+                raise  # unwrapped: _execute's existing handlers deal with these
+            except BaseException as exc:
+                raise ScenarioStageError("import", exc) from exc
             if spec.function:
-                func = getattr(module, spec.function)
-                func(*spec.args)
+                try:
+                    func = getattr(module, spec.function)
+                    func(*spec.args)
+                except (BlockedOperation, HarnessRefusal):
+                    raise
+                except BaseException as exc:
+                    raise ScenarioStageError("call", exc) from exc
         finally:
             if path_added:
                 try:

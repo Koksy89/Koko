@@ -1196,7 +1196,7 @@
     },
     "RunRecord": {
       "additionalProperties": false,
-      "description": "RunRecord(run_id: 'str', target_hashes: 'dict[str, str]', graph_hash: 'str', scenario: 'str', interpreter: 'str', controls_active: 'dict[str, bool]', blocked: 'tuple[BlockedAttempt, ...]', unguaranteed: 'tuple[str, ...]' = (), sandbox_dir: 'str' = '', refused: 'bool' = False, refusal_reason: 'str' = '')",
+      "description": "RunRecord(run_id: 'str', target_hashes: 'dict[str, str]', graph_hash: 'str', scenario: 'str', interpreter: 'str', controls_active: 'dict[str, bool]', blocked: 'tuple[BlockedAttempt, ...]', unguaranteed: 'tuple[str, ...]' = (), sandbox_dir: 'str' = '', scenario_failure: 'ScenarioFailure | None' = None, refused: 'bool' = False, refusal_reason: 'str' = '')",
       "properties": {
         "blocked": {
           "items": {
@@ -1231,6 +1231,16 @@
         "scenario": {
           "type": "string"
         },
+        "scenario_failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScenarioFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "target_hashes": {
           "additionalProperties": {
             "type": "string"
@@ -1252,6 +1262,30 @@
         "run_id",
         "scenario",
         "target_hashes"
+      ],
+      "type": "object"
+    },
+    "ScenarioFailure": {
+      "additionalProperties": false,
+      "description": "The scenario raised. The run happened; it did not do what was asked. Swallowing this silently was the most misleading behaviour in the tool. A scenario pointed at the wrong root reported 524 events, 0 mapped, 0 blocked and exit 0 -- every event being the failed import's own machinery. An owner reads that as \"my engine ran and the static map was entirely wrong\" and goes hunting a bug in their analysis, when not one line of their code executed. `stage` separates the two cases because they are different problems. `import` means the module could not be loaded at all. `call` means the module imported and the named function was missing or raised -- and a clean `AttributeError` there is a scenario-declaration error, not a fact about the target. An `import` failure stays a completed run rather than a refusal, on card 11's reasoning: a target whose own nested imports are broken is a genuine finding about the target, and it cannot be reliably told apart from a mis-declared root. Refusing would hide the more interesting of the two.",
+      "properties": {
+        "exception_type": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "traceback": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "exception_type",
+        "message",
+        "stage"
       ],
       "type": "object"
     },
