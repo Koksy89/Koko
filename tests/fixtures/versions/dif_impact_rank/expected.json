@@ -1,4 +1,246 @@
 {
-  "changes": [],
-  "impacts": []
+  "after_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "engine",
+      "kind": "MODULE",
+      "module": "engine",
+      "name": "engine",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_impact_rank/after/engine.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "THE SINK. One line of this function is the whole decision.",
+      "id": "engine::decide",
+      "kind": "FUNCTION",
+      "module": "engine",
+      "name": "decide",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "decide",
+      "signature": "(score)",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_impact_rank/after/engine.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Reached by nothing. Rewritten wholesale in the after version.",
+      "id": "engine::legacy_export",
+      "kind": "FUNCTION",
+      "module": "engine",
+      "name": "legacy_export",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "legacy_export",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 18,
+        "line": 11,
+        "path": "tests/fixtures/versions/dif_impact_rank/after/engine.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Entry point. Never calls legacy_export.",
+      "id": "engine::main",
+      "kind": "FUNCTION",
+      "module": "engine",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "(score, rows)",
+      "span": {
+        "col": 0,
+        "end_line": 23,
+        "line": 21,
+        "path": "tests/fixtures/versions/dif_impact_rank/after/engine.py"
+      }
+    }
+  ],
+  "before_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "engine",
+      "kind": "MODULE",
+      "module": "engine",
+      "name": "engine",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_impact_rank/before/engine.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "THE SINK. One line of this function is the whole decision.",
+      "id": "engine::decide",
+      "kind": "FUNCTION",
+      "module": "engine",
+      "name": "decide",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "decide",
+      "signature": "(score)",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_impact_rank/before/engine.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Reached by nothing. Rewritten wholesale in the after version.",
+      "id": "engine::legacy_export",
+      "kind": "FUNCTION",
+      "module": "engine",
+      "name": "legacy_export",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "legacy_export",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 19,
+        "line": 11,
+        "path": "tests/fixtures/versions/dif_impact_rank/before/engine.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Entry point. Never calls legacy_export.",
+      "id": "engine::main",
+      "kind": "FUNCTION",
+      "module": "engine",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "(score, rows)",
+      "span": {
+        "col": 0,
+        "end_line": 24,
+        "line": 22,
+        "path": "tests/fixtures/versions/dif_impact_rank/before/engine.py"
+      }
+    }
+  ],
+  "case_id": "dif_impact_rank",
+  "change_count_exact": 3,
+  "changes": [
+    {
+      "after_id": "engine::decide",
+      "before_id": "engine::decide",
+      "id": "dif_impact_rank:c1",
+      "kind": "BODY_CHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "one constant inside the decision condition changed"
+      }
+    },
+    {
+      "after_id": "engine::legacy_export",
+      "before_id": "engine::legacy_export",
+      "id": "dif_impact_rank:c2",
+      "kind": "BODY_CHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "the whole body was rewritten"
+      }
+    },
+    {
+      "after_id": "engine::main",
+      "before_id": "engine::main",
+      "id": "dif_impact_rank:c3",
+      "kind": "UNCHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH"
+      }
+    }
+  ],
+  "declared_sink_ids": [
+    "engine::decide"
+  ],
+  "entry_ids": [
+    "engine::main"
+  ],
+  "id_convention": "<module>::<qualname>, where <module> is the dotted path relative to the version root (before/ or after/). A diff comparing two roots must strip the root component before matching.",
+  "impacts": [
+    {
+      "affected_ids": [
+        "engine::decide",
+        "engine::main"
+      ],
+      "change_id": "dif_impact_rank:c1",
+      "decision_paths_changed": true,
+      "features_changed": [],
+      "findings_added": [],
+      "findings_removed": [],
+      "id": "dif_impact_rank:i1",
+      "rank": 1,
+      "reachability_flipped": []
+    },
+    {
+      "affected_ids": [
+        "engine::legacy_export"
+      ],
+      "change_id": "dif_impact_rank:c2",
+      "decision_paths_changed": false,
+      "features_changed": [],
+      "findings_added": [],
+      "findings_removed": [],
+      "id": "dif_impact_rank:i2",
+      "rank": 2,
+      "reachability_flipped": []
+    }
+  ],
+  "notes": [
+    "The decision change touches one token; the refactor touches eight lines. rank 1 goes to the first."
+  ],
+  "proves": "One line changed inside the decision condition (`> 10` to `> 20`) and eight lines rewritten inside a function nothing reaches. The one-line change outranks the refactor. Ranking by diff size gets this exactly backwards, which is why rank is by decision impact.",
+  "required_rank_order": [
+    "dif_impact_rank:i1",
+    "dif_impact_rank:i2"
+  ]
 }

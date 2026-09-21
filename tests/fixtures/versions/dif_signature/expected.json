@@ -1,4 +1,246 @@
 {
-  "changes": [],
-  "impacts": []
+  "after_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "api",
+      "kind": "MODULE",
+      "module": "api",
+      "name": "api",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_signature/after/api.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Body changes in the after version; signature does not.",
+      "id": "api::convert",
+      "kind": "FUNCTION",
+      "module": "api",
+      "name": "convert",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "convert",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/versions/dif_signature/after/api.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Signature changes in the after version; body does not.",
+      "id": "api::price",
+      "kind": "FUNCTION",
+      "module": "api",
+      "name": "price",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "price",
+      "signature": "(value, currency=\"USD\")",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_signature/after/api.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Neither changes.",
+      "id": "api::steady",
+      "kind": "FUNCTION",
+      "module": "api",
+      "name": "steady",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "steady",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/versions/dif_signature/after/api.py"
+      }
+    }
+  ],
+  "before_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "api",
+      "kind": "MODULE",
+      "module": "api",
+      "name": "api",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_signature/before/api.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Body changes in the after version; signature does not.",
+      "id": "api::convert",
+      "kind": "FUNCTION",
+      "module": "api",
+      "name": "convert",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "convert",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/versions/dif_signature/before/api.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Signature changes in the after version; body does not.",
+      "id": "api::price",
+      "kind": "FUNCTION",
+      "module": "api",
+      "name": "price",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "price",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_signature/before/api.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Neither changes.",
+      "id": "api::steady",
+      "kind": "FUNCTION",
+      "module": "api",
+      "name": "steady",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "steady",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/versions/dif_signature/before/api.py"
+      }
+    }
+  ],
+  "case_id": "dif_signature",
+  "change_count_exact": 3,
+  "changes": [
+    {
+      "after_id": "api::price",
+      "before_id": "api::price",
+      "id": "dif_signature:c1",
+      "kind": "SIGNATURE_CHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "parameter list gained `currency=\"USD\"`; the body is identical"
+      }
+    },
+    {
+      "after_id": "api::convert",
+      "before_id": "api::convert",
+      "id": "dif_signature:c2",
+      "kind": "BODY_CHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "the divisor changed from 2 to 4; the parameter list is identical"
+      }
+    },
+    {
+      "after_id": "api::steady",
+      "before_id": "api::steady",
+      "id": "dif_signature:c3",
+      "kind": "UNCHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH"
+      }
+    }
+  ],
+  "id_convention": "<module>::<qualname>, where <module> is the dotted path relative to the version root (before/ or after/). A diff comparing two roots must strip the root component before matching.",
+  "impacts": [
+    {
+      "affected_ids": [
+        "api::convert"
+      ],
+      "change_id": "dif_signature:c2",
+      "decision_paths_changed": false,
+      "features_changed": [],
+      "findings_added": [],
+      "findings_removed": [],
+      "id": "dif_signature:i1",
+      "rank": 1,
+      "reachability_flipped": []
+    },
+    {
+      "affected_ids": [
+        "api::price"
+      ],
+      "change_id": "dif_signature:c1",
+      "decision_paths_changed": false,
+      "features_changed": [],
+      "findings_added": [],
+      "findings_removed": [],
+      "id": "dif_signature:i2",
+      "rank": 2,
+      "reachability_flipped": []
+    }
+  ],
+  "must_not_contain_changes": [
+    {
+      "after_id": "api::price",
+      "before_id": "api::price",
+      "kind": "BODY_CHANGED",
+      "why": "the body is byte-identical; only the parameter list moved"
+    },
+    {
+      "after_id": "api::convert",
+      "before_id": "api::convert",
+      "kind": "SIGNATURE_CHANGED",
+      "why": "the parameter list is identical; only a constant moved"
+    }
+  ],
+  "proves": "A signature change and a body change are different facts and get different classifications. `price` gains a defaulted parameter and keeps its body: SIGNATURE_CHANGED. `convert` keeps its signature and changes a constant: BODY_CHANGED. Collapsing both into 'changed' loses the one that breaks callers."
 }

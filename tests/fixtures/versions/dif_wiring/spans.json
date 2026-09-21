@@ -1,0 +1,41 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/after_elements/0/span": {
+      "kind": "module"
+    },
+    "/after_elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "AlphaRule"
+    },
+    "/after_elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "BetaRule"
+    },
+    "/after_elements/3/span": {
+      "kind": "line",
+      "line_contains": "\"active_rule\"",
+      "occurrence": 1
+    },
+    "/before_elements/0/span": {
+      "kind": "module"
+    },
+    "/before_elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "AlphaRule"
+    },
+    "/before_elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "BetaRule"
+    },
+    "/before_elements/3/span": {
+      "kind": "line",
+      "line_contains": "\"active_rule\"",
+      "occurrence": 1
+    }
+  }
+}

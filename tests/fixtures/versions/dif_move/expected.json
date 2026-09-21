@@ -1,4 +1,261 @@
 {
-  "changes": [],
-  "impacts": []
+  "after_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "alpha",
+      "kind": "MODULE",
+      "module": "alpha",
+      "name": "alpha",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_move/after/alpha.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Stays in alpha.",
+      "id": "alpha::alpha_only",
+      "kind": "FUNCTION",
+      "module": "alpha",
+      "name": "alpha_only",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "alpha_only",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_move/after/alpha.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "beta",
+      "kind": "MODULE",
+      "module": "beta",
+      "name": "beta",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_move/after/beta.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Stays in beta.",
+      "id": "beta::beta_only",
+      "kind": "FUNCTION",
+      "module": "beta",
+      "name": "beta_only",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "beta_only",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_move/after/beta.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Scale every row into 0..1.",
+      "id": "beta::normalise",
+      "kind": "FUNCTION",
+      "module": "beta",
+      "name": "normalise",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "normalise",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 12,
+        "line": 9,
+        "path": "tests/fixtures/versions/dif_move/after/beta.py"
+      }
+    }
+  ],
+  "before_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "alpha",
+      "kind": "MODULE",
+      "module": "alpha",
+      "name": "alpha",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_move/before/alpha.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Stays in alpha.",
+      "id": "alpha::alpha_only",
+      "kind": "FUNCTION",
+      "module": "alpha",
+      "name": "alpha_only",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "alpha_only",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 12,
+        "line": 10,
+        "path": "tests/fixtures/versions/dif_move/before/alpha.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Scale every row into 0..1.",
+      "id": "alpha::normalise",
+      "kind": "FUNCTION",
+      "module": "alpha",
+      "name": "normalise",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "normalise",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 7,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_move/before/alpha.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "beta",
+      "kind": "MODULE",
+      "module": "beta",
+      "name": "beta",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_move/before/beta.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Stays in beta.",
+      "id": "beta::beta_only",
+      "kind": "FUNCTION",
+      "module": "beta",
+      "name": "beta_only",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "beta_only",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_move/before/beta.py"
+      }
+    }
+  ],
+  "case_id": "dif_move",
+  "change_count_exact": 3,
+  "changes": [
+    {
+      "after_id": "beta::normalise",
+      "before_id": "alpha::normalise",
+      "id": "dif_move:c1",
+      "kind": "MOVED",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "STRUCTURAL_MATCH",
+        "note": "same qualname, same signature, byte-identical body, different module"
+      }
+    },
+    {
+      "after_id": "alpha::alpha_only",
+      "before_id": "alpha::alpha_only",
+      "id": "dif_move:c2",
+      "kind": "UNCHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH"
+      }
+    },
+    {
+      "after_id": "beta::beta_only",
+      "before_id": "beta::beta_only",
+      "id": "dif_move:c3",
+      "kind": "UNCHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH"
+      }
+    }
+  ],
+  "id_convention": "<module>::<qualname>, where <module> is the dotted path relative to the version root (before/ or after/). A diff comparing two roots must strip the root component before matching.",
+  "impacts": [
+    {
+      "affected_ids": [
+        "alpha::normalise",
+        "beta::normalise"
+      ],
+      "change_id": "dif_move:c1",
+      "decision_paths_changed": false,
+      "features_changed": [],
+      "findings_added": [],
+      "findings_removed": [],
+      "id": "dif_move:i1",
+      "rank": 1,
+      "reachability_flipped": []
+    }
+  ],
+  "must_not_contain_changes": [
+    {
+      "after_id": "",
+      "before_id": "alpha::normalise",
+      "kind": "REMOVED",
+      "why": "the function still exists, in another module"
+    }
+  ],
+  "proves": "`normalise` moved from alpha.py to beta.py with a byte-identical body. Its ID changes because the module component changes, which is exactly the case a purely ID-based diff gets wrong: MOVED, not REMOVED plus ADDED."
 }

@@ -1,4 +1,205 @@
 {
-  "changes": [],
-  "impacts": []
+  "after_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "scoring",
+      "kind": "MODULE",
+      "module": "scoring",
+      "name": "scoring",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_rename/after/scoring.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Weighted total.",
+      "id": "scoring::calculate_score",
+      "kind": "FUNCTION",
+      "module": "scoring",
+      "name": "calculate_score",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "calculate_score",
+      "signature": "(rows, weight)",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_rename/after/scoring.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Caller, updated in the after version.",
+      "id": "scoring::report",
+      "kind": "FUNCTION",
+      "module": "scoring",
+      "name": "report",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "report",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 14,
+        "line": 12,
+        "path": "tests/fixtures/versions/dif_rename/after/scoring.py"
+      }
+    }
+  ],
+  "before_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "scoring",
+      "kind": "MODULE",
+      "module": "scoring",
+      "name": "scoring",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_rename/before/scoring.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Weighted total.",
+      "id": "scoring::compute_score",
+      "kind": "FUNCTION",
+      "module": "scoring",
+      "name": "compute_score",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "compute_score",
+      "signature": "(rows, weight)",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_rename/before/scoring.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Caller, updated in the after version.",
+      "id": "scoring::report",
+      "kind": "FUNCTION",
+      "module": "scoring",
+      "name": "report",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "report",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 14,
+        "line": 12,
+        "path": "tests/fixtures/versions/dif_rename/before/scoring.py"
+      }
+    }
+  ],
+  "case_id": "dif_rename",
+  "change_count_exact": 2,
+  "changes": [
+    {
+      "after_id": "scoring::calculate_score",
+      "before_id": "scoring::compute_score",
+      "id": "dif_rename:c1",
+      "kind": "RENAMED",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "STRUCTURAL_MATCH",
+        "note": "identical body, signature and docstring; the sole call site moved from the old name to the new one in the same commit"
+      }
+    },
+    {
+      "after_id": "scoring::report",
+      "before_id": "scoring::report",
+      "id": "dif_rename:c2",
+      "kind": "BODY_CHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "the call target name changed inside the body"
+      }
+    }
+  ],
+  "id_convention": "<module>::<qualname>, where <module> is the dotted path relative to the version root (before/ or after/). A diff comparing two roots must strip the root component before matching.",
+  "impacts": [
+    {
+      "affected_ids": [
+        "scoring::calculate_score",
+        "scoring::report"
+      ],
+      "change_id": "dif_rename:c1",
+      "decision_paths_changed": false,
+      "features_changed": [],
+      "findings_added": [],
+      "findings_removed": [],
+      "id": "dif_rename:i1",
+      "rank": 1,
+      "reachability_flipped": []
+    },
+    {
+      "affected_ids": [
+        "scoring::report"
+      ],
+      "change_id": "dif_rename:c2",
+      "decision_paths_changed": false,
+      "features_changed": [],
+      "findings_added": [],
+      "findings_removed": [],
+      "id": "dif_rename:i2",
+      "rank": 2,
+      "reachability_flipped": []
+    }
+  ],
+  "must_not_contain_changes": [
+    {
+      "after_id": "",
+      "before_id": "scoring::compute_score",
+      "kind": "REMOVED",
+      "why": "the function still exists under a new name"
+    },
+    {
+      "after_id": "scoring::calculate_score",
+      "before_id": "",
+      "kind": "ADDED",
+      "why": "the function is not new"
+    }
+  ],
+  "notes": [
+    "PROBABLE, not RESOLVED: a rename is an inference from structural identity. Two genuinely different functions could have the same body."
+  ],
+  "proves": "`compute_score` and `calculate_score` have identical bodies, identical signatures and identical docstrings, and the one caller switched from the first name to the second. That is a rename, matched with evidence -- not an ADDED plus a REMOVED, which would tell the owner a function disappeared.",
+  "required_change_evidence": {
+    "dif_rename:c1": [
+      "identical content hash of the function body",
+      "identical signature",
+      "the only caller was updated in step"
+    ]
+  }
 }

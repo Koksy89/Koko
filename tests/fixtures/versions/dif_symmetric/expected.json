@@ -1,4 +1,246 @@
 {
-  "changes": [],
-  "impacts": []
+  "after_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "pipeline",
+      "kind": "MODULE",
+      "module": "pipeline",
+      "name": "pipeline",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_symmetric/after/pipeline.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Present only here.",
+      "id": "pipeline::only_after",
+      "kind": "FUNCTION",
+      "module": "pipeline",
+      "name": "only_after",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "only_after",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/versions/dif_symmetric/after/pipeline.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "In both versions, unchanged.",
+      "id": "pipeline::shared",
+      "kind": "FUNCTION",
+      "module": "pipeline",
+      "name": "shared",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "shared",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_symmetric/after/pipeline.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Body differs between versions.",
+      "id": "pipeline::tweaked",
+      "kind": "FUNCTION",
+      "module": "pipeline",
+      "name": "tweaked",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "tweaked",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/versions/dif_symmetric/after/pipeline.py"
+      }
+    }
+  ],
+  "before_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "pipeline",
+      "kind": "MODULE",
+      "module": "pipeline",
+      "name": "pipeline",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_symmetric/before/pipeline.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Present only here.",
+      "id": "pipeline::only_before",
+      "kind": "FUNCTION",
+      "module": "pipeline",
+      "name": "only_before",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "only_before",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/versions/dif_symmetric/before/pipeline.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "In both versions, unchanged.",
+      "id": "pipeline::shared",
+      "kind": "FUNCTION",
+      "module": "pipeline",
+      "name": "shared",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "shared",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_symmetric/before/pipeline.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Body differs between versions.",
+      "id": "pipeline::tweaked",
+      "kind": "FUNCTION",
+      "module": "pipeline",
+      "name": "tweaked",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "tweaked",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/versions/dif_symmetric/before/pipeline.py"
+      }
+    }
+  ],
+  "case_id": "dif_symmetric",
+  "change_count_exact": 4,
+  "changes": [
+    {
+      "after_id": "pipeline::only_after",
+      "before_id": "",
+      "id": "dif_symmetric:c1",
+      "kind": "ADDED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH"
+      }
+    },
+    {
+      "after_id": "pipeline::tweaked",
+      "before_id": "pipeline::tweaked",
+      "id": "dif_symmetric:c2",
+      "kind": "BODY_CHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "the multiplier changed from 2 to 5"
+      }
+    },
+    {
+      "after_id": "",
+      "before_id": "pipeline::only_before",
+      "id": "dif_symmetric:c3",
+      "kind": "REMOVED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH"
+      }
+    },
+    {
+      "after_id": "pipeline::shared",
+      "before_id": "pipeline::shared",
+      "id": "dif_symmetric:c4",
+      "kind": "UNCHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH"
+      }
+    }
+  ],
+  "id_convention": "<module>::<qualname>, where <module> is the dotted path relative to the version root (before/ or after/). A diff comparing two roots must strip the root component before matching.",
+  "impacts": [],
+  "proves": "Diffing before->after and after->before must agree: every ADDED becomes a REMOVED and vice versa, UNCHANGED stays UNCHANGED, BODY_CHANGED stays BODY_CHANGED with its endpoints swapped, and the number of changes is the same in both directions. A diff that is not symmetric is order-dependent, and the owner cannot tell which direction they asked for.",
+  "reverse_direction_changes": [
+    {
+      "after_id": "pipeline::only_before",
+      "before_id": "",
+      "kind": "ADDED"
+    },
+    {
+      "after_id": "pipeline::tweaked",
+      "before_id": "pipeline::tweaked",
+      "kind": "BODY_CHANGED"
+    },
+    {
+      "after_id": "",
+      "before_id": "pipeline::only_after",
+      "kind": "REMOVED"
+    },
+    {
+      "after_id": "pipeline::shared",
+      "before_id": "pipeline::shared",
+      "kind": "UNCHANGED"
+    }
+  ],
+  "symmetry_rules": {
+    "ADDED": "REMOVED",
+    "BODY_CHANGED": "BODY_CHANGED",
+    "DECORATORS_CHANGED": "DECORATORS_CHANGED",
+    "MOVED": "MOVED",
+    "REMOVED": "ADDED",
+    "RENAMED": "RENAMED",
+    "SIGNATURE_CHANGED": "SIGNATURE_CHANGED",
+    "UNCHANGED": "UNCHANGED"
+  }
 }

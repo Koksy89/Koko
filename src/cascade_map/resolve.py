@@ -3055,7 +3055,11 @@ class _CallResolver(ast.NodeVisitor):
                 note=binding.note,
             )
             self._ambiguity_note(binding, node)
-            self._wrapper_edges(binding.target_id, node)
+            if binding.method is not Method.DECORATOR_UNWRAP:
+                # `fn(...)` inside a wrapper calls the *undecorated* function:
+                # the decorator has already been applied at that point, so
+                # adding the wrapper here would make the wrapper call itself.
+                self._wrapper_edges(binding.target_id, node)
             return
         if binding.kind is _BKind.CANDIDATES and binding.candidates:
             self._unresolved(

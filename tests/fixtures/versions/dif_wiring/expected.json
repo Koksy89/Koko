@@ -1,4 +1,220 @@
 {
-  "changes": [],
-  "impacts": []
+  "after_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "rules",
+      "kind": "MODULE",
+      "module": "rules",
+      "name": "rules",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_wiring/after/rules.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Wired in the before version.",
+      "id": "rules::AlphaRule",
+      "kind": "CLASS",
+      "module": "rules",
+      "name": "AlphaRule",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "AlphaRule",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_wiring/after/rules.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Wired in the after version.",
+      "id": "rules::BetaRule",
+      "kind": "CLASS",
+      "module": "rules",
+      "name": "BetaRule",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "BetaRule",
+      "span": {
+        "col": 0,
+        "end_line": 17,
+        "line": 12,
+        "path": "tests/fixtures/versions/dif_wiring/after/rules.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:wiring.json::/active_rule",
+      "kind": "CONFIG_KEY",
+      "module": "",
+      "name": "active_rule",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "col": 2,
+        "line": 2,
+        "path": "tests/fixtures/versions/dif_wiring/after/wiring.json"
+      }
+    }
+  ],
+  "before_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "rules",
+      "kind": "MODULE",
+      "module": "rules",
+      "name": "rules",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_wiring/before/rules.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Wired in the before version.",
+      "id": "rules::AlphaRule",
+      "kind": "CLASS",
+      "module": "rules",
+      "name": "AlphaRule",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "AlphaRule",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_wiring/before/rules.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Wired in the after version.",
+      "id": "rules::BetaRule",
+      "kind": "CLASS",
+      "module": "rules",
+      "name": "BetaRule",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "BetaRule",
+      "span": {
+        "col": 0,
+        "end_line": 17,
+        "line": 12,
+        "path": "tests/fixtures/versions/dif_wiring/before/rules.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:wiring.json::/active_rule",
+      "kind": "CONFIG_KEY",
+      "module": "",
+      "name": "active_rule",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "col": 2,
+        "line": 2,
+        "path": "tests/fixtures/versions/dif_wiring/before/wiring.json"
+      }
+    }
+  ],
+  "case_id": "dif_wiring",
+  "change_count_exact": 3,
+  "changes": [
+    {
+      "after_id": "@file:wiring.json::/active_rule",
+      "before_id": "@file:wiring.json::/active_rule",
+      "id": "dif_wiring:c1",
+      "kind": "BODY_CHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "CONFIG_STRING_MATCH",
+        "note": "the key's value changed from \"AlphaRule\" to \"BetaRule\""
+      }
+    },
+    {
+      "after_id": "rules::AlphaRule",
+      "before_id": "rules::AlphaRule",
+      "id": "dif_wiring:c2",
+      "kind": "UNCHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH"
+      }
+    },
+    {
+      "after_id": "rules::BetaRule",
+      "before_id": "rules::BetaRule",
+      "id": "dif_wiring:c3",
+      "kind": "UNCHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH"
+      }
+    }
+  ],
+  "id_convention": "<module>::<qualname>, where <module> is the dotted path relative to the version root (before/ or after/). A diff comparing two roots must strip the root component before matching.",
+  "impacts": [
+    {
+      "affected_ids": [
+        "@file:wiring.json::/active_rule",
+        "rules::AlphaRule",
+        "rules::BetaRule"
+      ],
+      "change_id": "dif_wiring:c1",
+      "decision_paths_changed": true,
+      "features_changed": [],
+      "findings_added": [],
+      "findings_removed": [],
+      "id": "dif_wiring:i1",
+      "rank": 1,
+      "reachability_flipped": [
+        "rules::AlphaRule",
+        "rules::BetaRule"
+      ]
+    }
+  ],
+  "notes": [
+    "decision_paths_changed is true even though no Python changed: the config key is the only thing that decides which evaluate() runs."
+  ],
+  "proves": "Not one line of Python changed: both classes exist in both versions and both are byte-identical. The only change is a config key repointed from AlphaRule to BetaRule -- and it changes which rule runs. A diff that looks only at .py files reports this release as empty.",
+  "required_reachability_flips": {
+    "rules::AlphaRule": "REACHES_SINK -> NO_SINK_PATH",
+    "rules::BetaRule": "NO_SINK_PATH -> REACHES_SINK"
+  }
 }

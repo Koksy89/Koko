@@ -1,0 +1,41 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/after_elements/0/span": {
+      "kind": "module"
+    },
+    "/after_elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "decide"
+    },
+    "/after_elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "legacy_export"
+    },
+    "/after_elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "main"
+    },
+    "/before_elements/0/span": {
+      "kind": "module"
+    },
+    "/before_elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "decide"
+    },
+    "/before_elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "legacy_export"
+    },
+    "/before_elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "main"
+    }
+  }
+}

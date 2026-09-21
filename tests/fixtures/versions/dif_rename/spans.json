@@ -1,0 +1,31 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/after_elements/0/span": {
+      "kind": "module"
+    },
+    "/after_elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "calculate_score"
+    },
+    "/after_elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "report"
+    },
+    "/before_elements/0/span": {
+      "kind": "module"
+    },
+    "/before_elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "compute_score"
+    },
+    "/before_elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "report"
+    }
+  }
+}

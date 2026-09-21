@@ -192,8 +192,9 @@ def check_case(case_dir: Path) -> tuple[int, list[str]]:
             continue
 
         # Route 1 -- element defs, resolved from qualname, anchor ignored.
+        top = pointer.split("/")[1] if pointer.count("/") > 1 else ""
         if (
-            pointer.startswith("/elements/")
+            top.endswith("elements")
             and pointer.endswith("/span")
             and record.get("kind") in DEF_KINDS
             and record.get("qualname")
@@ -250,7 +251,10 @@ def audit_case(case_dir: Path) -> list[str]:
     except TypeError as exc:
         problems.append(f"{rel}: not canonically serializable: {exc}")
 
-    for element in expected.get("elements", []):
+    element_records = list(expected.get("elements", []))
+    element_records += list(expected.get("before_elements", []))
+    element_records += list(expected.get("after_elements", []))
+    for element in element_records:
         got = element["id"]
         # Non-Python nodes have their own id functions in the contract.
         if got.startswith("@feature:"):

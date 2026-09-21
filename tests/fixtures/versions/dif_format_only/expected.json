@@ -1,4 +1,123 @@
 {
-  "changes": [],
-  "impacts": []
+  "after_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "style",
+      "kind": "MODULE",
+      "module": "style",
+      "name": "style",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_format_only/after/style.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Return the larger.",
+      "id": "style::pick",
+      "kind": "FUNCTION",
+      "module": "style",
+      "name": "pick",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "pick",
+      "signature": "(a, b)",
+      "span": {
+        "col": 0,
+        "end_line": 10,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_format_only/after/style.py"
+      }
+    }
+  ],
+  "before_elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "style",
+      "kind": "MODULE",
+      "module": "style",
+      "name": "style",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_format_only/before/style.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Return the larger.",
+      "id": "style::pick",
+      "kind": "FUNCTION",
+      "module": "style",
+      "name": "pick",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "pick",
+      "signature": "(a, b)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 2,
+        "path": "tests/fixtures/versions/dif_format_only/before/style.py"
+      }
+    }
+  ],
+  "case_id": "dif_format_only",
+  "change_count_exact": 2,
+  "changes": [
+    {
+      "after_id": "style",
+      "before_id": "style",
+      "id": "dif_format_only:c1",
+      "kind": "UNCHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "identical AST; only formatting and a comment differ"
+      }
+    },
+    {
+      "after_id": "style::pick",
+      "before_id": "style::pick",
+      "id": "dif_format_only:c2",
+      "kind": "UNCHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "identical AST; only formatting and a comment differ"
+      }
+    }
+  ],
+  "id_convention": "<module>::<qualname>, where <module> is the dotted path relative to the version root (before/ or after/). A diff comparing two roots must strip the root component before matching.",
+  "impact_count_exact": 0,
+  "impacts": [],
+  "must_not_contain_changes": [
+    {
+      "after_id": "style::pick",
+      "before_id": "style::pick",
+      "kind": "BODY_CHANGED",
+      "why": "the statements, operators and constants are identical"
+    }
+  ],
+  "notes": [
+    "Comparing raw source bytes classifies this as changed. The comparison has to be over the normalised AST for UNCHANGED to be reachable at all."
+  ],
+  "proves": "Whitespace, line breaks and a reworded comment change every byte of the file and nothing about what it does. Every element classifies UNCHANGED. A diff that reports these as BODY_CHANGED buries the real changes in a release under a reformat."
 }

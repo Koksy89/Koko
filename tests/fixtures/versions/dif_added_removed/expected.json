@@ -1,66 +1,199 @@
 {
-  "changes": [
+  "after_elements": [
     {
-      "id": "change_foo_unchanged",
-      "kind": "UNCHANGED",
-      "before_id": "dif_added_removed::foo",
-      "after_id": "dif_added_removed::foo",
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "rules",
+      "kind": "MODULE",
+      "module": "rules",
+      "name": "rules",
       "provenance": {
-        "method": "STRUCTURAL_MATCH",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_added_removed/after/rules.py"
       }
     },
     {
-      "id": "change_bar_removed",
-      "kind": "REMOVED",
-      "before_id": "dif_added_removed::bar",
-      "after_id": "",
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Added in the after version.",
+      "id": "rules::add_me",
+      "kind": "FUNCTION",
+      "module": "rules",
+      "name": "add_me",
       "provenance": {
-        "method": "STRUCTURAL_MATCH",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "add_me",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/versions/dif_added_removed/after/rules.py"
       }
     },
     {
-      "id": "change_baz_added",
-      "kind": "ADDED",
-      "before_id": "",
-      "after_id": "dif_added_removed::baz",
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Unchanged across versions.",
+      "id": "rules::keep_me",
+      "kind": "FUNCTION",
+      "module": "rules",
+      "name": "keep_me",
       "provenance": {
-        "method": "STRUCTURAL_MATCH",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "keep_me",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_added_removed/after/rules.py"
       }
     }
   ],
-  "impacts": [
+  "before_elements": [
     {
-      "id": "impact_bar_removed",
-      "change_id": "change_bar_removed",
-      "affected_ids": [
-        "dif_added_removed::bar"
-      ],
-      "decision_paths_changed": false,
-      "features_changed": [],
-      "reachability_flipped": [
-        "dif_added_removed::bar"
-      ],
-      "findings_added": [],
-      "findings_removed": [],
-      "rank": 10
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "rules",
+      "kind": "MODULE",
+      "module": "rules",
+      "name": "rules",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/versions/dif_added_removed/before/rules.py"
+      }
     },
     {
-      "id": "impact_baz_added",
-      "change_id": "change_baz_added",
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Removed in the after version.",
+      "id": "rules::drop_me",
+      "kind": "FUNCTION",
+      "module": "rules",
+      "name": "drop_me",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "drop_me",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/versions/dif_added_removed/before/rules.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Unchanged across versions.",
+      "id": "rules::keep_me",
+      "kind": "FUNCTION",
+      "module": "rules",
+      "name": "keep_me",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "keep_me",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/versions/dif_added_removed/before/rules.py"
+      }
+    }
+  ],
+  "case_id": "dif_added_removed",
+  "change_count_exact": 3,
+  "changes": [
+    {
+      "after_id": "rules::keep_me",
+      "before_id": "rules::keep_me",
+      "id": "dif_added_removed:c1",
+      "kind": "UNCHANGED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "same ID, identical content hash"
+      }
+    },
+    {
+      "after_id": "",
+      "before_id": "rules::drop_me",
+      "id": "dif_added_removed:c2",
+      "kind": "REMOVED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "present before, absent after, no rename candidate"
+      }
+    },
+    {
+      "after_id": "rules::add_me",
+      "before_id": "",
+      "id": "dif_added_removed:c3",
+      "kind": "ADDED",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "STRUCTURAL_MATCH",
+        "note": "absent before, present after"
+      }
+    }
+  ],
+  "id_convention": "<module>::<qualname>, where <module> is the dotted path relative to the version root (before/ or after/). A diff comparing two roots must strip the root component before matching.",
+  "impacts": [
+    {
       "affected_ids": [
-        "dif_added_removed::baz"
+        "rules::drop_me"
       ],
+      "change_id": "dif_added_removed:c2",
       "decision_paths_changed": false,
       "features_changed": [],
-      "reachability_flipped": [
-        "dif_added_removed::baz"
-      ],
       "findings_added": [],
       "findings_removed": [],
-      "rank": 10
+      "id": "dif_added_removed:i1",
+      "rank": 2,
+      "reachability_flipped": []
+    },
+    {
+      "affected_ids": [
+        "rules::add_me"
+      ],
+      "change_id": "dif_added_removed:c3",
+      "decision_paths_changed": false,
+      "features_changed": [],
+      "findings_added": [],
+      "findings_removed": [],
+      "id": "dif_added_removed:i2",
+      "rank": 1,
+      "reachability_flipped": []
     }
-  ]
+  ],
+  "must_not_contain_changes": [
+    {
+      "after_id": "rules::add_me",
+      "before_id": "rules::drop_me",
+      "kind": "RENAMED",
+      "why": "different names and different bodies; pairing them because both sides changed is a guess"
+    }
+  ],
+  "proves": "The basic three-way classification: one element present in both and byte-identical (UNCHANGED), one present only before (REMOVED), one present only after (ADDED). `add_me` must not be matched to `drop_me` -- different name, different body, nothing in common but the slot they occupy."
 }

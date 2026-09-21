@@ -1,0 +1,41 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/after_elements/0/span": {
+      "kind": "module"
+    },
+    "/after_elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "only_after"
+    },
+    "/after_elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "shared"
+    },
+    "/after_elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "tweaked"
+    },
+    "/before_elements/0/span": {
+      "kind": "module"
+    },
+    "/before_elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "only_before"
+    },
+    "/before_elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "shared"
+    },
+    "/before_elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "tweaked"
+    }
+  }
+}
