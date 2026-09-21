@@ -46,6 +46,7 @@ __all__ = [
     "OrderNode",
     "ReachabilityState",
     "Reachability",
+    "DetectedCandidate",
     "DecisionPoint",
     "LineageKind",
     "LineageEdge",
@@ -522,6 +523,30 @@ class Reachability:
 
 
 @dataclass(frozen=True, slots=True)
+class DetectedCandidate:
+    """An owner input the tool worked out for itself, reported with evidence.
+
+    TARGET_PROFILE leaves entry points and decision sinks blank until the owner
+    fills them in, and the standing rule is to auto-detect read-only and report
+    what was detected — never to pick one silently. Until now there was nowhere
+    to put the answer, so card 3 exposed it through a method the contract does
+    not name and card 10 would have had to know to call.
+
+    A wrong sink mislabels the entire map, so these are proposals for the owner
+    to confirm, never facts. `provenance.confidence` says how strong the signal
+    was and `evidence` says what it rested on.
+    """
+
+    id: str
+    role: str
+    """entry_point or decision_sink."""
+
+    element_id: str
+    evidence: tuple[str, ...]
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
 class DecisionPoint:
     id: str
     element_id: str
@@ -958,10 +983,22 @@ class CascadeCard(Protocol):
         Sequence[OrderNode],
         Sequence[DecisionPoint],
         Sequence[Reachability],
+        Sequence[DetectedCandidate],
+        Sequence[Unresolved],
     ]:
-        """Blocks, edges, ordering, decision points, and one Reachability per
-        element. The last is what cards 5 and 15 read to answer "does this
-        drive the final decision" -- neither may derive its own."""
+        """Blocks, edges, ordering, decision points, one Reachability per
+        element, any auto-detected entry/sink candidates, and unresolved records.
+
+        `Reachability` is what cards 5 and 15 read to answer "does this drive
+        the final decision" -- neither may derive its own.
+
+        The last two were added after card 3 reported it had nowhere to put
+        them: constraint 3 requires unresolved cases to be emitted, and the
+        auto-detection rule requires detected candidates to be reported. Both
+        were reachable only through methods the contract does not name, so card
+        10 would have had to know to call them, and a card 10 that forgot would
+        have silently dropped both.
+        """
         ...
 
 

@@ -35,6 +35,7 @@ ARTIFACTS: dict[str, tuple[str, str]] = {
     "order.jsonl": ("OrderNode", "id"),
     "decisions.jsonl": ("DecisionPoint", "id"),
     "reachability.jsonl": ("Reachability", "id"),
+    "candidates.jsonl": ("DetectedCandidate", "id"),
     "lineage.jsonl": ("LineageEdge", "id"),
     "barriers.jsonl": ("Barrier", "id"),
     "slices.jsonl": ("Slice", "id"),

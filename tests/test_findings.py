@@ -171,50 +171,113 @@ def _load_case(name: str) -> dict:
 # then makes every downstream assertion pass vacuously. Declared explicitly
 # per case instead, matching what each fixture's own edges model as its
 # entry: the module invoking `process`, and the conventional `main`.
-_FIXTURE_ENTRY_IDS: dict[str, tuple[str, ...]] = {
-    "fnd_unknown_not_unplugged": ("fnd_unknown_not_unplugged",),
-    "fnd_no_false_positive": (
-        "fnd_no_false_positive",
-        "fnd_no_false_positive::main",
+def _reachability_from_json(d: dict) -> Reachability:
+    return Reachability(
+        id=d["id"],
+        element_id=d["element_id"],
+        state=ReachabilityState(d["state"]),
+        provenance=_provenance(d["provenance"]),
+        sink_ids=tuple(d.get("sink_ids", ())),
+        path_ids=tuple(d.get("path_ids", ())),
+        reason=d.get("reason", ""),
+    )
+
+
+def _lineage_edge_from_json(d: dict) -> LineageEdge:
+    return LineageEdge(
+        id=d["id"],
+        kind=LineageKind(d["kind"]),
+        source_id=d["source_id"],
+        target_id=d["target_id"],
+        provenance=_provenance(d["provenance"]),
+        span=_span(d["span"]) if d.get("span") else None,
+    )
+
+
+def _build_findings_from_case(data: dict) -> Findings:
+    return Findings(
+        elements=[_element(e) for e in data["elements"]],
+        edges=[_edge_from_json(e) for e in data.get("edges", [])],
+        unresolved=[_unresolved(u) for u in data.get("unresolved", [])],
+        reachability=[_reachability_from_json(r) for r in data.get("reachability", [])],
+        lineage_edges=[_lineage_edge_from_json(l) for l in data.get("lineage", [])],
+        entry_ids=tuple(data.get("entry_ids", ())),
+    )
+
+
+# Every `fnd_*` case card 8 has published, real corpus cases and not-yet-filled
+# stubs alike. Stubs are skipped explicitly (never silently) via
+# `_is_stub_fixture`, so a fresh stub landing here shows up as a skip, not a
+# silent gap.
+FND_CASE_NAMES = sorted(p.name for p in FIXTURES_ROOT.glob("fnd_*") if p.is_dir())
+
+# Cases that need a fact the current contract does not expose. Listed here
+# with the exact gap, run as `xfail(strict=True)` so a contract change that
+# closes the gap turns this into a hard failure demanding the fix be applied,
+# rather than a silent pass. See the card's final report for the change
+# requested.
+KNOWN_CONTRACT_GAPS: dict[str, str] = {
+    "fnd_dead_branch": (
+        "requires knowing DEBUG was assigned the literal `False`; neither "
+        "Element nor LineageEdge carries a constant's value, and reading the "
+        "source text to find it is re-parsing the target, which this card "
+        "must not do"
+    ),
+    "fnd_duplicated_logic": (
+        "requires matching score_alpha/score_beta as identical *bodies* "
+        "despite different docstrings ('Weighted sum.' vs 'Weighted sum, "
+        "copy-pasted.'); Element.content_hash is documented only as a hash "
+        "of 'the element's own source text', which is not specified to "
+        "normalise out docstrings/comments, so a content_hash match is not a "
+        "sound signal here even when populated (and this fixture leaves it "
+        "null, `content_hash_asserted: false`)"
     ),
 }
 
 
-@pytest.mark.parametrize("case", ["fnd_unknown_not_unplugged", "fnd_no_false_positive"])
-def test_fixture_cases(case: str) -> None:
+@pytest.mark.parametrize("case", FND_CASE_NAMES)
+def test_fnd_corpus_case(case: str) -> None:
+    if _is_stub_fixture(case):
+        pytest.skip(f"{case} is still a stub in the corpus (no elements beyond the module)")
+    if case in KNOWN_CONTRACT_GAPS:
+        pytest.xfail(KNOWN_CONTRACT_GAPS[case])
+
     data = _load_case(case)
-    elements = [_element(e) for e in data["elements"]]
-    unresolved = [_unresolved(u) for u in data.get("unresolved", [])]
-    edges = [_edge_from_json(e) for e in data.get("edges", [])]
-    entries = _FIXTURE_ENTRY_IDS[case]
+    findings = _build_findings_from_case(data).find()
 
-    findings = Findings(
-        elements=elements,
-        edges=edges,
-        unresolved=unresolved,
-        entry_ids=entries,
-    ).find()
+    actual_pairs = {(f.kind.value, f.element_id) for f in findings}
+    expected_pairs = {(f["kind"], f["element_id"]) for f in data.get("findings", [])}
+    forbidden_pairs = {
+        (f["kind"], f["element_id"]) for f in data.get("must_not_contain_findings", [])
+    }
 
-    assert list(findings) == list(data["findings"]), (
-        f"{case}: expected {data['findings']!r}, got {[f.kind.value for f in findings]!r}"
-    )
+    missing = expected_pairs - actual_pairs
+    assert not missing, f"{case}: expected findings not produced: {missing}"
+
+    present_forbidden = actual_pairs & forbidden_pairs
+    assert not present_forbidden, f"{case}: forbidden findings were produced: {present_forbidden}"
+
+    if "finding_count_exact" in data:
+        assert len(findings) == data["finding_count_exact"], (
+            f"{case}: expected exactly {data['finding_count_exact']} findings, "
+            f"got {len(findings)}: {sorted(actual_pairs)!r}"
+        )
+
+    for f in findings:
+        assert f.evidence_ids, f"{case}: {f.id} shipped with an empty evidence chain"
 
 
 def test_fnd_unknown_not_unplugged_actually_exercises_the_skip() -> None:
-    """Regression guard for the vacuous-entries defect: with real entry_ids,
-    `Handler.helper` must be genuinely unreachable by plain BFS (so the test
-    is not passing by accident) and still be suppressed because it is an
-    unresolved candidate."""
+    """Regression guard for the round-2 vacuous-entries defect: with the
+    fixture's own real entry_ids, `Handler.helper` must be genuinely
+    unreachable by plain BFS (so this is not passing by accident) and still
+    be suppressed because it is an unresolved candidate."""
     data = _load_case("fnd_unknown_not_unplugged")
-    elements = [_element(e) for e in data["elements"]]
-    unresolved = [_unresolved(u) for u in data.get("unresolved", [])]
-    edges = [_edge_from_json(e) for e in data.get("edges", [])]
-    entries = _FIXTURE_ENTRY_IDS["fnd_unknown_not_unplugged"]
-
-    f = Findings(elements=elements, edges=edges, unresolved=unresolved, entry_ids=entries)
+    f = _build_findings_from_case(data)
     reached, _incoming = f._reachable_set()
-    helper_id = "fnd_unknown_not_unplugged::Handler::helper"
-    assert entries, "entries must be non-empty for this test to mean anything"
+    helper_id = "fnd_unknown_not_unplugged::Handler.helper"
+
+    assert f._entry_ids, "entries must be non-empty for this test to mean anything"
     assert helper_id not in reached, "helper must be genuinely unreached by plain BFS"
     assert helper_id in f._unresolved_candidate_ids()
 
@@ -378,29 +441,34 @@ def test_dangling_config_reference() -> None:
 
 
 def test_orphaned_config_element() -> None:
-    main = _el("m::main", ElementKind.FUNCTION)
-    key = _el("cfg::@file:config/wiring.json::/handler", ElementKind.CONFIG_KEY)
-    handler = _el("m::Handler", ElementKind.CLASS, line=8)
+    """A sibling of a config-wired class, in the same inheritance family,
+    that no config key names -- the shape `fnd_orphaned_config_element`
+    proves. A base class reached only by inheritance is not flagged; a
+    sibling that does have its own CONFIGURES edge is not flagged either."""
+    base = _el("m::Stage", ElementKind.CLASS, line=1)
+    wired = _el("m::WiredStage", ElementKind.CLASS, line=5)
+    orphan = _el("m::OrphanStage", ElementKind.CLASS, line=10)
+    key = _el("cfg::@file:pipeline.json::/stages/0", ElementKind.CONFIG_KEY)
     edges = [
         _edge(
             "e_cfg",
             EdgeKind.CONFIGURES,
             key.id,
-            handler.id,
+            wired.id,
             confidence=Confidence.HEURISTIC,
             method=Method.CONFIG_STRING_MATCH,
-        )
+        ),
+        _edge("e_inh_wired", EdgeKind.INHERITS, wired.id, base.id),
+        _edge("e_inh_orphan", EdgeKind.INHERITS, orphan.id, base.id),
     ]
-    # `key` has no incoming edge and is not in the reachable set: no live
-    # config sets it.
-    findings = Findings(
-        elements=[main, key, handler], edges=edges, entry_ids=["m::main"]
-    ).find()
+
+    findings = Findings(elements=[base, wired, orphan, key], edges=edges).find()
 
     orphaned = [f for f in findings if f.kind == FindingKind.ORPHANED_CONFIG_ELEMENT]
-    assert [f.element_id for f in orphaned] == ["m::Handler"]
-    assert orphaned[0].evidence_ids == ("e_cfg",)
+    assert [f.element_id for f in orphaned] == ["m::OrphanStage"]
+    assert orphaned[0].evidence_ids == ("e_cfg", "e_inh_orphan")
     assert orphaned[0].provenance.confidence == Confidence.HEURISTIC
+    assert not any(f.element_id in ("m::Stage", "m::WiredStage") for f in orphaned)
 
 
 def test_dead_branch() -> None:
