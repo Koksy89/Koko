@@ -143,6 +143,7 @@ _FRAME_NAME_SUFFIXES = ("_df", "_frame")
 _FRAME_NAMES = frozenset({"df", "frame", "dataframe", "data_frame"})
 
 _OVER = "over-approximate: "
+_INSTANCE = ".@instance"
 
 
 def _stronger(first: Confidence, second: Confidence) -> Confidence:
@@ -901,6 +902,11 @@ class LineageTracer:
         found = info.functions.get(element_id)
         return None if found is None else (found[0], info)
 
+    def _is_known_callee(self, element_id: str) -> bool:
+        return self._function_node(element_id) is not None or bool(
+            self._class_qual_of(element_id)
+        )
+
     def _class_qual_of(self, element_id: str) -> str:
         module = element_id.split("::")[0]
         info = self._modules.get(module)
@@ -1286,6 +1292,18 @@ class _ModuleWalker:
                 )
             return
         for base in self.sources(target.value):
+            shared = self._instance_attr_nodes(base.id, target.attr)
+            for node_id in shared:
+                for src in srcs:
+                    self.t.add_edge(
+                        LineageKind.ATTRIBUTE_WRITE, src.id, node_id, self.span(stmt),
+                        Method.DATAFLOW,
+                        combine(src.confidence, base.confidence, Confidence.PROBABLE),
+                        f"{_OVER}write to {target.attr!r} on a known class, "
+                        "merged with every other write to it",
+                    )
+            if shared:
+                continue
             attr_id = _attr_node(base.id, target.attr)
             for src in srcs:
                 self.t.add_edge(
@@ -1440,16 +1458,43 @@ class _ModuleWalker:
                     return (_Src(resolved, Confidence.RESOLVED, "imported module member"),)
                 return ()
         bases = self.sources(node.value)
-        return tuple(
-            sorted(
+        out: list[_Src] = []
+        for base in bases:
+            shared = self._instance_attr_nodes(base.id, node.attr)
+            if shared:
+                note = f"attribute {node.attr!r} of a known class"
+                if len(shared) > 1:
+                    note = f"{_OVER}every write to {node.attr!r} on this class"
+                out.extend(
+                    _Src(node_id, combine(base.confidence, Confidence.PROBABLE), note)
+                    for node_id in shared
+                )
+                continue
+            out.append(
                 _Src(
                     _attr_node(base.id, node.attr),
                     combine(base.confidence, Confidence.PROBABLE),
                     f"attribute {node.attr!r} of this object",
                 )
-                for base in bases
             )
-        )
+        return _merge_srcs(out)
+
+    def _instance_attr_nodes(self, base_id: str, attr: str) -> tuple[str, ...]:
+        """Attribute nodes of the class this value is an instance of, if known.
+
+        Unifies ``obj.attr`` with the ``self.attr`` nodes of the same class, so a
+        write in a method and a read through a variable meet on one node.
+        """
+        class_id = self.t._instance_of.get(base_id, "")
+        if not class_id and base_id.endswith(_INSTANCE):
+            class_id = base_id[: -len(_INSTANCE)]
+        if not class_id:
+            return ()
+        info = self.t._modules.get(class_id.split("::")[0])
+        qual = self.t._class_qual_of(class_id)
+        if info is None or not qual:
+            return ()
+        return tuple(info.all_defs.get((qual, attr), ()))
 
     def read_subscript(self, node: ast.Subscript) -> tuple[_Src, ...]:
         key = _literal_key(node.slice)
@@ -2024,7 +2069,7 @@ class _ModuleWalker:
         key = (self.element_id, getattr(node, "lineno", 0))
         recorded = self.t._call_targets.get(key)
         if recorded:
-            known = [(tid, conf) for tid, conf in recorded if self.t._function_node(tid) is not None]
+            known = [(tid, conf) for tid, conf in recorded if self.t._is_known_callee(tid)]
             if len(known) == 1:
                 return (known[0][0], known[0][1], Method.DATAFLOW, "call edge from card 2")
             if len(known) > 1:
@@ -2081,7 +2126,11 @@ class _ModuleWalker:
                 meta = self.mod.def_meta.get(node_id)
                 if meta is None:
                     continue
-                if meta.kind in ("function", "class") and self.t._function_node(node_id) is not None:
+                known = (
+                    self.t._function_node(node_id) is not None
+                    or bool(self.t._class_qual_of(node_id))
+                )
+                if meta.kind in ("function", "class") and known:
                     confidence = Confidence.RESOLVED if len(ids) == 1 else Confidence.PROBABLE
                     return (node_id, confidence)
                 if meta.kind == "import":
@@ -2150,8 +2199,8 @@ class _ModuleWalker:
     ) -> None:
         args = func_node.args  # type: ignore[union-attr]
         span = self.span(node)
-        positional = [*args.posonlyargs, *args.args]
-        by_name = {arg.arg: arg for arg in _all_args(args)}
+        positional = [*args.posonlyargs, *args.args][skip:]
+        by_name = {arg.arg: arg for arg in _all_args(args)[skip:]}
         bound: set[str] = set()
 
         def bind(arg: ast.arg, srcs: tuple[_Src, ...], extra: Confidence, why: str) -> None:
@@ -2214,13 +2263,6 @@ class _ModuleWalker:
             elif args.kwarg is not None:
                 bind(args.kwarg, self.sources(keyword.value), Confidence.RESOLVED,
                      f"keyword {keyword.arg!r} into **{args.kwarg.arg}")
-        return (
-            _Src(
-                _return_node(callee_id),
-                combine(confidence, Confidence.RESOLVED),
-                note or "return value",
-            ),
-        )
 
 
 # --------------------------------------------------------------------------

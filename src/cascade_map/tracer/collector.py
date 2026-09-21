@@ -13,6 +13,7 @@ outcome, never a warning to proceed past.
 
 from __future__ import annotations
 
+import os
 import sys
 import threading
 from dataclasses import dataclass, field
@@ -35,6 +36,11 @@ __all__ = [
 ]
 
 DEFAULT_REQUIRED_CONTROLS: tuple[str, ...] = ("network", "filesystem", "subprocess")
+
+_OWN_PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+"""CASCADE-MAP's own frames are not observations of the target. They are
+skipped and not counted: counting the tracer's own ``__exit__`` as external
+target code would put noise in the mapping report.""" 
 
 _CONTROL_NOISE = frozenset(
     {
@@ -147,6 +153,7 @@ def refusal_reason(
 @dataclass(slots=True)
 class _CodeMeta:
     path: str
+    own: bool
     qualname: str
     first_line: int
     under_root: bool
@@ -277,6 +284,8 @@ class TraceCollector:
             return None
         meta = self._meta_for(frame.f_code)
         if not meta.traced:
+            if meta.own:
+                return None
             with self._lock:
                 self._external[meta.path] = self._external.get(meta.path, 0) + 1
             return None
@@ -458,6 +467,7 @@ class TraceCollector:
         cached = self._meta.get(code)
         if cached is not None:
             return cached
+        own = os.path.abspath(code.co_filename).startswith(_OWN_PACKAGE + os.sep)
         location = self.index.relocate(code.co_filename)
         qualname = getattr(code, "co_qualname", code.co_name)
         full = CodeLocation(
@@ -468,10 +478,13 @@ class TraceCollector:
             under_root=location.under_root,
             synthetic=location.synthetic,
         )
-        traced = location.under_root or (location.synthetic and self.trace_dynamic)
+        traced = (not own) and (
+            location.under_root or (location.synthetic and self.trace_dynamic)
+        )
         mapping = self.index.map_code(full) if traced else None
         meta = _CodeMeta(
             path=location.path,
+            own=own,
             qualname=qualname,
             first_line=code.co_firstlineno,
             under_root=location.under_root,

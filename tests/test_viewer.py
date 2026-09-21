@@ -10,6 +10,7 @@ are written from what the fixture data says, never recorded from tool output.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,8 @@ from cascade_map.contracts.interfaces import (
     OrderKind,
     OrderNode,
     Provenance,
+    Reachability,
+    ReachabilityState,
     SCHEMA_VERSION,
     Slice,
     SourceSpan,
@@ -54,6 +57,7 @@ from cascade_map.viewer import (
     diff_view,
     doc_record_view,
     element_detail,
+    element_reachability,
     findings_view,
     lineage_view,
     render_site,
@@ -88,7 +92,7 @@ def _element(id_: str, kind: ElementKind, qualname: str, prov: Provenance = _CER
     )
 
 
-def build_fixture(root: Path) -> None:
+def build_fixture(root: Path, *, include_reachability: bool = True) -> None:
     """Write a small, hand-authored artifact set to *root*."""
     elements = [
         Element(
@@ -163,6 +167,32 @@ def build_fixture(root: Path) -> None:
             is_sink=True,
             provenance=_CERTAIN,
         ),
+    ]
+
+    # Canonical decision-sink reachability (card 3). Deliberately covers all
+    # three states, plus one element with no record at all, so the viewer's
+    # distinction between "no data" and each state is exercised.
+    reachability = [
+        Reachability(
+            id="reach:score", element_id=SCORE_FEATURE_ID, state=ReachabilityState.REACHES_SINK,
+            provenance=_RESOLVED, sink_ids=(DECIDE_ID,), path_ids=(SCORE_FEATURE_ID, DECIDE_ID),
+        ),
+        Reachability(
+            id="reach:decide", element_id=DECIDE_ID, state=ReachabilityState.REACHES_SINK,
+            provenance=_CERTAIN, sink_ids=(DECIDE_ID,),
+        ),
+        Reachability(
+            id="reach:ingest", element_id=INGEST_ID, state=ReachabilityState.NO_SINK_PATH,
+            provenance=_CERTAIN, reason="ingest's output only reaches a log call, never decide",
+        ),
+        Reachability(
+            id="reach:compute", element_id=COMPUTE_ID, state=ReachabilityState.UNKNOWN,
+            provenance=Provenance(method=Method.CFG_REACHABILITY, confidence=Confidence.UNKNOWN),
+            reason="an unresolved call site lies on the only candidate path to a sink",
+        ),
+        # RULESET_ID, EVALUATE_ID, UNUSED_FEATURE_ID and the module element
+        # deliberately get no record, to exercise the "canonical file present
+        # but no record for this element" branch.
     ]
 
     lineage = [
@@ -249,6 +279,7 @@ def build_fixture(root: Path) -> None:
         "order.jsonl": canonical_jsonl(order_nodes),
         "decisions.jsonl": canonical_jsonl(decisions),
         "lineage.jsonl": canonical_jsonl(lineage),
+        # placeholder; overwritten below only when include_reachability
         "barriers.jsonl": canonical_jsonl(barriers),
         "slices.jsonl": canonical_jsonl(slices),
         "findings.jsonl": canonical_jsonl(findings),

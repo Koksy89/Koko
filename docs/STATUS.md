@@ -13,20 +13,20 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 
 | Card | Scope | Subagent | Status |
 |---|---|---|---|
-| 8 | Fixture corpus | fixture-writer | **READY** |
-| 1 | Ingestion & inventory | ingestion-builder | **READY** |
-| 2 | Resolution & call graph | resolver-engineer | blocked on 1 |
-| 3 | CFG, cascade ordering, decisions | cascade-engineer | blocked on 2 |
-| 4 | Data/feature lineage & slicing | lineage-engineer | blocked on 2 |
-| 5 | Unplugged detection & hints | findings-builder | blocked on 3, 4 |
-| 6 | Version diff & impact | diff-impact-builder | blocked on 3, 4 |
-| 16 | Documentation records & completeness gate | docs-builder | blocked on 5, 6 |
-| 15 | Viewer | viewer-builder | blocked on 16 |
-| 11 | Safe execution harness | harness-builder | blocked on Mode B |
-| 12 | Runtime tracer & value capture | tracer-engineer | blocked on Mode B |
-| 13 | Intent registry & alignment | alignment-engineer | blocked on 11, 12 |
-| 14 | Execution narrative | narrative-builder | blocked on 11, 12 |
-| 10 | CLI, integration & validation | the lead | blocked on 16, 15B |
+| 8 | Fixture corpus | fixture-writer | **FAILED x2 — rebuilding** (escalated) |
+| 1 | Ingestion & inventory | ingestion-builder | built, under verification |
+| 2 | Resolution & call graph | resolver-engineer | building |
+| 3 | CFG, cascade ordering, decisions | cascade-engineer | building |
+| 4 | Data/feature lineage & slicing | lineage-engineer | building |
+| 5 | Unplugged detection & hints | findings-builder | **DONE** (PASS, round 2) |
+| 6 | Version diff & impact | diff-impact-builder | building |
+| 16 | Documentation records & completeness gate | docs-builder | **DONE** (PASS) |
+| 15 | Viewer (phase B) | viewer-builder | FAILED — reworking |
+| 11 | Safe execution harness | harness-builder | FAILED — reworking |
+| 12 | Runtime tracer & value capture | tracer-engineer | building |
+| 13 | Intent registry & alignment | alignment-engineer | built, under verification |
+| 14 | Execution narrative | narrative-builder | reworked, awaiting verification |
+| 10 | CLI, integration & validation | the lead | not started |
 
 ## What exists
 
@@ -69,15 +69,32 @@ delegated in the same step.
 
 ## Lessons carried forward
 
-- The guard denies any command whose head is not on its read-only allowlist when the
-  command names a protected path. A builder needing a new read-only tool adds it to
-  `READ_ONLY` in the hook and says so in its report — it never routes around the guard.
-- The guard blocked its own author writing documentation, because heredoc bodies were
-  parsed as shell. Fixed and covered by tests. Expect more false positives of that
-  shape; each is a one-line allowlist fix plus a regression test.
-- `canonical_dumps` rejects floats. This is deliberate and not negotiable per card: float
-  repr varies across platforms and constraint 4 cannot survive it. Emit an int, or a
-  string you formatted explicitly.
-- Cards 2, 4 and 5 report precision *and* recall, and precision is the priority for all
-  three. A confident wrong edge, a stitched-across slice and a false unplugged finding
-  each cost the owner more than an honest gap.
+- **A green test suite is not a verifier PASS.** Three defects so far were tests passing
+  for the wrong reason: card 5's fixture short-circuited on an empty entry-point list
+  before reaching any logic; card 14's anchoring test never exercised the one event kind
+  that could break it; card 15 proved one drill-down link resolved, not all of them. Every
+  card's verification now asks what the test would fail to catch.
+- **Hand-transcribing mechanical data does not scale.** Card 8 twice claimed every line
+  number was read from the file; an AST check found 14 wrong across 212 records both
+  times. Positional fields are now generated from `ast`; only semantic expectations stay
+  hand-derived. The model assignment was also wrong for the work and was escalated.
+- **A missing contract field becomes two wrong answers.** Cards 5 and 15 both needed
+  decision reachability, found no canonical carrier, and diverged. Card 15 reported it;
+  card 5 invented one and shipped a silent blind spot. `Reachability` now exists. When a
+  field is missing, report it — that is what the rule is for, and it worked.
+- **Scope narrowing to make a test pass is a defect even when the narrowing is
+  defensible.** Card 5 excluded MODULE and CLASS from unreachability and a genuinely dead
+  module went unreported, invisibly. If a limit is real it must be visible in the emitted
+  output, because the owner reads artifacts, not source.
+- **Guess labels must be marked as guesses.** Card 14 named cascade phases
+  "ingestion"/"data engineering" from position alone and printed them as fact. Now
+  "segment 1", with the text disclosing that card 3 does not name it.
+- **`ContextVar` is the wrong tool for a containment boundary.** Card 11's sandbox was
+  fully bypassed by `threading.Thread`, which starts with a fresh context — network
+  reached, nothing recorded. Enforcement must be process-wide and fail closed: where the
+  hook cannot tell whether it is inside a run, it treats itself as inside.
+- The guard hook denies any command whose head is not on its read-only allowlist when the
+  command names a protected path. Add to `READ_ONLY` and say so in the report; never route
+  around it.
+- Builders' self-reported numbers drift. Card 5 reported 24 tests against an actual 20;
+  card 16 reported 137 against 153. Take counts from a run, not a report.

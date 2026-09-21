@@ -8,6 +8,15 @@ Determinism: every list here is sorted before it is written, and nothing in
 this module reads the clock, the environment or the filesystem outside the
 artifact root already loaded into the store. Two runs over the same store
 produce byte-identical HTML.
+
+Linking discipline: an ``<a href="#el-ID">`` is only ever emitted for an ID
+that has a real ``id="el-ID"`` anchor -- i.e. an ID present in
+``elements.jsonl``, which is the only artifact this page renders one detail
+section per record for. Every other kind of ID this page mentions (order
+nodes, decisions, findings, changes, slices, barriers, lineage edges,
+unresolved records, intents -- none of which are elements) is rendered as
+plain, still-visible ``<code>`` text rather than a dangling link. See
+:func:`_ref`.
 """
 
 from __future__ import annotations
@@ -35,6 +44,10 @@ th { background: #f4f4f4; }
 .conf-PROBABLE { background: #fff3cd; }
 .conf-HEURISTIC { background: #ffe0b2; }
 .conf-UNKNOWN { background: #f5c6cb; }
+.reach-REACHES_SINK { background: #cdebd4; }
+.reach-NO_SINK_PATH { background: #d9edf7; }
+.reach-UNKNOWN { background: #f5c6cb; }
+.reach-fallback { border: 1px dashed #a94442; }
 .model-prose { background: #fff8e1; border-left: 4px solid #f0ad4e; padding: 0.5rem; }
 .model-prose::before { content: "MODEL-WRITTEN, not a fact: "; font-weight: bold; }
 .facts { background: #f4f8fb; border-left: 4px solid #2e6da4; padding: 0.5rem; }
@@ -50,12 +63,24 @@ li.order-node { margin: 0.25rem 0; padding-left: 0.5rem; }
 """
 
 
-def _a(element_id: str | None, label: str | None = None) -> str:
-    """A drill-down link to an element (or any ID this page anchors)."""
-    if not element_id:
+def _ref(store: ArtifactStore, id_: str | None, label: str | None = None) -> str:
+    """Render one ID.
+
+    A drill-down link (``#el-ID``) when *id_* is a real element -- every
+    element gets a detail section, so the link always resolves. Plain
+    ``<code>`` text otherwise: the ID is still shown, never dropped, but not
+    offered as a link with nothing at the other end.
+    """
+    if not id_:
         return ""
-    text = escape(label or element_id)
-    return f'<a href="#el-{escape(element_id)}">{text}</a>'
+    if id_ in store.elements_by_id:
+        text = escape(label or id_)
+        return f'<a href="#el-{escape(id_)}">{text}</a>'
+    return f"<code>{escape(label or id_)}</code>"
+
+
+def _refs(store: ArtifactStore, ids: Iterable[str]) -> str:
+    return ", ".join(_ref(store, i) for i in sorted(set(ids)) if i) or "&mdash;"
 
 
 def _badge(confidence: str | None) -> str:
@@ -64,8 +89,14 @@ def _badge(confidence: str | None) -> str:
     return f'<span class="badge conf-{escape(confidence)}">{escape(confidence)}</span>'
 
 
-def _ids(ids: Iterable[str]) -> str:
-    return ", ".join(_a(i) for i in sorted(set(ids))) or "&mdash;"
+def _reach_badge(info: dict[str, Any]) -> str:
+    state = info.get("state") or "UNKNOWN"
+    source = info.get("source") or ""
+    is_fallback = source.startswith("fallback:")
+    cls = f"badge reach-{escape(state)}" + (" reach-fallback" if is_fallback else "")
+    label = escape(state) + (" (approximated)" if is_fallback else "")
+    title = escape(info.get("reason") or "")
+    return f'<span class="{cls}" title="{title}">{label}</span>'
 
 
 def _render_available(store: ArtifactStore) -> str:
@@ -84,52 +115,66 @@ def _render_available(store: ArtifactStore) -> str:
 def _render_browser(store: ArtifactStore) -> str:
     rows = []
     for e in views.browser_view(store):
+        reach = views.element_reachability(store, e["id"])
         rows.append(
             "<tr>"
-            f"<td>{_a(e['id'])}</td>"
+            f"<td>{_ref(store, e['id'])}</td>"
             f"<td>{escape(e['kind'] or '')}</td>"
             f"<td>{escape(e['module'] or '')}</td>"
             f"<td>{escape(e['qualname'] or e['name'] or '')}</td>"
             f"<td>{_badge(e['confidence'])}</td>"
             f"<td>{escape(e['method'] or '')}</td>"
+            f"<td>{_reach_badge(reach)}</td>"
             "</tr>"
         )
     return (
         "<table><tr><th>id</th><th>kind</th><th>module</th><th>qualname</th>"
-        f"<th>confidence</th><th>method</th></tr>{''.join(rows)}</table>"
+        f"<th>confidence</th><th>method</th><th>decision reachability</th></tr>"
+        f"{''.join(rows)}</table>"
     )
 
 
-def _render_order_node(node: dict[str, Any]) -> str:
+def _render_order_node(store: ArtifactStore, node: dict[str, Any]) -> str:
     if node.get("missing"):
         return f"<li class='order-node missing'>{escape(node['id'])} (order node not found)</li>"
     kind = node.get("kind") or "SEQUENCE"
-    members = _ids(node.get("element_ids") or ())
-    decisions = _ids(node.get("decision_ids") or ())
+    members = _refs(store, node.get("element_ids") or ())
+    # Decision IDs are DecisionPoint ids, not element ids -- shown as plain
+    # text via _refs (which falls back to <code> for anything that is not a
+    # known element), never as a link with no anchor behind it.
+    decisions = _refs(store, node.get("decision_ids") or ())
     if node.get("cycle_back_reference"):
-        body = f"back-reference to {_a(node['id'])} (cycle closes here)"
+        # node["id"] here is an OrderNode id, not an element -- _refs
+        # correctly renders it as plain <code> text.
+        body = f"back-reference to {_refs(store, [node['id']])} (cycle closes here)"
     else:
-        children = "".join(f"<ul>{_render_order_node(c)}</ul>" for c in node.get("children") or ())
+        children = "".join(
+            f"<ul>{_render_order_node(store, c)}</ul>" for c in node.get("children") or ()
+        )
         body = (
             f"members: {members}"
             + (f" | decisions: {decisions}" if node.get("decision_ids") else "")
             + children
         )
-    return f"<li class='order-node order-{escape(kind)}'><b>{escape(kind)}</b> ({escape(node['id'])}) &mdash; {body}</li>"
+    return (
+        f"<li class='order-node order-{escape(kind)}'><b>{escape(kind)}</b> "
+        f"({escape(node['id'])}) &mdash; {body}</li>"
+    )
 
 
 def _render_cascade(store: ArtifactStore) -> str:
     tree = views.cascade_view(store)
     if not tree:
         return "<p class='missing'>order.jsonl not available or empty.</p>"
-    return "<ul>" + "".join(_render_order_node(n) for n in tree) + "</ul>"
+    return "<ul>" + "".join(_render_order_node(store, n) for n in tree) + "</ul>"
 
 
 def _render_callgraph(store: ArtifactStore) -> str:
     cg = views.callgraph_view(store)
     edge_rows = "".join(
         "<tr>"
-        f"<td>{_a(e['source_id'])}</td><td>{escape(e['kind'] or '')}</td><td>{_a(e['target_id'])}</td>"
+        f"<td>{_ref(store, e['source_id'])}</td><td>{escape(e['kind'] or '')}</td>"
+        f"<td>{_ref(store, e['target_id'])}</td>"
         f"<td>{escape(e['method'] or '')}</td><td>{_badge(e['confidence'])}</td>"
         "</tr>"
         for e in cg["edges"]
@@ -138,7 +183,7 @@ def _render_callgraph(store: ArtifactStore) -> str:
         "<tr>"
         f"<td>{escape(u['id'] or '')}</td><td>{escape(u['reason'] or '')}</td>"
         f"<td>{escape((u['span'] or {}).get('path', ''))}:{(u['span'] or {}).get('line', '')}</td>"
-        f"<td>{escape(u['description'] or '')}</td><td>{_ids(u['candidate_ids'])}</td>"
+        f"<td>{escape(u['description'] or '')}</td><td>{_refs(store, u['candidate_ids'])}</td>"
         f"<td>{_badge(u['candidate_confidence'])}</td>"
         "</tr>"
         for u in cg["unresolved"]
@@ -159,8 +204,8 @@ def _render_findings(store: ArtifactStore) -> str:
         rows.append(
             "<tr>"
             f"<td>{escape(f['id'] or '')}</td><td>{escape(f['kind'] or '')}</td>"
-            f"<td>{_a(f['element_id'])}</td><td>{escape(f['summary'] or '')}</td>"
-            f"<td>{escape(f['hint'] or '')}</td><td>{_ids(f['evidence_ids'])}</td>"
+            f"<td>{_ref(store, f['element_id'])}</td><td>{escape(f['summary'] or '')}</td>"
+            f"<td>{escape(f['hint'] or '')}</td><td>{_refs(store, f['evidence_ids'])}</td>"
             f"<td>{_badge(f['confidence'])}</td>"
             "</tr>"
         )
@@ -177,10 +222,10 @@ def _render_diff(store: ArtifactStore) -> str:
         rows.append(
             "<tr>"
             f"<td>{escape(rank)}</td><td>{escape(r['change_kind'] or '')}</td>"
-            f"<td>{_a(r['before_id'])}</td><td>{_a(r['after_id'])}</td>"
+            f"<td>{_ref(store, r['before_id'])}</td><td>{_ref(store, r['after_id'])}</td>"
             f"<td>{'yes' if r['decision_paths_changed'] else 'no'}</td>"
-            f"<td>{_ids(r['affected_ids'])}</td>"
-            f"<td>{_ids(r['reachability_flipped'])}</td>"
+            f"<td>{_refs(store, r['affected_ids'])}</td>"
+            f"<td>{_refs(store, r['reachability_flipped'])}</td>"
             f"<td>{escape(r.get('note', ''))}</td>"
             "</tr>"
         )
@@ -191,7 +236,7 @@ def _render_diff(store: ArtifactStore) -> str:
     )
 
 
-def _render_doc_record(record: dict[str, Any] | None) -> str:
+def _render_doc_record(store: ArtifactStore, record: dict[str, Any] | None) -> str:
     if record is None:
         return "<p class='missing'>No documentation record (records.jsonl not available, "\
             "or the completeness gate has not run).</p>"
@@ -208,7 +253,8 @@ def _render_doc_record(record: dict[str, Any] | None) -> str:
     )
     return (
         f"<div class='facts'><table>{facts_rows}</table>"
-        f"<p>findings: {_ids(record['finding_ids'])} | changes: {_ids(record['change_ids'])} | "
+        f"<p>findings: {_refs(store, record['finding_ids'])} | "
+        f"changes: {_refs(store, record['change_ids'])} | "
         f"confidence: {_badge(record['confidence'])}</p></div>"
         f"{model_block}"
     )
@@ -222,28 +268,31 @@ def _render_element_detail(store: ArtifactStore, element_id: str) -> str:
     else:
         header = (
             f'<h3 id="el-{escape(element_id)}">{escape(el["qualname"] or el["name"] or element_id)}'
-            f" <small>{escape(el['kind'] or '')}</small> {_badge(el['confidence'])}</h3>"
+            f" <small>{escape(el['kind'] or '')}</small> {_badge(el['confidence'])}"
+            f" {_reach_badge(d['reachability'])}</h3>"
             f"<p>module: {escape(el['module'] or '')} | id: <code>{escape(element_id)}</code></p>"
         )
     body = (
-        f"<p>outgoing edges: {_ids(e['target_id'] for e in d['outgoing_edges'])}<br>"
-        f"incoming edges: {_ids(e['source_id'] for e in d['incoming_edges'])}<br>"
-        f"unresolved candidate for: {_ids(u['id'] for u in d['unresolved_as_candidate'])}<br>"
-        f"order nodes: {_ids(d['order_node_ids'])}<br>"
-        f"decision (as condition owner): {_ids(d['decision_as_condition'])}<br>"
-        f"decision (reads this): {_ids(d['decision_reads_this'])}<br>"
-        f"lineage out: {_ids(e['id'] for e in d['lineage_out'] if e.get('id'))}<br>"
-        f"lineage in: {_ids(e['id'] for e in d['lineage_in'] if e.get('id'))}<br>"
-        f"barriers: {_ids(d['barrier_ids'])}<br>"
-        f"backward slice: {_ids(d['slice_ids_rooted_here'].get('backward', []))}<br>"
-        f"forward slice: {_ids(d['slice_ids_rooted_here'].get('forward', []))}<br>"
-        f"member of slices: {_ids(d['slice_ids_as_member'])}<br>"
-        f"findings: {_ids(d['finding_ids'])}<br>"
-        f"findings (as evidence): {_ids(d['finding_ids_as_evidence'])}<br>"
-        f"changes (before): {_ids(d['change_ids_before'])}<br>"
-        f"changes (after): {_ids(d['change_ids_after'])}<br>"
-        f"intents: {_ids(d['intent_ids'])}</p>"
-        f"{_render_doc_record(d['doc_record'])}"
+        f"<p>reachability: {_reach_badge(d['reachability'])} "
+        f"<small>({escape(d['reachability'].get('source', ''))})</small><br>"
+        f"outgoing edges: {_refs(store, (e['target_id'] for e in d['outgoing_edges']))}<br>"
+        f"incoming edges: {_refs(store, (e['source_id'] for e in d['incoming_edges']))}<br>"
+        f"unresolved candidate for: {_refs(store, (u['id'] for u in d['unresolved_as_candidate']))}<br>"
+        f"order nodes: {_refs(store, d['order_node_ids'])}<br>"
+        f"decision (as condition owner): {_refs(store, d['decision_as_condition'])}<br>"
+        f"decision (reads this): {_refs(store, d['decision_reads_this'])}<br>"
+        f"lineage out: {_refs(store, (e['id'] for e in d['lineage_out'] if e.get('id')))}<br>"
+        f"lineage in: {_refs(store, (e['id'] for e in d['lineage_in'] if e.get('id')))}<br>"
+        f"barriers: {_refs(store, d['barrier_ids'])}<br>"
+        f"backward slice: {_refs(store, d['slice_ids_rooted_here'].get('backward', []))}<br>"
+        f"forward slice: {_refs(store, d['slice_ids_rooted_here'].get('forward', []))}<br>"
+        f"member of slices: {_refs(store, d['slice_ids_as_member'])}<br>"
+        f"findings: {_refs(store, d['finding_ids'])}<br>"
+        f"findings (as evidence): {_refs(store, d['finding_ids_as_evidence'])}<br>"
+        f"changes (before): {_refs(store, d['change_ids_before'])}<br>"
+        f"changes (after): {_refs(store, d['change_ids_after'])}<br>"
+        f"intents: {_refs(store, d['intent_ids'])}</p>"
+        f"{_render_doc_record(store, d['doc_record'])}"
     )
     return f"<div class='element-detail'>{header}{body}</div>"
 
