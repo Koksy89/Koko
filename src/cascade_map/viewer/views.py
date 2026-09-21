@@ -557,15 +557,57 @@ def element_detail(store: ArtifactStore, element_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+#: `ScenarioFailure.stage`/`exception_type` -> the sentence that sends the
+#: owner to the right place. A lookup over two already-emitted fields, not a
+#: new fact about the target -- the same discipline as `_reach_badge`'s
+#: fallback labelling in phase B. See `ScenarioFailure`'s docstring: the
+#: scenario raising is not the same event as the target misbehaving, and an
+#: owner who cannot tell them apart goes looking for a bug that is not there.
+def _scenario_failure_explanation(stage: str | None, exception_type: str | None) -> str:
+    if stage == "import":
+        return (
+            "the module could not be imported: either target_root points at the "
+            "wrong directory, or the target cannot import itself. The traceback "
+            "below says which."
+        )
+    if stage == "call" and exception_type == "AttributeError":
+        return (
+            "the module imported fine, but the named function does not exist. "
+            "This is a typo in the scenario file, not a fact about the target engine."
+        )
+    if stage == "call":
+        return (
+            "the target engine itself raised during the scenario. This is the "
+            "target's own exception, not a tool failure."
+        )
+    return f"unrecognised failure stage {stage!r} -- shown verbatim below."
+
+
+def _scenario_failure_view(run: dict[str, Any]) -> dict[str, Any] | None:
+    sf = run.get("scenario_failure")
+    if not sf:
+        return None
+    return {
+        "stage": sf.get("stage", ""),
+        "exception_type": sf.get("exception_type", ""),
+        "message": sf.get("message", ""),
+        "traceback": sf.get("traceback", ""),
+        "explanation": _scenario_failure_explanation(sf.get("stage"), sf.get("exception_type")),
+    }
+
+
 def runtime_overview_view(rstore: RuntimeStore) -> dict[str, Any]:
-    """`RunRecord` verbatim, `unguaranteed` and `blocked` first -- the owner
-    needs to see what a run could not guarantee before what it observed."""
+    """`RunRecord` verbatim. `scenario_failure` comes first in the returned
+    mapping -- when the scenario raised, the run happened but did not do
+    what was asked, and that must be visible before `unguaranteed` or
+    `blocked`, which describe a run that otherwise executed as intended."""
     run = rstore.run_record
     if run is None:
         return {"available": False, "run_id": rstore.run_id}
     return {
         "available": True,
         "run_id": run.get("run_id", rstore.run_id),
+        "scenario_failure": _scenario_failure_view(run),
         "unguaranteed": list(run.get("unguaranteed") or ()),
         "blocked": [dict(b) for b in run.get("blocked") or ()],
         "refused": run.get("refused", False),

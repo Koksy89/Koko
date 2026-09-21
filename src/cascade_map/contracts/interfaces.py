@@ -896,6 +896,19 @@ class RunRecord:
     scenario_failure: ScenarioFailure | None = None
     """Set when the scenario raised. `None` means it completed."""
 
+    observer_failure: ScenarioFailure | None = None
+    """Set when the **observer** raised -- a bug in the tool, not the target.
+
+    Kept separate from `scenario_failure` because they are opposite findings.
+    One says the target misbehaved; this says the target may have run perfectly
+    and nobody was watching. Conflating them would send an owner to look at
+    their own code for a fault that is ours.
+
+    An observer that fails at `start` means the run was not observed at all,
+    and a report of zero events would otherwise read as "my engine did
+    nothing". `stage` is `start` or `stop`.
+    """
+
     refused: bool = False
     refusal_reason: str = ""
     """Set when the run refused to start. Constraint 7: a refusal is a correct

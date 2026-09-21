@@ -77,6 +77,10 @@ li.order-node { margin: 0.25rem 0; padding-left: 0.5rem; }
 .contradiction-row td { border-color: #d9534f; }
 .unguaranteed-block { border: 2px solid #d9534f; background: #fff5f5; padding: 0.75rem 1rem;
   margin-bottom: 1rem; }
+.scenario-failure { border: 3px solid #a94442; background: #fdeaea; padding: 0.75rem 1rem;
+  margin-bottom: 1rem; }
+.scenario-failure pre { white-space: pre-wrap; word-break: break-word; background: #fff;
+  border: 1px solid #ccc; padding: 0.5rem; max-height: 20rem; overflow: auto; }
 """
 
 
@@ -367,10 +371,36 @@ def _render_span(span: dict[str, Any] | None) -> str:
     return f"{path}:{line}"
 
 
+def _render_scenario_failure(sf: dict[str, Any] | None) -> str:
+    """`ScenarioFailure`, rendered first and unmissable. A scenario that
+    raised means the run happened but did not do what was asked -- the
+    exact shape of lie this tool told once already (524 events, 0 mapped,
+    exit 0, from a scenario that pointed at the wrong target_root and never
+    ran a line of the target's own code). The traceback is shown verbatim,
+    including the harness's own truncation note when it applies, so a
+    cut-off traceback never reads as a complete one."""
+    if sf is None:
+        return ""
+    traceback_text = sf["traceback"] or "(no traceback captured)"
+    return (
+        "<div class='scenario-failure'>"
+        f"<h4>This run's scenario did not complete -- {escape(sf['stage'])} stage</h4>"
+        f"<p>{escape(sf['explanation'])}</p>"
+        f"<p>exception: <code>{escape(sf['exception_type'])}</code>"
+        f"{' -- ' + escape(sf['message']) if sf['message'] else ''}</p>"
+        f"<pre>{escape(traceback_text)}</pre>"
+        "<p><b>The event counts below describe a run in which this happened.</b> "
+        "They are real, observed events -- not evidence the target's own logic ran "
+        "as intended, and not suppressed.</p>"
+        "</div>"
+    )
+
+
 def _render_run_overview(store: ArtifactStore, rstore: RuntimeStore) -> str:
     overview = views.runtime_overview_view(rstore)
     if not overview["available"]:
         return "<p class='missing'>run.json not available for this run -- run overview cannot be shown.</p>"
+    failure_block = _render_scenario_failure(overview.get("scenario_failure"))
     unguaranteed_rows = "".join(
         f"<li>{escape(u)}</li>" for u in overview["unguaranteed"]
     ) or "<li>none disclosed by this run record</li>"
@@ -392,6 +422,7 @@ def _render_run_overview(store: ArtifactStore, rstore: RuntimeStore) -> str:
         for k, v in sorted(overview["controls_active"].items())
     )
     return (
+        f"{failure_block}"
         f"<div class='unguaranteed-block runtime-evidence'>{_run_tag(overview['run_id'])}"
         f"{refusal}"
         "<h4>Escape paths this harness could not close (read this first)</h4>"

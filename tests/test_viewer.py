@@ -48,6 +48,7 @@ from cascade_map.contracts.interfaces import (
     ReachabilityState,
     RunRecord,
     SCHEMA_VERSION,
+    ScenarioFailure,
     Slice,
     SourceSpan,
     TraceEvent,
@@ -753,10 +754,14 @@ def _runtime_prov(*event_ids: str) -> Provenance:
     )
 
 
-def build_runtime_fixture(root: Path, run_id: str = RUN_ID) -> None:
+def build_runtime_fixture(
+    root: Path, run_id: str = RUN_ID, *, scenario_failure: ScenarioFailure | None = None
+) -> None:
     """Write a small, hand-authored runtime overlay to
     ``root/runtime/<run_id>/``, keyed onto the same element IDs
-    ``build_fixture`` already wrote to *root*."""
+    ``build_fixture`` already wrote to *root*. *scenario_failure* lets a
+    test build a run whose scenario raised, without duplicating the whole
+    fixture."""
     rundir = root / "runtime" / run_id
     rundir.mkdir(parents=True, exist_ok=True)
 
@@ -850,6 +855,7 @@ def build_runtime_fixture(root: Path, run_id: str = RUN_ID) -> None:
             "a child process permitted by declared_process_names is unaudited once running",
         ),
         sandbox_dir="sandbox/run_0001",
+        scenario_failure=scenario_failure,
     )
 
     mapping = MappingReport(
@@ -1018,6 +1024,101 @@ def test_html_render_unguaranteed_appears_before_events(runtime_store) -> None:
     assert unguaranteed_pos < events_pos
     blocked_pos = html.index("Blocked attempts")
     assert blocked_pos < events_pos
+
+
+# -- scenario_failure: the run happened, but the scenario did not ------------
+#
+# Reproduces the exact shape of lie the CLI told once: a scenario pointed at
+# the wrong target_root reported "524 events, 0 mapped, exit 0" with no
+# visual distinction from a normal completed run. RunRecord.scenario_failure
+# exists precisely so this page never repeats that.
+
+_LONG_TRACEBACK_NOTE = "...[traceback truncated: showing 8000 of 15000 characters]"
+
+
+def test_runtime_overview_normal_run_has_no_scenario_failure(runtime_store) -> None:
+    _store, rstore = runtime_store
+    assert runtime_overview_view(rstore)["scenario_failure"] is None
+
+
+def test_runtime_overview_import_failure_explains_target_root(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(
+        tmp_path,
+        scenario_failure=ScenarioFailure(
+            stage="import", exception_type="ModuleNotFoundError",
+            message="No module named 'metatron_engine'", traceback="Traceback...\n",
+        ),
+    )
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    sf = runtime_overview_view(rstore)["scenario_failure"]
+    assert sf["stage"] == "import"
+    assert "target_root" in sf["explanation"]
+    assert "wrong directory" in sf["explanation"] or "cannot import itself" in sf["explanation"]
+
+
+def test_runtime_overview_call_attributeerror_is_a_scenario_typo(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(
+        tmp_path,
+        scenario_failure=ScenarioFailure(
+            stage="call", exception_type="AttributeError",
+            message="module 'pkg.mod' has no attribute 'run_m5'", traceback="Traceback...\n",
+        ),
+    )
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    sf = runtime_overview_view(rstore)["scenario_failure"]
+    assert "typo" in sf["explanation"]
+    assert "not a fact about the target" in sf["explanation"]
+
+
+def test_runtime_overview_call_other_exception_is_the_targets_own(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(
+        tmp_path,
+        scenario_failure=ScenarioFailure(
+            stage="call", exception_type="ZeroDivisionError",
+            message="division by zero", traceback="Traceback...\n" + _LONG_TRACEBACK_NOTE,
+        ),
+    )
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    sf = runtime_overview_view(rstore)["scenario_failure"]
+    assert "target's own exception" in sf["explanation"] or "target engine itself raised" in sf["explanation"]
+    assert sf["traceback"].endswith(_LONG_TRACEBACK_NOTE)
+
+
+def test_html_render_scenario_failure_appears_before_unguaranteed_and_events(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    build_runtime_fixture(
+        tmp_path,
+        scenario_failure=ScenarioFailure(
+            stage="import", exception_type="ModuleNotFoundError",
+            message="No module named 'metatron_engine'",
+            traceback="Traceback (most recent call last):\n  ...\n" + _LONG_TRACEBACK_NOTE,
+        ),
+    )
+    store = ArtifactStore.load(tmp_path)
+    rstore = RuntimeStore.load(tmp_path, RUN_ID)
+    html = render_site(store, rstore)
+    failure_pos = html.index("scenario did not complete")
+    unguaranteed_pos = html.index("could not close")
+    blocked_pos = html.index("Blocked attempts")
+    events_pos = html.index("Events and captured values")
+    assert failure_pos < unguaranteed_pos < blocked_pos < events_pos
+    # the traceback's own truncation note is rendered verbatim, not hidden
+    assert _LONG_TRACEBACK_NOTE in html
+    # the event counts are not suppressed -- still fully present below
+    assert "Mapping rate" in html
+    assert "not suppressed" in html
+
+
+def test_html_render_normal_run_has_no_scenario_failure_block(runtime_store) -> None:
+    """A run whose scenario completed must never render the failure block --
+    that would be its own kind of misleading."""
+    store, rstore = runtime_store
+    html = render_site(store, rstore)
+    assert 'class="scenario-failure"' not in html
+    assert "did not complete" not in html
 
 
 # -- mapping rate ---------------------------------------------------------
