@@ -279,7 +279,6 @@ def build_fixture(root: Path, *, include_reachability: bool = True) -> None:
         "order.jsonl": canonical_jsonl(order_nodes),
         "decisions.jsonl": canonical_jsonl(decisions),
         "lineage.jsonl": canonical_jsonl(lineage),
-        # placeholder; overwritten below only when include_reachability
         "barriers.jsonl": canonical_jsonl(barriers),
         "slices.jsonl": canonical_jsonl(slices),
         "findings.jsonl": canonical_jsonl(findings),
@@ -288,6 +287,9 @@ def build_fixture(root: Path, *, include_reachability: bool = True) -> None:
         "records.jsonl": canonical_jsonl(records),
         "intents.jsonl": canonical_jsonl(intents),
     }
+    if include_reachability:
+        files["reachability.jsonl"] = canonical_jsonl(reachability)
+
     for name, content in files.items():
         (root / name).write_text(content, encoding="utf-8")
 
@@ -376,10 +378,57 @@ def test_browser_decision_signals_reflect_emitted_facts(store: ArtifactStore) ->
     assert {e["id"] for e in reads} == {SCORE_FEATURE_ID}
 
     sinks = browser_view(store, decision_signal="reaches_sink")
-    assert {e["id"] for e in sinks} == {SCORE_FEATURE_ID}
+    assert {e["id"] for e in sinks} == {SCORE_FEATURE_ID, DECIDE_ID}
+
+    no_path = browser_view(store, decision_signal="no_sink_path")
+    assert {e["id"] for e in no_path} == {INGEST_ID}
+
+    unknown = browser_view(store, decision_signal="reachability_unknown")
+    # COMPUTE_ID has an explicit UNKNOWN record; the rest have no record at
+    # all, which is also UNKNOWN -- distinct in source, same rendered state.
+    assert {e["id"] for e in unknown} == {COMPUTE_ID, MODULE, RULESET_ID, EVALUATE_ID, UNUSED_FEATURE_ID}
 
     irrelevant = browser_view(store, decision_signal="decision_irrelevant_finding")
     assert irrelevant == []
+
+
+def test_element_reachability_reads_the_canonical_record(store: ArtifactStore) -> None:
+    reach = element_reachability(store, SCORE_FEATURE_ID)
+    assert reach["state"] == "REACHES_SINK"
+    assert reach["source"] == "reachability.jsonl"
+    assert reach["sink_ids"] == [DECIDE_ID]
+
+    no_path = element_reachability(store, INGEST_ID)
+    assert no_path["state"] == "NO_SINK_PATH"
+    assert no_path["source"] == "reachability.jsonl"
+
+    unknown = element_reachability(store, COMPUTE_ID)
+    assert unknown["state"] == "UNKNOWN"
+    assert unknown["source"] == "reachability.jsonl"
+
+    missing_record = element_reachability(store, RULESET_ID)
+    assert missing_record["state"] == "UNKNOWN"
+    assert missing_record["source"] == "reachability.jsonl"
+    assert "no record" in missing_record["reason"]
+
+
+def test_element_reachability_falls_back_when_file_absent(tmp_path: Path) -> None:
+    build_fixture(tmp_path, include_reachability=False)
+    s = ArtifactStore.load(tmp_path)
+    assert s.available["reachability"] is False
+
+    # A forward slice with reaches_sink_ids is the only honest fallback
+    # signal for REACHES_SINK.
+    reach = element_reachability(s, SCORE_FEATURE_ID)
+    assert reach["state"] == "REACHES_SINK"
+    assert reach["source"] == "fallback:slices.jsonl"
+
+    # No slice, no canonical record: the fallback can only say UNKNOWN. It
+    # must never claim NO_SINK_PATH -- that is a positive claim only the
+    # canonical record is entitled to make.
+    no_data = element_reachability(s, INGEST_ID)
+    assert no_data["state"] == "UNKNOWN"
+    assert no_data["source"] == "fallback:no_data"
 
 
 # ---------------------------------------------------------------------------
@@ -565,11 +614,61 @@ def test_html_render_has_no_network_reference(store: ArtifactStore) -> None:
         assert forbidden not in html
 
 
+_HREF_RE = re.compile(r'href="#el-([^"]*)"')
+_ANCHOR_RE = re.compile(r'id="el-([^"]*)"')
+
+
 def test_html_render_drill_down_links_resolve_to_anchors(store: ArtifactStore) -> None:
+    """Every element-detail link in the page lands on a real anchor.
+
+    This is exhaustive: it extracts every ``href="#el-..."`` and every
+    ``id="el-..."`` in the rendered page and asserts the link set is a
+    subset of the anchor set, listing any dangling target by name so a
+    regression is diagnosable from the assertion message alone. It also
+    checks the reverse direction: every element this page renders a detail
+    section for is linked from at least one other view, so no ID is an
+    island only reachable by scrolling.
+    """
     html = render_site(store)
+    hrefs = set(_HREF_RE.findall(html))
+    anchors = set(_ANCHOR_RE.findall(html))
+
+    assert anchors, "no element anchors were rendered at all"
+    dangling = hrefs - anchors
+    assert not dangling, f"links with no matching anchor: {sorted(dangling)}"
+
+    # Anchors are minted 1:1 from elements.jsonl -- confirm the anchor set is
+    # exactly the element ID set, no more, no less.
+    assert anchors == set(store.elements_by_id)
+
+    # Every element ID this fixture actually exercises through a non-element
+    # view (order nodes, edges, unresolved candidates, decisions, findings,
+    # changes) still resolves to a real anchor -- proving _ref()'s smart
+    # linking, not just element_detail's own self-anchors.
+    for element_id in (INGEST_ID, COMPUTE_ID, DECIDE_ID, EVALUATE_ID, SCORE_FEATURE_ID, UNUSED_FEATURE_ID):
+        assert f'href="#el-{element_id}"' in html, f"{element_id} is never linked from anywhere"
+        assert f'id="el-{element_id}"' in html
+
     assert f'id="el-{DECIDE_ID}"' in html
     assert f'href="#el-{DECIDE_ID}"' in html
     assert "MODEL-WRITTEN" in html  # model prose visibly labelled
+
+
+def test_html_render_non_element_ids_are_shown_but_not_linked(store: ArtifactStore) -> None:
+    """IDs that are not elements (order nodes, decisions) never become a
+    dangling '#el-' link, but the ID itself is still visible as text."""
+    html = render_site(store)
+    assert 'href="#el-order:loop"' not in html
+    assert 'href="#el-decision:decide"' not in html
+    assert "order:loop" in html  # still visible, just not a broken link
+    assert "decision:decide" in html
+
+
+def test_html_render_reachability_states_are_visually_distinct(store: ArtifactStore) -> None:
+    html = render_site(store)
+    assert "reach-REACHES_SINK" in html
+    assert "reach-NO_SINK_PATH" in html
+    assert "reach-UNKNOWN" in html
 
 
 def test_render_to_file_writes_the_same_content(tmp_path: Path) -> None:

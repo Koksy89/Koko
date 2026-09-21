@@ -130,7 +130,11 @@ def test_dif_added_removed() -> None:
     assert k[("m::b", "")] == ChangeKind.REMOVED
     assert k[("", "m::c")] == ChangeKind.ADDED
     for c in changes:
-        assert c.provenance.confidence in (Confidence.CERTAIN, Confidence.RESOLVED)
+        # ADDED/REMOVED are CERTAIN (presence/absence is a direct fact);
+        # UNCHANGED here falls back to content_hash equality (no source_root
+        # was given) which is HEURISTIC -- not formatting-invariant, per the
+        # documented fallback chain.
+        assert c.provenance.confidence in (Confidence.CERTAIN, Confidence.HEURISTIC)
 
 
 # ---------------------------------------------------------------------------
@@ -455,7 +459,7 @@ def _symmetric_key(vc: VersionChange) -> tuple:
         ChangeKind.ADDED: "ADD_REMOVE",
         ChangeKind.REMOVED: "ADD_REMOVE",
     }.get(vc.kind, vc.kind.value)
-    return (family, frozenset({vc.before_id, vc.after_id} - {""}))
+    return (family, tuple(sorted({vc.before_id, vc.after_id} - {""})))
 
 
 def test_dif_symmetric() -> None:

@@ -2156,7 +2156,18 @@ class _ModuleWalker:
                 f"call to {callee_id}, whose definition was not parsed",
             )
         func_node, info = found
-        self._bind_arguments(node, func_node, info, callee_id, confidence, method, note)
+        skip = 0
+        leading = [*func_node.args.posonlyargs, *func_node.args.args][:1]  # type: ignore[union-attr]
+        if isinstance(node.func, ast.Attribute) and leading and leading[0].arg in ("self", "cls"):
+            skip = 1
+            param_id = info.id_of_node.get(id(leading[0]), "")
+            for src in self.sources(node.func.value):
+                self.t.add_edge(
+                    LineageKind.PARAMETER_BINDING, src.id, param_id, self.span(node),
+                    method, combine(src.confidence, confidence),
+                    f"receiver bound to {leading[0].arg}",
+                )
+        self._bind_arguments(node, func_node, info, callee_id, confidence, method, note, skip=skip)
         return (
             _Src(
                 _return_node(callee_id),
@@ -2172,8 +2183,17 @@ class _ModuleWalker:
         """``C(...)`` binds ``__init__``'s parameters and yields an instance node."""
         module = class_id.split("::")[0]
         init_id = make_id(module, f"{class_qual}.__init__")
+        instance_id = f"{class_id}{_INSTANCE}"
         found = self.t._function_node(init_id)
         if found is not None:
+            leading = [*found[0].args.posonlyargs, *found[0].args.args][:1]  # type: ignore[union-attr]
+            if leading and leading[0].arg in ("self", "cls"):
+                self.t.add_edge(
+                    LineageKind.PARAMETER_BINDING, instance_id,
+                    found[1].id_of_node.get(id(leading[0]), ""), self.span(node),
+                    method, combine(confidence, Confidence.RESOLVED),
+                    f"new instance bound to {leading[0].arg}",
+                )
             self._bind_arguments(
                 node, found[0], found[1], init_id, confidence, method,
                 note or "constructor argument", skip=1,
@@ -2181,16 +2201,12 @@ class _ModuleWalker:
         else:
             for src in self._arg_sources(node):
                 self.t.add_edge(
-                    LineageKind.PARAMETER_BINDING, src.id, f"{class_id}{_INSTANCE}",
+                    LineageKind.PARAMETER_BINDING, src.id, instance_id,
                     self.span(node), method, combine(src.confidence, confidence, Confidence.PROBABLE),
                     f"{_OVER}{class_qual} defines no __init__ this analysis parsed",
                 )
         return (
-            _Src(
-                f"{class_id}{_INSTANCE}",
-                combine(confidence, Confidence.RESOLVED),
-                f"instance of {class_qual}",
-            ),
+            _Src(instance_id, combine(confidence, Confidence.RESOLVED), f"instance of {class_qual}"),
         )
 
     def _bind_arguments(
