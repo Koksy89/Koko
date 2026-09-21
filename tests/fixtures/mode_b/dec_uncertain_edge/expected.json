@@ -1,58 +1,268 @@
 {
-  "elements": [
+  "case_id": "dec_uncertain_edge",
+  "decisions": [
     {
-      "id": "dec_uncertain_edge",
-      "kind": "MODULE",
-      "name": "dec_uncertain_edge",
-      "qualname": "",
-      "module": "dec_uncertain_edge",
-      "span": {
-        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py",
-        "line": 1
-      },
+      "condition_source": "rule(value)",
+      "element_id": "dec_uncertain_edge::decide",
+      "id": "dec_uncertain_edge:d1",
+      "is_sink": true,
+      "outcomes": [
+        [
+          "True",
+          "enter"
+        ],
+        [
+          "False",
+          "hold"
+        ]
+      ],
       "provenance": {
+        "confidence": "HEURISTIC",
         "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "span": {
+          "col": 4,
+          "end_line": 32,
+          "line": 32,
+          "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py"
+        }
       },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "dec_uncertain_edge::possible_path",
-      "kind": "FUNCTION",
-      "name": "possible_path",
-      "qualname": "possible_path",
-      "module": "dec_uncertain_edge",
-      "span": {
-        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "dec_uncertain_edge::make_choice",
-      "kind": "FUNCTION",
-      "name": "make_choice",
-      "qualname": "make_choice",
-      "module": "dec_uncertain_edge",
-      "span": {
-        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py",
-        "line": 4
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "reads_ids": [
+        "dec_uncertain_edge::momentum_rule"
+      ]
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "declared_sink_ids": [
+    "dec_uncertain_edge::decide"
+  ],
+  "edges": [
+    {
+      "call_site": {
+        "col": 0,
+        "line": 23,
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py"
+      },
+      "id": "dec_uncertain_edge:e1",
+      "kind": "DECORATES",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "source_id": "dec_uncertain_edge::register",
+      "target_id": "dec_uncertain_edge::momentum_rule"
+    },
+    {
+      "call_site": {
+        "col": 0,
+        "line": 23,
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py"
+      },
+      "id": "dec_uncertain_edge:e2",
+      "kind": "REGISTERS",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DECORATOR_REGISTRATION",
+        "note": "decorate() writes RULES[\"momentum\"] = func"
+      },
+      "source_id": "dec_uncertain_edge::RULES",
+      "target_id": "dec_uncertain_edge::momentum_rule"
+    },
+    {
+      "call_site": {
+        "col": 22,
+        "end_line": 32,
+        "line": 32,
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py"
+      },
+      "id": "dec_uncertain_edge:e3",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "HEURISTIC",
+        "method": "DECORATOR_REGISTRATION",
+        "note": "`rule_name` is a parameter, so the registry key is unknown; this is the only path from the sink to momentum_rule"
+      },
+      "source_id": "dec_uncertain_edge::decide",
+      "target_id": "dec_uncertain_edge::momentum_rule"
+    }
+  ],
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "dec_uncertain_edge",
+      "kind": "MODULE",
+      "module": "dec_uncertain_edge",
+      "name": "dec_uncertain_edge",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "dec_uncertain_edge::RULES",
+      "kind": "ASSIGNMENT",
+      "module": "dec_uncertain_edge",
+      "name": "RULES",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "RULES",
+      "span": {
+        "col": 0,
+        "end_line": 10,
+        "line": 10,
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "THE SINK.",
+      "id": "dec_uncertain_edge::decide",
+      "kind": "FUNCTION",
+      "module": "dec_uncertain_edge",
+      "name": "decide",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "decide",
+      "signature": "(value, rule_name)",
+      "span": {
+        "col": 0,
+        "end_line": 32,
+        "line": 29,
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "decorators": [
+        "register(\"momentum\")"
+      ],
+      "docstring": "Reachable only through RULES, never by name.",
+      "id": "dec_uncertain_edge::momentum_rule",
+      "kind": "FUNCTION",
+      "module": "dec_uncertain_edge",
+      "name": "momentum_rule",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "momentum_rule",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 26,
+        "line": 24,
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Build the registry the sink dispatches through.",
+      "id": "dec_uncertain_edge::register",
+      "kind": "FUNCTION",
+      "module": "dec_uncertain_edge",
+      "name": "register",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "register",
+      "signature": "(name)",
+      "span": {
+        "col": 0,
+        "end_line": 20,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "dec_uncertain_edge::register.<locals>.decorate",
+      "kind": "FUNCTION",
+      "module": "dec_uncertain_edge",
+      "name": "decorate",
+      "parent_id": "dec_uncertain_edge::register",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "register.<locals>.decorate",
+      "signature": "(func)",
+      "span": {
+        "col": 4,
+        "end_line": 18,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/dec_uncertain_edge/__init__.py"
+      }
+    }
+  ],
+  "entry_ids": [
+    "dec_uncertain_edge::decide"
+  ],
+  "findings": [],
+  "forbidden_reachability_states": {
+    "dec_uncertain_edge::momentum_rule": [
+      "NO_SINK_PATH"
+    ]
+  },
+  "must_not_contain_findings": [
+    {
+      "element_id": "dec_uncertain_edge::momentum_rule",
+      "kind": "UNREACHABLE_ELEMENT",
+      "why": "it is reachable; only the confidence in the path is reduced"
+    }
+  ],
+  "proves": "`momentum_rule` is reachable from the sink only via a DECORATOR_REGISTRATION/HEURISTIC edge. It must be marked REACHES_SINK with that reason recorded and the verdict's confidence degraded to HEURISTIC -- **not** pruned, and **not** reported as an unreachable element. Card 3's bias toward reachable exists because a false 'unreachable' sends the owner to delete live code.",
+  "reachability": [
+    {
+      "element_id": "dec_uncertain_edge::decide",
+      "id": "dec_uncertain_edge:r1",
+      "path_ids": [
+        "dec_uncertain_edge::decide"
+      ],
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "it is the sink",
+      "sink_ids": [
+        "dec_uncertain_edge::decide"
+      ],
+      "state": "REACHES_SINK"
+    },
+    {
+      "element_id": "dec_uncertain_edge::momentum_rule",
+      "id": "dec_uncertain_edge:r2",
+      "path_ids": [
+        "dec_uncertain_edge::momentum_rule",
+        "dec_uncertain_edge::decide"
+      ],
+      "provenance": {
+        "confidence": "HEURISTIC",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "reached only through edge dec_uncertain_edge:e3, a DECORATOR_REGISTRATION/HEURISTIC dispatch through RULES; biased toward reachable because a false unreachable verdict would send the owner to delete live code",
+      "sink_ids": [
+        "dec_uncertain_edge::decide"
+      ],
+      "state": "REACHES_SINK"
+    }
+  ],
+  "required_edge_confidences": {
+    "dec_uncertain_edge:e3": "HEURISTIC"
+  },
+  "unresolved": []
 }

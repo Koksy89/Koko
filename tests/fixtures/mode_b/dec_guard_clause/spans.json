@@ -1,0 +1,38 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/decisions/0/provenance/span": {
+      "kind": "stmt",
+      "line_contains": "if payload is None:",
+      "occurrence": 1
+    },
+    "/decisions/1/provenance/span": {
+      "kind": "stmt",
+      "line_contains": "if not payload:",
+      "occurrence": 1
+    },
+    "/decisions/2/provenance/span": {
+      "kind": "stmt",
+      "line_contains": "if len(payload) > limit:",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "validate"
+    },
+    "/elements/2/span": {
+      "kind": "line",
+      "line_contains": "def validate(payload, limit):",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "line",
+      "line_contains": "def validate(payload, limit):",
+      "occurrence": 1
+    }
+  }
+}

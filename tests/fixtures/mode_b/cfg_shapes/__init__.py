@@ -1,32 +1,65 @@
-"""Module demonstrating various CFG shapes."""
+"""One function per control-flow shape card 3 must cover."""
 
 
-def branching_code(x):
-    """If/else branch."""
+def branching(x):
+    """if/else: two successors from one block, then a merge."""
     if x > 0:
-        return "positive"
+        label = "positive"
     else:
-        return "negative"
+        label = "negative"
+    return label
 
 
-def loop_code(items):
-    """For loop."""
+def looping(items):
+    """for loop: a back edge, and an exit edge when the iterator is empty."""
     total = 0
     for item in items:
         total += item
     return total
 
 
-def exception_handling(data):
-    """Try/except block."""
+def while_looping(n):
+    """while loop: the test block is the loop head."""
+    while n > 0:
+        n -= 1
+    return n
+
+
+def guarded(data):
+    """try/except/finally: a handler block and a finally block."""
     try:
-        result = int(data)
-        return result
+        value = int(data)
     except ValueError:
-        return 0
+        value = 0
+    finally:
+        seen = True
+    return value, seen
 
 
-def with_statement(filename):
-    """With statement (context manager)."""
-    with open(filename, 'r') as f:
-        return f.read()
+def managed(path):
+    """with: the body is entered and exited through the context manager."""
+    with open(path) as handle:
+        return handle.read()
+
+
+def comprehended(rows):
+    """comprehension: an implicit loop, not a flat expression."""
+    return [row * 2 for row in rows if row > 0]
+
+
+def matched(command):
+    """match: one branch per case, plus the wildcard."""
+    match command:
+        case "buy":
+            return 1
+        case "sell":
+            return -1
+        case _:
+            return 0
+
+
+def early_return(value):
+    """early return: the second statement is unreachable when the guard fires."""
+    if value is None:
+        return "missing"
+    return str(value)

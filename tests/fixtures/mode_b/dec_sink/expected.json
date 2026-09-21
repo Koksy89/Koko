@@ -1,58 +1,312 @@
 {
-  "elements": [
+  "case_id": "dec_sink",
+  "decisions": [
     {
-      "id": "dec_sink",
-      "kind": "MODULE",
-      "name": "dec_sink",
-      "qualname": "",
-      "module": "dec_sink",
-      "span": {
-        "path": "tests/fixtures/mode_b/dec_sink/__init__.py",
-        "line": 1
-      },
+      "condition_source": "score(rows) > 5",
+      "element_id": "dec_sink::final_decision",
+      "id": "dec_sink:d1",
+      "is_sink": true,
+      "outcomes": [
+        [
+          "True",
+          "enter"
+        ],
+        [
+          "False",
+          "hold"
+        ]
+      ],
       "provenance": {
+        "confidence": "CERTAIN",
         "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "span": {
+          "col": 4,
+          "end_line": 17,
+          "line": 16,
+          "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+        }
       },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "dec_sink::get_decision",
-      "kind": "FUNCTION",
-      "name": "get_decision",
-      "qualname": "get_decision",
-      "module": "dec_sink",
-      "span": {
-        "path": "tests/fixtures/mode_b/dec_sink/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "dec_sink::FINAL_DECISION",
-      "kind": "ASSIGNMENT",
-      "name": "FINAL_DECISION",
-      "qualname": "FINAL_DECISION",
-      "module": "dec_sink",
-      "span": {
-        "path": "tests/fixtures/mode_b/dec_sink/__init__.py",
-        "line": 6
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "reads_ids": [
+        "dec_sink::score"
+      ]
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "declared_sink_ids": [
+    "dec_sink::final_decision"
+  ],
+  "edges": [
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 28,
+        "line": 28,
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+      },
+      "id": "dec_sink:e1",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "dec_sink::main",
+      "target_id": "dec_sink::load"
+    },
+    {
+      "call_site": {
+        "col": 4,
+        "end_line": 29,
+        "line": 29,
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+      },
+      "id": "dec_sink:e2",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "dec_sink::main",
+      "target_id": "dec_sink::log_metrics"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 30,
+        "line": 30,
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+      },
+      "id": "dec_sink:e3",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "dec_sink::main",
+      "target_id": "dec_sink::final_decision"
+    },
+    {
+      "call_site": {
+        "col": 7,
+        "end_line": 16,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+      },
+      "id": "dec_sink:e4",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "dec_sink::final_decision",
+      "target_id": "dec_sink::score"
+    }
+  ],
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "dec_sink",
+      "kind": "MODULE",
+      "module": "dec_sink",
+      "name": "dec_sink",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "THE SINK: the value this returns is the engine's answer.",
+      "id": "dec_sink::final_decision",
+      "kind": "FUNCTION",
+      "module": "dec_sink",
+      "name": "final_decision",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "final_decision",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 18,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Ingestion.",
+      "id": "dec_sink::load",
+      "kind": "FUNCTION",
+      "module": "dec_sink",
+      "name": "load",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "load",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Reaches no sink: nothing downstream of it feeds final_decision.",
+      "id": "dec_sink::log_metrics",
+      "kind": "FUNCTION",
+      "module": "dec_sink",
+      "name": "log_metrics",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "log_metrics",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 23,
+        "line": 21,
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Entry point.",
+      "id": "dec_sink::main",
+      "kind": "FUNCTION",
+      "module": "dec_sink",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 30,
+        "line": 26,
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Feature engineering.",
+      "id": "dec_sink::score",
+      "kind": "FUNCTION",
+      "module": "dec_sink",
+      "name": "score",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "score",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/dec_sink/__init__.py"
+      }
+    }
+  ],
+  "entry_ids": [
+    "dec_sink::main"
+  ],
+  "every_element_has_reachability": true,
+  "proves": "With `final_decision` declared as the sink, every element is marked for decision reachability: load, score and main reach it; log_metrics does not. NO_SINK_PATH and UNKNOWN are different answers and must not render the same.",
+  "reachability": [
+    {
+      "element_id": "dec_sink::final_decision",
+      "id": "dec_sink:r1",
+      "path_ids": [
+        "dec_sink::final_decision"
+      ],
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "it is the sink",
+      "sink_ids": [
+        "dec_sink::final_decision"
+      ],
+      "state": "REACHES_SINK"
+    },
+    {
+      "element_id": "dec_sink::load",
+      "id": "dec_sink:r2",
+      "path_ids": [
+        "dec_sink::load",
+        "dec_sink::main",
+        "dec_sink::final_decision"
+      ],
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "its return value is the argument final_decision consumes",
+      "sink_ids": [
+        "dec_sink::final_decision"
+      ],
+      "state": "REACHES_SINK"
+    },
+    {
+      "element_id": "dec_sink::log_metrics",
+      "id": "dec_sink:r3",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "nothing downstream of log_metrics is read by final_decision; every call edge out of it is empty",
+      "state": "NO_SINK_PATH"
+    },
+    {
+      "element_id": "dec_sink::main",
+      "id": "dec_sink:r4",
+      "path_ids": [
+        "dec_sink::main",
+        "dec_sink::final_decision"
+      ],
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "sink_ids": [
+        "dec_sink::final_decision"
+      ],
+      "state": "REACHES_SINK"
+    },
+    {
+      "element_id": "dec_sink::score",
+      "id": "dec_sink:r5",
+      "path_ids": [
+        "dec_sink::score",
+        "dec_sink::final_decision"
+      ],
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      },
+      "reason": "its result is the decision condition",
+      "sink_ids": [
+        "dec_sink::final_decision"
+      ],
+      "state": "REACHES_SINK"
+    }
+  ],
+  "unresolved": []
 }

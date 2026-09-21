@@ -306,7 +306,9 @@ class _PrePass:
         for stmt in self.info.tree.body:
             self.stmt(stmt, ctx)
 
-    def _child_ctx(self, ctx: _ScopeCtx, qual: str, kind: str, body: Sequence[ast.stmt]) -> _ScopeCtx:
+    def _child_ctx(
+        self, ctx: _ScopeCtx, qual: str, kind: str, body: Sequence[ast.stmt]
+    ) -> _ScopeCtx:
         return _ScopeCtx(
             qual=qual,
             kind=kind,
@@ -480,7 +482,8 @@ class _PrePass:
             return
         if isinstance(node, ast.Lambda):
             self._lambda_n += 1
-            qual = f"{ctx.qual}.<lambda{self._lambda_n}>" if ctx.qual else f"<lambda{self._lambda_n}>"
+            tag = f"<lambda{self._lambda_n}>"
+            qual = f"{ctx.qual}.{tag}" if ctx.qual else tag
             for default in [*node.args.defaults, *[d for d in node.args.kw_defaults if d]]:
                 self.expr(default, ctx)
             child = self._child_ctx(ctx, qual, "lambda", [])
@@ -716,7 +719,11 @@ class LineageTracer:
             elif element.kind is ElementKind.CONFIG_KEY:
                 self._config_keys.append(element)
             elif element.kind is ElementKind.FEATURE:
-                name = element.id[len("@feature:") :] if element.id.startswith("@feature:") else element.name
+                name = (
+                    element.id[len("@feature:") :]
+                    if element.id.startswith("@feature:")
+                    else element.name
+                )
                 self._declared_features.add(name)
                 self._feature_names.add(name)
 
@@ -743,13 +750,20 @@ class LineageTracer:
             try:
                 text = path.read_text(encoding="utf-8")
             except FileNotFoundError:
-                self._unresolved(module, rel_path, UnresolvedReason.MISSING_TARGET, "module file not found")
+                self._unresolved(
+                    module, rel_path, UnresolvedReason.MISSING_TARGET, "module file not found"
+                )
                 continue
             except UnicodeDecodeError:
-                self._unresolved(module, rel_path, UnresolvedReason.DECODE_ERROR, "module is not valid UTF-8")
+                self._unresolved(
+                    module, rel_path, UnresolvedReason.DECODE_ERROR, "module is not valid UTF-8"
+                )
                 continue
             except OSError as exc:  # pragma: no cover - environment dependent
-                self._unresolved(module, rel_path, UnresolvedReason.MISSING_TARGET, f"unreadable: {exc.strerror}")
+                self._unresolved(
+                    module, rel_path, UnresolvedReason.MISSING_TARGET,
+                    f"unreadable: {exc.strerror}",
+                )
                 continue
             try:
                 tree = ast.parse(text, filename=str(rel_path))
@@ -818,7 +832,10 @@ class LineageTracer:
         barrier_id = f"@barrier:{element_id}@{span.line}:{span.col if span.col is not None else 0}"
         suffix = 2
         base = barrier_id
-        while barrier_id in self._barriers and self._barriers[barrier_id].description != description:
+        while (
+            barrier_id in self._barriers
+            and self._barriers[barrier_id].description != description
+        ):
             barrier_id = f"{base}#{suffix}"
             suffix += 1
         if barrier_id not in self._barriers:
@@ -990,7 +1007,9 @@ class _ModuleWalker:
             self.stmt(stmt)
 
     def _merge_env(
-        self, left: dict[tuple[str, str], tuple[str, ...]], right: dict[tuple[str, str], tuple[str, ...]]
+        self,
+        left: dict[tuple[str, str], tuple[str, ...]],
+        right: dict[tuple[str, str], tuple[str, ...]],
     ) -> dict[tuple[str, str], tuple[str, ...]]:
         merged = dict(left)
         for key, value in right.items():
@@ -1374,7 +1393,8 @@ class _ModuleWalker:
     def _kind_into(self, source_id: str, target_id: str, value: ast.expr | None) -> LineageKind:
         if source_id.endswith(".@return"):
             return LineageKind.RETURNS
-        if source_id.startswith("@feature:") and isinstance(value, (ast.Dict, ast.DictComp, ast.Call)):
+        literal_container = isinstance(value, (ast.Dict, ast.DictComp, ast.Call))
+        if source_id.startswith("@feature:") and literal_container:
             if target_id in self.t._frame_defs:
                 return LineageKind.COLUMN_WRITE
             if target_id in self.t._dict_defs:
@@ -1419,7 +1439,8 @@ class _ModuleWalker:
                     # inferred, so CERTAIN. Several reach it (a branch merge or a
                     # loop): PROBABLE, and said so.
                     confidence = Confidence.CERTAIN if len(local) == 1 else Confidence.PROBABLE
-                    note = "" if len(local) == 1 else f"{_OVER}reaching definitions merged at a branch"
+                    merged = f"{_OVER}reaching definitions merged at a branch"
+                    note = "" if len(local) == 1 else merged
                     return tuple(_Src(node_id, confidence, note) for node_id in sorted(local))
                 every = tuple(sorted(set(local) | set(self.mod.all_defs.get(key, ()))))
                 note = f"{_OVER}closure or global capture: every definition in the enclosing scope"
@@ -1509,7 +1530,9 @@ class _ModuleWalker:
             key = _literal_key_from_index(node.slice)
             if key is not None:
                 self.sources(node.value.value)
-                return (_Src(self.t.note_feature(key), Confidence.RESOLVED, f"named column {key!r}"),)
+                return (
+                    _Src(self.t.note_feature(key), Confidence.RESOLVED, f"named column {key!r}"),
+                )
         if key is not None:
             return (_Src(self.t.note_feature(key), Confidence.RESOLVED, f"named key {key!r}"),)
         bases = self.sources(node.value)
@@ -1710,7 +1733,10 @@ class _ModuleWalker:
 
         # 1. reflection and runtime code construction -> explicit barrier
         if name in BARRIER_BUILTINS or base_name in ("importlib", "pickle", "marshal"):
-            return self._barrier_call(node, UnresolvedReason.DYNAMIC_NAME, f"flow into {name or 'a dynamic call'}")
+            return self._barrier_call(
+                node, UnresolvedReason.DYNAMIC_NAME,
+                f"flow into {name or 'a dynamic call'}",
+            )
         if name == "getattr" or name == "setattr":
             return self._reflective_attr(node, name)
 
@@ -1901,7 +1927,8 @@ class _ModuleWalker:
         note_suffix = "" if frame_like else f"{_OVER}receiver assumed frame-shaped by method name"
 
         if attr == "assign":
-            out = list(_retag(receivers, confidence, f"frame carried through .assign(){note_suffix}"))
+            carried = f"frame carried through .assign(){note_suffix}"
+            out = list(_retag(receivers, confidence, carried))
             for keyword in node.keywords:
                 if keyword.arg is None:
                     out.extend(
@@ -1917,7 +1944,9 @@ class _ModuleWalker:
                         LineageKind.COLUMN_WRITE, src.id, column, span, Method.DATAFLOW,
                         src.confidence, src.note or f"column {keyword.arg!r} written by .assign()",
                     )
-                out.append(_Src(column, Confidence.RESOLVED, f"column {keyword.arg!r} of the result"))
+                out.append(
+                    _Src(column, Confidence.RESOLVED, f"column {keyword.arg!r} of the result")
+                )
             return _merge_srcs(out)
         if attr in ("merge", "join"):
             other = self.sources(node.args[0]) if node.args else ()
@@ -1947,9 +1976,14 @@ class _ModuleWalker:
                         Method.DATAFLOW, Confidence.RESOLVED,
                         f"column {old!r} renamed to {new!r}",
                     )
-                    out.append(_Src(self.t.note_feature(new), Confidence.RESOLVED, "renamed column"))
+                    out.append(
+                        _Src(self.t.note_feature(new), Confidence.RESOLVED, "renamed column")
+                    )
                 return _merge_srcs(out)
-            return _retag(receivers, Confidence.HEURISTIC, f"{_OVER}.rename() mapping is not a literal")
+            return _retag(
+                receivers, Confidence.HEURISTIC,
+                f"{_OVER}.rename() mapping is not a literal",
+            )
         if attr == "drop":
             for column in self._named_columns(node, ("columns", "labels"), positional=0):
                 self.t.add_edge(
@@ -1972,14 +2006,20 @@ class _ModuleWalker:
                 else:
                     out.extend(_retag(self.sources(arg), Confidence.PROBABLE, f"pandas {attr}()"))
             for keyword in node.keywords:
-                out.extend(_retag(self.sources(keyword.value), Confidence.PROBABLE, f"pandas {attr}()"))
+                out.extend(
+                    _retag(self.sources(keyword.value), Confidence.PROBABLE, f"pandas {attr}()")
+                )
             return _merge_srcs(out)
         if attr in ("merge", "concat"):
             out = []
             for arg in node.args:
                 if isinstance(arg, (ast.List, ast.Tuple)):
                     for element in arg.elts:
-                        out.extend(_retag(self.sources(element), Confidence.PROBABLE, f"pandas {attr}()"))
+                        out.extend(
+                            _retag(
+                                self.sources(element), Confidence.PROBABLE, f"pandas {attr}()"
+                            )
+                        )
                 else:
                     out.extend(_retag(self.sources(arg), Confidence.PROBABLE, f"pandas {attr}()"))
             for column in self._named_columns(node, ("on", "left_on", "right_on")):
@@ -1999,7 +2039,9 @@ class _ModuleWalker:
         if isinstance(applied, ast.Lambda):
             def_id = self._lambda_body_with_binding(applied, receivers, span)
             if def_id:
-                return (_Src(_return_node(def_id), Confidence.PROBABLE, "result of .apply(lambda)"),)
+                return (
+                    _Src(_return_node(def_id), Confidence.PROBABLE, "result of .apply(lambda)"),
+                )
         resolved = self._resolve_name_to_callee(applied)
         if resolved is not None:
             callee_id, callee_conf = resolved
@@ -2012,7 +2054,10 @@ class _ModuleWalker:
                         if param_id:
                             self.t.add_edge(
                                 LineageKind.PARAMETER_BINDING, receiver.id, param_id, span,
-                                Method.DATAFLOW, combine(receiver.confidence, callee_conf, Confidence.PROBABLE),
+                                Method.DATAFLOW,
+                                combine(
+                                    receiver.confidence, callee_conf, Confidence.PROBABLE
+                                ),
                                 "value bound by .apply()",
                             )
                 return (
@@ -2099,7 +2144,10 @@ class _ModuleWalker:
                     class_qual = self._class_qual()
                     candidate = make_id(self.mod.module, f"{class_qual}.{func.attr}")
                     if self.t._function_node(candidate) is not None:
-                        return (candidate, Confidence.PROBABLE, Method.MRO_DISPATCH, "self method call")
+                        return (
+                            candidate, Confidence.PROBABLE, Method.MRO_DISPATCH,
+                            "self method call",
+                        )
                     return None
                 imported = self._import_def(func.value.id)
                 if imported is not None:
@@ -2167,7 +2215,8 @@ class _ModuleWalker:
             )
         func_node, info = found
         skip = 0
-        leading = [*func_node.args.posonlyargs, *func_node.args.args][:1]  # type: ignore[union-attr]
+        call_args = func_node.args  # type: ignore[union-attr]
+        leading = [*call_args.posonlyargs, *call_args.args][:1]
         if isinstance(node.func, ast.Attribute) and leading and leading[0].arg in ("self", "cls"):
             skip = 1
             param_id = info.id_of_node.get(id(leading[0]), "")
@@ -2196,7 +2245,8 @@ class _ModuleWalker:
         instance_id = f"{class_id}{_INSTANCE}"
         found = self.t._function_node(init_id)
         if found is not None:
-            leading = [*found[0].args.posonlyargs, *found[0].args.args][:1]  # type: ignore[union-attr]
+            init_args = found[0].args  # type: ignore[union-attr]
+            leading = [*init_args.posonlyargs, *init_args.args][:1]
             if leading and leading[0].arg in ("self", "cls"):
                 self.t.add_edge(
                     LineageKind.PARAMETER_BINDING, instance_id,
@@ -2212,11 +2262,15 @@ class _ModuleWalker:
             for src in self._arg_sources(node):
                 self.t.add_edge(
                     LineageKind.PARAMETER_BINDING, src.id, instance_id,
-                    self.span(node), method, combine(src.confidence, confidence, Confidence.PROBABLE),
+                    self.span(node), method,
+                    combine(src.confidence, confidence, Confidence.PROBABLE),
                     f"{_OVER}{class_qual} defines no __init__ this analysis parsed",
                 )
         return (
-            _Src(instance_id, combine(confidence, Confidence.RESOLVED), f"instance of {class_qual}"),
+            _Src(
+                instance_id, combine(confidence, Confidence.RESOLVED),
+                f"instance of {class_qual}",
+            ),
         )
 
     def _bind_arguments(
@@ -2257,7 +2311,10 @@ class _ModuleWalker:
             if index < len(positional):
                 bind(positional[index], self.sources(arg_node), Confidence.RESOLVED, note)
             elif args.vararg is not None:
-                bind(args.vararg, self.sources(arg_node), Confidence.RESOLVED, f"*{args.vararg.arg}")
+                bind(
+                    args.vararg, self.sources(arg_node), Confidence.RESOLVED,
+                    f"*{args.vararg.arg}",
+                )
             index += 1
         for keyword in node.keywords:
             if keyword.arg is None:
@@ -2274,7 +2331,10 @@ class _ModuleWalker:
                     continue
                 spread = self.sources(mapping)
                 if args.kwarg is not None:
-                    bind(args.kwarg, spread, Confidence.PROBABLE, f"**kwargs into **{args.kwarg.arg}")
+                    bind(
+                        args.kwarg, spread, Confidence.PROBABLE,
+                        f"**kwargs into **{args.kwarg.arg}",
+                    )
                 for arg in _all_args(args):
                     if arg.arg in bound or arg is args.kwarg or arg is args.vararg:
                         continue
@@ -2285,7 +2345,10 @@ class _ModuleWalker:
                 continue
             arg = by_name.get(keyword.arg)
             if arg is not None:
-                bind(arg, self.sources(keyword.value), Confidence.RESOLVED, f"keyword {keyword.arg!r}")
+                bind(
+                    arg, self.sources(keyword.value), Confidence.RESOLVED,
+                    f"keyword {keyword.arg!r}",
+                )
             elif args.kwarg is not None:
                 bind(args.kwarg, self.sources(keyword.value), Confidence.RESOLVED,
                      f"keyword {keyword.arg!r} into **{args.kwarg.arg}")
@@ -2359,7 +2422,8 @@ def _is_frame_producer(node: ast.Call) -> bool:
         return False
     tail = name.split(".")[-1]
     head = name.split(".")[0]
-    if head in PANDAS_MODULES and (tail.startswith("read_") or tail in ("DataFrame", "merge", "concat")):
+    constructors = ("DataFrame", "merge", "concat")
+    if head in PANDAS_MODULES and (tail.startswith("read_") or tail in constructors):
         return True
     return tail in COLUMN_METHODS or tail in FRAME_METHODS
 

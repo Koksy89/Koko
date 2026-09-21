@@ -1,41 +1,153 @@
 {
-  "elements": [
+  "call_must_be_conditional": [
     {
-      "id": "cfg_shortcircuit",
-      "kind": "MODULE",
-      "name": "cfg_shortcircuit",
-      "qualname": "",
-      "module": "cfg_shortcircuit",
-      "span": {
-        "path": "tests/fixtures/mode_b/cfg_shortcircuit/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "cfg_shortcircuit::check",
-      "kind": "FUNCTION",
-      "name": "check",
-      "qualname": "check",
-      "module": "cfg_shortcircuit",
-      "span": {
-        "path": "tests/fixtures/mode_b/cfg_shortcircuit/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "edge_id": "cfg_shortcircuit:e1",
+      "why": "the call is the right operand of `and`; it does not run when `flag` is falsy"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "case_id": "cfg_shortcircuit",
+  "cfg_requirements": [
+    {
+      "branch_conditions_both_outcomes": [
+        "a",
+        "a and b"
+      ],
+      "element_id": "cfg_shortcircuit::check",
+      "forbidden_block_kinds": [
+        "HANDLER",
+        "LOOP_HEAD"
+      ],
+      "required_block_kinds": [
+        "BRANCH",
+        "ENTRY",
+        "EXIT",
+        "RETURN"
+      ],
+      "shape": "and/or short circuit"
+    },
+    {
+      "branch_conditions_both_outcomes": [
+        "flag"
+      ],
+      "element_id": "cfg_shortcircuit::gated",
+      "forbidden_block_kinds": [
+        "HANDLER",
+        "LOOP_HEAD"
+      ],
+      "required_block_kinds": [
+        "BRANCH",
+        "ENTRY",
+        "EXIT",
+        "RETURN"
+      ],
+      "shape": "and short circuit around a call"
+    }
+  ],
+  "edges": [
+    {
+      "call_site": {
+        "col": 20,
+        "end_line": 11,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/cfg_shortcircuit/__init__.py"
+      },
+      "id": "cfg_shortcircuit:e1",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP",
+        "note": "conditional on the left operand of the `and`"
+      },
+      "source_id": "cfg_shortcircuit::gated",
+      "target_id": "cfg_shortcircuit::expensive"
+    }
+  ],
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "cfg_shortcircuit",
+      "kind": "MODULE",
+      "module": "cfg_shortcircuit",
+      "name": "cfg_shortcircuit",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/cfg_shortcircuit/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "`b` is evaluated only if `a` is truthy; `c` only if `a and b` is falsy.",
+      "id": "cfg_shortcircuit::check",
+      "kind": "FUNCTION",
+      "module": "cfg_shortcircuit",
+      "name": "check",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "check",
+      "signature": "(a, b, c)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/cfg_shortcircuit/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Reached only through the right-hand side of the `and`.",
+      "id": "cfg_shortcircuit::expensive",
+      "kind": "FUNCTION",
+      "module": "cfg_shortcircuit",
+      "name": "expensive",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "expensive",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/cfg_shortcircuit/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "`expensive` is called only when flag is truthy: a real branch, not a call.",
+      "id": "cfg_shortcircuit::gated",
+      "kind": "FUNCTION",
+      "module": "cfg_shortcircuit",
+      "name": "gated",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "gated",
+      "signature": "(flag, value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/cfg_shortcircuit/__init__.py"
+      }
+    }
+  ],
+  "min_branch_blocks_per_element": {
+    "cfg_shortcircuit::check": 2,
+    "cfg_shortcircuit::gated": 1
+  },
+  "proves": "`and` and `or` produce branch edges, not flat expressions. In `gated`, the call to `expensive` sits on the right-hand side of an `and`, so it is conditional: an analysis that flattens the operator reports it as unconditionally executed, which is wrong in exactly the way that matters for a cascade.",
+  "unresolved": []
 }

@@ -15,13 +15,13 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 |---|---|---|---|
 | 8 | Fixture corpus | fixture-writer | **FAILED x2 — rebuilding** (escalated) |
 | 1 | Ingestion & inventory | ingestion-builder | reworked, under verification |
-| 2 | Resolution & call graph | resolver-engineer | building |
+| 2 | Resolution & call graph | resolver-engineer | building — **precision 37.8%, watch this** |
 | 3 | CFG, cascade ordering, decisions | cascade-engineer | building |
 | 4 | Data/feature lineage & slicing | lineage-engineer | building |
 | 5 | Unplugged detection & hints | findings-builder | **DONE** (PASS, round 2) |
 | 6 | Version diff & impact | diff-impact-builder | built, awaiting verification |
 | 16 | Documentation records & completeness gate | docs-builder | **DONE** (PASS) |
-| 15 | Viewer (phase B) | viewer-builder | reworked, under verification |
+| 15 | Viewer (phase B) | viewer-builder | **DONE** (PASS, round 2, phase B only) |
 | 11 | Safe execution harness | harness-builder | reworked, under verification |
 | 12 | Runtime tracer & value capture | tracer-engineer | built, awaiting verification |
 | 13 | Intent registry & alignment | alignment-engineer | **DONE** (PASS, round 2) |
@@ -67,6 +67,20 @@ candidates with evidence rather than choosing silently.
 These two run in parallel — card 1 needs the corpus to test against, but both can be
 delegated in the same step.
 
+## The thing to watch
+
+Card 2's own corpus test currently reports **37.8% precision** on its call graph, with 34
+of its tests red. It is still building, so this is it measuring itself honestly rather
+than a verdict — but it is the number that matters most in the whole build.
+
+Cards 3, 4, 5 and 6 all rest on card 2's edges. At 37.8% precision the map would be
+mostly wrong in a way that looks authoritative, and every downstream card would inherit
+it with a confidence it does not deserve. Precision was named the priority over recall
+for exactly this reason: a confident wrong edge costs the owner more than an honest gap.
+
+If card 2 cannot get precision high, the correct outcome is fewer edges and more
+`UNKNOWN` records, not more edges.
+
 ## Lessons carried forward
 
 - **A green test suite is not a verifier PASS.** Three defects so far were tests passing
@@ -111,6 +125,11 @@ delegated in the same step.
   position were silently misread as literal text, corrupting owner intent data; card 1's
   decode test found that DECODE_ERROR always reported line 1. Demand the general test, not
   a fix to the specific case.
+- **My own commit hygiene is a verification obstacle.** Two verifiers have now reported
+  they could not attribute changes because WIP commits bundle several cards' work, and
+  one found a commit titled for card 15 whose diff touched cards 2 and 3. They fell back
+  to reading on-disk state. Unavoidable while thirteen builders share one tree, but it
+  costs verification accuracy and is worth naming.
 - **Adversarial probing finds what code review does not.** Card 11's sandbox was fully
   bypassed by `threading.Thread`, and separately by `multiprocessing` spawn, which calls
   `_posixsubprocess.fork_exec` directly and never trips `subprocess.Popen`'s audit event.

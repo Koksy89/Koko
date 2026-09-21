@@ -1,8 +1,20 @@
-"""Unordered independent calls."""
-def op1():
-    pass
-def op2():
-    pass
-def main():
-    op1()
-    op2()
+"""Two independent side effects whose relative order nothing fixes."""
+
+
+def audit(payload):
+    """Independent of `notify`: neither reads the other's result."""
+    return len(payload)
+
+
+def notify(payload):
+    """Independent of `audit`."""
+    return payload
+
+
+LISTENERS = {audit, notify}
+
+
+def broadcast(payload):
+    """Iterating a set: the order is not a program order the analysis can fix."""
+    for listener in LISTENERS:
+        listener(payload)

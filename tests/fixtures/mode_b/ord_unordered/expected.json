@@ -1,75 +1,201 @@
 {
-  "elements": [
+  "case_id": "ord_unordered",
+  "edges": [
     {
-      "id": "ord_unordered",
-      "kind": "MODULE",
-      "name": "ord_unordered",
-      "qualname": "",
-      "module": "ord_unordered",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 8,
+        "end_line": 20,
+        "line": 20,
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py"
       },
+      "id": "ord_unordered:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "HEURISTIC",
+        "method": "REGISTRY_MEMBERSHIP",
+        "note": "a member of the LISTENERS set; which one runs first is unknown"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_unordered::broadcast",
+      "target_id": "ord_unordered::audit"
     },
     {
-      "id": "ord_unordered::op1",
-      "kind": "FUNCTION",
-      "name": "op1",
-      "qualname": "op1",
-      "module": "ord_unordered",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py",
-        "line": 2
+      "call_site": {
+        "col": 8,
+        "end_line": 20,
+        "line": 20,
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py"
       },
+      "id": "ord_unordered:e2",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "HEURISTIC",
+        "method": "REGISTRY_MEMBERSHIP",
+        "note": "a member of the LISTENERS set; which one runs first is unknown"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_unordered::broadcast",
+      "target_id": "ord_unordered::notify"
     },
     {
-      "id": "ord_unordered::op2",
-      "kind": "FUNCTION",
-      "name": "op2",
-      "qualname": "op2",
-      "module": "ord_unordered",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py",
-        "line": 4
+      "call_site": {
+        "col": 0,
+        "end_line": 14,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py"
       },
+      "id": "ord_unordered:e3",
+      "kind": "REGISTERS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "PROBABLE",
+        "method": "REGISTRY_MEMBERSHIP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_unordered::LISTENERS",
+      "target_id": "ord_unordered::audit"
     },
     {
-      "id": "ord_unordered::main",
-      "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
-      "module": "ord_unordered",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py",
-        "line": 6
+      "call_site": {
+        "col": 0,
+        "end_line": 14,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py"
       },
+      "id": "ord_unordered:e4",
+      "kind": "REGISTERS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "PROBABLE",
+        "method": "REGISTRY_MEMBERSHIP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_unordered::LISTENERS",
+      "target_id": "ord_unordered::notify"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "ord_unordered",
+      "kind": "MODULE",
+      "module": "ord_unordered",
+      "name": "ord_unordered",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "ord_unordered::LISTENERS",
+      "kind": "ASSIGNMENT",
+      "module": "ord_unordered",
+      "name": "LISTENERS",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "LISTENERS",
+      "span": {
+        "col": 0,
+        "end_line": 14,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Independent of `notify`: neither reads the other's result.",
+      "id": "ord_unordered::audit",
+      "kind": "FUNCTION",
+      "module": "ord_unordered",
+      "name": "audit",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "audit",
+      "signature": "(payload)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Iterating a set: the order is not a program order the analysis can fix.",
+      "id": "ord_unordered::broadcast",
+      "kind": "FUNCTION",
+      "module": "ord_unordered",
+      "name": "broadcast",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "broadcast",
+      "signature": "(payload)",
+      "span": {
+        "col": 0,
+        "end_line": 20,
+        "line": 17,
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Independent of `audit`.",
+      "id": "ord_unordered::notify",
+      "kind": "FUNCTION",
+      "module": "ord_unordered",
+      "name": "notify",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "notify",
+      "signature": "(payload)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/ord_unordered/__init__.py"
+      }
+    }
+  ],
+  "forbidden_order_kinds_over_elements": [
+    {
+      "element_ids": [
+        "ord_unordered::audit",
+        "ord_unordered::notify"
+      ],
+      "kind": "SEQUENCE",
+      "why": "set iteration order is not a program order; a SEQUENCE here would be an invented fact"
+    }
+  ],
+  "notes": [
+    "Confidence is HEURISTIC because the ordering rests on two REGISTRY_MEMBERSHIP/HEURISTIC call edges, and `combine` takes the weakest input."
+  ],
+  "order": [
+    {
+      "element_ids": [
+        "ord_unordered::audit",
+        "ord_unordered::notify"
+      ],
+      "id": "ord_unordered:o1",
+      "kind": "UNORDERED",
+      "provenance": {
+        "confidence": "HEURISTIC",
+        "method": "CFG_REACHABILITY"
+      }
+    }
+  ],
+  "proves": "`LISTENERS` is a set, so iteration order is not fixed by the program and the two listeners run in no order the analysis can determine. The order node is UNORDERED -- which tells the owner the order is genuinely open, rather than inventing one.",
+  "unresolved": []
 }

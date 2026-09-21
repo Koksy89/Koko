@@ -1,10 +1,25 @@
-"""Branching execution order."""
-def path_a():
-    return 1
-def path_b():
-    return 2
-def main(flag):
+"""Two mutually exclusive paths that rejoin."""
+
+
+def aggressive(value):
+    """Taken only when the flag is set."""
+    return value * 2
+
+
+def conservative(value):
+    """Taken only when the flag is not set."""
+    return value // 2
+
+
+def report(value):
+    """Runs on both paths: the merge point."""
+    return {"value": value}
+
+
+def main(flag, value):
+    """Branch, then merge."""
     if flag:
-        return path_a()
+        scored = aggressive(value)
     else:
-        return path_b()
+        scored = conservative(value)
+    return report(scored)

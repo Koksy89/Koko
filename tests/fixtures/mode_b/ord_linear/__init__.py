@@ -1,17 +1,29 @@
-"""Module with linear execution order."""
+"""A chain whose order control flow fixes completely."""
 
 
-def first():
-    return 1
+def ingest():
+    """Step 1."""
+    return [1, 2, 3]
 
 
-def second(x):
-    return first() + x
+def clean(rows):
+    """Step 2: cannot run before ingest, because it consumes its result."""
+    return [row for row in rows if row]
 
 
-def third():
-    return second(2)
+def featurize(rows):
+    """Step 3."""
+    return sum(rows)
+
+
+def decide(score):
+    """Step 4: the final decision."""
+    return "enter" if score > 3 else "hold"
 
 
 def main():
-    return third()
+    """The cascade, in one fixed order."""
+    rows = ingest()
+    cleaned = clean(rows)
+    score = featurize(cleaned)
+    return decide(score)

@@ -1,0 +1,38 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/decisions/0/provenance/span": {
+      "kind": "stmt",
+      "line_contains": "if override:",
+      "occurrence": 1
+    },
+    "/decisions/1/provenance/span": {
+      "kind": "line",
+      "line_contains": "elif score < 0:",
+      "occurrence": 1
+    },
+    "/decisions/2/provenance/span": {
+      "kind": "line",
+      "line_contains": "elif score < 50:",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "classify"
+    },
+    "/elements/2/span": {
+      "kind": "line",
+      "line_contains": "def classify(score, override):",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "line",
+      "line_contains": "def classify(score, override):",
+      "occurrence": 1
+    }
+  }
+}

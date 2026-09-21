@@ -1,41 +1,195 @@
 {
-  "elements": [
+  "case_id": "dec_guard_clause",
+  "cfg_requirements": [
     {
-      "id": "dec_guard_clause",
-      "kind": "MODULE",
-      "name": "dec_guard_clause",
-      "qualname": "",
-      "module": "dec_guard_clause",
-      "span": {
-        "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "dec_guard_clause::validate",
-      "kind": "FUNCTION",
-      "name": "validate",
-      "qualname": "validate",
-      "module": "dec_guard_clause",
-      "span": {
-        "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "branch_conditions_both_outcomes": [
+        "len(payload) > limit",
+        "not payload",
+        "payload is None"
+      ],
+      "element_id": "dec_guard_clause::validate",
+      "forbidden_block_kinds": [
+        "HANDLER",
+        "LOOP_HEAD"
+      ],
+      "required_block_kinds": [
+        "BRANCH",
+        "ENTRY",
+        "EXIT",
+        "RETURN"
+      ],
+      "shape": "guard clauses"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "decision_count_exact": 3,
+  "decisions": [
+    {
+      "condition_source": "payload is None",
+      "element_id": "dec_guard_clause::validate",
+      "id": "dec_guard_clause:d1",
+      "is_sink": false,
+      "outcomes": [
+        [
+          "True",
+          "missing"
+        ],
+        [
+          "False",
+          "dec_guard_clause:d2"
+        ]
+      ],
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT",
+        "span": {
+          "col": 4,
+          "end_line": 7,
+          "line": 6,
+          "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py"
+        }
+      },
+      "reads_ids": [
+        "dec_guard_clause::validate.<param>.payload"
+      ]
+    },
+    {
+      "condition_source": "not payload",
+      "element_id": "dec_guard_clause::validate",
+      "id": "dec_guard_clause:d2",
+      "is_sink": false,
+      "outcomes": [
+        [
+          "True",
+          "empty"
+        ],
+        [
+          "False",
+          "dec_guard_clause:d3"
+        ]
+      ],
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT",
+        "span": {
+          "col": 4,
+          "end_line": 9,
+          "line": 8,
+          "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py"
+        }
+      },
+      "reads_ids": [
+        "dec_guard_clause::validate.<param>.payload"
+      ]
+    },
+    {
+      "condition_source": "len(payload) > limit",
+      "element_id": "dec_guard_clause::validate",
+      "id": "dec_guard_clause:d3",
+      "is_sink": false,
+      "outcomes": [
+        [
+          "True",
+          "too_large"
+        ],
+        [
+          "False",
+          "ok"
+        ]
+      ],
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT",
+        "span": {
+          "col": 4,
+          "end_line": 11,
+          "line": 10,
+          "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py"
+        }
+      },
+      "reads_ids": [
+        "dec_guard_clause::validate.<param>.limit",
+        "dec_guard_clause::validate.<param>.payload"
+      ]
+    }
+  ],
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "dec_guard_clause",
+      "kind": "MODULE",
+      "module": "dec_guard_clause",
+      "name": "dec_guard_clause",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Three guards, then the happy path.",
+      "id": "dec_guard_clause::validate",
+      "kind": "FUNCTION",
+      "module": "dec_guard_clause",
+      "name": "validate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "validate",
+      "signature": "(payload, limit)",
+      "span": {
+        "col": 0,
+        "end_line": 12,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "dec_guard_clause::validate.<param>.payload",
+      "kind": "PARAMETER",
+      "module": "dec_guard_clause",
+      "name": "payload",
+      "parent_id": "dec_guard_clause::validate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "validate.<param>.payload",
+      "span": {
+        "col": 0,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "dec_guard_clause::validate.<param>.limit",
+      "kind": "PARAMETER",
+      "module": "dec_guard_clause",
+      "name": "limit",
+      "parent_id": "dec_guard_clause::validate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "validate.<param>.limit",
+      "span": {
+        "col": 0,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/dec_guard_clause/__init__.py"
+      }
+    }
+  ],
+  "proves": "Three early-return guards are three decision points, each with a return outcome and a fall-through outcome. The happy path is reached only when all three guards are false, so the guards are ordered, not independent.",
+  "unresolved": []
 }

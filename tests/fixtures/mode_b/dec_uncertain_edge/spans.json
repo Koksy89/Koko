@@ -1,0 +1,54 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/decisions/0/provenance/span": {
+      "kind": "stmt",
+      "line_contains": "return \"enter\" if rule(value) else \"hold\"",
+      "occurrence": 1
+    },
+    "/edges/0/call_site": {
+      "kind": "line",
+      "line_contains": "@register(\"momentum\")",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "line",
+      "line_contains": "@register(\"momentum\")",
+      "occurrence": 1
+    },
+    "/edges/2/call_site": {
+      "kind": "expr",
+      "line_contains": "return \"enter\" if rule(value) else \"hold\"",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "RULES = {}",
+      "occurrence": 1
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "decide"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "momentum_rule"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "register"
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "register.<locals>.decorate"
+    }
+  }
+}

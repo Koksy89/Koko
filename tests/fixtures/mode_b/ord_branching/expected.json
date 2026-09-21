@@ -1,75 +1,193 @@
 {
-  "elements": [
+  "case_id": "ord_branching",
+  "edges": [
     {
-      "id": "ord_branching",
-      "kind": "MODULE",
-      "name": "ord_branching",
-      "qualname": "",
-      "module": "ord_branching",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_branching/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 17,
+        "end_line": 22,
+        "line": 22,
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py"
       },
+      "id": "ord_branching:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_branching::main",
+      "target_id": "ord_branching::aggressive"
     },
     {
-      "id": "ord_branching::path_a",
-      "kind": "FUNCTION",
-      "name": "path_a",
-      "qualname": "path_a",
-      "module": "ord_branching",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_branching/__init__.py",
-        "line": 2
+      "call_site": {
+        "col": 17,
+        "end_line": 24,
+        "line": 24,
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py"
       },
+      "id": "ord_branching:e2",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_branching::main",
+      "target_id": "ord_branching::conservative"
     },
     {
-      "id": "ord_branching::path_b",
-      "kind": "FUNCTION",
-      "name": "path_b",
-      "qualname": "path_b",
-      "module": "ord_branching",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_branching/__init__.py",
-        "line": 4
+      "call_site": {
+        "col": 11,
+        "end_line": 25,
+        "line": 25,
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py"
       },
+      "id": "ord_branching:e3",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "ord_branching::main",
-      "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
-      "module": "ord_branching",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_branching/__init__.py",
-        "line": 6
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_branching::main",
+      "target_id": "ord_branching::report"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "ord_branching",
+      "kind": "MODULE",
+      "module": "ord_branching",
+      "name": "ord_branching",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Taken only when the flag is set.",
+      "id": "ord_branching::aggressive",
+      "kind": "FUNCTION",
+      "module": "ord_branching",
+      "name": "aggressive",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "aggressive",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Taken only when the flag is not set.",
+      "id": "ord_branching::conservative",
+      "kind": "FUNCTION",
+      "module": "ord_branching",
+      "name": "conservative",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "conservative",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Branch, then merge.",
+      "id": "ord_branching::main",
+      "kind": "FUNCTION",
+      "module": "ord_branching",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "(flag, value)",
+      "span": {
+        "col": 0,
+        "end_line": 25,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Runs on both paths: the merge point.",
+      "id": "ord_branching::report",
+      "kind": "FUNCTION",
+      "module": "ord_branching",
+      "name": "report",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "report",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/ord_branching/__init__.py"
+      }
+    }
+  ],
+  "forbidden_order_kinds_over_elements": [
+    {
+      "element_ids": [
+        "ord_branching::aggressive",
+        "ord_branching::conservative"
+      ],
+      "kind": "SEQUENCE",
+      "why": "they are exclusive alternatives, not consecutive steps"
+    }
+  ],
+  "order": [
+    {
+      "element_ids": [
+        "ord_branching::aggressive",
+        "ord_branching::conservative"
+      ],
+      "id": "ord_branching:o1",
+      "kind": "BRANCH",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      }
+    },
+    {
+      "element_ids": [
+        "ord_branching::report"
+      ],
+      "id": "ord_branching:o2",
+      "kind": "MERGE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      }
+    }
+  ],
+  "proves": "`aggressive` and `conservative` are mutually exclusive, so the order node over them is BRANCH and the node that rejoins at `report` is MERGE. Flattening the two into a SEQUENCE would tell the owner both run, and in a fixed order -- neither of which is true.",
+  "unresolved": []
 }

@@ -1,41 +1,163 @@
 {
-  "elements": [
+  "case_id": "ord_cycle",
+  "cycle_count_exact": 2,
+  "edges": [
     {
-      "id": "ord_cycle",
-      "kind": "MODULE",
-      "name": "ord_cycle",
-      "qualname": "",
-      "module": "ord_cycle",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 15,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py"
       },
+      "id": "ord_cycle:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_cycle::countdown",
+      "target_id": "ord_cycle::countdown"
     },
     {
-      "id": "ord_cycle::recursive",
-      "kind": "FUNCTION",
-      "name": "recursive",
-      "qualname": "recursive",
-      "module": "ord_cycle",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py",
-        "line": 2
+      "call_site": {
+        "col": 11,
+        "end_line": 15,
+        "line": 15,
+        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py"
       },
+      "id": "ord_cycle:e2",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_cycle::ping",
+      "target_id": "ord_cycle::pong"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 20,
+        "line": 20,
+        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py"
+      },
+      "id": "ord_cycle:e3",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "ord_cycle::pong",
+      "target_id": "ord_cycle::ping"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "ord_cycle",
+      "kind": "MODULE",
+      "module": "ord_cycle",
+      "name": "ord_cycle",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Calls itself: a one-member cycle.",
+      "id": "ord_cycle::countdown",
+      "kind": "FUNCTION",
+      "module": "ord_cycle",
+      "name": "countdown",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "countdown",
+      "signature": "(n)",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Half of a two-member cycle.",
+      "id": "ord_cycle::ping",
+      "kind": "FUNCTION",
+      "module": "ord_cycle",
+      "name": "ping",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ping",
+      "signature": "(n)",
+      "span": {
+        "col": 0,
+        "end_line": 15,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The other half.",
+      "id": "ord_cycle::pong",
+      "kind": "FUNCTION",
+      "module": "ord_cycle",
+      "name": "pong",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "pong",
+      "signature": "(n)",
+      "span": {
+        "col": 0,
+        "end_line": 20,
+        "line": 18,
+        "path": "tests/fixtures/mode_b/ord_cycle/__init__.py"
+      }
+    }
+  ],
+  "order": [
+    {
+      "element_ids": [
+        "ord_cycle::countdown"
+      ],
+      "id": "ord_cycle:o1",
+      "kind": "CYCLE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      }
+    },
+    {
+      "element_ids": [
+        "ord_cycle::ping",
+        "ord_cycle::pong"
+      ],
+      "id": "ord_cycle:o2",
+      "kind": "CYCLE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      }
+    }
+  ],
+  "proves": "Direct recursion yields a CYCLE whose single member is the function itself; mutual recursion yields a CYCLE with both members. A cycle is an order kind, not an error and not something to break silently.",
+  "unresolved": []
 }

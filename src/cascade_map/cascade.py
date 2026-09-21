@@ -1637,7 +1637,7 @@ class CascadeAnalyzer:
         return sorted(out, key=lambda e: e.id)
 
     def _emit_seq(
-        self, seq: _SeqShape, element_id: str, path: str, parent: str
+        self, seq: _SeqShape, element_id: str, path: str
     ) -> tuple[list[str], Confidence]:
         children: list[str] = []
         confidences: list[Confidence] = [Confidence.CERTAIN]
@@ -1892,10 +1892,20 @@ class CascadeAnalyzer:
                     self._elements[entry].span if entry in self._elements else SourceSpan("", 1),
                     f"entry point {entry!r} has no control-flow graph; its order is not expanded",
                 )
+        by_id = {existing.id: existing for existing in self._order}
         for cycle in cycles:
             children.append(cycle)
+            cycle_node = by_id.get(cycle)
+            if cycle_node is not None and cycle_node.provenance is not None:
+                confidences.append(cycle_node.provenance.confidence)
         if entry_roots:
             children.extend(entry_roots)
+            for entry_root in entry_roots:
+                root_node = by_id.get(entry_root)
+                if root_node is not None and root_node.provenance is not None:
+                    confidences.append(root_node.provenance.confidence)
+        # The reachable cascade rests on every call edge walked to find it.
+        confidences.extend(reachable.values())
 
         if len(entry_roots) > 1:
             kind = OrderKind.UNORDERED

@@ -1,0 +1,62 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/decisions/0/provenance/span": {
+      "kind": "stmt",
+      "line_contains": "if score(rows) > 5:",
+      "occurrence": 1
+    },
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "rows = load()",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "expr",
+      "line_contains": "    log_metrics(rows)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/2/call_site": {
+      "kind": "expr",
+      "line_contains": "return final_decision(rows)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/3/call_site": {
+      "kind": "expr",
+      "line_contains": "if score(rows) > 5:",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "final_decision"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "load"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "log_metrics"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "main"
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "score"
+    }
+  }
+}

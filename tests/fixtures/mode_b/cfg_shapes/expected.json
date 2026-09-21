@@ -1,92 +1,327 @@
 {
-  "elements": [
+  "case_id": "cfg_shapes",
+  "cfg_requirements": [
     {
-      "id": "cfg_shapes",
-      "kind": "MODULE",
-      "name": "cfg_shapes",
-      "qualname": "",
-      "module": "cfg_shapes",
-      "span": {
-        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "branch_conditions_both_outcomes": [
+        "x > 0"
+      ],
+      "element_id": "cfg_shapes::branching",
+      "forbidden_block_kinds": [
+        "HANDLER",
+        "LOOP_HEAD"
+      ],
+      "required_block_kinds": [
+        "BRANCH",
+        "ENTRY",
+        "EXIT",
+        "RETURN"
+      ],
+      "shape": "if/else"
     },
     {
-      "id": "cfg_shapes::branching_code",
-      "kind": "FUNCTION",
-      "name": "branching_code",
-      "qualname": "branching_code",
-      "module": "cfg_shapes",
-      "span": {
-        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py",
-        "line": 4
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "branch_conditions_both_outcomes": [
+        "row > 0"
+      ],
+      "element_id": "cfg_shapes::comprehended",
+      "forbidden_block_kinds": [
+        "FINALLY",
+        "HANDLER"
+      ],
+      "required_block_kinds": [
+        "ENTRY",
+        "EXIT",
+        "LOOP_HEAD",
+        "RETURN"
+      ],
+      "shape": "comprehension"
     },
     {
-      "id": "cfg_shapes::loop_code",
-      "kind": "FUNCTION",
-      "name": "loop_code",
-      "qualname": "loop_code",
-      "module": "cfg_shapes",
-      "span": {
-        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py",
-        "line": 12
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "branch_conditions_both_outcomes": [
+        "value is None"
+      ],
+      "element_id": "cfg_shapes::early_return",
+      "forbidden_block_kinds": [
+        "HANDLER",
+        "LOOP_HEAD"
+      ],
+      "required_block_kinds": [
+        "BRANCH",
+        "ENTRY",
+        "EXIT",
+        "RETURN"
+      ],
+      "shape": "early return"
     },
     {
-      "id": "cfg_shapes::exception_handling",
-      "kind": "FUNCTION",
-      "name": "exception_handling",
-      "qualname": "exception_handling",
-      "module": "cfg_shapes",
-      "span": {
-        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py",
-        "line": 20
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "branch_conditions_both_outcomes": [],
+      "element_id": "cfg_shapes::guarded",
+      "forbidden_block_kinds": [
+        "LOOP_HEAD"
+      ],
+      "required_block_kinds": [
+        "ENTRY",
+        "EXIT",
+        "FINALLY",
+        "HANDLER",
+        "RETURN"
+      ],
+      "shape": "try/except/finally"
     },
     {
-      "id": "cfg_shapes::with_statement",
-      "kind": "FUNCTION",
-      "name": "with_statement",
-      "qualname": "with_statement",
-      "module": "cfg_shapes",
-      "span": {
-        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py",
-        "line": 29
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "branch_conditions_both_outcomes": [],
+      "element_id": "cfg_shapes::looping",
+      "forbidden_block_kinds": [
+        "FINALLY",
+        "HANDLER"
+      ],
+      "required_block_kinds": [
+        "ENTRY",
+        "EXIT",
+        "LOOP_HEAD",
+        "RETURN"
+      ],
+      "shape": "for loop"
+    },
+    {
+      "branch_conditions_both_outcomes": [],
+      "element_id": "cfg_shapes::managed",
+      "forbidden_block_kinds": [
+        "HANDLER",
+        "LOOP_HEAD"
+      ],
+      "required_block_kinds": [
+        "ENTRY",
+        "EXIT",
+        "NORMAL",
+        "RETURN"
+      ],
+      "shape": "with"
+    },
+    {
+      "branch_conditions_both_outcomes": [],
+      "element_id": "cfg_shapes::matched",
+      "forbidden_block_kinds": [
+        "HANDLER",
+        "LOOP_HEAD"
+      ],
+      "required_block_kinds": [
+        "BRANCH",
+        "ENTRY",
+        "EXIT",
+        "RETURN"
+      ],
+      "shape": "match"
+    },
+    {
+      "branch_conditions_both_outcomes": [
+        "n > 0"
+      ],
+      "element_id": "cfg_shapes::while_looping",
+      "forbidden_block_kinds": [
+        "FINALLY",
+        "HANDLER"
+      ],
+      "required_block_kinds": [
+        "ENTRY",
+        "EXIT",
+        "LOOP_HEAD",
+        "RETURN"
+      ],
+      "shape": "while loop"
     }
   ],
-  "unresolved": [],
-  "cfg_blocks": [],
-  "cfg_edges": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "cfg_shapes",
+      "kind": "MODULE",
+      "module": "cfg_shapes",
+      "name": "cfg_shapes",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "if/else: two successors from one block, then a merge.",
+      "id": "cfg_shapes::branching",
+      "kind": "FUNCTION",
+      "module": "cfg_shapes",
+      "name": "branching",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "branching",
+      "signature": "(x)",
+      "span": {
+        "col": 0,
+        "end_line": 10,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "comprehension: an implicit loop, not a flat expression.",
+      "id": "cfg_shapes::comprehended",
+      "kind": "FUNCTION",
+      "module": "cfg_shapes",
+      "name": "comprehended",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "comprehended",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 47,
+        "line": 45,
+        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "early return: the second statement is unreachable when the guard fires.",
+      "id": "cfg_shapes::early_return",
+      "kind": "FUNCTION",
+      "module": "cfg_shapes",
+      "name": "early_return",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "early_return",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 65,
+        "line": 61,
+        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "try/except/finally: a handler block and a finally block.",
+      "id": "cfg_shapes::guarded",
+      "kind": "FUNCTION",
+      "module": "cfg_shapes",
+      "name": "guarded",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "guarded",
+      "signature": "(data)",
+      "span": {
+        "col": 0,
+        "end_line": 36,
+        "line": 28,
+        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "for loop: a back edge, and an exit edge when the iterator is empty.",
+      "id": "cfg_shapes::looping",
+      "kind": "FUNCTION",
+      "module": "cfg_shapes",
+      "name": "looping",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "looping",
+      "signature": "(items)",
+      "span": {
+        "col": 0,
+        "end_line": 18,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "with: the body is entered and exited through the context manager.",
+      "id": "cfg_shapes::managed",
+      "kind": "FUNCTION",
+      "module": "cfg_shapes",
+      "name": "managed",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "managed",
+      "signature": "(path)",
+      "span": {
+        "col": 0,
+        "end_line": 42,
+        "line": 39,
+        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "match: one branch per case, plus the wildcard.",
+      "id": "cfg_shapes::matched",
+      "kind": "FUNCTION",
+      "module": "cfg_shapes",
+      "name": "matched",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "matched",
+      "signature": "(command)",
+      "span": {
+        "col": 0,
+        "end_line": 58,
+        "line": 50,
+        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "while loop: the test block is the loop head.",
+      "id": "cfg_shapes::while_looping",
+      "kind": "FUNCTION",
+      "module": "cfg_shapes",
+      "name": "while_looping",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "while_looping",
+      "signature": "(n)",
+      "span": {
+        "col": 0,
+        "end_line": 25,
+        "line": 21,
+        "path": "tests/fixtures/mode_b/cfg_shapes/__init__.py"
+      }
+    }
+  ],
+  "notes": [
+    "`comprehended` requires a LOOP_HEAD: a comprehension is an implicit loop with a filter, and rendering it as one flat expression hides a branch the owner can change.",
+    "`guarded` requires FINALLY as its own block: the finally body runs on both the normal and the exceptional path, so folding it into either one loses an edge.",
+    "`matched` has three outcomes; the wildcard case is an outcome, not an absence."
+  ],
+  "proves": "The CFG covers branches, for and while loops, try/except/finally, with, comprehensions, match and early exits. Each function below names the block kinds its shape forces, and the block kinds its shape rules out.",
+  "unresolved": []
 }

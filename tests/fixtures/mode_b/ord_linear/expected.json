@@ -1,107 +1,215 @@
 {
-  "elements": [
+  "case_id": "ord_linear",
+  "edges": [
     {
-      "id": "ord_linear",
-      "kind": "MODULE",
-      "name": "ord_linear",
-      "qualname": "",
-      "module": "ord_linear",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_linear/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 11,
+        "end_line": 26,
+        "line": 26,
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py"
       },
+      "id": "ord_linear:e1",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_linear::main",
+      "target_id": "ord_linear::ingest"
     },
     {
-      "id": "ord_linear::first",
-      "kind": "FUNCTION",
-      "name": "first",
-      "qualname": "first",
-      "module": "ord_linear",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_linear/__init__.py",
-        "line": 4
+      "call_site": {
+        "col": 14,
+        "end_line": 27,
+        "line": 27,
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py"
       },
+      "id": "ord_linear:e2",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_linear::main",
+      "target_id": "ord_linear::clean"
     },
     {
-      "id": "ord_linear::second",
-      "kind": "FUNCTION",
-      "name": "second",
-      "qualname": "second",
-      "module": "ord_linear",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_linear/__init__.py",
-        "line": 8
+      "call_site": {
+        "col": 12,
+        "end_line": 28,
+        "line": 28,
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py"
       },
+      "id": "ord_linear:e3",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_linear::main",
+      "target_id": "ord_linear::featurize"
     },
     {
-      "id": "ord_linear::third",
-      "kind": "FUNCTION",
-      "name": "third",
-      "qualname": "third",
-      "module": "ord_linear",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_linear/__init__.py",
-        "line": 12
+      "call_site": {
+        "col": 11,
+        "end_line": 29,
+        "line": 29,
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py"
       },
+      "id": "ord_linear:e4",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "ord_linear::main",
-      "kind": "FUNCTION",
-      "name": "main",
-      "qualname": "main",
-      "module": "ord_linear",
-      "span": {
-        "path": "tests/fixtures/mode_b/ord_linear/__init__.py",
-        "line": 16
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "ord_linear::main",
+      "target_id": "ord_linear::decide"
     }
   ],
-  "unresolved": [],
-  "order": [
+  "elements": [
     {
-      "id": "order_linear",
-      "kind": "SEQUENCE",
-      "element_ids": [
-        "ord_linear::first",
-        "ord_linear::second",
-        "ord_linear::third",
-        "ord_linear::main"
-      ],
-      "children": [],
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "ord_linear",
+      "kind": "MODULE",
+      "module": "ord_linear",
+      "name": "ord_linear",
       "provenance": {
-        "method": "CFG_REACHABILITY",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Step 2: cannot run before ingest, because it consumes its result.",
+      "id": "ord_linear::clean",
+      "kind": "FUNCTION",
+      "module": "ord_linear",
+      "name": "clean",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "clean",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Step 4: the final decision.",
+      "id": "ord_linear::decide",
+      "kind": "FUNCTION",
+      "module": "ord_linear",
+      "name": "decide",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "decide",
+      "signature": "(score)",
+      "span": {
+        "col": 0,
+        "end_line": 21,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Step 3.",
+      "id": "ord_linear::featurize",
+      "kind": "FUNCTION",
+      "module": "ord_linear",
+      "name": "featurize",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "featurize",
+      "signature": "(rows)",
+      "span": {
+        "col": 0,
+        "end_line": 16,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Step 1.",
+      "id": "ord_linear::ingest",
+      "kind": "FUNCTION",
+      "module": "ord_linear",
+      "name": "ingest",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ingest",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The cascade, in one fixed order.",
+      "id": "ord_linear::main",
+      "kind": "FUNCTION",
+      "module": "ord_linear",
+      "name": "main",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "main",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 29,
+        "line": 24,
+        "path": "tests/fixtures/mode_b/ord_linear/__init__.py"
       }
     }
-  ]
+  ],
+  "notes": [
+    "Confidence is RESOLVED, not CERTAIN: the ordering rests on four SCOPE_LOOKUP call edges, and `combine` takes the weakest input."
+  ],
+  "order": [
+    {
+      "element_ids": [
+        "ord_linear::ingest",
+        "ord_linear::clean",
+        "ord_linear::featurize",
+        "ord_linear::decide"
+      ],
+      "id": "ord_linear:o1",
+      "kind": "SEQUENCE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      }
+    }
+  ],
+  "order_element_ids_are_ordered": true,
+  "proves": "Four calls in one basic block, each consuming the previous result: control flow fixes exactly one order, so the order node is SEQUENCE and element_ids are in that order.",
+  "unresolved": []
 }

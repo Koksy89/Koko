@@ -1,0 +1,48 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "branching"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "comprehended"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "early_return"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "guarded"
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "looping"
+    },
+    "/elements/6/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "managed"
+    },
+    "/elements/7/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "matched"
+    },
+    "/elements/8/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "while_looping"
+    }
+  }
+}

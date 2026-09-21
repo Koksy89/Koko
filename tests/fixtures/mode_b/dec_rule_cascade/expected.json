@@ -1,41 +1,180 @@
 {
-  "elements": [
+  "case_id": "dec_rule_cascade",
+  "decision_count_exact": 3,
+  "decisions": [
     {
-      "id": "dec_rule_cascade",
-      "kind": "MODULE",
-      "name": "dec_rule_cascade",
-      "qualname": "",
-      "module": "dec_rule_cascade",
-      "span": {
-        "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py",
-        "line": 1
-      },
+      "condition_source": "override",
+      "element_id": "dec_rule_cascade::classify",
+      "id": "dec_rule_cascade:d1",
+      "is_sink": false,
+      "outcomes": [
+        [
+          "True",
+          "forced"
+        ],
+        [
+          "False",
+          "dec_rule_cascade:d2"
+        ]
+      ],
       "provenance": {
+        "confidence": "CERTAIN",
         "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "span": {
+          "col": 4,
+          "end_line": 13,
+          "line": 6,
+          "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py"
+        }
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "reads_ids": [
+        "dec_rule_cascade::classify.<param>.override"
+      ]
     },
     {
-      "id": "dec_rule_cascade::decide",
-      "kind": "FUNCTION",
-      "name": "decide",
-      "qualname": "decide",
-      "module": "dec_rule_cascade",
-      "span": {
-        "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py",
-        "line": 2
-      },
+      "condition_source": "score < 0",
+      "element_id": "dec_rule_cascade::classify",
+      "id": "dec_rule_cascade:d2",
+      "is_sink": false,
+      "outcomes": [
+        [
+          "True",
+          "reject"
+        ],
+        [
+          "False",
+          "dec_rule_cascade:d3"
+        ]
+      ],
       "provenance": {
+        "confidence": "CERTAIN",
         "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "span": {
+          "col": 4,
+          "line": 8,
+          "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py"
+        }
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "reads_ids": [
+        "dec_rule_cascade::classify.<param>.score"
+      ]
+    },
+    {
+      "condition_source": "score < 50",
+      "element_id": "dec_rule_cascade::classify",
+      "id": "dec_rule_cascade:d3",
+      "is_sink": false,
+      "outcomes": [
+        [
+          "True",
+          "review"
+        ],
+        [
+          "False",
+          "accept"
+        ]
+      ],
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT",
+        "span": {
+          "col": 4,
+          "line": 10,
+          "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py"
+        }
+      },
+      "reads_ids": [
+        "dec_rule_cascade::classify.<param>.score"
+      ]
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "dec_rule_cascade",
+      "kind": "MODULE",
+      "module": "dec_rule_cascade",
+      "name": "dec_rule_cascade",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Each condition reads `score`; the first reads `override` as well.",
+      "id": "dec_rule_cascade::classify",
+      "kind": "FUNCTION",
+      "module": "dec_rule_cascade",
+      "name": "classify",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "classify",
+      "signature": "(score, override)",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "dec_rule_cascade::classify.<param>.score",
+      "kind": "PARAMETER",
+      "module": "dec_rule_cascade",
+      "name": "score",
+      "parent_id": "dec_rule_cascade::classify",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "classify.<param>.score",
+      "span": {
+        "col": 0,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "dec_rule_cascade::classify.<param>.override",
+      "kind": "PARAMETER",
+      "module": "dec_rule_cascade",
+      "name": "override",
+      "parent_id": "dec_rule_cascade::classify",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "classify.<param>.override",
+      "span": {
+        "col": 0,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/dec_rule_cascade/__init__.py"
+      }
+    }
+  ],
+  "notes": [
+    "`score < 50` is reached only when `score >= 0`: the elif chain is ordered, and reporting the three conditions as independent would lose that."
+  ],
+  "outcome_labels": [
+    "accept",
+    "forced",
+    "reject",
+    "review"
+  ],
+  "proves": "Each arm of the if/elif chain is its own decision point with its own condition source, the variables it reads, and its outcomes. The chain has four outcomes: the `else` is an outcome, not the absence of one.",
+  "unresolved": []
 }
