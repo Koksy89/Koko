@@ -34,6 +34,28 @@ def _default_cache_dir() -> Path:
     return Path.cwd() / ".cascade_map" / "cache"
 
 
+def _relative_to_root(path: Path, root_resolved: Path) -> str | None:
+    """`SourceSpan.path` is contractually POSIX and relative to the target
+    root (interfaces.py), not "whatever prefix the caller's `root` string
+    happened to have". Resolving both sides makes this invariant to relative
+    vs. absolute `root`, and to `.`/`..` in either -- the property
+    `test_span_path_is_identical_for_relative_and_absolute_root` checks
+    directly.
+
+    Returns None when `path` resolves outside `root_resolved` (a symlink
+    escaping the tree, or the root itself being a symlink to somewhere the
+    file is not under) -- that is a real case, not a silent absolute-path
+    fallback; the caller turns it into an Unresolved record."""
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        resolved = path.resolve()
+    try:
+        return resolved.relative_to(root_resolved).as_posix()
+    except ValueError:
+        return None
+
+
 
 
 class Ingestor:
@@ -47,20 +69,35 @@ class Ingestor:
 
     def inventory(self, root: str) -> tuple[list[Element], list[Unresolved]]:
         root_path = Path(root)
+        root_resolved = root_path.resolve()
         files = list(walk(root))
         py_files = [f for f in files if f.kind == "python"]
         local_top_names = frozenset(
             module_dotted_name(root_path, f.path).split(".")[0] for f in py_files
         )
 
-        cache = Cache(self.cache_dir / f"{sha256_text(str(root_path.resolve()))}.json")
+        cache = Cache(self.cache_dir / f"{sha256_text(str(root_resolved))}.json")
 
         elements: list[Element] = []
         unresolved: list[Unresolved] = []
         module_names_seen: set[str] = set()
 
         for f in files:
-            relkey = f.path.as_posix()
+            relkey = _relative_to_root(f.path, root_resolved)
+            if relkey is None:
+                unresolved.append(
+                    Unresolved(
+                        id=file_id(f.path.as_posix()),
+                        reason=UnresolvedReason.AMBIGUOUS,
+                        span=SourceSpan(path=f.path.name, line=1),
+                        description=(
+                            f"{f.path} resolves outside the target root {root_resolved} "
+                            "(a symlink escaping the tree, or the root itself is a symlink "
+                            "elsewhere) -- no root-relative path can be emitted for it"
+                        ),
+                    )
+                )
+                continue
             try:
                 raw = f.path.read_bytes()
             except OSError as exc:
@@ -116,7 +153,7 @@ class Ingestor:
 
         cache.save()
 
-        elements.extend(_synthesize_packages(module_names_seen, root_path))
+        elements.extend(_synthesize_packages(module_names_seen, root_path, root_resolved))
 
         elements, collision_unresolved = _resolve_id_collisions(elements)
         unresolved.extend(collision_unresolved)
@@ -155,7 +192,9 @@ class Ingestor:
         return parse_python_file(module, relkey, source, raw, tree, local_top_names)
 
 
-def _synthesize_packages(module_names: set[str], root_path: Path) -> list[Element]:
+def _synthesize_packages(
+    module_names: set[str], root_path: Path, root_resolved: Path
+) -> list[Element]:
     """A PACKAGE element for every directory prefix that organizes submodules
     but has no `__init__.py` of its own (PEP 420 namespace packages). A
     directory *with* `__init__.py` is already represented -- its MODULE
@@ -174,6 +213,12 @@ def _synthesize_packages(module_names: set[str], root_path: Path) -> list[Elemen
             listing = sorted(p.name for p in dir_path.iterdir())
         except OSError:
             listing = []
+        span_path = _relative_to_root(dir_path, root_resolved)
+        if span_path is None:
+            # Every prefix here was derived from a file actually found under
+            # root, so this directory should always resolve inside it; this
+            # branch only guards against a pathological symlink underneath.
+            span_path = dir_path.name
         out.append(
             Element(
                 id=prefix,
@@ -181,7 +226,7 @@ def _synthesize_packages(module_names: set[str], root_path: Path) -> list[Elemen
                 name=prefix.rsplit(".", 1)[-1],
                 qualname="",
                 module=prefix,
-                span=SourceSpan(path=dir_path.as_posix(), line=1),
+                span=SourceSpan(path=span_path or ".", line=1),
                 provenance=Provenance(
                     method=Method.AST_DIRECT,
                     confidence=Confidence.CERTAIN,

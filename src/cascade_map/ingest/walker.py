@@ -17,7 +17,9 @@ from .constants import CONFIG_EXTENSIONS, EXCLUDED_DIR_NAMES, EXCLUDED_FILE_NAME
 class DiscoveredFile:
     path: Path
     """As constructed from the walk -- carries whatever prefix `root` had.
-    Used verbatim as `SourceSpan.path` (POSIX-ified)."""
+    Never used verbatim as `SourceSpan.path`: the caller (inventory.py)
+    normalizes it relative to the resolved target root first, so the emitted
+    path is invariant to whether `root` was given relative or absolute."""
 
     kind: str
     """"python" | "json" | "yaml" | "ini" | "csv" """

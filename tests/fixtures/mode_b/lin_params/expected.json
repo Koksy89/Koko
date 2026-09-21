@@ -284,7 +284,7 @@
       "id": "lin_params:l08",
       "kind": "RETURNS",
       "provenance": {
-        "confidence": "RESOLVED",
+        "confidence": "PROBABLE",
         "method": "DATAFLOW"
       },
       "source_id": "lin_params::scale.<locals>.bumped",
@@ -300,7 +300,7 @@
       "id": "lin_params:l09",
       "kind": "RETURNS",
       "provenance": {
-        "confidence": "RESOLVED",
+        "confidence": "PROBABLE",
         "method": "DATAFLOW"
       },
       "source_id": "lin_params::scale.<locals>.bumped#2",
@@ -332,7 +332,8 @@
   "notes": [
     "l02 and l03 start at the calling function rather than at a variable: the values 3 and 5 are literals at the call site, so the caller is the origin of the value.",
     "`bumped` is rebound inside the `if`, so the second binding is its own node, `bumped#2`. One node with a self-edge would put `factor` and `value` in the backward slice of the offset-adjusted result even on the path where the `if` did not run.",
-    "Both bindings reach `return bumped`: #2 when the offset was applied, #1 when it was not. Two RETURNS edges, not one -- picking either alone would drop a real path."
+    "Both bindings reach `return bumped`: #2 when the offset was applied, #1 when it was not. Two RETURNS edges, not one -- picking either alone would drop a real path.",
+    "Those two are PROBABLE, not RESOLVED. RESOLVED is defined as deterministic resolution with exactly one outcome, and a return fed by two reaching definitions has two. Each edge is exact on its own path; neither is certain without knowing which path ran."
   ],
   "proves": "A positional argument binds to `value`, an explicit keyword binds to `factor`, and `offset=5` -- which matches no declared parameter -- lands inside **options under the key `offset`. The return value flows back to the caller's local. Losing the **options key means losing the only path from the call site to `options[\\'offset\\']`.",
   "unresolved": []
