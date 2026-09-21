@@ -1,129 +1,316 @@
 {
-  "elements": [
+  "case_id": "res_mro",
+  "edges": [
     {
-      "id": "res_mro",
-      "kind": "MODULE",
-      "name": "res_mro",
-      "qualname": "",
-      "module": "res_mro",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 0,
+        "end_line": 21,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
       },
+      "id": "res_mro:e1",
+      "kind": "INHERITS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_mro::Middle",
+      "target_id": "res_mro::Base"
     },
     {
-      "id": "res_mro::A",
-      "kind": "CLASS",
-      "name": "A",
-      "qualname": "A",
-      "module": "res_mro",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
-        "line": 2
+      "call_site": {
+        "col": 0,
+        "end_line": 29,
+        "line": 24,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
       },
+      "id": "res_mro:e2",
+      "kind": "INHERITS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_mro::Leaf",
+      "target_id": "res_mro::Middle"
     },
     {
-      "id": "res_mro::A::method",
-      "kind": "METHOD",
-      "name": "method",
-      "qualname": "A.method",
-      "module": "res_mro",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
-        "line": 3
+      "call_site": {
+        "col": 11,
+        "end_line": 34,
+        "line": 34,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
       },
+      "id": "res_mro:e3",
+      "kind": "INSTANTIATES",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false,
-      "parent_id": "res_mro::A"
+      "source_id": "res_mro::dispatch",
+      "target_id": "res_mro::Leaf"
     },
     {
-      "id": "res_mro::B",
-      "kind": "CLASS",
-      "name": "B",
-      "qualname": "B",
-      "module": "res_mro",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
-        "line": 7
+      "call_site": {
+        "col": 11,
+        "end_line": 35,
+        "line": 35,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
       },
+      "id": "res_mro:e4",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "PROBABLE",
+        "method": "MRO_DISPATCH",
+        "note": "`leaf` is a Leaf by the assignment above; Leaf defines classify"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_mro::dispatch",
+      "target_id": "res_mro::Leaf.classify"
     },
     {
-      "id": "res_mro::B::method",
-      "kind": "METHOD",
-      "name": "method",
-      "qualname": "B.method",
-      "module": "res_mro",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
-        "line": 8
+      "call_site": {
+        "col": 11,
+        "end_line": 35,
+        "line": 35,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
       },
+      "id": "res_mro:e5",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "PROBABLE",
+        "method": "MRO_DISPATCH",
+        "note": "`shared` is defined only on Base, so the MRO walk ends there"
       },
-      "content_hash": null,
-      "content_hash_asserted": false,
-      "parent_id": "res_mro::B"
+      "source_id": "res_mro::dispatch",
+      "target_id": "res_mro::Base.shared"
     },
     {
-      "id": "res_mro::C",
-      "kind": "CLASS",
-      "name": "C",
-      "qualname": "C",
-      "module": "res_mro",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
-        "line": 12
+      "call_site": {
+        "col": 15,
+        "end_line": 29,
+        "line": 29,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
       },
+      "id": "res_mro:e6",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "PROBABLE",
+        "method": "MRO_DISPATCH",
+        "note": "super() inside Leaf starts the MRO search at Middle"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_mro::C::method",
-      "kind": "METHOD",
-      "name": "method",
-      "qualname": "C.method",
-      "module": "res_mro",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_mro/__init__.py",
-        "line": 13
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false,
-      "parent_id": "res_mro::C"
+      "source_id": "res_mro::Leaf.classify",
+      "target_id": "res_mro::Middle.classify"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_mro",
+      "kind": "MODULE",
+      "module": "res_mro",
+      "name": "res_mro",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Level 1.",
+      "id": "res_mro::Base",
+      "kind": "CLASS",
+      "module": "res_mro",
+      "name": "Base",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Base",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Never reached from `dispatch`: Middle and Leaf both override it.",
+      "id": "res_mro::Base.classify",
+      "kind": "METHOD",
+      "module": "res_mro",
+      "name": "classify",
+      "parent_id": "res_mro::Base",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Base.classify",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Not overridden anywhere, so this *is* what dispatch reaches.",
+      "id": "res_mro::Base.shared",
+      "kind": "METHOD",
+      "module": "res_mro",
+      "name": "shared",
+      "parent_id": "res_mro::Base",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Base.shared",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 13,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Level 2.",
+      "id": "res_mro::Middle",
+      "kind": "CLASS",
+      "module": "res_mro",
+      "name": "Middle",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Middle",
+      "span": {
+        "col": 0,
+        "end_line": 21,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The nearest override above Leaf.",
+      "id": "res_mro::Middle.classify",
+      "kind": "METHOD",
+      "module": "res_mro",
+      "name": "classify",
+      "parent_id": "res_mro::Middle",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Middle.classify",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 21,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Level 3.",
+      "id": "res_mro::Leaf",
+      "kind": "CLASS",
+      "module": "res_mro",
+      "name": "Leaf",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Leaf",
+      "span": {
+        "col": 0,
+        "end_line": 29,
+        "line": 24,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Delegates one step up the MRO.",
+      "id": "res_mro::Leaf.classify",
+      "kind": "METHOD",
+      "module": "res_mro",
+      "name": "classify",
+      "parent_id": "res_mro::Leaf",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Leaf.classify",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 29,
+        "line": 27,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Call through the deepest class.",
+      "id": "res_mro::dispatch",
+      "kind": "FUNCTION",
+      "module": "res_mro",
+      "name": "dispatch",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "dispatch",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 35,
+        "line": 32,
+        "path": "tests/fixtures/mode_b/res_mro/__init__.py"
+      }
+    }
+  ],
+  "mro_of_leaf": [
+    "res_mro::Leaf",
+    "res_mro::Middle",
+    "res_mro::Base"
+  ],
+  "must_not_contain_edges": [
+    {
+      "source_id": "res_mro::dispatch",
+      "target_id": "res_mro::Base.classify",
+      "why": "Leaf overrides classify; Base.classify is unreachable from here"
+    },
+    {
+      "source_id": "res_mro::Leaf.classify",
+      "target_id": "res_mro::Base.classify",
+      "why": "super() from Leaf stops at Middle, which defines classify"
+    },
+    {
+      "source_id": "res_mro::dispatch",
+      "target_id": "res_mro::Middle.classify",
+      "why": "reached only via Leaf.classify's super(), never directly"
+    }
+  ],
+  "proves": "Method dispatch across a three-level hierarchy resolves to the nearest definition in the MRO, `super().classify()` inside Leaf resolves one step up to Middle, and an unoverridden method resolves to the base. The two edges NOT present matter as much as the three that are.",
+  "unresolved": []
 }

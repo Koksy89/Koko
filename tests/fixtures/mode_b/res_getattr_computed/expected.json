@@ -1,63 +1,180 @@
 {
+  "case_id": "res_getattr_computed",
+  "edges": [
+    {
+      "call_site": {
+        "col": 10,
+        "end_line": 20,
+        "line": 20,
+        "path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py"
+      },
+      "id": "res_getattr_computed:e1",
+      "kind": "INSTANTIATES",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "res_getattr_computed::run",
+      "target_id": "res_getattr_computed::Helper"
+    }
+  ],
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "res_getattr_computed",
       "kind": "MODULE",
-      "name": "res_getattr_computed",
-      "qualname": "",
       "module": "res_getattr_computed",
-      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 1},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": null,
-      "content_hash_asserted": false
+      "name": "res_getattr_computed",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py"
+      }
     },
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_getattr_computed::sys",
+      "kind": "IMPORT",
+      "module": "res_getattr_computed",
+      "name": "sys",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "sys",
+      "signature": "import sys",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Two same-prefixed methods; which one runs is decided at runtime.",
       "id": "res_getattr_computed::Helper",
       "kind": "CLASS",
+      "module": "res_getattr_computed",
       "name": "Helper",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
       "qualname": "Helper",
-      "module": "res_getattr_computed",
-      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 6},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": null,
-      "content_hash_asserted": false
+      "span": {
+        "col": 0,
+        "end_line": 15,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py"
+      }
     },
     {
-      "id": "res_getattr_computed::Helper::method_a",
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Candidate.",
+      "id": "res_getattr_computed::Helper.method_a",
       "kind": "METHOD",
+      "module": "res_getattr_computed",
       "name": "method_a",
+      "parent_id": "res_getattr_computed::Helper",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
       "qualname": "Helper.method_a",
-      "module": "res_getattr_computed",
-      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 7},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
-      "content_hash": null,
-      "content_hash_asserted": false,
-      "parent_id": "res_getattr_computed::Helper"
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py"
+      }
     },
     {
-      "id": "res_getattr_computed::Helper::method_b",
-      "kind": "METHOD",
-      "name": "method_b",
-      "qualname": "Helper.method_b",
-      "module": "res_getattr_computed",
-      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 10},
-      "provenance": {"method": "AST_DIRECT", "confidence": "CERTAIN"},
       "content_hash": null,
       "content_hash_asserted": false,
-      "parent_id": "res_getattr_computed::Helper"
+      "docstring": "Candidate.",
+      "id": "res_getattr_computed::Helper.method_b",
+      "kind": "METHOD",
+      "module": "res_getattr_computed",
+      "name": "method_b",
+      "parent_id": "res_getattr_computed::Helper",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Helper.method_b",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 15,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Build the attribute name from argv, then fetch it.",
+      "id": "res_getattr_computed::run",
+      "kind": "FUNCTION",
+      "module": "res_getattr_computed",
+      "name": "run",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "run",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 24,
+        "line": 18,
+        "path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py"
+      }
     }
   ],
+  "must_not_contain_edges": [
+    {
+      "source_id": "res_getattr_computed::run",
+      "target_id": "res_getattr_computed::Helper.method_a",
+      "why": "a candidate is not an answer; promoting it would launder a guess into a fact"
+    },
+    {
+      "source_id": "res_getattr_computed::run",
+      "target_id": "res_getattr_computed::Helper.method_b",
+      "why": "a candidate is not an answer; promoting it would launder a guess into a fact"
+    }
+  ],
+  "proves": "The attribute name is concatenated from a process argument, so no static answer exists. The call site must produce an UNKNOWN record listing both candidates and their shared prefix as the reason -- and **no edge at all**. Promoting either candidate to an edge would be a confident wrong answer, which costs the owner more than an honest gap.",
   "unresolved": [
     {
-      "id": "getattr_call_at_16",
+      "attempted": [
+        "GETATTR_LITERAL",
+        "GETATTR_TRACED"
+      ],
+      "candidate_confidence": "UNKNOWN",
+      "candidate_ids": [
+        "res_getattr_computed::Helper.method_a",
+        "res_getattr_computed::Helper.method_b"
+      ],
+      "description": "getattr attribute name is `\"method_\" + suffix`, where suffix comes from sys.argv; the two methods of Helper whose names start with `method_` are listed as candidates and neither is claimed",
+      "id": "res_getattr_computed::run::getattr@method_name",
       "reason": "DYNAMIC_NAME",
-      "span": {"path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py", "line": 16},
-      "description": "getattr call with computed name; cannot determine target statically",
-      "attempted": ["GETATTR_LITERAL"],
-      "candidate_ids": ["res_getattr_computed::Helper::method_a", "res_getattr_computed::Helper::method_b"],
-      "candidate_confidence": "PROBABLE",
-      "candidates_asserted": true
+      "span": {
+        "col": 13,
+        "end_line": 23,
+        "line": 23,
+        "path": "tests/fixtures/mode_b/res_getattr_computed/__init__.py"
+      }
     }
-  ],
-  "edges": []
+  ]
 }

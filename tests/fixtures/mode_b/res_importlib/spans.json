@@ -1,0 +1,58 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "importlib.import_module(\"res_importlib.plugin\")",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "import importlib",
+      "occurrence": 1
+    },
+    "/elements/2/span": {
+      "kind": "stmt",
+      "line_contains": "import os",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "stmt",
+      "line_contains": "KNOWN =",
+      "occurrence": 1
+    },
+    "/elements/4/span": {
+      "kind": "stmt",
+      "line_contains": "CHOSEN =",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "module"
+    },
+    "/elements/6/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "activate"
+    },
+    "/unresolved/0/span": {
+      "kind": "expr",
+      "line_contains": "CHOSEN = importlib.import_module(os.environ.get(\"PLUGIN\"",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/unresolved/1/span": {
+      "kind": "stmt",
+      "line_contains": "import importlib",
+      "occurrence": 1
+    },
+    "/unresolved/2/span": {
+      "kind": "stmt",
+      "line_contains": "import os",
+      "occurrence": 1
+    }
+  }
+}

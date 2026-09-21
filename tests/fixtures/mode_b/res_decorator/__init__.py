@@ -1,9 +1,22 @@
-"""Test decorator resolution."""
-def decorator(func):
-    def wrapper():
-        return func()
+"""A decorator: calls must reach both the wrapper and the wrapped function."""
+
+
+def trace(func):
+    """Wrap `func`."""
+
+    def wrapper(value):
+        """What the caller actually invokes."""
+        return func(value)
+
     return wrapper
 
-@decorator
-def decorated():
-    return 42
+
+@trace
+def compute(value):
+    """What the caller thinks it is invoking."""
+    return value * 2
+
+
+def caller():
+    """Call the decorated name."""
+    return compute(21)

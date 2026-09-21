@@ -1,41 +1,171 @@
 {
-  "elements": [
+  "case_id": "res_import_cycle",
+  "edges": [
     {
-      "id": "res_import_cycle.a",
-      "kind": "MODULE",
-      "name": "a",
-      "qualname": "",
-      "module": "res_import_cycle.a",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_import_cycle/a.py",
-        "line": 1
+      "call_site": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_cycle/a.py"
       },
+      "id": "res_import_cycle:e1",
+      "kind": "IMPORTS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "IMPORT_RELATIVE"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_import_cycle.a",
+      "target_id": "res_import_cycle.b"
     },
     {
-      "id": "res_import_cycle.b",
-      "kind": "MODULE",
-      "name": "b",
-      "qualname": "",
-      "module": "res_import_cycle.b",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_import_cycle/b.py",
-        "line": 1
+      "call_site": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_cycle/b.py"
       },
+      "id": "res_import_cycle:e2",
+      "kind": "IMPORTS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "IMPORT_RELATIVE"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_import_cycle.b",
+      "target_id": "res_import_cycle.a"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_cycle.a",
+      "kind": "MODULE",
+      "module": "res_import_cycle.a",
+      "name": "a",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_cycle/a.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_cycle.a::b",
+      "kind": "IMPORT",
+      "module": "res_import_cycle.a",
+      "name": "b",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "b",
+      "signature": "from . import b",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_cycle/a.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Reach into b.",
+      "id": "res_import_cycle.a::from_a",
+      "kind": "FUNCTION",
+      "module": "res_import_cycle.a",
+      "name": "from_a",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "from_a",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_import_cycle/a.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_cycle.b",
+      "kind": "MODULE",
+      "module": "res_import_cycle.b",
+      "name": "b",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_cycle/b.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_cycle.b::a",
+      "kind": "IMPORT",
+      "module": "res_import_cycle.b",
+      "name": "a",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "a",
+      "signature": "from . import a",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_cycle/b.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Reach back into a.",
+      "id": "res_import_cycle.b::from_b",
+      "kind": "FUNCTION",
+      "module": "res_import_cycle.b",
+      "name": "from_b",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "from_b",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_import_cycle/b.py"
+      }
+    }
+  ],
+  "order": [
+    {
+      "element_ids": [
+        "res_import_cycle.a",
+        "res_import_cycle.b"
+      ],
+      "id": "res_import_cycle:cycle1",
+      "kind": "CYCLE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CFG_REACHABILITY"
+      }
+    }
+  ],
+  "proves": "A two-module import cycle is reported as a cycle with its member IDs, not as an error and not as an unresolved import. Both import edges resolve normally.",
+  "unresolved": []
 }

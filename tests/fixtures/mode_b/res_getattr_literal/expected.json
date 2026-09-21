@@ -1,59 +1,168 @@
 {
-  "elements": [
+  "case_id": "res_getattr_literal",
+  "edges": [
     {
-      "id": "res_getattr_literal",
-      "kind": "MODULE",
-      "name": "res_getattr_literal",
-      "qualname": "",
-      "module": "res_getattr_literal",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 13,
+        "end_line": 18,
+        "line": 18,
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py"
       },
+      "id": "res_getattr_literal:e1",
+      "kind": "INSTANTIATES",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_getattr_literal::run",
+      "target_id": "res_getattr_literal::Engine"
     },
     {
-      "id": "res_getattr_literal::Obj",
-      "kind": "CLASS",
-      "name": "Obj",
-      "qualname": "Obj",
-      "module": "res_getattr_literal",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py",
-        "line": 2
+      "call_site": {
+        "col": 13,
+        "end_line": 19,
+        "line": 19,
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py"
       },
+      "id": "res_getattr_literal:e2",
+      "kind": "REFERENCES",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "PROBABLE",
+        "method": "GETATTR_LITERAL",
+        "note": "literal attribute name on a known class"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_getattr_literal::run",
+      "target_id": "res_getattr_literal::Engine.start"
     },
     {
-      "id": "res_getattr_literal::Obj::method",
-      "kind": "METHOD",
-      "name": "method",
-      "qualname": "Obj.method",
-      "module": "res_getattr_literal",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py",
-        "line": 3
+      "call_site": {
+        "col": 11,
+        "end_line": 20,
+        "line": 20,
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py"
       },
+      "id": "res_getattr_literal:e3",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "PROBABLE",
+        "method": "GETATTR_LITERAL",
+        "note": "`method` holds the attribute fetched on the line above"
       },
-      "content_hash": null,
-      "content_hash_asserted": false,
-      "parent_id": "res_getattr_literal::Obj"
+      "source_id": "res_getattr_literal::run",
+      "target_id": "res_getattr_literal::Engine.start"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_getattr_literal",
+      "kind": "MODULE",
+      "module": "res_getattr_literal",
+      "name": "res_getattr_literal",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Two methods, one of them fetched by name.",
+      "id": "res_getattr_literal::Engine",
+      "kind": "CLASS",
+      "module": "res_getattr_literal",
+      "name": "Engine",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Engine",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Fetched by getattr with a literal.",
+      "id": "res_getattr_literal::Engine.start",
+      "kind": "METHOD",
+      "module": "res_getattr_literal",
+      "name": "start",
+      "parent_id": "res_getattr_literal::Engine",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Engine.start",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Never fetched.",
+      "id": "res_getattr_literal::Engine.stop",
+      "kind": "METHOD",
+      "module": "res_getattr_literal",
+      "name": "stop",
+      "parent_id": "res_getattr_literal::Engine",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Engine.stop",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 13,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Fetch `start` by its literal name and call it.",
+      "id": "res_getattr_literal::run",
+      "kind": "FUNCTION",
+      "module": "res_getattr_literal",
+      "name": "run",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "run",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 20,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/res_getattr_literal/__init__.py"
+      }
+    }
+  ],
+  "must_not_contain_edges": [
+    {
+      "source_id": "res_getattr_literal::run",
+      "target_id": "res_getattr_literal::Engine.stop",
+      "why": "the literal names `start`; linking every method of the class is the over-link this case exists to catch"
+    }
+  ],
+  "proves": "`getattr(engine, \"start\")` with a literal name resolves to Engine.start with GETATTR_LITERAL/PROBABLE -- PROBABLE, not RESOLVED, because the attribute could still be shadowed at runtime. `stop` gains no edge: a literal names one method, not the class's whole surface.",
+  "unresolved": []
 }

@@ -1,3 +1,8 @@
-"""Test relative imports."""
+"""One level: `.` reaches the sibling module."""
+
 from . import sibling
-from ..parent import module
+
+
+def local_call():
+    """Use the once-relative import."""
+    return sibling.helper()

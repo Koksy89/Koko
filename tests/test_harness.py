@@ -871,5 +871,5 @@ def test_declared_multiprocessing_is_allowed(tmp_path: Path) -> None:
         p.start()
         p.join(timeout=10)
         exitcode = p.exitcode
-    assert ctx.blocked == ()
+    assert ctx.blocked == []
     assert exitcode == 0

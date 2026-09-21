@@ -1,24 +1,246 @@
 {
-  "elements": [
+  "case_id": "res_import_relative",
+  "edges": [
     {
-      "id": "res_import_relative",
-      "kind": "MODULE",
-      "name": "res_import_relative",
-      "qualname": "",
-      "module": "res_import_relative",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_import_relative/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_relative/__init__.py"
       },
+      "id": "res_import_relative:e1",
+      "kind": "IMPORTS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "IMPORT_RELATIVE",
+        "note": "level 1 from the package root"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_import_relative",
+      "target_id": "res_import_relative.sibling"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/res_import_relative/__init__.py"
+      },
+      "id": "res_import_relative:e2",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "res_import_relative::local_call",
+      "target_id": "res_import_relative.sibling::helper"
+    },
+    {
+      "call_site": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_relative/pkg/deep.py"
+      },
+      "id": "res_import_relative:e3",
+      "kind": "IMPORTS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "IMPORT_RELATIVE",
+        "note": "level 2: `..` is the package root, then `.sibling`"
+      },
+      "source_id": "res_import_relative.pkg.deep",
+      "target_id": "res_import_relative.sibling::helper"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/res_import_relative/pkg/deep.py"
+      },
+      "id": "res_import_relative:e4",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "res_import_relative.pkg.deep::deep_call",
+      "target_id": "res_import_relative.sibling::helper"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_relative",
+      "kind": "MODULE",
+      "module": "res_import_relative",
+      "name": "res_import_relative",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_relative/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_relative::sibling",
+      "kind": "IMPORT",
+      "module": "res_import_relative",
+      "name": "sibling",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "sibling",
+      "signature": "from . import sibling",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_relative/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Use the once-relative import.",
+      "id": "res_import_relative::local_call",
+      "kind": "FUNCTION",
+      "module": "res_import_relative",
+      "name": "local_call",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "local_call",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_import_relative/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_relative.pkg",
+      "kind": "MODULE",
+      "module": "res_import_relative.pkg",
+      "name": "pkg",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_relative/pkg/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_relative.pkg.deep",
+      "kind": "MODULE",
+      "module": "res_import_relative.pkg.deep",
+      "name": "deep",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_relative/pkg/deep.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_relative.pkg.deep::helper",
+      "kind": "IMPORT",
+      "module": "res_import_relative.pkg.deep",
+      "name": "helper",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "helper",
+      "signature": "from ..sibling import helper",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_relative/pkg/deep.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Use the twice-relative import.",
+      "id": "res_import_relative.pkg.deep::deep_call",
+      "kind": "FUNCTION",
+      "module": "res_import_relative.pkg.deep",
+      "name": "deep_call",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "deep_call",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_import_relative/pkg/deep.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_relative.sibling",
+      "kind": "MODULE",
+      "module": "res_import_relative.sibling",
+      "name": "sibling",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_relative/sibling.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Return a marker.",
+      "id": "res_import_relative.sibling::helper",
+      "kind": "FUNCTION",
+      "module": "res_import_relative.sibling",
+      "name": "helper",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "helper",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_import_relative/sibling.py"
+      }
+    }
+  ],
+  "proves": "A single-level relative import (`from . import sibling`) and a two-level one (`from ..sibling import helper`) both resolve to the same real elements, with IMPORT_RELATIVE.",
+  "unresolved": []
 }

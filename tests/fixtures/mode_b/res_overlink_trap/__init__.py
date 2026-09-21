@@ -1,22 +1,24 @@
-"""Module with same-named methods on unrelated classes."""
+"""Two unrelated classes with an identically named method. Precision trap."""
 
 
 class ClassA:
+    """Unrelated to ClassB."""
+
     def process(self):
-        """Process in ClassA."""
+        """ClassA's own process."""
         return "A"
 
 
 class ClassB:
+    """Unrelated to ClassA."""
+
     def process(self):
-        """Process in ClassB."""
+        """ClassB's own process."""
         return "B"
 
 
 def caller():
-    """Call process on different instances."""
+    """Each call has exactly one possible target."""
     a = ClassA()
     b = ClassB()
-    result_a = a.process()
-    result_b = b.process()
-    return result_a, result_b
+    return a.process(), b.process()

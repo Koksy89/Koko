@@ -1,79 +1,181 @@
 {
+  "case_id": "res_decorator",
+  "edges": [
+    {
+      "call_site": {
+        "col": 0,
+        "line": 14,
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py"
+      },
+      "id": "res_decorator:e1",
+      "kind": "DECORATES",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT",
+        "note": "the decorator list is read straight off the AST"
+      },
+      "source_id": "res_decorator::trace",
+      "target_id": "res_decorator::compute"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 22,
+        "line": 22,
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py"
+      },
+      "id": "res_decorator:e2",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP",
+        "note": "the wrapped function: the element the owner named"
+      },
+      "source_id": "res_decorator::caller",
+      "target_id": "res_decorator::compute"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 22,
+        "line": 22,
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py"
+      },
+      "id": "res_decorator:e3",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DECORATOR_UNWRAP",
+        "note": "the wrapper: what the name is actually bound to after decoration"
+      },
+      "source_id": "res_decorator::caller",
+      "target_id": "res_decorator::trace.<locals>.wrapper"
+    },
+    {
+      "call_site": {
+        "col": 15,
+        "end_line": 9,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py"
+      },
+      "id": "res_decorator:e4",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DECORATOR_UNWRAP",
+        "note": "`func` inside wrapper is the decorated function"
+      },
+      "source_id": "res_decorator::trace.<locals>.wrapper",
+      "target_id": "res_decorator::compute"
+    }
+  ],
   "elements": [
     {
-      "id": "res_decorator",
-      "kind": "MODULE",
-      "name": "res_decorator",
-      "qualname": "",
-      "module": "res_decorator",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_decorator/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_decorator::decorator",
-      "kind": "FUNCTION",
-      "name": "decorator",
-      "qualname": "decorator",
-      "module": "res_decorator",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_decorator/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_decorator::decorator::wrapper",
-      "kind": "FUNCTION",
-      "name": "wrapper",
-      "qualname": "decorator.<locals>.wrapper",
-      "module": "res_decorator",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_decorator/__init__.py",
-        "line": 3
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
       "content_hash_asserted": false,
-      "parent_id": "res_decorator::decorator"
+      "id": "res_decorator",
+      "kind": "MODULE",
+      "module": "res_decorator",
+      "name": "res_decorator",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py"
+      }
     },
     {
-      "id": "res_decorator::decorated",
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Wrap `func`.",
+      "id": "res_decorator::trace",
       "kind": "FUNCTION",
-      "name": "decorated",
-      "qualname": "decorated",
       "module": "res_decorator",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_decorator/__init__.py",
-        "line": 8
-      },
+      "name": "trace",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
+      "qualname": "trace",
+      "signature": "(func)",
+      "span": {
+        "col": 0,
+        "end_line": 11,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "What the caller actually invokes.",
+      "id": "res_decorator::trace.<locals>.wrapper",
+      "kind": "FUNCTION",
+      "module": "res_decorator",
+      "name": "wrapper",
+      "parent_id": "res_decorator::trace",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "trace.<locals>.wrapper",
+      "signature": "(value)",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py"
+      }
+    },
+    {
       "content_hash": null,
       "content_hash_asserted": false,
       "decorators": [
-        "decorator"
-      ]
+        "trace"
+      ],
+      "docstring": "What the caller thinks it is invoking.",
+      "id": "res_decorator::compute",
+      "kind": "FUNCTION",
+      "module": "res_decorator",
+      "name": "compute",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "compute",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 17,
+        "line": 15,
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Call the decorated name.",
+      "id": "res_decorator::caller",
+      "kind": "FUNCTION",
+      "module": "res_decorator",
+      "name": "caller",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "caller",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 22,
+        "line": 20,
+        "path": "tests/fixtures/mode_b/res_decorator/__init__.py"
+      }
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "proves": "After decoration the name `compute` is bound to trace's wrapper, so a call to it reaches both: the wrapper (what actually runs) and the wrapped function (what the owner means). Dropping either edge breaks the cascade -- one loses the real control flow, the other loses the element the owner reasons about.",
+  "unresolved": []
 }

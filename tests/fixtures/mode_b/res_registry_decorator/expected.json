@@ -1,79 +1,280 @@
 {
+  "case_id": "res_registry_decorator",
+  "edges": [
+    {
+      "call_site": {
+        "col": 0,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      },
+      "id": "res_registry_decorator:e1",
+      "kind": "DECORATES",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "source_id": "res_registry_decorator::register",
+      "target_id": "res_registry_decorator::scale_operation"
+    },
+    {
+      "call_site": {
+        "col": 0,
+        "line": 22,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      },
+      "id": "res_registry_decorator:e2",
+      "kind": "DECORATES",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "source_id": "res_registry_decorator::register",
+      "target_id": "res_registry_decorator::shift_operation"
+    },
+    {
+      "call_site": {
+        "col": 0,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      },
+      "id": "res_registry_decorator:e3",
+      "kind": "REGISTERS",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DECORATOR_REGISTRATION",
+        "note": "decorate() writes _REGISTRY[\"scale\"] = func"
+      },
+      "source_id": "res_registry_decorator::_REGISTRY",
+      "target_id": "res_registry_decorator::scale_operation"
+    },
+    {
+      "call_site": {
+        "col": 0,
+        "line": 22,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      },
+      "id": "res_registry_decorator:e4",
+      "kind": "REGISTERS",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "DECORATOR_REGISTRATION",
+        "note": "decorate() writes _REGISTRY[\"shift\"] = func"
+      },
+      "source_id": "res_registry_decorator::_REGISTRY",
+      "target_id": "res_registry_decorator::shift_operation"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 35,
+        "line": 35,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      },
+      "id": "res_registry_decorator:e5",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "HEURISTIC",
+        "method": "DECORATOR_REGISTRATION",
+        "note": "`name` is a parameter, so every registered function is possible"
+      },
+      "source_id": "res_registry_decorator::run",
+      "target_id": "res_registry_decorator::scale_operation"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 35,
+        "line": 35,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      },
+      "id": "res_registry_decorator:e6",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "HEURISTIC",
+        "method": "DECORATOR_REGISTRATION",
+        "note": "`name` is a parameter, so every registered function is possible"
+      },
+      "source_id": "res_registry_decorator::run",
+      "target_id": "res_registry_decorator::shift_operation"
+    }
+  ],
   "elements": [
     {
-      "id": "res_registry_decorator",
-      "kind": "MODULE",
-      "name": "res_registry_decorator",
-      "qualname": "",
-      "module": "res_registry_decorator",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_registry_decorator::register",
-      "kind": "FUNCTION",
-      "name": "register",
-      "qualname": "register",
-      "module": "res_registry_decorator",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py",
-        "line": 4
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_registry_decorator::register::decorator",
-      "kind": "FUNCTION",
-      "name": "decorator",
-      "qualname": "register.<locals>.decorator",
-      "module": "res_registry_decorator",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py",
-        "line": 5
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
       "content_hash": null,
       "content_hash_asserted": false,
-      "parent_id": "res_registry_decorator::register"
+      "id": "res_registry_decorator",
+      "kind": "MODULE",
+      "module": "res_registry_decorator",
+      "name": "res_registry_decorator",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      }
     },
     {
-      "id": "res_registry_decorator::operation",
-      "kind": "FUNCTION",
-      "name": "operation",
-      "qualname": "operation",
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_registry_decorator::_REGISTRY",
+      "kind": "ASSIGNMENT",
       "module": "res_registry_decorator",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py",
-        "line": 10
-      },
+      "name": "_REGISTRY",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
+      "qualname": "_REGISTRY",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Return a decorator that files `func` under `name`.",
+      "id": "res_registry_decorator::register",
+      "kind": "FUNCTION",
+      "module": "res_registry_decorator",
+      "name": "register",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "register",
+      "signature": "(name)",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_registry_decorator::register.<locals>.decorate",
+      "kind": "FUNCTION",
+      "module": "res_registry_decorator",
+      "name": "decorate",
+      "parent_id": "res_registry_decorator::register",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "register.<locals>.decorate",
+      "signature": "(func)",
+      "span": {
+        "col": 4,
+        "end_line": 11,
+        "line": 9,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      }
+    },
+    {
       "content_hash": null,
       "content_hash_asserted": false,
       "decorators": [
-        "register"
-      ]
+        "register(\"scale\")"
+      ],
+      "docstring": "Registered under \"scale\" by the decorator.",
+      "id": "res_registry_decorator::scale_operation",
+      "kind": "FUNCTION",
+      "module": "res_registry_decorator",
+      "name": "scale_operation",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "scale_operation",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 19,
+        "line": 17,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "decorators": [
+        "register(\"shift\")"
+      ],
+      "docstring": "Registered under \"shift\" by the decorator.",
+      "id": "res_registry_decorator::shift_operation",
+      "kind": "FUNCTION",
+      "module": "res_registry_decorator",
+      "name": "shift_operation",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "shift_operation",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 25,
+        "line": 23,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Carries no decorator, so it is in no registry.",
+      "id": "res_registry_decorator::unregistered_operation",
+      "kind": "FUNCTION",
+      "module": "res_registry_decorator",
+      "name": "unregistered_operation",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "unregistered_operation",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 30,
+        "line": 28,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Dispatch through the registry the decorators built.",
+      "id": "res_registry_decorator::run",
+      "kind": "FUNCTION",
+      "module": "res_registry_decorator",
+      "name": "run",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "run",
+      "signature": "(name, value)",
+      "span": {
+        "col": 0,
+        "end_line": 35,
+        "line": 33,
+        "path": "tests/fixtures/mode_b/res_registry_decorator/__init__.py"
+      }
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "must_not_contain_edges": [
+    {
+      "source_id": "res_registry_decorator::_REGISTRY",
+      "target_id": "res_registry_decorator::unregistered_operation",
+      "why": "no decorator files it; a `_operation` name-suffix match is not registration"
+    }
+  ],
+  "proves": "`@register(\"scale\")` files scale_operation into _REGISTRY even though no dict literal ever names it. Both decorated functions are registered with DECORATOR_REGISTRATION; the undecorated one is not.",
+  "unresolved": []
 }

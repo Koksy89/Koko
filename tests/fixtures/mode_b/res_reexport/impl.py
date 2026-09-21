@@ -1,3 +1,9 @@
-"""Implementation."""
+"""The original definition of Helper."""
+
+
 class Helper:
-    pass
+    """The one real definition."""
+
+    def run(self):
+        """Do the work."""
+        return "helper"

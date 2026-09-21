@@ -1,41 +1,146 @@
 {
-  "elements": [
+  "case_id": "res_import_local",
+  "edges": [
     {
-      "id": "res_import_local",
-      "kind": "MODULE",
-      "name": "res_import_local",
-      "qualname": "",
-      "module": "res_import_local",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_import_local/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 4,
+        "end_line": 6,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_import_local/__init__.py"
       },
+      "id": "res_import_local:e1",
+      "kind": "IMPORTS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "IMPORT_RELATIVE",
+        "note": "function-local import: the importer is the function, not the module"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_import_local::encode",
+      "target_id": "res_import_local.codec::to_text"
     },
     {
-      "id": "res_import_local::func",
-      "kind": "FUNCTION",
-      "name": "func",
-      "qualname": "func",
-      "module": "res_import_local",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_import_local/__init__.py",
-        "line": 2
+      "call_site": {
+        "col": 11,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/res_import_local/__init__.py"
       },
+      "id": "res_import_local:e2",
+      "kind": "CALLS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_import_local::encode",
+      "target_id": "res_import_local.codec::to_text"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_local",
+      "kind": "MODULE",
+      "module": "res_import_local",
+      "name": "res_import_local",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_local/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Import at call time, not at module import time.",
+      "id": "res_import_local::encode",
+      "kind": "FUNCTION",
+      "module": "res_import_local",
+      "name": "encode",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "encode",
+      "signature": "(payload)",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_import_local/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_local::encode.to_text",
+      "kind": "IMPORT",
+      "module": "res_import_local",
+      "name": "to_text",
+      "parent_id": "res_import_local::encode",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "encode.to_text",
+      "signature": "from .codec import to_text",
+      "span": {
+        "col": 4,
+        "end_line": 6,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_import_local/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_local.codec",
+      "kind": "MODULE",
+      "module": "res_import_local.codec",
+      "name": "codec",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_local/codec.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Render a payload.",
+      "id": "res_import_local.codec::to_text",
+      "kind": "FUNCTION",
+      "module": "res_import_local.codec",
+      "name": "to_text",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "to_text",
+      "signature": "(payload)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_import_local/codec.py"
+      }
+    }
+  ],
+  "must_not_contain_edges": [
+    {
+      "source_id": "res_import_local",
+      "target_id": "res_import_local.codec",
+      "why": "the module body contains no import; attributing a function-local import to the module loses where it happens"
+    }
+  ],
+  "proves": "An import inside a function body resolves, and the edge starts at the *function* element -- not at the module, which never imports codec.",
+  "unresolved": []
 }

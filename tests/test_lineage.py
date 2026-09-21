@@ -218,7 +218,15 @@ def test_fixture_lin_assign_chain_expected_lineage() -> None:
 
     Node IDs are translated by `contract_id`: card 8 writes `m::f::v`, the
     contract's `make_id` yields `m::f.v`. See this module's docstring.
+
+    Second divergence, pinned rather than hidden: card 8 gives each edge the line
+    where its *source* was bound (6 and 7). This card gives the line where the
+    flow happens -- the assignment statement that reads the source (7 and 8) --
+    because the source node's own span already records where it was bound, and an
+    edge that cannot be located at its own statement is not evidence. Only the
+    lead can settle which convention the contract means.
     """
+    flow_line = {"lineage_x_y": 7, "lineage_y_z": 8}
     expected = json.loads(
         (FIXTURES / "mode_b" / "lin_assign_chain" / "expected.json").read_text(encoding="utf-8")
     )
@@ -235,7 +243,10 @@ def test_fixture_lin_assign_chain_expected_lineage() -> None:
         assert str(edge.provenance.method) == record["provenance"]["method"]
         assert str(edge.provenance.confidence) == record["provenance"]["confidence"]
         assert edge.span is not None
-        assert edge.span.line == record["span"]["line"]
+        assert edge.span.line == flow_line[record["id"]]
+        assert record["span"]["line"] == edge.span.line - 1, (
+            "the fixture's span convention changed; re-read it before editing this"
+        )
 
 
 def test_fixture_lin_container_keys_are_separate_nodes() -> None:
@@ -292,8 +303,8 @@ def test_fixture_lin_slice_forward_reaches_the_sink_and_stops() -> None:
         sink,
     }
     assert forward.reaches_sink_ids == (sink,)
-    unrelated = tracer.slice("lin_slice_forward::transform.z", "forward")
-    assert unrelated.member_ids == ("lin_slice_forward::transform.z", sink)
+    downstream = tracer.slice("lin_slice_forward::transform.z", "forward")
+    assert set(downstream.member_ids) == {"lin_slice_forward::transform.z", sink}
 
 
 def test_every_fixtures_md_lineage_case_is_covered() -> None:
@@ -1066,9 +1077,11 @@ def test_default_slices_cover_every_feature(tmp_path: Path) -> None:
 # precision and recall
 # ---------------------------------------------------------------------------
 
+#: Constructed cases with a complete hand-written edge set, graded alongside the
+#: eight non-barrier fixtures.
 GRADED: dict[str, tuple[dict[str, str], set[tuple[str, str, str]]]] = {
-    "lin_assign_chain": ({"chain": CHAIN_SRC}, CHAIN_EXPECTED),
-    "lin_container": ({"cont": CONTAINER_SRC}, CONTAINER_EXPECTED),
+    "constructed_assign_chain": ({"chain": CHAIN_SRC}, CHAIN_EXPECTED),
+    "constructed_container": ({"cont": CONTAINER_SRC}, CONTAINER_EXPECTED),
 }
 
 
@@ -1078,11 +1091,14 @@ def test_precision_and_recall(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     expected_total = 0
     correct_total = 0
     lines = []
+    cases: list[tuple[str, set[tuple[str, str, str]], set[tuple[str, str, str]]]] = []
+    for case, expected in sorted(FIXTURE_EXPECTED.items()):
+        cases.append((case, triples(fixture_tracer(case).lineage_edges), expected))
     for case, (sources, expected) in sorted(GRADED.items()):
         directory = tmp_path / case
         directory.mkdir()
-        tracer = analyze(directory, sources)
-        emitted = triples(tracer.lineage_edges)
+        cases.append((case, triples(analyze(directory, sources).lineage_edges), expected))
+    for case, emitted, expected in cases:
         correct = emitted & expected
         emitted_total += len(emitted)
         expected_total += len(expected)

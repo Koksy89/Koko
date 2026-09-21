@@ -1,1 +1,6 @@
-{"components": [{"class": "Component"}]}
+{
+  "pipeline": {
+    "stage": "scoring",
+    "class": "ScoreComponent"
+  }
+}

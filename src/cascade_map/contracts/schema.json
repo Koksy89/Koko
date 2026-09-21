@@ -252,6 +252,41 @@
       ],
       "type": "string"
     },
+    "Contradiction": {
+      "additionalProperties": false,
+      "description": "An observation that disagrees with a static claim. Card 12 needs these and `Unresolved` cannot carry them: it has no `Provenance`, so it cannot hold the run and event IDs constraint 2 requires of every runtime fact. A contradiction recorded without its evidence is not checkable, which defeats the point of recording it. These are among the most valuable records the tool produces. An edge the static graph predicted that never fires, a call it did not predict, an order that differs -- each marks a place the static analysis was wrong, and the owner wants to know exactly where. The static graph is never edited to match; the disagreement is the finding.",
+      "properties": {
+        "claim": {
+          "type": "string"
+        },
+        "element_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "observation": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "static_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim",
+        "element_id",
+        "id",
+        "observation",
+        "provenance"
+      ],
+      "type": "object"
+    },
     "DecisionPoint": {
       "additionalProperties": false,
       "description": "DecisionPoint(id: 'str', element_id: 'str', condition_source: 'str', reads_ids: 'tuple[str, ...]', outcomes: 'tuple[tuple[str, str], ...]', is_sink: 'bool' = False, provenance: 'Provenance | None' = None)",
@@ -793,6 +828,38 @@
       ],
       "type": "string"
     },
+    "MappingReport": {
+      "additionalProperties": false,
+      "description": "How much of the run the static graph accounted for. WORKPLAN card 12 requires the mapping rate to be reported. A trace with a low rate is not a bad trace -- it is a precise measurement of where Mode B fell short, and it belongs in the output rather than in a builder's report.",
+      "properties": {
+        "mapped_events": {
+          "type": "integer"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "total_events": {
+          "type": "integer"
+        },
+        "unmapped_by_reason": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "unmapped_events": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mapped_events",
+        "run_id",
+        "total_events",
+        "unmapped_by_reason",
+        "unmapped_events"
+      ],
+      "type": "object"
+    },
     "Method": {
       "description": "How a fact was established. Always recorded next to its confidence.",
       "enum": [
@@ -871,6 +938,35 @@
         "run_id",
         "sequence",
         "text"
+      ],
+      "type": "object"
+    },
+    "NondeterminismObservation": {
+      "additionalProperties": false,
+      "description": "Target behaviour that will not reproduce. Recorded, never hidden. WORKPLAN card 12 requires nondeterminism in the *target* to be reported as an observed property rather than smoothed over, because an engine whose decisions depend on wall-clock time or dict ordering is something the owner needs told. The tracer's own output stays deterministic regardless.",
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "element_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        }
+      },
+      "required": [
+        "detail",
+        "element_id",
+        "id",
+        "kind",
+        "provenance"
       ],
       "type": "object"
     },
@@ -1061,7 +1157,7 @@
     },
     "RunRecord": {
       "additionalProperties": false,
-      "description": "RunRecord(run_id: 'str', target_hashes: 'dict[str, str]', graph_hash: 'str', scenario: 'str', interpreter: 'str', controls_active: 'dict[str, bool]', blocked: 'tuple[BlockedAttempt, ...]', refused: 'bool' = False, refusal_reason: 'str' = '')",
+      "description": "RunRecord(run_id: 'str', target_hashes: 'dict[str, str]', graph_hash: 'str', scenario: 'str', interpreter: 'str', controls_active: 'dict[str, bool]', blocked: 'tuple[BlockedAttempt, ...]', sandbox_dir: 'str' = '', refused: 'bool' = False, refusal_reason: 'str' = '')",
       "properties": {
         "blocked": {
           "items": {
@@ -1088,6 +1184,9 @@
           "type": "boolean"
         },
         "run_id": {
+          "type": "string"
+        },
+        "sandbox_dir": {
           "type": "string"
         },
         "scenario": {
@@ -1531,10 +1630,25 @@
       "record": "DocRecord",
       "sortKey": "id"
     },
+    "runtime/contradictions.jsonl": {
+      "format": "jsonl",
+      "record": "Contradiction",
+      "sortKey": "id"
+    },
     "runtime/events.jsonl": {
       "format": "jsonl",
       "record": "TraceEvent",
       "sortKey": "event_id"
+    },
+    "runtime/mapping.json": {
+      "format": "json",
+      "record": "MappingReport",
+      "sortKey": "run_id"
+    },
+    "runtime/nondeterminism.jsonl": {
+      "format": "jsonl",
+      "record": "NondeterminismObservation",
+      "sortKey": "id"
     },
     "runtime/run.json": {
       "format": "json",

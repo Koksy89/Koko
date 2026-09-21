@@ -1,0 +1,55 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "line",
+      "line_contains": "\"buy\": handle_buy",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "line",
+      "line_contains": "\"sell\": handle_sell",
+      "occurrence": 1
+    },
+    "/edges/2/call_site": {
+      "kind": "expr",
+      "line_contains": "return HANDLERS[action](order)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/3/call_site": {
+      "kind": "expr",
+      "line_contains": "return HANDLERS[action](order)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "handle_buy"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "handle_sell"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "handle_unregistered"
+    },
+    "/elements/4/span": {
+      "kind": "stmt",
+      "line_contains": "HANDLERS = {",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "dispatch"
+    }
+  }
+}

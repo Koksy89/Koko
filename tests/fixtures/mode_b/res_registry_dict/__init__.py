@@ -1,15 +1,27 @@
-"""Test registry dict pattern."""
-def handler_a():
-    return "A"
+"""A module-level dict of callables, dispatched by key."""
 
-def handler_b():
-    return "B"
 
-registry = {
-    "a": handler_a,
-    "b": handler_b,
+def handle_buy(order):
+    """Registered under "buy"."""
+    return order + 1
+
+
+def handle_sell(order):
+    """Registered under "sell"."""
+    return order - 1
+
+
+def handle_unregistered(order):
+    """Defined but absent from HANDLERS."""
+    return order
+
+
+HANDLERS = {
+    "buy": handle_buy,
+    "sell": handle_sell,
 }
 
-func = registry.get("a")
-if func:
-    result = func()
+
+def dispatch(action, order):
+    """Look the handler up by key and call it."""
+    return HANDLERS[action](order)

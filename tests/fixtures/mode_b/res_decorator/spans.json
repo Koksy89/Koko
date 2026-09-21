@@ -1,0 +1,51 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "line",
+      "line_contains": "@trace",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "expr",
+      "line_contains": "return compute(21)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/2/call_site": {
+      "kind": "expr",
+      "line_contains": "return compute(21)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/3/call_site": {
+      "kind": "expr",
+      "line_contains": "return func(value)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "trace"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "trace.<locals>.wrapper"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "compute"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "caller"
+    }
+  }
+}

@@ -1,24 +1,291 @@
 {
-  "elements": [
+  "case_id": "res_import_star",
+  "edges": [
     {
-      "id": "res_import_star",
-      "kind": "MODULE",
-      "name": "res_import_star",
-      "qualname": "",
-      "module": "res_import_star",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_import_star/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py"
       },
+      "id": "res_import_star:e1",
+      "kind": "IMPORTS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "IMPORT_STAR"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_import_star",
+      "target_id": "res_import_star.names"
+    },
+    {
+      "call_site": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py"
+      },
+      "id": "res_import_star:e2",
+      "kind": "IMPORTS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "IMPORT_STAR",
+        "note": "named in names.__all__"
+      },
+      "source_id": "res_import_star",
+      "target_id": "res_import_star.names::alpha"
+    },
+    {
+      "call_site": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py"
+      },
+      "id": "res_import_star:e3",
+      "kind": "IMPORTS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "IMPORT_STAR",
+        "note": "named in names.__all__"
+      },
+      "source_id": "res_import_star",
+      "target_id": "res_import_star.names::beta"
+    },
+    {
+      "call_site": {
+        "col": 8,
+        "end_line": 5,
+        "line": 5,
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py"
+      },
+      "id": "res_import_star:e4",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "res_import_star",
+      "target_id": "res_import_star.names::alpha"
+    },
+    {
+      "call_site": {
+        "col": 9,
+        "end_line": 6,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py"
+      },
+      "id": "res_import_star:e5",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "res_import_star",
+      "target_id": "res_import_star.names::beta"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_star",
+      "kind": "MODULE",
+      "module": "res_import_star",
+      "name": "res_import_star",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_star::FIRST",
+      "kind": "ASSIGNMENT",
+      "module": "res_import_star",
+      "name": "FIRST",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "FIRST",
+      "span": {
+        "col": 0,
+        "end_line": 5,
+        "line": 5,
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_star::SECOND",
+      "kind": "ASSIGNMENT",
+      "module": "res_import_star",
+      "name": "SECOND",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "SECOND",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_star::THIRD",
+      "kind": "ASSIGNMENT",
+      "module": "res_import_star",
+      "name": "THIRD",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "THIRD",
+      "span": {
+        "col": 0,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_star.names",
+      "kind": "MODULE",
+      "module": "res_import_star.names",
+      "name": "names",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_star/names.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_star.names::__all__",
+      "kind": "ASSIGNMENT",
+      "module": "res_import_star.names",
+      "name": "__all__",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "__all__",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_star/names.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Exported.",
+      "id": "res_import_star.names::alpha",
+      "kind": "FUNCTION",
+      "module": "res_import_star.names",
+      "name": "alpha",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "alpha",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_import_star/names.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Exported.",
+      "id": "res_import_star.names::beta",
+      "kind": "FUNCTION",
+      "module": "res_import_star.names",
+      "name": "beta",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "beta",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 13,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/res_import_star/names.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Defined but NOT exported: `import *` does not bind this name.",
+      "id": "res_import_star.names::delta",
+      "kind": "FUNCTION",
+      "module": "res_import_star.names",
+      "name": "delta",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "delta",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 18,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/res_import_star/names.py"
+      }
+    }
+  ],
+  "must_not_contain_edges": [
+    {
+      "source_id": "res_import_star",
+      "target_id": "res_import_star.names::delta",
+      "why": "__all__ excludes delta; linking on the bare name match would be a name heuristic dressed up as an import resolution"
+    }
+  ],
+  "proves": "`from .names import *` binds exactly the names in that module's __all__, so alpha and beta resolve with IMPORT_STAR. `delta` is defined in names.py but absent from __all__, so the star did not bind it: the residue is reported as an unresolved use, never resolved to the same-named definition.",
+  "unresolved": [
+    {
+      "attempted": [
+        "IMPORT_STAR",
+        "SCOPE_LOOKUP"
+      ],
+      "candidate_confidence": "HEURISTIC",
+      "candidate_ids": [
+        "res_import_star.names::delta"
+      ],
+      "description": "`delta` is used but nothing binds it here: names.__all__ is ['alpha', 'beta'], so `import *` did not import names.delta",
+      "id": "res_import_star::delta",
+      "reason": "MISSING_TARGET",
+      "span": {
+        "col": 8,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_import_star/__init__.py"
+      }
+    }
+  ]
 }

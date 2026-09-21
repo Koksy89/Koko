@@ -63,6 +63,9 @@ __all__ = [
     "ValueCapture",
     "EventKind",
     "TraceEvent",
+    "Contradiction",
+    "NondeterminismObservation",
+    "MappingReport",
     "IntentStatus",
     "Intent",
     "Verdict",
@@ -697,6 +700,10 @@ class RunRecord:
     interpreter: str
     controls_active: dict[str, bool]
     blocked: tuple[BlockedAttempt, ...]
+    sandbox_dir: str = ""
+    """Where writes were redirected. Card 12 needs it to locate a recording,
+    and the owner needs it to find what the run produced."""
+
     refused: bool = False
     refusal_reason: str = ""
     """Set when the run refused to start. Constraint 7: a refusal is a correct
@@ -740,8 +747,81 @@ class EventKind(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class Contradiction:
+    """An observation that disagrees with a static claim.
+
+    Card 12 needs these and `Unresolved` cannot carry them: it has no
+    `Provenance`, so it cannot hold the run and event IDs constraint 2 requires
+    of every runtime fact. A contradiction recorded without its evidence is not
+    checkable, which defeats the point of recording it.
+
+    These are among the most valuable records the tool produces. An edge the
+    static graph predicted that never fires, a call it did not predict, an
+    order that differs -- each marks a place the static analysis was wrong, and
+    the owner wants to know exactly where. The static graph is never edited to
+    match; the disagreement is the finding.
+    """
+
+    id: str
+    element_id: str
+    claim: str
+    """What the static graph asserts, as a checkable sentence."""
+
+    observation: str
+    """What the run actually did."""
+
+    provenance: Provenance
+    """Method RUNTIME_OBSERVED, carrying run_id and event_ids."""
+
+    static_evidence_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class NondeterminismObservation:
+    """Target behaviour that will not reproduce. Recorded, never hidden.
+
+    WORKPLAN card 12 requires nondeterminism in the *target* to be reported as
+    an observed property rather than smoothed over, because an engine whose
+    decisions depend on wall-clock time or dict ordering is something the owner
+    needs told. The tracer's own output stays deterministic regardless.
+    """
+
+    id: str
+    element_id: str
+    kind: str
+    """clock, randomness, hash_ordering, thread_interleaving, external_io."""
+
+    detail: str
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class MappingReport:
+    """How much of the run the static graph accounted for.
+
+    WORKPLAN card 12 requires the mapping rate to be reported. A trace with a
+    low rate is not a bad trace -- it is a precise measurement of where Mode B
+    fell short, and it belongs in the output rather than in a builder's report.
+    """
+
+    run_id: str
+    total_events: int
+    mapped_events: int
+    unmapped_events: int
+    unmapped_by_reason: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
 class TraceEvent:
     event_id: str
+    """Format ``evt_`` plus a zero-padded 8-digit ordinal: ``evt_00000001``.
+
+    Zero-padded because `events.jsonl` sorts by this field and an unpadded
+    ``evt_10`` sorts before ``evt_2``, which would make the artifact's order
+    disagree with the run's order. Settled in favour of card 12's minting;
+    fixtures writing ``evt_1`` are wrong.
+    """
+
     run_id: str
     kind: EventKind
     element_id: str

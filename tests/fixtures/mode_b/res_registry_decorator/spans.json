@@ -1,0 +1,75 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "line",
+      "line_contains": "@register(\"scale\")",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "line",
+      "line_contains": "@register(\"shift\")",
+      "occurrence": 1
+    },
+    "/edges/2/call_site": {
+      "kind": "line",
+      "line_contains": "@register(\"scale\")",
+      "occurrence": 1
+    },
+    "/edges/3/call_site": {
+      "kind": "line",
+      "line_contains": "@register(\"shift\")",
+      "occurrence": 1
+    },
+    "/edges/4/call_site": {
+      "kind": "expr",
+      "line_contains": "return _REGISTRY[name](value)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/5/call_site": {
+      "kind": "expr",
+      "line_contains": "return _REGISTRY[name](value)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "_REGISTRY = {}",
+      "occurrence": 1
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "register"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "register.<locals>.decorate"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "scale_operation"
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "shift_operation"
+    },
+    "/elements/6/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "unregistered_operation"
+    },
+    "/elements/7/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "run"
+    }
+  }
+}

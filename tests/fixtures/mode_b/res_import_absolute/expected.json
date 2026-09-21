@@ -1,54 +1,213 @@
 {
-  "elements": [
-    {
-      "id": "res_import_absolute",
-      "kind": "MODULE",
-      "name": "res_import_absolute",
-      "qualname": "",
-      "module": "res_import_absolute",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_import_absolute::data",
-      "kind": "ASSIGNMENT",
-      "name": "data",
-      "qualname": "data",
-      "module": "res_import_absolute",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py",
-        "line": 6
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    }
-  ],
-  "unresolved": [],
+  "case_id": "res_import_absolute",
   "edges": [
     {
-      "id": "edge_001",
+      "call_site": {
+        "col": 0,
+        "end_line": 5,
+        "line": 5,
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py"
+      },
+      "id": "res_import_absolute:e1",
       "kind": "IMPORTS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "IMPORT_ABSOLUTE",
+        "note": "dotted name names exactly one module inside the target"
+      },
+      "source_id": "res_import_absolute",
+      "target_id": "res_import_absolute.helpers"
+    },
+    {
+      "call_site": {
+        "col": 0,
+        "end_line": 5,
+        "line": 5,
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py"
+      },
+      "id": "res_import_absolute:e2",
+      "kind": "IMPORTS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "IMPORT_ABSOLUTE",
+        "note": "the imported name binds to exactly one definition"
+      },
+      "source_id": "res_import_absolute",
+      "target_id": "res_import_absolute.helpers::compute"
+    },
+    {
+      "call_site": {
+        "col": 9,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py"
+      },
+      "id": "res_import_absolute:e3",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "res_import_absolute",
+      "target_id": "res_import_absolute.helpers::compute"
+    }
+  ],
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_absolute",
+      "kind": "MODULE",
+      "module": "res_import_absolute",
+      "name": "res_import_absolute",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_absolute::json",
+      "kind": "IMPORT",
+      "module": "res_import_absolute",
+      "name": "json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "json",
+      "signature": "import json",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_absolute::compute",
+      "kind": "IMPORT",
+      "module": "res_import_absolute",
+      "name": "compute",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "compute",
+      "signature": "from res_import_absolute.helpers import compute",
+      "span": {
+        "col": 0,
+        "end_line": 5,
+        "line": 5,
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_absolute::RESULT",
+      "kind": "ASSIGNMENT",
+      "module": "res_import_absolute",
+      "name": "RESULT",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "RESULT",
+      "span": {
+        "col": 0,
+        "end_line": 7,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_absolute::PAYLOAD",
+      "kind": "ASSIGNMENT",
+      "module": "res_import_absolute",
+      "name": "PAYLOAD",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "PAYLOAD",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_absolute.helpers",
+      "kind": "MODULE",
+      "module": "res_import_absolute.helpers",
+      "name": "helpers",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_absolute/helpers.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Double a value.",
+      "id": "res_import_absolute.helpers::compute",
+      "kind": "FUNCTION",
+      "module": "res_import_absolute.helpers",
+      "name": "compute",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "compute",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_import_absolute/helpers.py"
+      }
+    }
+  ],
+  "must_not_contain_edges": [
+    {
       "source_id": "res_import_absolute",
       "target_id": "json",
-      "provenance": {
-        "method": "IMPORT_ABSOLUTE",
-        "confidence": "RESOLVED"
-      },
-      "call_site": {
-        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py",
-        "line": 3
+      "why": "a module outside the target has no element; an edge to a bare dotted name would be a fabricated node"
+    }
+  ],
+  "proves": "An absolute import naming a module inside the target resolves to that module's element with IMPORT_ABSOLUTE/RESOLVED; an absolute import of a module outside the target is reported THIRD_PARTY, never invented.",
+  "unresolved": [
+    {
+      "attempted": [
+        "IMPORT_ABSOLUTE"
+      ],
+      "description": "'json' is outside the target tree; no element to point at",
+      "id": "res_import_absolute::json",
+      "reason": "THIRD_PARTY",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_absolute/__init__.py"
       }
     }
   ]

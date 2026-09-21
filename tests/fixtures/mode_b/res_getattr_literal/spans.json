@@ -1,0 +1,46 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "expr",
+      "line_contains": "engine = Engine()",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "expr",
+      "line_contains": "method = getattr(engine, \"start\")",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/2/call_site": {
+      "kind": "expr",
+      "line_contains": "return method()",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Engine"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Engine.start"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Engine.stop"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "run"
+    }
+  }
+}

@@ -1,24 +1,206 @@
 {
-  "elements": [
+  "case_id": "res_importlib",
+  "edges": [
     {
-      "id": "res_importlib",
-      "kind": "MODULE",
-      "name": "res_importlib",
-      "qualname": "",
-      "module": "res_importlib",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_importlib/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 8,
+        "end_line": 6,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_importlib/__init__.py"
       },
+      "id": "res_importlib:e1",
+      "kind": "IMPORTS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "PROBABLE",
+        "method": "IMPORTLIB_LITERAL",
+        "note": "single string literal argument naming a module in the target"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_importlib",
+      "target_id": "res_importlib.plugin"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_importlib",
+      "kind": "MODULE",
+      "module": "res_importlib",
+      "name": "res_importlib",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_importlib/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_importlib::importlib",
+      "kind": "IMPORT",
+      "module": "res_importlib",
+      "name": "importlib",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "importlib",
+      "signature": "import importlib",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_importlib/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_importlib::os",
+      "kind": "IMPORT",
+      "module": "res_importlib",
+      "name": "os",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "os",
+      "signature": "import os",
+      "span": {
+        "col": 0,
+        "end_line": 4,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_importlib/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_importlib::KNOWN",
+      "kind": "ASSIGNMENT",
+      "module": "res_importlib",
+      "name": "KNOWN",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "KNOWN",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_importlib/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_importlib::CHOSEN",
+      "kind": "ASSIGNMENT",
+      "module": "res_importlib",
+      "name": "CHOSEN",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "CHOSEN",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/res_importlib/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_importlib.plugin",
+      "kind": "MODULE",
+      "module": "res_importlib.plugin",
+      "name": "plugin",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_importlib/plugin.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Entry point.",
+      "id": "res_importlib.plugin::activate",
+      "kind": "FUNCTION",
+      "module": "res_importlib.plugin",
+      "name": "activate",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "activate",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_importlib/plugin.py"
+      }
+    }
+  ],
+  "proves": "`importlib.import_module` with a string literal resolves to the named module with IMPORTLIB_LITERAL. The second call takes its name from the environment, so it is an UNKNOWN record with the default as a candidate -- not an edge, even though the default happens to name a module that exists.",
+  "unresolved": [
+    {
+      "attempted": [
+        "IMPORTLIB_LITERAL"
+      ],
+      "candidate_confidence": "HEURISTIC",
+      "candidate_ids": [
+        "res_importlib.plugin"
+      ],
+      "description": "import_module's argument is os.environ.get(...), read at runtime; the literal default is offered as a candidate only",
+      "id": "res_importlib::CHOSEN",
+      "reason": "DYNAMIC_NAME",
+      "span": {
+        "col": 9,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/res_importlib/__init__.py"
+      }
+    },
+    {
+      "attempted": [
+        "IMPORT_ABSOLUTE"
+      ],
+      "description": "'importlib' is outside the target tree",
+      "id": "res_importlib::importlib",
+      "reason": "THIRD_PARTY",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_importlib/__init__.py"
+      }
+    },
+    {
+      "attempted": [
+        "IMPORT_ABSOLUTE"
+      ],
+      "description": "'os' is outside the target tree",
+      "id": "res_importlib::os",
+      "reason": "THIRD_PARTY",
+      "span": {
+        "col": 0,
+        "end_line": 4,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_importlib/__init__.py"
+      }
+    }
+  ]
 }

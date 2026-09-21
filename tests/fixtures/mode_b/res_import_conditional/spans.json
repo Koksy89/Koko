@@ -1,0 +1,87 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "stmt",
+      "line_contains": "from .models import Record",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "stmt",
+      "line_contains": "from .fast import encode",
+      "occurrence": 1
+    },
+    "/edges/2/call_site": {
+      "kind": "stmt",
+      "line_contains": "from .slow import encode",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "from typing import TYPE_CHECKING",
+      "occurrence": 1
+    },
+    "/elements/10/span": {
+      "kind": "module"
+    },
+    "/elements/11/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Record"
+    },
+    "/elements/12/span": {
+      "kind": "module"
+    },
+    "/elements/13/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "encode"
+    },
+    "/elements/2/span": {
+      "kind": "stmt",
+      "line_contains": "USE_FAST = True",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "stmt",
+      "line_contains": "from .models import Record",
+      "occurrence": 1
+    },
+    "/elements/4/span": {
+      "kind": "stmt",
+      "line_contains": "from .fast import encode",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "stmt",
+      "line_contains": "from .slow import encode",
+      "occurrence": 1
+    },
+    "/elements/6/span": {
+      "kind": "stmt",
+      "line_contains": "from .optional_ext import boost",
+      "occurrence": 1
+    },
+    "/elements/7/span": {
+      "kind": "stmt",
+      "line_contains": "boost = None",
+      "occurrence": 1
+    },
+    "/elements/8/span": {
+      "kind": "module"
+    },
+    "/elements/9/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "encode"
+    },
+    "/unresolved/0/span": {
+      "kind": "stmt",
+      "line_contains": "from .optional_ext import boost",
+      "occurrence": 1
+    }
+  }
+}

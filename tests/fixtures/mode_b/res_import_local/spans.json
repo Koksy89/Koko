@@ -1,0 +1,37 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "stmt",
+      "line_contains": "from .codec import to_text",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "expr",
+      "line_contains": "return to_text(payload)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "encode"
+    },
+    "/elements/2/span": {
+      "kind": "stmt",
+      "line_contains": "from .codec import to_text",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "module"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "to_text"
+    }
+  }
+}

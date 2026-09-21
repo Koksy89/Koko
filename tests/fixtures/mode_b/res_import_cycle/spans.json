@@ -1,0 +1,41 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "stmt",
+      "line_contains": "from . import b",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "stmt",
+      "line_contains": "from . import a",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "from . import b",
+      "occurrence": 1
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "from_a"
+    },
+    "/elements/3/span": {
+      "kind": "module"
+    },
+    "/elements/4/span": {
+      "kind": "stmt",
+      "line_contains": "from . import a",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "from_b"
+    }
+  }
+}

@@ -53,6 +53,9 @@ from cascade_map.contracts.interfaces import (  # noqa: E402
     UnresolvedReason,
     Verdict,
     canonical_dumps,
+    config_key_id,
+    feature_id,
+    file_id,
     make_id,
 )
 
@@ -249,8 +252,20 @@ def audit_case(case_dir: Path) -> list[str]:
         problems.append(f"{rel}: not canonically serializable: {exc}")
 
     for element in expected.get("elements", []):
-        want = make_id(element["module"], element.get("qualname", ""))
         got = element["id"]
+        # Non-Python nodes have their own id functions in the contract.
+        if got.startswith("@feature:"):
+            if got != feature_id(got[len("@feature:") :]):
+                problems.append(f"{rel}: element id {got!r} violates feature_id")
+            continue
+        if got.startswith("@file:"):
+            body = got[len("@file:") :]
+            path, _, pointer = body.partition("::")
+            want = config_key_id(path, pointer) if pointer else file_id(path)
+            if got != want:
+                problems.append(f"{rel}: element id {got!r} violates file_id/config_key_id")
+            continue
+        want = make_id(element["module"], element.get("qualname", ""))
         if got != want and got.split("#")[0] != want:
             problems.append(
                 f"{rel}: element id {got!r} violates make_id"

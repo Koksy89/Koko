@@ -1,139 +1,210 @@
 {
-  "elements": [
-    {
-      "id": "res_overlink_trap",
-      "kind": "MODULE",
-      "name": "res_overlink_trap",
-      "qualname": "",
-      "module": "res_overlink_trap",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py",
-        "line": 1
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_overlink_trap::ClassA",
-      "kind": "CLASS",
-      "name": "ClassA",
-      "qualname": "ClassA",
-      "module": "res_overlink_trap",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py",
-        "line": 4
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_overlink_trap::ClassA::process",
-      "kind": "METHOD",
-      "name": "process",
-      "qualname": "ClassA.process",
-      "module": "res_overlink_trap",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py",
-        "line": 5
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "parent_id": "res_overlink_trap::ClassA",
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_overlink_trap::ClassB",
-      "kind": "CLASS",
-      "name": "ClassB",
-      "qualname": "ClassB",
-      "module": "res_overlink_trap",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py",
-        "line": 11
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_overlink_trap::ClassB::process",
-      "kind": "METHOD",
-      "name": "process",
-      "qualname": "ClassB.process",
-      "module": "res_overlink_trap",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py",
-        "line": 5
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "parent_id": "res_overlink_trap::ClassB",
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_overlink_trap::caller",
-      "kind": "FUNCTION",
-      "name": "caller",
-      "qualname": "caller",
-      "module": "res_overlink_trap",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py",
-        "line": 18
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    }
-  ],
-  "unresolved": [],
+  "case_id": "res_overlink_trap",
+  "edge_count_exact": 4,
   "edges": [
     {
-      "id": "edge_a_process",
-      "kind": "CALLS",
-      "source_id": "res_overlink_trap::caller",
-      "target_id": "res_overlink_trap::ClassA::process",
-      "provenance": {
-        "method": "MRO_DISPATCH",
-        "confidence": "PROBABLE"
-      },
       "call_site": {
-        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py",
-        "line": 22
+        "col": 8,
+        "end_line": 22,
+        "line": 22,
+        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py"
+      },
+      "id": "res_overlink_trap:e1",
+      "kind": "INSTANTIATES",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "res_overlink_trap::caller",
+      "target_id": "res_overlink_trap::ClassA"
+    },
+    {
+      "call_site": {
+        "col": 8,
+        "end_line": 23,
+        "line": 23,
+        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py"
+      },
+      "id": "res_overlink_trap:e2",
+      "kind": "INSTANTIATES",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "SCOPE_LOOKUP"
+      },
+      "source_id": "res_overlink_trap::caller",
+      "target_id": "res_overlink_trap::ClassB"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 24,
+        "line": 24,
+        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py"
+      },
+      "id": "res_overlink_trap:e3",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "MRO_DISPATCH",
+        "note": "`a` was bound to ClassA() two lines above"
+      },
+      "source_id": "res_overlink_trap::caller",
+      "target_id": "res_overlink_trap::ClassA.process"
+    },
+    {
+      "call_site": {
+        "col": 11,
+        "end_line": 24,
+        "line": 24,
+        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py"
+      },
+      "id": "res_overlink_trap:e4",
+      "kind": "CALLS",
+      "provenance": {
+        "confidence": "PROBABLE",
+        "method": "MRO_DISPATCH",
+        "note": "`b` was bound to ClassB() one line above"
+      },
+      "source_id": "res_overlink_trap::caller",
+      "target_id": "res_overlink_trap::ClassB.process"
+    }
+  ],
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_overlink_trap",
+      "kind": "MODULE",
+      "module": "res_overlink_trap",
+      "name": "res_overlink_trap",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py"
       }
     },
     {
-      "id": "edge_b_process",
-      "kind": "CALLS",
-      "source_id": "res_overlink_trap::caller",
-      "target_id": "res_overlink_trap::ClassB::process",
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Unrelated to ClassB.",
+      "id": "res_overlink_trap::ClassA",
+      "kind": "CLASS",
+      "module": "res_overlink_trap",
+      "name": "ClassA",
       "provenance": {
-        "method": "MRO_DISPATCH",
-        "confidence": "PROBABLE"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
-      "call_site": {
-        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py",
-        "line": 23
+      "qualname": "ClassA",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "ClassA's own process.",
+      "id": "res_overlink_trap::ClassA.process",
+      "kind": "METHOD",
+      "module": "res_overlink_trap",
+      "name": "process",
+      "parent_id": "res_overlink_trap::ClassA",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ClassA.process",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Unrelated to ClassA.",
+      "id": "res_overlink_trap::ClassB",
+      "kind": "CLASS",
+      "module": "res_overlink_trap",
+      "name": "ClassB",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ClassB",
+      "span": {
+        "col": 0,
+        "end_line": 17,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "ClassB's own process.",
+      "id": "res_overlink_trap::ClassB.process",
+      "kind": "METHOD",
+      "module": "res_overlink_trap",
+      "name": "process",
+      "parent_id": "res_overlink_trap::ClassB",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ClassB.process",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 17,
+        "line": 15,
+        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Each call has exactly one possible target.",
+      "id": "res_overlink_trap::caller",
+      "kind": "FUNCTION",
+      "module": "res_overlink_trap",
+      "name": "caller",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "caller",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 24,
+        "line": 20,
+        "path": "tests/fixtures/mode_b/res_overlink_trap/__init__.py"
       }
     }
-  ]
+  ],
+  "must_not_contain_edges": [
+    {
+      "source_id": "res_overlink_trap::ClassA.process",
+      "target_id": "res_overlink_trap::ClassB.process",
+      "why": "same name, unrelated classes, no call between them"
+    },
+    {
+      "source_id": "res_overlink_trap::ClassB.process",
+      "target_id": "res_overlink_trap::ClassA.process",
+      "why": "same name, unrelated classes, no call between them"
+    }
+  ],
+  "proves": "ClassA and ClassB share no base class. `a` is a ClassA and `b` is a ClassB by the assignments immediately above, so each call site has exactly one target. Linking a call to every same-named method in the tree is the single most damaging over-link a resolver can make, and the two forbidden edges below are the whole point of this case.",
+  "unresolved": []
 }

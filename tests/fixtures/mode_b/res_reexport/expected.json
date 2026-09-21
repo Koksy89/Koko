@@ -1,58 +1,231 @@
 {
-  "elements": [
+  "case_id": "res_reexport",
+  "edges": [
     {
-      "id": "res_reexport",
-      "kind": "MODULE",
-      "name": "res_reexport",
-      "qualname": "",
-      "module": "res_reexport",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_reexport/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_reexport/__init__.py"
       },
+      "id": "res_reexport:e1",
+      "kind": "IMPORTS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "IMPORT_RELATIVE"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_reexport",
+      "target_id": "res_reexport.impl::Helper"
     },
     {
-      "id": "res_reexport.impl",
-      "kind": "MODULE",
-      "name": "impl",
-      "qualname": "",
-      "module": "res_reexport.impl",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_reexport/impl.py",
-        "line": 1
+      "call_site": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_reexport/consumer.py"
       },
+      "id": "res_reexport:e2",
+      "kind": "IMPORTS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "REEXPORT",
+        "note": "`from . import Helper` follows res_reexport.__all__ back to impl"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_reexport.consumer",
+      "target_id": "res_reexport.impl::Helper"
     },
     {
-      "id": "res_reexport.impl::Helper",
-      "kind": "CLASS",
-      "name": "Helper",
-      "qualname": "Helper",
-      "module": "res_reexport.impl",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_reexport/impl.py",
-        "line": 2
+      "call_site": {
+        "col": 11,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/res_reexport/consumer.py"
       },
+      "id": "res_reexport:e3",
+      "kind": "INSTANTIATES",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "REEXPORT"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_reexport.consumer::build",
+      "target_id": "res_reexport.impl::Helper"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_reexport",
+      "kind": "MODULE",
+      "module": "res_reexport",
+      "name": "res_reexport",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_reexport/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_reexport::Helper",
+      "kind": "IMPORT",
+      "module": "res_reexport",
+      "name": "Helper",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Helper",
+      "signature": "from .impl import Helper",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_reexport/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_reexport::__all__",
+      "kind": "ASSIGNMENT",
+      "module": "res_reexport",
+      "name": "__all__",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "__all__",
+      "span": {
+        "col": 0,
+        "end_line": 5,
+        "line": 5,
+        "path": "tests/fixtures/mode_b/res_reexport/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_reexport.consumer",
+      "kind": "MODULE",
+      "module": "res_reexport.consumer",
+      "name": "consumer",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_reexport/consumer.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_reexport.consumer::Helper",
+      "kind": "IMPORT",
+      "module": "res_reexport.consumer",
+      "name": "Helper",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Helper",
+      "signature": "from . import Helper",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_reexport/consumer.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Instantiate through the re-export.",
+      "id": "res_reexport.consumer::build",
+      "kind": "FUNCTION",
+      "module": "res_reexport.consumer",
+      "name": "build",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "build",
+      "signature": "()",
+      "span": {
+        "col": 0,
+        "end_line": 8,
+        "line": 6,
+        "path": "tests/fixtures/mode_b/res_reexport/consumer.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_reexport.impl",
+      "kind": "MODULE",
+      "module": "res_reexport.impl",
+      "name": "impl",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_reexport/impl.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "The one real definition.",
+      "id": "res_reexport.impl::Helper",
+      "kind": "CLASS",
+      "module": "res_reexport.impl",
+      "name": "Helper",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Helper",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_reexport/impl.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Do the work.",
+      "id": "res_reexport.impl::Helper.run",
+      "kind": "METHOD",
+      "module": "res_reexport.impl",
+      "name": "run",
+      "parent_id": "res_reexport.impl::Helper",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Helper.run",
+      "signature": "(self)",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_reexport/impl.py"
+      }
+    }
+  ],
+  "proves": "A name re-exported through __init__.py resolves to the *original* definition in impl.py, with REEXPORT. The consumer never mentions impl, so a resolver that stops at the package root loses the target.",
+  "unresolved": []
 }

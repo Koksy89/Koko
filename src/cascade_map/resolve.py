@@ -152,7 +152,26 @@ class _BKind(StrEnum):
     CONST = "CONST"
     REGISTRY = "REGISTRY"
     CANDIDATES = "CANDIDATES"
+    BUILTIN = "BUILTIN"
     UNKNOWN = "UNKNOWN"
+
+
+#: Builtin types a literal can be recognised as. ``dir()`` here inspects the
+#: *tool's* interpreter, never the target: no target code is imported.
+_BUILTIN_TYPES: dict[str, type] = {
+    "bytes": bytes,
+    "dict": dict,
+    "frozenset": frozenset,
+    "int": int,
+    "list": list,
+    "set": set,
+    "str": str,
+    "tuple": tuple,
+}
+_BUILTIN_METHODS: dict[str, frozenset[str]] = {
+    name: frozenset(m for m in dir(kind) if not m.startswith("_"))
+    for name, kind in _BUILTIN_TYPES.items()
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +188,10 @@ class _Binding:
     note: str = ""
     external: bool = False
     is_property: bool = False
+    builtin_type: str = ""
+    """Set when the value is plainly a builtin container or scalar, so that a
+    method call on it resolves to a builtin rather than joining the unresolved
+    stream as a name the analysis failed on."""
 
 
 _UNKNOWN_BINDING = _Binding()
@@ -692,6 +715,25 @@ class _Summariser(ast.NodeVisitor):
                 else:
                     self._container_write(func.value, _text(arg), None)
         self.generic_visit(node)
+
+
+def _literal_builtin_type(node: ast.expr) -> str:
+    """The builtin type a literal expression plainly has, or ``""``."""
+    if isinstance(node, (ast.List, ast.ListComp)):
+        return "list"
+    if isinstance(node, (ast.Dict, ast.DictComp)):
+        return "dict"
+    if isinstance(node, (ast.Set, ast.SetComp)):
+        return "set"
+    if isinstance(node, ast.Tuple):
+        return "tuple"
+    if isinstance(node, ast.JoinedStr):
+        return "str"
+    if isinstance(node, ast.Constant):
+        for name, kind in _BUILTIN_TYPES.items():
+            if type(node.value) is kind:
+                return name
+    return ""
 
 
 def _literal_str_seq(value: ast.expr) -> tuple[str, ...] | None:
@@ -2647,6 +2689,26 @@ class _CallResolver(ast.NodeVisitor):
             )
             return
 
+        if isinstance(func, ast.Attribute):
+            receiver = self._eval(func.value)
+            if receiver.builtin_type and func.attr in _BUILTIN_METHODS.get(
+                receiver.builtin_type, frozenset()
+            ):
+                # ``problems.append(...)`` on a local list is a builtin call,
+                # not a name this analysis failed on. Resolved, so it does not
+                # belong in the unresolved stream; counted, so it is not silent.
+                self.r._stats["builtin_calls"] += 1
+                if self.r.include_builtin_calls:
+                    self._emit(
+                        EdgeKind.CALLS,
+                        make_id("builtins", f"{receiver.builtin_type}.{func.attr}"),
+                        Method.SCOPE_LOOKUP,
+                        Confidence.RESOLVED,
+                        node,
+                        note=f"builtin {receiver.builtin_type} method",
+                    )
+                return
+
         binding = self._resolve_dotted(dotted)
         self._call_binding(binding, node, dotted)
 
@@ -3283,11 +3345,29 @@ class _CallResolver(ast.NodeVisitor):
                 const=_StrVal(literals=(node.value,), open=False),
                 method=Method.AST_DIRECT,
                 confidence=Confidence.CERTAIN,
+                builtin_type="str",
+            )
+        literal_type = _literal_builtin_type(node)
+        if literal_type:
+            return _Binding(
+                kind=_BKind.BUILTIN,
+                method=Method.AST_DIRECT,
+                confidence=Confidence.CERTAIN,
+                builtin_type=literal_type,
+                note=f"builtin {literal_type}",
             )
         if isinstance(node, ast.Call):
             func = node.func
             dotted = _dotted(func)
             tail = dotted.split(".")[-1] if dotted else ""
+            if dotted in _BUILTIN_TYPES and self._is_builtin(dotted):
+                return _Binding(
+                    kind=_BKind.BUILTIN,
+                    method=Method.SCOPE_LOOKUP,
+                    confidence=Confidence.RESOLVED,
+                    builtin_type=dotted,
+                    note=f"builtin {dotted}",
+                )
             if tail == "getattr" and self._is_builtin(dotted):
                 return self._getattr_call(node)
             if tail in {"import_module", "__import__"}:

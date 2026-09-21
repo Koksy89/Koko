@@ -1,34 +1,145 @@
 {
+  "case_id": "res_config_dangling",
+  "edges": [],
   "elements": [
     {
+      "content_hash": null,
+      "content_hash_asserted": false,
       "id": "res_config_dangling",
       "kind": "MODULE",
-      "name": "res_config_dangling",
-      "qualname": "",
       "module": "res_config_dangling",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_config_dangling/__init__.py",
-        "line": 1
-      },
+      "name": "res_config_dangling",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
       },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_config_dangling/__init__.py"
+      }
+    },
+    {
       "content_hash": null,
-      "content_hash_asserted": false
+      "content_hash_asserted": false,
+      "docstring": "Exists, but no config key points here.",
+      "id": "res_config_dangling::RealHandler",
+      "kind": "CLASS",
+      "module": "res_config_dangling",
+      "name": "RealHandler",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "RealHandler",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_config_dangling/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Do the work.",
+      "id": "res_config_dangling::RealHandler.handle",
+      "kind": "METHOD",
+      "module": "res_config_dangling",
+      "name": "handle",
+      "parent_id": "res_config_dangling::RealHandler",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "RealHandler.handle",
+      "signature": "(self, event)",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_config_dangling/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/res_config_dangling/config.json",
+      "kind": "DATA_FILE",
+      "module": "",
+      "name": "config.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_config_dangling/config.json"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/res_config_dangling/config.json::/handler",
+      "kind": "CONFIG_KEY",
+      "module": "",
+      "name": "handler",
+      "parent_id": "@file:tests/fixtures/mode_b/res_config_dangling/config.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "col": 2,
+        "line": 2,
+        "path": "tests/fixtures/mode_b/res_config_dangling/config.json"
+      }
     }
   ],
+  "findings": [
+    {
+      "element_id": "@file:tests/fixtures/mode_b/res_config_dangling/config.json::/handler",
+      "evidence_ids": [
+        "@file:tests/fixtures/mode_b/res_config_dangling/config.json::/handler"
+      ],
+      "hint": "either the class was renamed or removed, or the key is stale; check the deployment that reads this file",
+      "id": "res_config_dangling:f1",
+      "kind": "DANGLING_CONFIG_REFERENCE",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "CONFIG_STRING_MATCH"
+      },
+      "span": {
+        "col": 13,
+        "line": 2,
+        "path": "tests/fixtures/mode_b/res_config_dangling/config.json"
+      },
+      "summary": "config key /handler names \"MissingHandler\", which no element in the target defines"
+    }
+  ],
+  "must_not_contain_edges": [
+    {
+      "source_id": "@file:tests/fixtures/mode_b/res_config_dangling/config.json::/handler",
+      "target_id": "res_config_dangling::RealHandler",
+      "why": "the only class in the file is not the one the key names; substituting it would hide a real configuration defect"
+    }
+  ],
+  "proves": "A config key naming a class that does not exist produces a DANGLING_CONFIG_REFERENCE finding and an unresolved record pinned to the key -- and **no edge**. Nothing in the target is named MissingHandler, and RealHandler must not be substituted for it.",
   "unresolved": [
     {
-      "id": "dangling_config_ref",
+      "attempted": [
+        "CONFIG_STRING_MATCH"
+      ],
+      "description": "config key /handler holds \"MissingHandler\"; no element in the target has that name",
+      "id": "@file:tests/fixtures/mode_b/res_config_dangling/config.json::/handler",
       "reason": "MISSING_TARGET",
       "span": {
-        "path": "tests/fixtures/mode_b/res_config_dangling/config.json",
-        "line": 1
-      },
-      "description": "Config references nonexistent NonExistentClass"
+        "col": 13,
+        "line": 2,
+        "path": "tests/fixtures/mode_b/res_config_dangling/config.json"
+      }
     }
-  ],
-  "edges": [],
-  "findings": []
+  ]
 }

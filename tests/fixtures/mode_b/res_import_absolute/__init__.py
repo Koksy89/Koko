@@ -1,6 +1,8 @@
-"""Module that imports another module absolutely."""
+"""Absolute imports: one inside the corpus, one outside it."""
 
 import json
 
-# Use json to ensure it's actually imported
-data = json.dumps({"key": "value"})
+from res_import_absolute.helpers import compute
+
+RESULT = compute(21)
+PAYLOAD = json.dumps({"result": RESULT})

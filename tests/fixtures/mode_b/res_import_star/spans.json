@@ -1,0 +1,79 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "stmt",
+      "line_contains": "from .names import *",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "stmt",
+      "line_contains": "from .names import *",
+      "occurrence": 1
+    },
+    "/edges/2/call_site": {
+      "kind": "stmt",
+      "line_contains": "from .names import *",
+      "occurrence": 1
+    },
+    "/edges/3/call_site": {
+      "kind": "expr",
+      "line_contains": "FIRST = alpha()",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/4/call_site": {
+      "kind": "expr",
+      "line_contains": "SECOND = beta()",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "FIRST =",
+      "occurrence": 1
+    },
+    "/elements/2/span": {
+      "kind": "stmt",
+      "line_contains": "SECOND =",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "stmt",
+      "line_contains": "THIRD =",
+      "occurrence": 1
+    },
+    "/elements/4/span": {
+      "kind": "module"
+    },
+    "/elements/5/span": {
+      "kind": "stmt",
+      "line_contains": "__all__ =",
+      "occurrence": 1
+    },
+    "/elements/6/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "alpha"
+    },
+    "/elements/7/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "beta"
+    },
+    "/elements/8/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "delta"
+    },
+    "/unresolved/0/span": {
+      "kind": "expr",
+      "line_contains": "THIRD = delta()",
+      "node": "Call",
+      "occurrence": 1
+    }
+  }
+}

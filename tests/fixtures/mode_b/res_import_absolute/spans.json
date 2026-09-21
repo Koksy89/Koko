@@ -1,0 +1,57 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "stmt",
+      "line_contains": "from res_import_absolute.helpers import compute",
+      "occurrence": 1
+    },
+    "/edges/1/call_site": {
+      "kind": "stmt",
+      "line_contains": "from res_import_absolute.helpers import compute",
+      "occurrence": 1
+    },
+    "/edges/2/call_site": {
+      "kind": "expr",
+      "line_contains": "RESULT = compute(21)",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "stmt",
+      "line_contains": "import json",
+      "occurrence": 1
+    },
+    "/elements/2/span": {
+      "kind": "stmt",
+      "line_contains": "from res_import_absolute.helpers import compute",
+      "occurrence": 1
+    },
+    "/elements/3/span": {
+      "kind": "stmt",
+      "line_contains": "RESULT =",
+      "occurrence": 1
+    },
+    "/elements/4/span": {
+      "kind": "stmt",
+      "line_contains": "PAYLOAD =",
+      "occurrence": 1
+    },
+    "/elements/5/span": {
+      "kind": "module"
+    },
+    "/elements/6/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "compute"
+    },
+    "/unresolved/0/span": {
+      "kind": "stmt",
+      "line_contains": "import json",
+      "occurrence": 1
+    }
+  }
+}

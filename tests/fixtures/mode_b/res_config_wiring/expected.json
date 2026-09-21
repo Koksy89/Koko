@@ -1,59 +1,172 @@
 {
-  "elements": [
+  "case_id": "res_config_wiring",
+  "edges": [
     {
-      "id": "res_config_wiring",
-      "kind": "MODULE",
-      "name": "res_config_wiring",
-      "qualname": "",
-      "module": "res_config_wiring",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 13,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_config_wiring/wiring.json"
       },
+      "id": "res_config_wiring:e1",
+      "kind": "CONFIGURES",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "HEURISTIC",
+        "method": "CONFIG_STRING_MATCH",
+        "note": "config key /pipeline/class holds \"ScoreComponent\", which matches exactly one class in the target"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_config_wiring::Component",
-      "kind": "CLASS",
-      "name": "Component",
-      "qualname": "Component",
-      "module": "res_config_wiring",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py",
-        "line": 2
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false
-    },
-    {
-      "id": "res_config_wiring::Component::process",
-      "kind": "METHOD",
-      "name": "process",
-      "qualname": "Component.process",
-      "module": "res_config_wiring",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py",
-        "line": 3
-      },
-      "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
-      },
-      "content_hash": null,
-      "content_hash_asserted": false,
-      "parent_id": "res_config_wiring::Component"
+      "source_id": "@file:tests/fixtures/mode_b/res_config_wiring/wiring.json::/pipeline/class",
+      "target_id": "res_config_wiring::ScoreComponent"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_config_wiring",
+      "kind": "MODULE",
+      "module": "res_config_wiring",
+      "name": "res_config_wiring",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Named by wiring.json.",
+      "id": "res_config_wiring::ScoreComponent",
+      "kind": "CLASS",
+      "module": "res_config_wiring",
+      "name": "ScoreComponent",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ScoreComponent",
+      "span": {
+        "col": 0,
+        "end_line": 9,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Do the work.",
+      "id": "res_config_wiring::ScoreComponent.process",
+      "kind": "METHOD",
+      "module": "res_config_wiring",
+      "name": "process",
+      "parent_id": "res_config_wiring::ScoreComponent",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "ScoreComponent.process",
+      "signature": "(self, value)",
+      "span": {
+        "col": 4,
+        "end_line": 9,
+        "line": 7,
+        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Never named by any config key.",
+      "id": "res_config_wiring::UnwiredComponent",
+      "kind": "CLASS",
+      "module": "res_config_wiring",
+      "name": "UnwiredComponent",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "UnwiredComponent",
+      "span": {
+        "col": 0,
+        "end_line": 17,
+        "line": 12,
+        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Do the work.",
+      "id": "res_config_wiring::UnwiredComponent.process",
+      "kind": "METHOD",
+      "module": "res_config_wiring",
+      "name": "process",
+      "parent_id": "res_config_wiring::UnwiredComponent",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "UnwiredComponent.process",
+      "signature": "(self, value)",
+      "span": {
+        "col": 4,
+        "end_line": 17,
+        "line": 15,
+        "path": "tests/fixtures/mode_b/res_config_wiring/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/res_config_wiring/wiring.json",
+      "kind": "DATA_FILE",
+      "module": "",
+      "name": "wiring.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_config_wiring/wiring.json"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "@file:tests/fixtures/mode_b/res_config_wiring/wiring.json::/pipeline/class",
+      "kind": "CONFIG_KEY",
+      "module": "",
+      "name": "class",
+      "parent_id": "@file:tests/fixtures/mode_b/res_config_wiring/wiring.json",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "col": 4,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_config_wiring/wiring.json"
+      }
+    }
+  ],
+  "must_not_contain_edges": [
+    {
+      "source_id": "@file:tests/fixtures/mode_b/res_config_wiring/wiring.json::/pipeline/class",
+      "target_id": "res_config_wiring::UnwiredComponent",
+      "why": "no config key names it"
+    }
+  ],
+  "notes": [
+    "The edge's source is the config key id, not the file id: a dangling reference must point at the exact key, per config_key_id's contract."
+  ],
+  "proves": "A class named by a string inside wiring.json resolves to the class element, with the config key itself as the edge's source -- so the owner can see which key wires which component. CONFIG_STRING_MATCH is HEURISTIC: a string that happens to equal a class name is evidence, not proof.",
+  "unresolved": []
 }

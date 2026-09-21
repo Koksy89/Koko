@@ -1,0 +1,82 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Middle"
+    },
+    "/edges/1/call_site": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Leaf"
+    },
+    "/edges/2/call_site": {
+      "kind": "expr",
+      "line_contains": "leaf = Leaf()",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/3/call_site": {
+      "kind": "expr",
+      "line_contains": "return leaf.classify(), leaf.shared()",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/4/call_site": {
+      "kind": "expr",
+      "line_contains": "return leaf.classify(), leaf.shared()",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/edges/5/call_site": {
+      "kind": "expr",
+      "line_contains": "return super().classify()",
+      "node": "Call",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Base"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Base.classify"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Base.shared"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Middle"
+    },
+    "/elements/5/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Middle.classify"
+    },
+    "/elements/6/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Leaf"
+    },
+    "/elements/7/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "Leaf.classify"
+    },
+    "/elements/8/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "dispatch"
+    }
+  }
+}

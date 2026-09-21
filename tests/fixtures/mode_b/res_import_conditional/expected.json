@@ -1,24 +1,343 @@
 {
-  "elements": [
+  "case_id": "res_import_conditional",
+  "edges": [
     {
-      "id": "res_import_conditional",
-      "kind": "MODULE",
-      "name": "res_import_conditional",
-      "qualname": "",
-      "module": "res_import_conditional",
-      "span": {
-        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py",
-        "line": 1
+      "call_site": {
+        "col": 4,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
       },
+      "id": "res_import_conditional:e1",
+      "kind": "IMPORTS",
       "provenance": {
-        "method": "AST_DIRECT",
-        "confidence": "CERTAIN"
+        "confidence": "RESOLVED",
+        "method": "IMPORT_RELATIVE",
+        "note": "guarded by TYPE_CHECKING: resolved statically, never executed"
       },
-      "content_hash": null,
-      "content_hash_asserted": false
+      "source_id": "res_import_conditional",
+      "target_id": "res_import_conditional.models::Record"
+    },
+    {
+      "call_site": {
+        "col": 4,
+        "end_line": 11,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      },
+      "id": "res_import_conditional:e2",
+      "kind": "IMPORTS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "IMPORT_RELATIVE",
+        "note": "`if USE_FAST` arm; both arms are live to static analysis"
+      },
+      "source_id": "res_import_conditional",
+      "target_id": "res_import_conditional.fast::encode"
+    },
+    {
+      "call_site": {
+        "col": 4,
+        "end_line": 13,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      },
+      "id": "res_import_conditional:e3",
+      "kind": "IMPORTS",
+      "provenance": {
+        "confidence": "RESOLVED",
+        "method": "IMPORT_RELATIVE",
+        "note": "`else` arm; both arms are live to static analysis"
+      },
+      "source_id": "res_import_conditional",
+      "target_id": "res_import_conditional.slow::encode"
     }
   ],
-  "unresolved": [],
-  "edges": [],
-  "findings": []
+  "elements": [
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional",
+      "kind": "MODULE",
+      "module": "res_import_conditional",
+      "name": "res_import_conditional",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional::TYPE_CHECKING",
+      "kind": "IMPORT",
+      "module": "res_import_conditional",
+      "name": "TYPE_CHECKING",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "TYPE_CHECKING",
+      "signature": "from typing import TYPE_CHECKING",
+      "span": {
+        "col": 0,
+        "end_line": 3,
+        "line": 3,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional::USE_FAST",
+      "kind": "ASSIGNMENT",
+      "module": "res_import_conditional",
+      "name": "USE_FAST",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "USE_FAST",
+      "span": {
+        "col": 0,
+        "end_line": 5,
+        "line": 5,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional::Record",
+      "kind": "IMPORT",
+      "module": "res_import_conditional",
+      "name": "Record",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Record",
+      "signature": "from .models import Record",
+      "span": {
+        "col": 4,
+        "end_line": 8,
+        "line": 8,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional::encode",
+      "kind": "IMPORT",
+      "module": "res_import_conditional",
+      "name": "encode",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "encode",
+      "signature": "from .fast import encode",
+      "span": {
+        "col": 4,
+        "end_line": 11,
+        "line": 11,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional::encode#2",
+      "kind": "IMPORT",
+      "module": "res_import_conditional",
+      "name": "encode",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "encode",
+      "signature": "from .slow import encode",
+      "span": {
+        "col": 4,
+        "end_line": 13,
+        "line": 13,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional::boost",
+      "kind": "IMPORT",
+      "module": "res_import_conditional",
+      "name": "boost",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "boost",
+      "signature": "from .optional_ext import boost",
+      "span": {
+        "col": 4,
+        "end_line": 16,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional::boost#2",
+      "kind": "ASSIGNMENT",
+      "module": "res_import_conditional",
+      "name": "boost",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "boost",
+      "span": {
+        "col": 4,
+        "end_line": 18,
+        "line": 18,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional.fast",
+      "kind": "MODULE",
+      "module": "res_import_conditional.fast",
+      "name": "fast",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_conditional/fast.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Fast path.",
+      "id": "res_import_conditional.fast::encode",
+      "kind": "FUNCTION",
+      "module": "res_import_conditional.fast",
+      "name": "encode",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "encode",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_import_conditional/fast.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional.models",
+      "kind": "MODULE",
+      "module": "res_import_conditional.models",
+      "name": "models",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_conditional/models.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "A record.",
+      "id": "res_import_conditional.models::Record",
+      "kind": "CLASS",
+      "module": "res_import_conditional.models",
+      "name": "Record",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "Record",
+      "span": {
+        "col": 0,
+        "end_line": 5,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_import_conditional/models.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "id": "res_import_conditional.slow",
+      "kind": "MODULE",
+      "module": "res_import_conditional.slow",
+      "name": "slow",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "",
+      "span": {
+        "line": 1,
+        "path": "tests/fixtures/mode_b/res_import_conditional/slow.py"
+      }
+    },
+    {
+      "content_hash": null,
+      "content_hash_asserted": false,
+      "docstring": "Slow path.",
+      "id": "res_import_conditional.slow::encode",
+      "kind": "FUNCTION",
+      "module": "res_import_conditional.slow",
+      "name": "encode",
+      "provenance": {
+        "confidence": "CERTAIN",
+        "method": "AST_DIRECT"
+      },
+      "qualname": "encode",
+      "signature": "(value)",
+      "span": {
+        "col": 0,
+        "end_line": 6,
+        "line": 4,
+        "path": "tests/fixtures/mode_b/res_import_conditional/slow.py"
+      }
+    }
+  ],
+  "proves": "Imports guarded by TYPE_CHECKING, by a plain `if`/`else`, and by `try`/`except ImportError` all resolve. Both arms of the `if` produce an edge -- neither is dead, and picking one would be a guess. The TYPE_CHECKING edge is marked as never executing at runtime. The `try` import names a module that does not exist and is reported, not swallowed by the `except`.",
+  "unresolved": [
+    {
+      "attempted": [
+        "IMPORT_RELATIVE"
+      ],
+      "description": "relative import of `.optional_ext`, which does not exist in the target; the `except ImportError` hides it at runtime but it is still an unresolved reference",
+      "id": "res_import_conditional::boost",
+      "reason": "MISSING_TARGET",
+      "span": {
+        "col": 4,
+        "end_line": 16,
+        "line": 16,
+        "path": "tests/fixtures/mode_b/res_import_conditional/__init__.py"
+      }
+    }
+  ]
 }

@@ -1,0 +1,41 @@
+{
+  "byte_sizes": {},
+  "spans": {
+    "/edges/0/call_site": {
+      "kind": "line",
+      "line_contains": "\"ScoreComponent\"",
+      "occurrence": 1
+    },
+    "/elements/0/span": {
+      "kind": "module"
+    },
+    "/elements/1/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "ScoreComponent"
+    },
+    "/elements/2/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "ScoreComponent.process"
+    },
+    "/elements/3/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "UnwiredComponent"
+    },
+    "/elements/4/span": {
+      "kind": "def",
+      "occurrence": 1,
+      "qualname": "UnwiredComponent.process"
+    },
+    "/elements/5/span": {
+      "kind": "module"
+    },
+    "/elements/6/span": {
+      "kind": "line",
+      "line_contains": "\"class\"",
+      "occurrence": 1
+    }
+  }
+}
