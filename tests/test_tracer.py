@@ -20,9 +20,10 @@ import inspect
 import json
 import os
 import re
-import subprocess
 import posixpath
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -646,7 +647,7 @@ def test_run_linear_maps_every_event_to_a_static_id() -> None:
     assert result.mapping.total_events == 6
     assert result.mapping.unmapped_events == 0
     assert result.mapping.rate_permille == 1000
-    assert result.mapping.rate_text.startswith("6/6 events mapped")
+    assert result.mapping.rate_text == "6/6 target events mapped (100.0%)"
     assert result.mapping.elements_entered == 3
     assert [event.element_id for event in result.events] == [
         "run_linear::main",
@@ -802,7 +803,7 @@ def test_dynamically_created_code_is_unmapped_not_dropped() -> None:
         assert "dynamically created code object" in event.provenance.note
     assert result.mapping.unmapped_reasons == {"DYNAMIC_CODE": 2}
     assert result.mapping.rate_permille == 0
-    assert result.mapping.rate_text.startswith("0/2 events mapped")
+    assert result.mapping.rate_text == "0/2 target events mapped (0.0%)"
 
 
 def test_code_the_inventory_never_saw_is_unmapped_with_location_and_reason() -> None:
@@ -1187,7 +1188,8 @@ def test_the_overlay_is_written_deterministically(tmp_path: Path) -> None:
         assert payload["provenance"]["method"] == "RUNTIME_OBSERVED"
         assert payload["provenance"]["run_id"] == "run_001"
     mapping = json.loads(files["mapping.json"])
-    assert mapping["rate_text"].endswith("(100.0%)")
+    assert mapping["rate_text"] == "5/5 target events mapped (100.0%)"
+    assert mapping["external_frames_total"] == 0
 
 
 def test_recordings_round_trip_unchanged() -> None:
@@ -1578,7 +1580,9 @@ def test_an_empty_trace_never_reports_a_perfect_mapping_rate() -> None:
     report = tracer.result(make_run()).mapping
     assert report.total_events == 0
     assert report.rate_permille == 0
-    assert report.rate_text == "0/0 events mapped: nothing was observed in this run"
+    assert report.rate_text.startswith(
+        "0/0 target events mapped: nothing of the target was observed in this run"
+    )
 
 
 def test_the_recording_carries_the_escape_paths_the_harness_could_not_close() -> None:
@@ -1895,3 +1899,72 @@ def test_output_is_byte_identical_across_processes_and_hash_seeds(tmp_path: Path
     assert all("HASH_ORDERING" in "".join(run["nondet_ids"]) for run in randomized)
     assert len(randomized) == 2
     assert randomized[0]["digests"] == randomized[1]["digests"], randomized
+
+
+# ---------------------------------------------------------------------------
+# external is not unmapped
+# ---------------------------------------------------------------------------
+
+
+def test_frozen_and_stdlib_code_is_external_not_dynamic() -> None:
+    index = StaticIndex(root="/nowhere")
+    frozen = index.relocate("<frozen importlib._bootstrap>")
+    assert frozen.path == "<frozen>/importlib._bootstrap"
+    assert not frozen.synthetic, "a frozen stdlib module is not dynamically created code"
+    assert not frozen.under_root
+    assert index.relocate("/usr/lib/python3.11/random.py").path == "<stdlib>/random.py"
+    generated = index.relocate("<string>")
+    assert generated.synthetic, "exec'd source is still a finding about the static map"
+
+
+def test_the_import_machinery_does_not_drown_the_mapping_rate() -> None:
+    """272 importlib events under 9 target events is not a mapping rate."""
+    sys.dont_write_bytecode = True
+    index = branch_index()
+    tracer = Tracer(index)
+    run = make_run()
+
+    def scenario() -> None:
+        importlib.import_module("colorsys")  # a real import, inside the window
+        _branching_probe(7)
+
+    observed_window(tracer, run, scenario)
+    result = tracer.result(run)
+    assert result.events
+    unmapped = [event for event in result.events if event.kind is EventKind.UNMAPPED]
+    # The only unmapped events are this file's own nested `scenario`, which is
+    # under the index root and not in the index -- a real "should have been in
+    # the static map" finding. None of importlib's 100+ frames are among them.
+    assert len(unmapped) <= 2, [event.provenance.note for event in unmapped]
+    for event in unmapped:
+        assert event.provenance is not None
+        assert event.provenance.span is not None
+        assert not event.provenance.span.path.startswith(("<frozen", "<stdlib"))
+    assert result.mapping.unmapped_reasons.get("DYNAMIC_CODE", 0) == 0
+    assert result.mapping.external_frames_total >= 20, "the machinery must be counted"
+    frozen = [name for name in result.mapping.external_frames if name.startswith("<frozen>/")]
+    assert frozen, result.mapping.external_frames
+    assert result.mapping.rate_text.endswith(
+        f"{result.mapping.external_frames_total} external frames skipped"
+    )
+    assert "target events mapped" in result.mapping.rate_text
+
+
+def test_external_frames_are_recorded_with_where_they_came_from() -> None:
+    """Constraint 3: not counted against the rate, but never disappeared."""
+    sys.dont_write_bytecode = True
+    tracer = Tracer(branch_index())
+    run = make_run()
+    observed_window(tracer, run, lambda: importlib.import_module("wave"))
+    report = tracer.result(run).mapping
+    assert report.external_frames, "external frames must be countable and locatable"
+    assert sum(report.external_frames.values()) == report.external_frames_total
+    assert all(
+        name.startswith(
+            ("<frozen>/", "<stdlib>/", "<site-packages>/", "<dist-packages>/", "<external>/")
+        )
+        for name in report.external_frames
+    )
+    assert json.loads(
+        Tracer(branch_index()).emit(tracer.result(run), Path(tempfile.mkdtemp()))["mapping.json"]
+    )["external_frames"] == report.external_frames

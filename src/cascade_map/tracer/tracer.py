@@ -75,6 +75,12 @@ class MappingReport:
     observations: int
     dropped_observations: int
     elements_entered: int
+    external_frames_total: int = 0
+    """Frame entries skipped because they are not the target -- stdlib,
+    site-packages, frozen modules. Recorded, never counted against the rate:
+    UNMAPPED means "the static map should have had this", and an importlib
+    frame is not that. `external_frames` says which files they came from."""
+
     persist_error: str = ""
     """Why this run's recording is not on disk, when it could not be written.
     Empty when it was written, or when no recordings directory is configured."""
@@ -92,6 +98,7 @@ class MappingReport:
             "observations": self.observations,
             "dropped_observations": self.dropped_observations,
             "elements_entered": self.elements_entered,
+            "external_frames_total": self.external_frames_total,
             "persist_error": self.persist_error,
         }
 
@@ -482,6 +489,12 @@ class Tracer:
         mapped = sum(1 for event in events if event.element_id)
         total = len(events)
         permille = (mapped * 1000) // total if total else 0
+        external = {
+            str(key): int(value)
+            for key, value in dict(recording.header.get("external_frames", {})).items()
+        }
+        external_total = sum(external.values())
+        external_text = f", {external_total} external frames skipped" if external_total else ""
         report = MappingReport(
             run_id=run_id,
             total_events=total,
@@ -489,15 +502,15 @@ class Tracer:
             unmapped_events=total - mapped,
             rate_permille=permille,
             rate_text=(
-                f"{mapped}/{total} events mapped ({permille // 10}.{permille % 10}%)"
+                f"{mapped}/{total} target events mapped "
+                f"({permille // 10}.{permille % 10}%){external_text}"
                 if total
-                else "0/0 events mapped: nothing was observed in this run"
+                else f"0/0 target events mapped: nothing of the target was "
+                f"observed in this run{external_text}"
             ),
             unmapped_reasons=unmapped_reasons,
-            external_frames={
-                str(key): int(value)
-                for key, value in dict(recording.header.get("external_frames", {})).items()
-            },
+            external_frames=external,
+            external_frames_total=external_total,
             observations=len(ordered),
             dropped_observations=dropped,
             elements_entered=len(entered),

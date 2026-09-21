@@ -146,9 +146,32 @@ class StaticIndex:
     # -- paths -------------------------------------------------------------
 
     def relocate(self, filename: str) -> CodeLocation:
-        """Turn an interpreter filename into a machine-independent location."""
-        if not filename or filename.startswith("<"):
-            return CodeLocation(path=filename or "<unknown>", qualname="", line=0, synthetic=True)
+        """Turn an interpreter filename into a machine-independent location.
+
+        Three outcomes, and the difference between the last two is the whole
+        point of the mapping rate:
+
+        * **under the root** -- the target. Traced, and keyed to an element.
+        * **synthetic** -- a code object with no file: ``<string>``,
+          ``<stdin>``, an ``exec`` of generated source. Traced, and UNMAPPED
+          when it keys to nothing, because that is a finding: the static
+          analysis should have had it and did not.
+        * **external** -- not the target at all. A real file outside the root,
+          or a frozen stdlib module (``<frozen importlib._bootstrap>``). Not
+          traced, counted by file in the recording header. An import-machinery
+          frame is not a finding about our analysis, and counting it as one
+          buries the events that are.
+        """
+        if not filename:
+            return CodeLocation(path="<unknown>", qualname="", line=0, synthetic=True)
+        if filename.startswith("<frozen ") and filename.endswith(">"):
+            return CodeLocation(
+                path="<frozen>/" + filename[len("<frozen ") : -1].strip(),
+                qualname="",
+                line=0,
+            )
+        if filename.startswith("<"):
+            return CodeLocation(path=filename, qualname="", line=0, synthetic=True)
         absolute = os.path.abspath(filename)
         if absolute == self.root or absolute.startswith(self.root + os.sep):
             return CodeLocation(

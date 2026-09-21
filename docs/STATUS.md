@@ -21,12 +21,12 @@ bracket of the build order — cards 8 and 1, which run in parallel — is ready
 | 5 | Unplugged detection & hints | findings-builder | **DONE** (PASS, round 2) |
 | 6 | Version diff & impact | diff-impact-builder | **DONE** (PASS, 1 contract follow-up) |
 | 16 | Documentation records & completeness gate | docs-builder | **DONE** (PASS) |
-| 15 | Viewer (phase B) | viewer-builder | **DONE** (PASS, round 2, phase B only) |
+| 15 | Viewer (phases A and B) | viewer-builder | **DONE** (both phases PASS) |
 | 11 | Safe execution harness | harness-builder | **DONE** (PASS, round 4 — two limits disclosed) |
 | 12 | Runtime tracer & value capture | tracer-engineer | **DONE** (PASS, 3 recorded gaps) |
 | 13 | Intent registry & alignment | alignment-engineer | **DONE** (PASS, round 2) |
 | 14 | Execution narrative | narrative-builder | **DONE** (PASS, round 2) |
-| 10 | CLI, integration & validation | the lead | **Mode B DONE**; Mode A not started |
+| 10 | CLI, integration & validation | the lead | **DONE** — both modes |
 
 ## What exists
 
@@ -58,6 +58,28 @@ candidates with evidence rather than choosing silently.
 - **Q2 — the entry point(s).**
 - **Q3 — which config files wire components.** Degrades card 2's confidence; does not stop it.
 - **Q4 — Mode A scenarios and external systems.** Needed before card 11, not before then.
+
+## Mode A phase gate — PASSED
+
+| Check | Result |
+|---|---|
+| Full suite | 1187 tests, 1155 passed, 0 failed |
+| Refusal paths | 7 tests, 0 failed — the harness refuses when it cannot guarantee isolation |
+| Escape / adversarial | 17 tests, 0 failed — every attempt blocked **and recorded** |
+| Replay determinism | byte-identical across processes and hash seeds |
+| Runtime provenance | every event carries `RUNTIME_OBSERVED` with run and event IDs |
+
+Mode A integration produced six more defects that Mode B's gate could not have
+found. Three were interface halves neither card could see whole. Three were the
+same shape as each other: an exception caught for a defensible reason,
+discarded, and the resulting report reading as success — a crashed scenario, a
+failed observer, and the viewer rendering both as clean runs.
+
+The last one to fall was determinism. Captured values carried object memory
+addresses, so no two runs agreed; and once the hex form was fixed, CPython's
+decimal `id()` form still escaped. Card 12's own test had been passing
+throughout, because it replayed a single recording twice — both sides shared
+the same addresses. Only running the scenario twice exposed it.
 
 ## Mode B phase gate — PASSED
 
