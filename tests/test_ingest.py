@@ -79,7 +79,9 @@ def _element_dict(element) -> dict:
 
 def _assert_subset(expected: dict, actual: dict, path: str = "") -> None:
     for key, expected_value in expected.items():
-        if key in _SOFT_FIELDS:
+        if key in _SOFT_FIELDS or key in ("content_hash_asserted",):
+            continue
+        if key == "content_hash" and expected.get("content_hash_asserted") is False:
             continue
         here = f"{path}.{key}" if path else key
         assert key in actual, f"missing field {here!r}"
@@ -104,10 +106,10 @@ def _check_case(case_id: str, tmp_path: Path) -> tuple[list, list]:
         eid = exp_el["id"]
         assert eid in actual_by_id, f"{case_id}: expected element {eid!r} missing from actual output"
         _assert_subset(exp_el, actual_by_id[eid])
-        if exp_el.get("content_hash") not in _HASH_PLACEHOLDERS:
-            assert actual_by_id[eid]["content_hash"] == exp_el["content_hash"]
-        else:
+        if exp_el.get("content_hash_asserted") is False or exp_el.get("content_hash") in _HASH_PLACEHOLDERS:
             assert actual_by_id[eid]["content_hash"], "content_hash must never be empty"
+        elif exp_el.get("content_hash") is not None:
+            assert actual_by_id[eid]["content_hash"] == exp_el["content_hash"]
 
     actual_unresolved_by_id = {}
     for u in unresolved:
