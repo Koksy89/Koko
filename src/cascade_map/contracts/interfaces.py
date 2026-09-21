@@ -74,6 +74,7 @@ __all__ = [
     "NarrativeStep",
     "make_id",
     "local_id",
+    "param_id",
     "key_id",
     "attr_id",
     "feature_id",
@@ -235,9 +236,26 @@ def local_id(element_id: str, name: str, ordinal: int = 1) -> str:
     The `<locals>` segment mirrors Python's own `__qualname__` convention and
     keeps a local from colliding with an attribute of the same name, which
     `attr_id` would otherwise produce.
+
+    **The ordinal is required, not optional.** Modelling every rebinding of a
+    name as one node with a self-edge merges `x = a` and `x = b`, so a backward
+    slice of the final `x` returns `a` -- a value that cannot reach the point
+    being queried. That is a false positive in the exact question card 4 exists
+    to answer, and precision is this card's stated priority. Reassignment is
+    common in data pipelines, so the cost is not hypothetical.
     """
     base = f"{element_id}.<locals>.{name}"
     return base if ordinal <= 1 else f"{base}#{ordinal}"
+
+
+def param_id(element_id: str, name: str) -> str:
+    """ID for a parameter of a function, method or lambda.
+
+    Card 4 reported it had no helper and was using card 1's convention
+    informally. A parameter is a binding like any other, so it needs an ID in
+    the same space -- a slice that reaches a parameter must be able to name it.
+    """
+    return f"{element_id}.<param>.{name}"
 
 
 def key_id(node_id: str, key: str) -> str:
