@@ -1,6 +1,6 @@
 # GO LIVE — BASKETBALL
 
-Engine `engine_e2e_test`  ·  65 strategies deployable  ·  77 withheld  ·  107 feature columns  ·  7 PCA composites
+Engine `engine_e2e_test`  ·  128 strategies deployable  ·  14 withheld  ·  146 feature columns  ·  8 PCA composites
 
 ## What this bundle is
 
@@ -60,44 +60,17 @@ bets what the engine measured.
 Every rule above was re-checked against the written bundle, in the loader's
 own order, and passed.
 
-## Withheld — 77 strategies
+## Withheld — 14 strategies
 
 Validated by this run, but not shippable unchanged. Each is here with the
 exact reason; none of them is in `deploy.sql`, because one bad row takes the
 whole sport down at load. See `quarantine.csv` for the full list.
 
-- 24 × base 'prop:first_scorer_hold' arms on more than a role: production would have to reproduce
-- 16 × base 'late_lead_hold' arms on more than a role: production would have to reproduce elapsed
-- 10 × production computes no minute
-- 8 × production computes no u_elapsed, u_time_in_lead
 - 7 × market '' / outcome 'spread'
-- 4 × base 'prop:held_lead' arms on more than a role: production would have to reproduce seconds
-- 3 × base 'prop:late_lead_hold' arms on more than a role: production would have to reproduce el
 - 2 × market '' / outcome 'q1_result'
 - 2 × base 'prop:match_total_pace' settles a total but its own name does not say UNDER or OVER
 - 2 × market '' / outcome 'h1_result'
-- 1 × production computes no point_spread_away
-- 1 × production computes no q1_lead
-- 1 × production computes no pace_ratio, q1_lead
-- 1 × production computes no minute, u_elapsed, u_time_in_lead
-- 1 × base 'prop:dog_leading_late' arms on more than a role: production would have to reproduce 
-
-### Build these features and the strategies come back
-
-Each line is one feature to implement in `laz_features.py`, and the
-number of withheld strategies that would then ship. Nothing else about
-them has to change: they are already validated, already documented and
-already in `quarantine.json` with their exact clauses.
-
-| feature | strategies recovered |
-|---|---|
-| `minute` | 11 |
-| `u_elapsed` | 9 |
-| `u_time_in_lead` | 9 |
-| `q1_lead` | 3 |
-| `point_spread_away` | 1 |
-| `pace_ratio` | 1 |
-| `point_spread_home` | 1 |
+- 1 × market '' / outcome ''
 
 ### Bases production cannot arm
 
@@ -107,24 +80,71 @@ predicate as an ordinary condition before it could ship.
 
 | base | strategies withheld | what is missing |
 |---|---|---|
-| `prop:first_scorer_hold` | 24 | the side that scored FIRST, held from the event; laz_features computes no first-scorer flag |
-| `late_lead_hold` | 16 | elapsed in [0.85, 1.2]; margin > 3 |
 | `spread_dog_cover` | 7 | no settleable production market |
-| `prop:held_lead` | 4 | seconds since the lead last changed >= 600; laz_features computes no lead-change clock |
-| `prop:late_lead_hold` | 3 | elapsed in [0.85, 1.2]; margin > 3 |
 | `q1_winner` | 2 | no settleable production market |
 | `prop:match_total_pace` | 2 | no settleable production market |
 | `h1_winner` | 2 | no settleable production market |
-| `prop:dog_leading_late` | 1 | elapsed in [0.75, 1.2] |
-| `prop:fresh_lead` | 1 | seconds since the lead last changed <= 60; laz_features computes no lead-change clock |
-| `prop:q4_close_trailer` | 1 | elapsed >= 0.75; margin <= 6 |
 | `prop:h1_leader_hold` | 1 | the first-half leader |
+
+## Terms the generator could not write
+
+`laz_features_basketball.py` emits 71 of 143
+terms 1:1 from the engine builders. These it could not, so it wrote `NaN`
+for them rather than invent a value — a strategy reading one will not fire
+until the term is implemented. The strategies are still registered and
+enabled: they were validated, and nothing about them is wrong.
+
+| term | strategies reading it |
+|---|---|
+| `X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead` | 0 |
+| `X_minute__minus__u_drought` | 0 |
+| `X_minute__over__u_vol` | 0 |
+| `abs_margin_per_remaining_s` | 0 |
+| `backed_pts_last_60s` | 0 |
+| `both_scored` | 0 |
+| `dow` | 0 |
+| `eng_minute_ge_2` | 0 |
+| `eng_score_tied` | 0 |
+| `fav_lead_m30` | 0 |
+| `first_scorer_is_backed` | 0 |
+| `home_pace` | 0 |
+| `is_trailer` | 0 |
+| `lead_change_last_300s` | 0 |
+| `lead_changes_300s` | 0 |
+| `lead_changes_total` | 0 |
+| `lead_m15` | 0 |
+| `lead_m75` | 0 |
+| `lead_vs_line` | 0 |
+| `leader_implied_gap` | 0 |
+| `leader_runmax` | 0 |
+| `line` | 0 |
+| `line_flat` | 0 |
+| `line_move` | 0 |
+| `line_open` | 0 |
+| `line_vel` | 0 |
+| `loser_runmax` | 0 |
+| `loser_runmin` | 0 |
+| `margin_per_possession` | 0 |
+| `margin_range_300s` | 0 |
+| `margin_rate` | 0 |
+| `motif_0` | 0 |
+| `motif_2` | 0 |
+| `need_frac` | 0 |
+| `need_vs_expected` | 0 |
+| `open_vs_now_lead` | 0 |
+| `overround_now` | 0 |
+| `pace_last_300s_vs_line` | 0 |
+| `pace_vs_line_pct` | 0 |
+| `pm_ratio` | 0 |
 
 ## Files
 
+- `STRATEGY_SPEC.md` — EVERY strategy, every element, in the exact order it happens
+- `laz_features_basketball.py` — every term implemented 1:1 from the engine builders
 - `quarantine.csv` — every validated strategy this run withheld, and the exact reason
 - `verify_live.py` — re-checks the live database against this bundle; reads only
 - `laz_pca_features_basketball.py` — the frozen PCA transforms, as importable production code
 - `MANIFEST.json` — the machine-readable bundle: every row, column and hash
+- `strategies_full.json` — the same, machine-readable: every ordered step, every threshold, every column
 - `quarantine.json` — the same, with each strategy's full acceptance record attached
 - `deploy.sql` — the whole deployment, one transaction, idempotent

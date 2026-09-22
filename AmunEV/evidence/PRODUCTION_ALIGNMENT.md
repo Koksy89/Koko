@@ -63,7 +63,57 @@ one of them from those files rather than from a restatement here.
 | G13 | every `pc_*` has its frozen transform | **silence** — the composite is None forever |
 | G14 | production computes every condition term | **silence** — the condition answers None forever |
 
+## Nothing the search validated is thrown away
+
+Two of the gates above were mine, not production's, and they are gone:
+
+- **A term production does not yet compute is the engine's job.** `laz_featuregen__write`
+  emits that term's implementation 1:1 from the engine's own builder, and
+  `laz_featuregen__prove` replays the frame through the generated file and diffs every
+  value against the pool the search used, exact to float32. So the bundle **ships the
+  feature** (`laz_features_<sport>.py`) with the strategy instead of refusing it.
+- **A base that arms on more than a role is not missing information.** `late_lead_hold`
+  is `_lead(C, 0.85, 1.2, 3)` — the leader, in the last 15%, 4+ up. The engine knows that
+  exactly, so the window is **emitted as conditions** (`u_elapsed >= 0.85`,
+  `u_elapsed <= 1.2`, `abs_lead > 3`) and stacked in front of the strategy's own. The
+  registry's condition list IS the execution order.
+
+What remains withheld is production's own limit, not a judgement: a market its evaluator
+cannot settle (a point spread, a quarter or half result). Those are **still written to
+`laz_strategy_registry`, with `enabled = false` and `blocked_reason`** — in the database,
+joinable to their provenance, unable to fire and unable to break the load.
+
+## Every element, in the exact order it happens
+
+`element_doc` (schema `amunev.element_doc/2`) now carries the ordered implementation,
+written at acceptance inside the search worker. For `late_lead_hold` with two conditions:
+
+| # | gate | must be true | if not |
+|---|---|---|---|
+| 1 | MARKET OPEN | `market_status == 'Open'` | skip this tick entirely |
+| 2 | FEED FRESH | `tick_gap_s is null OR tick_gap_s <= 180` | skip this tick entirely |
+| 3 | BASE ARM MASK — SIDE | `resolve_side('leader') is not null` | do not fire; never guess a side |
+| 4 | BASE ARM MASK — WINDOW 1 | `u_elapsed >= 0.85` | do not fire on this tick |
+| 5 | BASE ARM MASK — WINDOW 2 | `u_elapsed <= 1.2` | do not fire on this tick |
+| 6 | BASE ARM MASK — WINDOW 3 | `abs_lead > 3.0` | do not fire on this tick |
+| 7 | PRICE OF THE BACKED SIDE | `price = price_for_side(side); price == price` | do not fire; a NaN price passes every bound |
+| 8 | PRICE BAND | `1.4 <= price <= 4.2` | do not fire on this tick |
+| 9 | CONDITION 1 | `line_move <= 4.0` | do not fire (a null fails closed) |
+| 10 | CONDITION 2 | `trailer_price >= 1.92` | do not fire (a null fails closed) |
+| 11 | FIRST TICK ONLY | this (match_id, strategy) has not fired before | do not fire again in this match |
+| 12 | PLACE | back `leader` at price, market `match_winner` | — |
+| 13 | SETTLE | the backed side wins the match | unsettled is excluded, never a loss |
+
+Read top to bottom, stopping at the first step that is not true, this **is** the
+implementation. `STRATEGY_SPEC.md` carries one of these per strategy;
+`strategies_full.json` carries the same machine-readable.
+
+`spec_sha` now covers the base mask, so two strategies with identical conditions and
+different masks are no longer hashed as the same strategy. `exec_sha` hashes the ordered
+steps themselves.
+
 ## The result on the real book
 
-65 of 142 deployable, preflight PASS, 77 withheld — each naming its own remedy.
-Before this change the number that could load was 0.
+**128 of 142 live**, preflight PASS, 14 registered-not-live (all of them markets the
+basketball evaluator cannot settle). Before any of this work, the number that could load
+was **0**.

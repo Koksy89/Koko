@@ -9,7 +9,9 @@ import numpy as np
 ENGINE = 'AmunEV_Engine_V2.py'
 WANT = ['laz_release__parse_conditions', 'laz_mode3___split_clauses',
         'laz_mode3___element_record', 'laz_production___conditions_raw',
-        'laz_production__base_card', 'laz_production__stack']
+        'laz_production__base_card', 'laz_production__stack',
+        # [EXEC SPEC] the record now carries the ordered implementation
+        'laz_mode3___execution_spec', 'laz_mode3___mask_residual']
 src = open(ENGINE, encoding='utf-8').read()
 tree = ast.parse(src)
 ns = {}
@@ -26,8 +28,12 @@ ns.update(dict(_m=_m, np=np, re=re, _re=re, json=json, hashlib=hashlib,
                inspect=__import__('inspect'),
                laz_settlement__settled_by=lambda s: 'score (owner rule)',
                laz_production___BASE_WORDS={'lead_ml': 'backs whichever side leads'},
-               _laz_code_fingerprint=lambda: 'deadbeefcafe0000'))
+               _laz_code_fingerprint=lambda: 'deadbeefcafe0000',
+               laz_sink__swallow=lambda tag, exc: None))
 for node in tree.body:
+    if isinstance(node, ast.Assign) and any(
+            getattr(t, 'id', '') == 'laz_mode3___MASK_WINDOWS' for t in node.targets):
+        exec(compile(ast.Module(body=[node], type_ignores=[]), ENGINE, 'exec'), ns)
     if getattr(node, 'name', None) in WANT:
         exec(compile(ast.Module(body=[node], type_ignores=[]), ENGINE, 'exec'), ns)
 ns['globals'] = lambda: ns
@@ -47,7 +53,26 @@ chain = ['lead_streak >= 3', 'u_drift <= 2.0']
 print('laz_mode3___element_record — the happy path')
 d = elem(rec, 'lead_ml', 'lead_streak >= 3', 'search:lead_streak >= 3', 'search',
          1.8, 2.2, chain, idx, pool, 'basketball')
-check('schema tagged', d['schema'] == 'amunev.element_doc/1')
+check('schema tagged', d['schema'] == 'amunev.element_doc/2')
+# [EXEC SPEC] v2 carries the ordered implementation, not just the ingredients
+check('the record carries the ORDERED execution', isinstance(d.get('execution'), list)
+      and len(d['execution']) >= 6)
+check('the steps are numbered 1..n with no gaps',
+      [x['step'] for x in d['execution']] == list(range(1, len(d['execution']) + 1)))
+check('the market gate comes first', d['execution'][0]['gate'] == 'MARKET OPEN')
+check('the side is resolved before the price',
+      [x['gate'] for x in d['execution']].index('BASE ARM MASK — SIDE')
+      < [x['gate'] for x in d['execution']].index('PRICE OF THE BACKED SIDE'))
+check('every step states its exact trigger and what happens on failure',
+      all(x.get('trigger') and x.get('on_fail') and x.get('why') for x in d['execution']))
+check('the record names the production bet_role', 'bet_role' in d)
+check('the record carries the base mask as clauses', isinstance(d.get('base_mask_clauses'), list))
+check('the execution order has its own hash', len(str(d.get('exec_sha', ''))) == 16)
+check('the spec hash now covers the mask, so two masks are two strategies',
+      d['spec_sha'] != hashlib.sha256(json.dumps(
+          dict(base=d['base'], conditions=d['conditions_text'], band=d['band'],
+               seed=d['seed']['text'], market=d['market']),
+          sort_keys=True, default=str).encode('utf-8')).hexdigest()[:16])
 check('documented at acceptance', d['documented_at'] == 'acceptance')
 check('seed text captured', d['seed']['text'] == 'lead_streak >= 3' and d['seed']['has_text'])
 check('seed identity and kind captured', d['seed']['id'].startswith('search:') and d['seed']['kind'] == 'search')

@@ -1,0 +1,5913 @@
+{
+ "engine_sha256": "engine_e2e_test",
+ "feature_namespace": [
+  {
+   "column_name": "x_x_minute__x__u_pace__minus__x_u_elapsed__minus__u_ti_34d4ce1c",
+   "feature": "X_X_minute__x__u_pace__minus__X_u_elapsed__minus__u_time_in_lead",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_x_u_elapsed__minus__u_time_in_lead__minus__x_u_pace__aec3c7da",
+   "feature": "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_x_u_elapsed__minus__u_time_in_lead__over__x_u_pace___1dd07084",
+   "feature": "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_a_score__over__home_odds",
+   "feature": "X_a_score__over__home_odds",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_home_odds__x__point_spread_away",
+   "feature": "X_home_odds__x__point_spread_away",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_minute__minus__u_drought",
+   "feature": "X_minute__minus__u_drought",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_minute__minus__u_pace",
+   "feature": "X_minute__minus__u_pace",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_minute__over__u_pace",
+   "feature": "X_minute__over__u_pace",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_minute__over__u_vol",
+   "feature": "X_minute__over__u_vol",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_u_elapsed__minus__u_time_in_lead",
+   "feature": "X_u_elapsed__minus__u_time_in_lead",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "abs_lead",
+   "feature": "abs_lead",
+   "kind": "feature"
+  },
+  {
+   "column_name": "abs_margin_per_remaining_s",
+   "feature": "abs_margin_per_remaining_s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "away_odds",
+   "feature": "away_odds",
+   "kind": "feature"
+  },
+  {
+   "column_name": "backed_pts_last_60s",
+   "feature": "backed_pts_last_60s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "both_scored",
+   "feature": "both_scored",
+   "kind": "feature"
+  },
+  {
+   "column_name": "dog_odds_vol_180",
+   "feature": "dog_odds_vol_180",
+   "kind": "feature"
+  },
+  {
+   "column_name": "dow",
+   "feature": "dow",
+   "kind": "feature"
+  },
+  {
+   "column_name": "drift_ratio",
+   "feature": "drift_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "eng_minute_ge_2",
+   "feature": "eng_minute_ge_2",
+   "kind": "feature"
+  },
+  {
+   "column_name": "eng_score_tied",
+   "feature": "eng_score_tied",
+   "kind": "feature"
+  },
+  {
+   "column_name": "fav_lead_m30",
+   "feature": "fav_lead_m30",
+   "kind": "feature"
+  },
+  {
+   "column_name": "fav_odds_trend_60",
+   "feature": "fav_odds_trend_60",
+   "kind": "feature"
+  },
+  {
+   "column_name": "first_scorer_is_backed",
+   "feature": "first_scorer_is_backed",
+   "kind": "feature"
+  },
+  {
+   "column_name": "h_score",
+   "feature": "h_score",
+   "kind": "feature"
+  },
+  {
+   "column_name": "home_pace",
+   "feature": "home_pace",
+   "kind": "feature"
+  },
+  {
+   "column_name": "hour",
+   "feature": "hour",
+   "kind": "feature"
+  },
+  {
+   "column_name": "imbal",
+   "feature": "imbal",
+   "kind": "feature"
+  },
+  {
+   "column_name": "is_big_lead",
+   "feature": "is_big_lead",
+   "kind": "feature"
+  },
+  {
+   "column_name": "is_favorite",
+   "feature": "is_favorite",
+   "kind": "feature"
+  },
+  {
+   "column_name": "is_trailer",
+   "feature": "is_trailer",
+   "kind": "feature"
+  },
+  {
+   "column_name": "jump_loser",
+   "feature": "jump_loser",
+   "kind": "feature"
+  },
+  {
+   "column_name": "ld_rank",
+   "feature": "ld_rank",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_change_last_300s",
+   "feature": "lead_change_last_300s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_changes_300s",
+   "feature": "lead_changes_300s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_changes_total",
+   "feature": "lead_changes_total",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_jump",
+   "feature": "lead_jump",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_m15",
+   "feature": "lead_m15",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_m30",
+   "feature": "lead_m30",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_m75",
+   "feature": "lead_m75",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_odds",
+   "feature": "lead_odds",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_size",
+   "feature": "lead_size",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_vs_line",
+   "feature": "lead_vs_line",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_vs_med",
+   "feature": "lead_vs_med",
+   "kind": "feature"
+  },
+  {
+   "column_name": "leader_implied_gap",
+   "feature": "leader_implied_gap",
+   "kind": "feature"
+  },
+  {
+   "column_name": "leader_runmax",
+   "feature": "leader_runmax",
+   "kind": "feature"
+  },
+  {
+   "column_name": "line",
+   "feature": "line",
+   "kind": "feature"
+  },
+  {
+   "column_name": "line_flat",
+   "feature": "line_flat",
+   "kind": "feature"
+  },
+  {
+   "column_name": "line_move",
+   "feature": "line_move",
+   "kind": "feature"
+  },
+  {
+   "column_name": "line_open",
+   "feature": "line_open",
+   "kind": "feature"
+  },
+  {
+   "column_name": "line_vel",
+   "feature": "line_vel",
+   "kind": "feature"
+  },
+  {
+   "column_name": "loser_runmax",
+   "feature": "loser_runmax",
+   "kind": "feature"
+  },
+  {
+   "column_name": "loser_runmin",
+   "feature": "loser_runmin",
+   "kind": "feature"
+  },
+  {
+   "column_name": "margin_per_possession",
+   "feature": "margin_per_possession",
+   "kind": "feature"
+  },
+  {
+   "column_name": "margin_range_300s",
+   "feature": "margin_range_300s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "margin_rate",
+   "feature": "margin_rate",
+   "kind": "feature"
+  },
+  {
+   "column_name": "motif_0",
+   "feature": "motif_0",
+   "kind": "feature"
+  },
+  {
+   "column_name": "motif_2",
+   "feature": "motif_2",
+   "kind": "feature"
+  },
+  {
+   "column_name": "nchg_120",
+   "feature": "nchg_120",
+   "kind": "feature"
+  },
+  {
+   "column_name": "need_frac",
+   "feature": "need_frac",
+   "kind": "feature"
+  },
+  {
+   "column_name": "need_vs_expected",
+   "feature": "need_vs_expected",
+   "kind": "feature"
+  },
+  {
+   "column_name": "needed_rate_for_over",
+   "feature": "needed_rate_for_over",
+   "kind": "feature"
+  },
+  {
+   "column_name": "odds_ratio",
+   "feature": "odds_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "open_gap",
+   "feature": "open_gap",
+   "kind": "feature"
+  },
+  {
+   "column_name": "open_vs_now_lead",
+   "feature": "open_vs_now_lead",
+   "kind": "feature"
+  },
+  {
+   "column_name": "opp",
+   "feature": "opp",
+   "kind": "feature"
+  },
+  {
+   "column_name": "opp_drift",
+   "feature": "opp_drift",
+   "kind": "feature"
+  },
+  {
+   "column_name": "opp_o",
+   "feature": "opp_o",
+   "kind": "feature"
+  },
+  {
+   "column_name": "opp_velocity",
+   "feature": "opp_velocity",
+   "kind": "feature"
+  },
+  {
+   "column_name": "overround_now",
+   "feature": "overround_now",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pace_last_300s_vs_line",
+   "feature": "pace_last_300s_vs_line",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pace_vs_line_pct",
+   "feature": "pace_vs_line_pct",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pc_2f7f4d0c",
+   "feature": "pc_2f7f4d0c",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_428f55cf",
+   "feature": "pc_428f55cf",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_51f228a2",
+   "feature": "pc_51f228a2",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_6a99ae09",
+   "feature": "pc_6a99ae09",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_aa16b0a5",
+   "feature": "pc_aa16b0a5",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_dc4196fb",
+   "feature": "pc_dc4196fb",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_f3e46219",
+   "feature": "pc_f3e46219",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_fea3bd2c",
+   "feature": "pc_fea3bd2c",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pm_away",
+   "feature": "pm_away",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pm_home",
+   "feature": "pm_home",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pm_ratio",
+   "feature": "pm_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "prematch_dog_odds",
+   "feature": "prematch_dog_odds",
+   "kind": "feature"
+  },
+  {
+   "column_name": "price_gap",
+   "feature": "price_gap",
+   "kind": "feature"
+  },
+  {
+   "column_name": "price_rank_in_match",
+   "feature": "price_rank_in_match",
+   "kind": "feature"
+  },
+  {
+   "column_name": "prog",
+   "feature": "prog",
+   "kind": "feature"
+  },
+  {
+   "column_name": "prog_q",
+   "feature": "prog_q",
+   "kind": "feature"
+  },
+  {
+   "column_name": "prog_score",
+   "feature": "prog_score",
+   "kind": "feature"
+  },
+  {
+   "column_name": "prog_x_margin",
+   "feature": "prog_x_margin",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pts_last_60s",
+   "feature": "pts_last_60s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "px_gap_ratio",
+   "feature": "px_gap_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "q",
+   "feature": "q",
+   "kind": "feature"
+  },
+  {
+   "column_name": "recovery_x",
+   "feature": "recovery_x",
+   "kind": "feature"
+  },
+  {
+   "column_name": "req_ratio",
+   "feature": "req_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "retrace_lead",
+   "feature": "retrace_lead",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_dog_odds",
+   "feature": "rk_dog_odds",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_fav_odds",
+   "feature": "rk_fav_odds",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_implied_edge",
+   "feature": "rk_implied_edge",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_lead_off_high",
+   "feature": "rk_lead_off_high",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_lead_off_low",
+   "feature": "rk_lead_off_low",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_odds_ratio",
+   "feature": "rk_odds_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "runmin",
+   "feature": "runmin",
+   "kind": "feature"
+  },
+  {
+   "column_name": "scores_300s",
+   "feature": "scores_300s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "secs_since_lead_change",
+   "feature": "secs_since_lead_change",
+   "kind": "feature"
+  },
+  {
+   "column_name": "secs_since_price",
+   "feature": "secs_since_price",
+   "kind": "feature"
+  },
+  {
+   "column_name": "secs_since_quarter_start",
+   "feature": "secs_since_quarter_start",
+   "kind": "feature"
+  },
+  {
+   "column_name": "secs_since_run_started",
+   "feature": "secs_since_run_started",
+   "kind": "feature"
+  },
+  {
+   "column_name": "secs_since_score",
+   "feature": "secs_since_score",
+   "kind": "feature"
+  },
+  {
+   "column_name": "spread_cover_now",
+   "feature": "spread_cover_now",
+   "kind": "feature"
+  },
+  {
+   "column_name": "team_pace_gap",
+   "feature": "team_pace_gap",
+   "kind": "feature"
+  },
+  {
+   "column_name": "ten_mins",
+   "feature": "ten_mins",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tg_imp_over",
+   "feature": "tg_imp_over",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tg_imp_under",
+   "feature": "tg_imp_under",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tg_overround",
+   "feature": "tg_overround",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tg_proj_vs_line",
+   "feature": "tg_proj_vs_line",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tg_px_ratio",
+   "feature": "tg_px_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "time_at_this_price",
+   "feature": "time_at_this_price",
+   "kind": "feature"
+  },
+  {
+   "column_name": "time_left",
+   "feature": "time_left",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tot_vs_line",
+   "feature": "tot_vs_line",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_goals_handicap_ffill",
+   "feature": "total_goals_handicap_ffill",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_line_move",
+   "feature": "total_line_move",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_points_handicap",
+   "feature": "total_points_handicap",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_points_over",
+   "feature": "total_points_over",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_points_under",
+   "feature": "total_points_under",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_pts",
+   "feature": "total_pts",
+   "kind": "feature"
+  },
+  {
+   "column_name": "trail",
+   "feature": "trail",
+   "kind": "feature"
+  },
+  {
+   "column_name": "trailer_drift",
+   "feature": "trailer_drift",
+   "kind": "feature"
+  },
+  {
+   "column_name": "trailer_price",
+   "feature": "trailer_price",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_drift_opp",
+   "feature": "u_drift_opp",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_drought",
+   "feature": "u_drought",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_elapsed",
+   "feature": "u_elapsed",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_hazard",
+   "feature": "u_hazard",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_jump",
+   "feature": "u_jump",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_margin_abs",
+   "feature": "u_margin_abs",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_open",
+   "feature": "u_open",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_overround",
+   "feature": "u_overround",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_pace",
+   "feature": "u_pace",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_price",
+   "feature": "u_price",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_price_open",
+   "feature": "u_price_open",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_ratio_open",
+   "feature": "u_ratio_open",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_ratio_shift",
+   "feature": "u_ratio_shift",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_trend",
+   "feature": "u_trend",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_vel_t",
+   "feature": "u_vel_t",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_vf",
+   "feature": "u_vf",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_vol",
+   "feature": "u_vol",
+   "kind": "feature"
+  },
+  {
+   "column_name": "wall_min",
+   "feature": "wall_min",
+   "kind": "feature"
+  }
+ ],
+ "generated_terms": [
+  "X_X_minute__x__u_pace__minus__X_u_elapsed__minus__u_time_in_lead",
+  "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead",
+  "X_a_score__over__home_odds",
+  "X_home_odds__x__point_spread_away",
+  "X_minute__minus__u_pace",
+  "X_minute__over__u_pace",
+  "X_minute__x__u_pace",
+  "X_u_elapsed__minus__u_time_in_lead",
+  "X_u_pace__over__u_time_in_lead",
+  "a_score",
+  "abs_lead",
+  "away_odds",
+  "dog_odds_vol_180",
+  "drift_ratio",
+  "fav_odds_trend_60",
+  "h_score",
+  "home_odds",
+  "hour",
+  "imbal",
+  "is_big_lead",
+  "is_favorite",
+  "jump_loser",
+  "ld_rank",
+  "lead_jump",
+  "lead_m30",
+  "lead_odds",
+  "lead_size",
+  "lead_vs_med",
+  "minute",
+  "nchg_120",
+  "needed_rate_for_over",
+  "odds_ratio",
+  "open_gap",
+  "opp",
+  "opp_drift",
+  "opp_o",
+  "opp_velocity",
+  "pm_away",
+  "pm_home",
+  "point_spread_away",
+  "prematch_dog_odds",
+  "price_gap",
+  "price_rank_in_match",
+  "prog_q",
+  "px_gap_ratio",
+  "q",
+  "recovery_x",
+  "retrace_lead",
+  "rk_dog_odds",
+  "rk_fav_odds",
+  "runmin",
+  "secs_since_price",
+  "ten_mins",
+  "tg_imp_over",
+  "tg_imp_under",
+  "total_points_handicap",
+  "total_points_over",
+  "total_points_under",
+  "total_pts",
+  "u_drift_opp",
+  "u_elapsed",
+  "u_hazard",
+  "u_margin_abs",
+  "u_open",
+  "u_overround",
+  "u_pace",
+  "u_price_open",
+  "u_ratio",
+  "u_ratio_shift",
+  "u_time_in_lead",
+  "u_vf"
+ ],
+ "live": [
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "lead_vs_line <= -160.315",
+    "open_gap <= 2.2797",
+    "ten_mins <= 23.4333"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.427,
+   "oos_roi": 21.6,
+   "oos_win": 49.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:HT_Unde_0017",
+   "terms": [
+    "lead_vs_line",
+    "open_gap",
+    "ten_mins"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "X_minute__minus__u_drought <= 27.3487",
+    "tg_overround <= 1.1237",
+    "tg_imp_over <= 0.605"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute"
+   ],
+   "needs_pca": [],
+   "odds": 2.23,
+   "oos_roi": 14.1,
+   "oos_win": 52.2,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0049",
+   "terms": [
+    "X_minute__minus__u_drought",
+    "first_scorer_is_backed",
+    "line_move",
+    "price_gap",
+    "prog_score",
+    "tg_imp_over",
+    "tg_overround"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "lead_vs_med >= 1.0267",
+    "lead_size >= 7",
+    "lead_odds >= 1.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.033,
+   "oos_roi": 18.4,
+   "oos_win": 64.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "LZ_V270_BASK_022",
+   "terms": [
+    "lead_odds",
+    "lead_size",
+    "lead_vs_med"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "lead_vs_line <= -170.833",
+    "X_home_odds__x__point_spread_away <= 10.82",
+    "u_vol >= 0.0119"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:drifter_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "point_spread_away"
+   ],
+   "needs_pca": [],
+   "odds": 5.096,
+   "oos_roi": 17.5,
+   "oos_win": 21.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:drifter_0027",
+   "terms": [
+    "X_home_odds__x__point_spread_away",
+    "lead_vs_line",
+    "time_at_this_price",
+    "u_vol"
+   ],
+   "tier": "Feeder"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "lead_size >= 7",
+    "drift_ratio >= 0.6632",
+    "lead_odds >= 1.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.193,
+   "oos_roi": 11.8,
+   "oos_win": 57.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "LZ_V270_BASK_015",
+   "terms": [
+    "drift_ratio",
+    "lead_odds",
+    "lead_size"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "open_vs_now_lead <= 0.9043",
+    "motif_0 <= 0",
+    "X_minute__minus__u_drought <= 26.2769",
+    "tg_overround <= 1.1237"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute"
+   ],
+   "needs_pca": [],
+   "odds": 2.374,
+   "oos_roi": 11.3,
+   "oos_win": 46.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0169",
+   "terms": [
+    "X_minute__minus__u_drought",
+    "abs_lead",
+    "line_open",
+    "motif_0",
+    "need_frac",
+    "open_vs_now_lead",
+    "tg_overround",
+    "u_elapsed"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "lead_vs_line <= -143",
+    "u_ratio_open <= 2.9167",
+    "tg_overround <= 1.1237"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.36,
+   "oos_roi": 11.1,
+   "oos_win": 48.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0062",
+   "terms": [
+    "first_scorer_is_backed",
+    "lead_vs_line",
+    "line_move",
+    "prog_score",
+    "tg_overround",
+    "u_ratio_open"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_q >= 0.5",
+    "u_open >= 1.2",
+    "is_trailer <= 0.8231"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.778,
+   "oos_roi": 10.6,
+   "oos_win": 61.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0005",
+   "terms": [
+    "is_trailer",
+    "prog_q",
+    "u_open"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "odds_ratio <= 1.227",
+    "trailer_price >= 1.8518",
+    "total_points_over <= 1.9442",
+    "lead_changes_300s <= 1"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.571,
+   "oos_roi": 10.5,
+   "oos_win": 70.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0110",
+   "terms": [
+    "abs_lead",
+    "lead_changes_300s",
+    "line_move",
+    "odds_ratio",
+    "prog_score",
+    "total_points_over",
+    "trailer_price",
+    "u_elapsed"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "lead_size >= 3",
+    "u_ratio_open <= 2.8107",
+    "open_gap <= 3.55"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.238,
+   "oos_roi": 10.5,
+   "oos_win": 49.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:late_le_0181",
+   "terms": [
+    "abs_lead",
+    "lead_size",
+    "open_gap",
+    "u_elapsed",
+    "u_ratio_open"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "tg_overround <= 1.1237"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.254,
+   "oos_roi": 8.5,
+   "oos_win": 49.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0056",
+   "terms": [
+    "first_scorer_is_backed",
+    "line_move",
+    "opp_drift",
+    "price_gap",
+    "prog_score",
+    "tg_overround"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "trailer_price >= 1.92",
+    "pc_f3e46219 <= 2.3868"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.528,
+   "oos_roi": 8.2,
+   "oos_win": 70.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_lead_ml_0081",
+   "terms": [
+    "line_move",
+    "pc_f3e46219",
+    "prog_score",
+    "trailer_price"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -150.5",
+    "u_ratio_open <= 2.5724",
+    "tg_overround <= 1.1237"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.336,
+   "oos_roi": 8.0,
+   "oos_win": 47.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0060",
+   "terms": [
+    "first_scorer_is_backed",
+    "lead_vs_line",
+    "prog_score",
+    "tg_overround",
+    "u_ratio_open"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "line >= 170",
+    "pm_home <= 2.6314"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "DRIFTED",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.444,
+   "oos_roi": 7.6,
+   "oos_win": 43.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_DRIFTED_0046",
+   "terms": [
+    "line",
+    "pm_home"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog >= 0.71510175543680066",
+    "time_at_this_price < 52.915909090909054",
+    "pace_last_300s_vs_line >= -159.72"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.912,
+   "oos_roi": 7.5,
+   "oos_win": 56.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:TG_Hist_0072",
+   "terms": [
+    "pace_last_300s_vs_line",
+    "prog",
+    "time_at_this_price"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "u_overround <= 1.1109",
+    "req_ratio <= 1.3805"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.357,
+   "oos_roi": 7.4,
+   "oos_win": 47.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0059",
+   "terms": [
+    "first_scorer_is_backed",
+    "req_ratio",
+    "u_overround"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "wall_min <= 171.805",
+    "lead_m15 <= 1",
+    "pc_51f228a2 <= -0.1057",
+    "secs_since_price <= 0"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.755,
+   "oos_roi": 7.1,
+   "oos_win": 60.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0009",
+   "terms": [
+    "lead_m15",
+    "pc_51f228a2",
+    "secs_since_price",
+    "wall_min"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "leader_runmax >= 1.8456",
+    "tot_vs_line <= -128.8692"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.254,
+   "oos_roi": 7.1,
+   "oos_win": 47.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0054",
+   "terms": [
+    "first_scorer_is_backed",
+    "leader_runmax",
+    "line_open",
+    "prog_score",
+    "rk_odds_ratio",
+    "tot_vs_line"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "trail <= 6"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.374,
+   "oos_roi": 6.8,
+   "oos_win": 45.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0007",
+   "terms": [
+    "line_move",
+    "opp_drift",
+    "price_gap",
+    "prog_score",
+    "trail"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -140.5",
+    "req_ratio >= 1.195",
+    "tg_overround <= 1.1237"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.429,
+   "oos_roi": 6.8,
+   "oos_win": 45.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0055",
+   "terms": [
+    "first_scorer_is_backed",
+    "lead_vs_line",
+    "prog_score",
+    "req_ratio",
+    "tg_overround"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8351",
+    "opp >= 1.91"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.568,
+   "oos_roi": 6.4,
+   "oos_win": 67.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0098",
+   "terms": [
+    "first_scorer_is_backed",
+    "opp",
+    "prog_score",
+    "rk_dog_odds"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "leader_runmax <= 3.66",
+    "secs_since_run_started >= 0",
+    "u_trend <= -5.7851",
+    "total_goals_handicap_ffill <= 197.5",
+    "team_pace_gap <= 13.3333"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:drifter_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 5.159,
+   "oos_roi": 6.2,
+   "oos_win": 21.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:drifter_0029",
+   "terms": [
+    "leader_runmax",
+    "line_open",
+    "pm_away",
+    "secs_since_run_started",
+    "team_pace_gap",
+    "total_goals_handicap_ffill",
+    "u_trend"
+   ],
+   "tier": "Feeder"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "line >= 170",
+    "X_minute__over__u_vol <= 2696.29",
+    "both_scored >= 1"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:drifter_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute"
+   ],
+   "needs_pca": [],
+   "odds": 5.452,
+   "oos_roi": 6.0,
+   "oos_win": 18.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:drifter_0026",
+   "terms": [
+    "X_minute__over__u_vol",
+    "both_scored",
+    "line"
+   ],
+   "tier": "Ino"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "prog_score <= 0.35",
+    "u_ratio_open <= 3.0575",
+    "trailer_price >= 1.8315",
+    "prematch_dog_odds >= 1.9465"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.575,
+   "oos_roi": 5.9,
+   "oos_win": 67.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0115",
+   "terms": [
+    "abs_lead",
+    "prematch_dog_odds",
+    "prog_score",
+    "trailer_price",
+    "u_elapsed",
+    "u_ratio_open"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "dog_odds_vol_180 <= 0.15546",
+    "price_gap >= 0.04",
+    "lead_changes_300s <= 2",
+    "line_open >= 134.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.622,
+   "oos_roi": 5.9,
+   "oos_win": 66.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0103",
+   "terms": [
+    "abs_lead",
+    "dog_odds_vol_180",
+    "lead_changes_300s",
+    "line_open",
+    "price_gap",
+    "u_elapsed"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score >= 0.45",
+    "u_drift_opp <= 11.7818"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.885,
+   "oos_roi": 5.9,
+   "oos_win": 56.2,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:TG_Hist_0071",
+   "terms": [
+    "prog_score",
+    "u_drift_opp"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "lead_m15 <= 0",
+    "u_overround >= 1.0508"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:garbage_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.763,
+   "oos_roi": 5.4,
+   "oos_win": 59.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:garbage_0127",
+   "terms": [
+    "lead_m15",
+    "u_overround"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "dog_odds_vol_180 >= 0.0469",
+    "u_ratio_shift >= 0.395"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.927,
+   "oos_roi": 5.3,
+   "oos_win": 55.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0135",
+   "terms": [
+    "dog_odds_vol_180",
+    "line_open",
+    "need_frac",
+    "u_ratio_shift"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "u_ratio_open <= 3.0575",
+    "trailer_price >= 1.8315",
+    "pc_f3e46219 <= 2.0943",
+    "lead_changes_300s <= 1"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.612,
+   "oos_roi": 5.2,
+   "oos_win": 65.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0089",
+   "terms": [
+    "first_scorer_is_backed",
+    "lead_changes_300s",
+    "pc_f3e46219",
+    "prog_score",
+    "trailer_price",
+    "u_ratio_open"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "X_minute__minus__u_drought <= 28.0923",
+    "tg_overround <= 1.1237"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute"
+   ],
+   "needs_pca": [],
+   "odds": 2.198,
+   "oos_roi": 5.2,
+   "oos_win": 48.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0047",
+   "terms": [
+    "X_minute__minus__u_drought",
+    "first_scorer_is_backed",
+    "line_open",
+    "prog_score",
+    "rk_odds_ratio",
+    "tg_overround"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "dog_odds_vol_180 <= 0.15546",
+    "rk_dog_odds >= 1.85",
+    "pc_f3e46219 <= 2.0943",
+    "lead_changes_300s <= 1"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.599,
+   "oos_roi": 5.1,
+   "oos_win": 66.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0097",
+   "terms": [
+    "dog_odds_vol_180",
+    "first_scorer_is_backed",
+    "lead_changes_300s",
+    "pc_f3e46219",
+    "rk_dog_odds"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "total_points_under >= 1.75",
+    "hour >= 2",
+    "away_odds >= 1.159999966621399",
+    "tot_vs_line <= -129.823",
+    "opp >= 1.53"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.645,
+   "oos_roi": 5.0,
+   "oos_win": 64.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0091",
+   "terms": [
+    "away_odds",
+    "first_scorer_is_backed",
+    "hour",
+    "opp",
+    "tot_vs_line",
+    "total_points_under"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "secs_since_lead_change >= 600",
+    "rk_fav_odds >= 1.23",
+    "u_ratio_open <= 2.842"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:held_lead",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.155,
+   "oos_roi": 4.9,
+   "oos_win": 49.0,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:held_le_0182",
+   "terms": [
+    "rk_fav_odds",
+    "secs_since_lead_change",
+    "u_ratio_open"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "open_vs_now_lead <= 0.9043",
+    "motif_0 <= 0",
+    "pc_f3e46219 >= -0.4756"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.406,
+   "oos_roi": 4.9,
+   "oos_win": 43.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_dog_leading_0148",
+   "terms": [
+    "line_open",
+    "motif_0",
+    "need_frac",
+    "open_vs_now_lead",
+    "pc_f3e46219"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "lead_vs_line <= -170.833",
+    "total_line_move >= -4",
+    "lead_m30 <= 1"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:Loser_1G",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 5.383,
+   "oos_roi": 4.9,
+   "oos_win": 18.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:Loser_1_0023",
+   "terms": [
+    "lead_m30",
+    "lead_vs_line",
+    "time_at_this_price",
+    "total_line_move"
+   ],
+   "tier": "Ino"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "rk_lead_off_high >= 0.2333",
+    "lead_m15 <= 1",
+    "line_vel <= 1"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.907,
+   "oos_roi": 4.8,
+   "oos_win": 55.2,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0136",
+   "terms": [
+    "lead_m15",
+    "line_open",
+    "line_vel",
+    "rk_lead_off_high"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "open_vs_now_lead <= 0.9043",
+    "motif_0 <= 0",
+    "X_minute__minus__u_drought <= 26.2769",
+    "req_ratio >= 1.1951",
+    "tg_overround <= 1.1237"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute"
+   ],
+   "needs_pca": [],
+   "odds": 2.402,
+   "oos_roi": 4.8,
+   "oos_win": 43.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_lead_ml_0144",
+   "terms": [
+    "X_minute__minus__u_drought",
+    "line_open",
+    "motif_0",
+    "need_frac",
+    "open_vs_now_lead",
+    "req_ratio",
+    "tg_overround"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "need_vs_expected <= 168.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.78,
+   "oos_roi": 4.7,
+   "oos_win": 58.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:TG_Hist_0014",
+   "terms": [
+    "line_move",
+    "need_vs_expected",
+    "opp_drift",
+    "price_gap",
+    "prog_score"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "u_vf <= 0.8899",
+    "ld_rank >= 0.625",
+    "is_big_lead >= 0.2821"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.78,
+   "oos_roi": 4.6,
+   "oos_win": 58.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0035",
+   "terms": [
+    "is_big_lead",
+    "ld_rank",
+    "time_at_this_price",
+    "u_vf"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "rk_implied_edge >= 0.107",
+    "u_drought <= 71.4786"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.494,
+   "oos_roi": 4.3,
+   "oos_win": 69.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_lead_ml_0082",
+   "terms": [
+    "prog_score",
+    "rk_implied_edge",
+    "u_drought"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog >= 0.71510175543680066",
+    "time_at_this_price < 52.915909090909054",
+    "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead <= 0.0249"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "u_elapsed",
+    "u_time_in_lead"
+   ],
+   "needs_pca": [],
+   "odds": 1.907,
+   "oos_roi": 4.3,
+   "oos_win": 54.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0068",
+   "terms": [
+    "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead",
+    "prog",
+    "time_at_this_price"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "tot_vs_line >= -174.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.78,
+   "oos_roi": 4.2,
+   "oos_win": 58.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0003",
+   "terms": [
+    "line_move",
+    "opp_drift",
+    "price_gap",
+    "prog_score",
+    "tot_vs_line"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "trailer_price >= 1.8471",
+    "pace_vs_line_pct >= -0.9852",
+    "eng_minute_ge_2 >= 1"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.933,
+   "oos_roi": 4.1,
+   "oos_win": 54.2,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0132",
+   "terms": [
+    "eng_minute_ge_2",
+    "line_open",
+    "need_frac",
+    "pace_vs_line_pct",
+    "trailer_price"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "X_minute__minus__u_drought <= 28.0923",
+    "lead_changes_300s <= 2",
+    "tg_overround <= 1.1237"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute"
+   ],
+   "needs_pca": [],
+   "odds": 2.293,
+   "oos_roi": 4.1,
+   "oos_win": 46.0,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0166",
+   "terms": [
+    "X_minute__minus__u_drought",
+    "abs_lead",
+    "lead_changes_300s",
+    "line_open",
+    "prog_score",
+    "rk_odds_ratio",
+    "tg_overround",
+    "u_elapsed"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "u_jump >= 0.9449",
+    "total_points_under <= 1.8"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.767,
+   "oos_roi": 4.0,
+   "oos_win": 58.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0012",
+   "terms": [
+    "total_points_under",
+    "u_jump"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "u_price <= 1.7584",
+    "overround_now <= 1.1135"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:Leader",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.553,
+   "oos_roi": 3.7,
+   "oos_win": 67.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:Leader_0077",
+   "terms": [
+    "overround_now",
+    "prog_score",
+    "u_price"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "wall_min <= 171.805",
+    "lead_m15 <= 1",
+    "tg_imp_under >= 0.5435",
+    "secs_since_price <= 0"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.766,
+   "oos_roi": 3.7,
+   "oos_win": 58.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:TG_Hist_0018",
+   "terms": [
+    "lead_m15",
+    "secs_since_price",
+    "tg_imp_under",
+    "wall_min"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "rk_odds_ratio <= 2.6602",
+    "lead_vs_line >= -173.8462"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.931,
+   "oos_roi": 3.6,
+   "oos_win": 54.0,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:TG_Hist_0069",
+   "terms": [
+    "lead_vs_line",
+    "rk_odds_ratio"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8351",
+    "lead_changes_300s <= 2"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.744,
+   "oos_roi": 3.5,
+   "oos_win": 59.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:HT_Unde_0122",
+   "terms": [
+    "lead_changes_300s",
+    "prog_score",
+    "rk_dog_odds"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "rk_odds_ratio <= 2.6602",
+    "prog_q >= 0.4444",
+    "tg_proj_vs_line >= -167.5197"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.777,
+   "oos_roi": 3.5,
+   "oos_win": 57.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0001",
+   "terms": [
+    "prog_q",
+    "rk_odds_ratio",
+    "tg_proj_vs_line"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "total_line_move >= -4"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.211,
+   "oos_roi": 3.5,
+   "oos_win": 46.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0052",
+   "terms": [
+    "first_scorer_is_backed",
+    "line_open",
+    "prog_score",
+    "rk_odds_ratio",
+    "total_line_move"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "dog_odds_vol_180 <= 0.15546",
+    "u_pace <= 58.0667",
+    "needed_rate_for_over >= 2.9473"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.651,
+   "oos_roi": 3.4,
+   "oos_win": 63.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0114",
+   "terms": [
+    "abs_lead",
+    "dog_odds_vol_180",
+    "needed_rate_for_over",
+    "u_elapsed",
+    "u_pace"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -151.823",
+    "opp_o <= 4.17",
+    "px_gap_ratio <= 1.442"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.231,
+   "oos_roi": 3.4,
+   "oos_win": 46.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0058",
+   "terms": [
+    "first_scorer_is_backed",
+    "lead_vs_line",
+    "opp_o",
+    "prog_score",
+    "px_gap_ratio"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -140.5",
+    "secs_since_quarter_start <= 41.6871",
+    "rk_fav_odds >= 1.2738"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.242,
+   "oos_roi": 3.3,
+   "oos_win": 46.2,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0051",
+   "terms": [
+    "first_scorer_is_backed",
+    "lead_vs_line",
+    "prog_score",
+    "rk_fav_odds",
+    "secs_since_quarter_start"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "prog_score <= 0.35",
+    "rk_fav_odds <= 1.75",
+    "u_overround <= 1.113"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.543,
+   "oos_roi": 3.2,
+   "oos_win": 67.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0111",
+   "terms": [
+    "abs_lead",
+    "prog_score",
+    "rk_fav_odds",
+    "u_elapsed",
+    "u_overround"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "odds_ratio <= 1.2094",
+    "pts_last_60s <= 6",
+    "lead_m15 <= 1",
+    "rk_odds_ratio >= 1.0318"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.629,
+   "oos_roi": 3.2,
+   "oos_win": 64.2,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0096",
+   "terms": [
+    "first_scorer_is_backed",
+    "lead_m15",
+    "odds_ratio",
+    "prog_score",
+    "pts_last_60s",
+    "rk_odds_ratio"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "price_rank_in_match >= 0.36363651141645542",
+    "secs_since_score < 97",
+    "X_minute__over__u_pace <= 1.5057"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute"
+   ],
+   "needs_pca": [],
+   "odds": 1.908,
+   "oos_roi": 3.2,
+   "oos_win": 54.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:TG_Hist_0070",
+   "terms": [
+    "X_minute__over__u_pace",
+    "price_rank_in_match",
+    "secs_since_score"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "rk_dog_odds >= 1.84",
+    "pc_2f7f4d0c <= 0.6721",
+    "lead_changes_300s <= 2",
+    "u_drought <= 3213.791318359375"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.585,
+   "oos_roi": 3.0,
+   "oos_win": 65.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0116",
+   "terms": [
+    "abs_lead",
+    "lead_changes_300s",
+    "line_open",
+    "pc_2f7f4d0c",
+    "prog_score",
+    "rk_dog_odds",
+    "rk_odds_ratio",
+    "u_drought",
+    "u_elapsed"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "total_points_under >= 1.75",
+    "pm_away <= 2.85",
+    "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead <= -19.1179",
+    "u_vel_t <= 0.0198"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "u_elapsed",
+    "u_time_in_lead"
+   ],
+   "needs_pca": [],
+   "odds": 1.737,
+   "oos_roi": 3.0,
+   "oos_win": 59.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:HT_Unde_0123",
+   "terms": [
+    "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead",
+    "pm_away",
+    "total_points_under",
+    "u_vel_t"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.1318",
+    "px_gap_ratio <= 1.4925"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.282,
+   "oos_roi": 3.0,
+   "oos_win": 45.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0053",
+   "terms": [
+    "first_scorer_is_backed",
+    "line_open",
+    "need_frac",
+    "prog_score",
+    "px_gap_ratio"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "trail <= 6",
+    "pace_last_300s_vs_line >= -185.8205",
+    "prog_q >= 0.4444"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.777,
+   "oos_roi": 2.9,
+   "oos_win": 57.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0004",
+   "terms": [
+    "line_move",
+    "opp_drift",
+    "pace_last_300s_vs_line",
+    "price_gap",
+    "prog_q",
+    "prog_score",
+    "trail"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "tg_proj_vs_line >= -168.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.779,
+   "oos_roi": 2.9,
+   "oos_win": 57.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0037",
+   "terms": [
+    "line_move",
+    "price_gap",
+    "prog_score",
+    "tg_proj_vs_line"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "dog_odds_vol_180 <= 0.15546",
+    "price_gap >= 0.04",
+    "lead_changes_300s <= 2",
+    "line_flat >= 1"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.636,
+   "oos_roi": 2.8,
+   "oos_win": 62.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:late_le_0157",
+   "terms": [
+    "abs_lead",
+    "dog_odds_vol_180",
+    "lead_changes_300s",
+    "line_flat",
+    "price_gap",
+    "u_elapsed"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "leader_runmax <= 3.66",
+    "lead_vs_med <= 1.175",
+    "rk_dog_odds >= 1.83",
+    "u_trend <= -2.6556"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.637,
+   "oos_roi": 2.7,
+   "oos_win": 63.2,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0102",
+   "terms": [
+    "abs_lead",
+    "lead_vs_med",
+    "leader_runmax",
+    "line_open",
+    "pm_away",
+    "rk_dog_odds",
+    "u_elapsed",
+    "u_trend"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "trailer_price >= 1.8471",
+    "pc_2f7f4d0c <= 0.6917"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.557,
+   "oos_roi": 2.6,
+   "oos_win": 66.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0105",
+   "terms": [
+    "abs_lead",
+    "line_open",
+    "need_frac",
+    "pc_2f7f4d0c",
+    "trailer_price",
+    "u_elapsed"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "tg_proj_vs_line >= -168.1895"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.778,
+   "oos_roi": 2.5,
+   "oos_win": 57.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:TG_Hist_0017",
+   "terms": [
+    "line_move",
+    "price_gap",
+    "prog_score",
+    "tg_proj_vs_line"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "total_points_under >= 1.75",
+    "hour >= 2",
+    "away_odds >= 1.159999966621399",
+    "prog >= 0.25",
+    "recovery_x >= 1",
+    "pace_last_300s_vs_line >= -156.5908"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.916,
+   "oos_roi": 2.5,
+   "oos_win": 53.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0134",
+   "terms": [
+    "away_odds",
+    "hour",
+    "pace_last_300s_vs_line",
+    "prog",
+    "recovery_x",
+    "total_points_under"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "price_gap >= 0.2",
+    "jump_loser >= 0.9075"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.541,
+   "oos_roi": 2.4,
+   "oos_win": 66.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0101",
+   "terms": [
+    "abs_lead",
+    "jump_loser",
+    "line_open",
+    "need_frac",
+    "price_gap",
+    "u_elapsed"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "pm_ratio <= 3.6843",
+    "imbal >= 0.0164",
+    "line_flat >= 0.8667",
+    "trailer_drift >= 1.0222"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.623,
+   "oos_roi": 2.4,
+   "oos_win": 63.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0112",
+   "terms": [
+    "abs_lead",
+    "imbal",
+    "line_flat",
+    "pm_ratio",
+    "trailer_drift",
+    "u_elapsed"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "imbal >= 0.0217",
+    "pc_6a99ae09 >= -0.6204"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.719,
+   "oos_roi": 2.3,
+   "oos_win": 59.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:HT_Unde_0124",
+   "terms": [
+    "imbal",
+    "pc_6a99ae09"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "u_vf <= 0.8899",
+    "abs_margin_per_remaining_s >= 0.0004",
+    "lead_vs_line >= -180.341"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.782,
+   "oos_roi": 2.3,
+   "oos_win": 57.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0031",
+   "terms": [
+    "abs_margin_per_remaining_s",
+    "lead_vs_line",
+    "time_at_this_price",
+    "u_vf"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "pm_underdog",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 170",
+    "odds_ratio <= 2.4922",
+    "pc_fea3bd2c >= -0.66349512338638306"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "pm_underdog",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.469,
+   "oos_roi": 2.3,
+   "oos_win": 42.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_pm_underdog_0044",
+   "terms": [
+    "line_open",
+    "odds_ratio",
+    "pc_fea3bd2c"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "X_X_minute__x__u_pace__minus__X_u_elapsed__minus__u_time_in_lead <= 169.724",
+    "tg_overround <= 1.1237"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute",
+    "u_elapsed",
+    "u_time_in_lead"
+   ],
+   "needs_pca": [],
+   "odds": 2.493,
+   "oos_roi": 2.3,
+   "oos_win": 41.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_dog_leading_0147",
+   "terms": [
+    "X_X_minute__x__u_pace__minus__X_u_elapsed__minus__u_time_in_lead",
+    "line_open",
+    "prog_score",
+    "tg_overround"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "dog_odds_vol_180 <= 0.1733",
+    "req_ratio <= 1.3177"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:Leader",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.648,
+   "oos_roi": 2.2,
+   "oos_win": 62.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:Leader_0079",
+   "terms": [
+    "dog_odds_vol_180",
+    "prog_score",
+    "req_ratio"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "u_hazard <= -0.1409",
+    "needed_rate_for_over <= 3.6355",
+    "prog_q >= 0.0456"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.774,
+   "oos_roi": 2.2,
+   "oos_win": 57.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0006",
+   "terms": [
+    "needed_rate_for_over",
+    "prog_q",
+    "u_hazard"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "shortened",
+   "bets_sha": "",
+   "conditions": [
+    "pm_ratio <= 3.6843",
+    "imbal >= 0.0164",
+    "u_jump >= 0.9459"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:shortener_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.275,
+   "oos_roi": 2.1,
+   "oos_win": 45.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:shorten_0163",
+   "terms": [
+    "imbal",
+    "pm_ratio",
+    "u_jump"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "h_score <= 16.1205",
+    "u_hazard <= -0.1356",
+    "opp_velocity >= -0.0842"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.628,
+   "oos_roi": 2.0,
+   "oos_win": 63.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0104",
+   "terms": [
+    "abs_lead",
+    "h_score",
+    "line_open",
+    "opp_velocity",
+    "prog_score",
+    "u_elapsed",
+    "u_hazard"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "dog_odds_vol_180 <= 0.15546",
+    "X_minute__over__u_vol <= 353.579",
+    "home_pace <= 23.5316"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute"
+   ],
+   "needs_pca": [],
+   "odds": 1.628,
+   "oos_roi": 2.0,
+   "oos_win": 63.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_lead_ml_0085",
+   "terms": [
+    "X_minute__over__u_vol",
+    "dog_odds_vol_180",
+    "home_pace"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "nchg_120 <= 2",
+    "retrace_lead <= 0.3623",
+    "dow >= 2"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.621,
+   "oos_roi": 1.9,
+   "oos_win": 63.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_lead_ml_0086",
+   "terms": [
+    "dow",
+    "nchg_120",
+    "retrace_lead"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "trailer_price >= 1.8471",
+    "pc_f3e46219 <= 2.3571"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.604,
+   "oos_roi": 1.9,
+   "oos_win": 64.0,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0090",
+   "terms": [
+    "first_scorer_is_backed",
+    "line_open",
+    "need_frac",
+    "pc_f3e46219",
+    "trailer_price"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "total_line_move >= -5.8769",
+    "total_line_move >= 0"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:garbage_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.761,
+   "oos_roi": 1.9,
+   "oos_win": 57.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:garbage_0128",
+   "terms": [
+    "total_line_move"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "rk_odds_ratio <= 2.6602",
+    "u_drift_opp >= 0.7584",
+    "motif_2 <= 0",
+    "prog_x_margin >= -2.5026",
+    "X_u_elapsed__minus__u_time_in_lead >= -0.2546"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "u_elapsed",
+    "u_time_in_lead"
+   ],
+   "needs_pca": [],
+   "odds": 1.932,
+   "oos_roi": 1.9,
+   "oos_win": 53.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0067",
+   "terms": [
+    "X_u_elapsed__minus__u_time_in_lead",
+    "motif_2",
+    "prog_x_margin",
+    "rk_odds_ratio",
+    "u_drift_opp"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "secs_since_lead_change >= 600",
+    "rk_implied_edge >= 0.1704",
+    "pc_428f55cf <= 2.0819"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:held_lead",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.482,
+   "oos_roi": 1.8,
+   "oos_win": 68.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:held_le_0170",
+   "terms": [
+    "pc_428f55cf",
+    "rk_implied_edge",
+    "secs_since_lead_change"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "lead_odds <= 2.25",
+    "lead_size >= 6",
+    "lead_odds >= 1.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.787,
+   "oos_roi": 1.8,
+   "oos_win": 58.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "LZ_V270_BASK_016",
+   "terms": [
+    "lead_odds",
+    "lead_size"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "trailer_price >= 1.34",
+    "retrace_lead <= 0.0439"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.208,
+   "oos_roi": 1.8,
+   "oos_win": 45.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0168",
+   "terms": [
+    "abs_lead",
+    "retrace_lead",
+    "trailer_price",
+    "u_elapsed"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.8601",
+    "margin_per_possession <= 0.0166",
+    "tg_overround <= 1.1236"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.341,
+   "oos_roi": 1.8,
+   "oos_win": 45.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0065",
+   "terms": [
+    "first_scorer_is_backed",
+    "line_open",
+    "margin_per_possession",
+    "need_frac",
+    "prog_score",
+    "rk_odds_ratio",
+    "tg_overround"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.75",
+    "u_overround <= 1.1109",
+    "u_ratio_open <= 2.8919",
+    "tg_imp_over <= 0.6235"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:dog_leading_late",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.394,
+   "oos_roi": 1.8,
+   "oos_win": 43.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:dog_lea_0151",
+   "terms": [
+    "tg_imp_over",
+    "u_elapsed",
+    "u_overround",
+    "u_ratio_open"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.8601",
+    "wall_min >= 138.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.358,
+   "oos_roi": 1.8,
+   "oos_win": 43.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0064",
+   "terms": [
+    "first_scorer_is_backed",
+    "line_open",
+    "need_frac",
+    "prog_score",
+    "rk_odds_ratio",
+    "wall_min"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "loser_runmax >= 1.8722",
+    "dow >= 1.041"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:Leader",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.592,
+   "oos_roi": 1.7,
+   "oos_win": 64.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:Leader_0078",
+   "terms": [
+    "dow",
+    "loser_runmax",
+    "prog_score"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "leader_runmax <= 3.66",
+    "secs_since_run_started >= 0",
+    "fav_lead_m30 >= -1",
+    "u_trend <= -6.5658"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:drifter_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 5.264,
+   "oos_roi": 1.7,
+   "oos_win": 20.0,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:drifter_0028",
+   "terms": [
+    "fav_lead_m30",
+    "leader_runmax",
+    "line_open",
+    "pm_away",
+    "secs_since_run_started",
+    "u_trend"
+   ],
+   "tier": "Feeder"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "X_a_score__over__home_odds >= 0",
+    "lead_m75 <= 1"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.686,
+   "oos_roi": 1.6,
+   "oos_win": 61.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0002",
+   "terms": [
+    "X_a_score__over__home_odds",
+    "lead_m75"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "q <= 1",
+    "lead_m30 <= 1",
+    "opp >= 1.5927"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.653,
+   "oos_roi": 1.6,
+   "oos_win": 62.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0093",
+   "terms": [
+    "first_scorer_is_backed",
+    "lead_m30",
+    "opp",
+    "q"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "price_rank_in_match >= 0.3333",
+    "tg_imp_under >= 0.5682"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.711,
+   "oos_roi": 1.6,
+   "oos_win": 59.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0008",
+   "terms": [
+    "price_rank_in_match",
+    "tg_imp_under",
+    "time_at_this_price"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "total_pts >= 122",
+    "runmin >= 1.129",
+    "lead_odds >= 1.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.855,
+   "oos_roi": 1.6,
+   "oos_win": 56.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "LZ_V270_BASK_021",
+   "terms": [
+    "lead_odds",
+    "runmin",
+    "total_pts"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "rk_lead_off_low <= 2.1135",
+    "imbal >= 0.0217",
+    "u_ratio_open >= 0.6317"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "DRIFTED",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.558,
+   "oos_roi": 1.5,
+   "oos_win": 65.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_DRIFTED_0121",
+   "terms": [
+    "imbal",
+    "rk_lead_off_low",
+    "u_ratio_open"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "dog_odds_vol_180 <= 0.15546",
+    "margin_range_300s >= 4",
+    "ten_mins <= 23.4436"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.652,
+   "oos_roi": 1.5,
+   "oos_win": 61.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:late_le_0158",
+   "terms": [
+    "abs_lead",
+    "dog_odds_vol_180",
+    "margin_range_300s",
+    "ten_mins",
+    "u_elapsed"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "shortened",
+   "bets_sha": "",
+   "conditions": [
+    "lead_size >= 3",
+    "u_ratio_open <= 2.8107",
+    "scores_300s <= 4",
+    "fav_odds_trend_60 <= 0.2231",
+    "ten_mins <= 23.0897"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:shortener_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.638,
+   "oos_roi": 1.5,
+   "oos_win": 62.0,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:shorten_0152",
+   "terms": [
+    "fav_odds_trend_60",
+    "lead_size",
+    "scores_300s",
+    "ten_mins",
+    "u_ratio_open"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "total_points_under >= 1.75",
+    "hour >= 2",
+    "away_odds >= 1.159999966621399",
+    "total_points_over < 1.899999976158142",
+    "tot_vs_line <= -112.908",
+    "rk_odds_ratio >= 1.0867"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.552,
+   "oos_roi": 1.4,
+   "oos_win": 65.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0095",
+   "terms": [
+    "away_odds",
+    "first_scorer_is_backed",
+    "hour",
+    "rk_odds_ratio",
+    "tot_vs_line",
+    "total_points_over",
+    "total_points_under"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "lead_vs_line <= -160.315",
+    "open_gap <= 2.2797",
+    "pm_away >= 1.4"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "DRIFTED",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.43,
+   "oos_roi": 1.4,
+   "oos_win": 41.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_DRIFTED_0045",
+   "terms": [
+    "lead_vs_line",
+    "open_gap",
+    "pm_away"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "secs_since_lead_change <= 60",
+    "lead_vs_med <= 1.0759",
+    "margin_range_300s <= 5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:fresh_lead",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.584,
+   "oos_roi": 1.3,
+   "oos_win": 64.2,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:fresh_l_0183",
+   "terms": [
+    "lead_vs_med",
+    "margin_range_300s",
+    "secs_since_lead_change"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "open_vs_now_lead <= 0.9043",
+    "motif_0 <= 0",
+    "X_minute__minus__u_drought <= 26.2769",
+    "tg_overround <= 1.1172"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute"
+   ],
+   "needs_pca": [],
+   "odds": 2.388,
+   "oos_roi": 1.3,
+   "oos_win": 42.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_dog_leading_0146",
+   "terms": [
+    "X_minute__minus__u_drought",
+    "line_open",
+    "motif_0",
+    "need_frac",
+    "open_vs_now_lead",
+    "tg_overround"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "rk_fav_odds <= 1.75",
+    "margin_rate <= 6.6917",
+    "pc_428f55cf <= 2.0819"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.533,
+   "oos_roi": 1.2,
+   "oos_win": 66.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_lead_ml_0087",
+   "terms": [
+    "margin_rate",
+    "pc_428f55cf",
+    "prog_score",
+    "rk_fav_odds"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "rk_fav_odds <= 1.75",
+    "leader_implied_gap >= -0.1701",
+    "tg_px_ratio <= 1.1098"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.586,
+   "oos_roi": 1.2,
+   "oos_win": 64.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0094",
+   "terms": [
+    "first_scorer_is_backed",
+    "leader_implied_gap",
+    "prog_score",
+    "rk_fav_odds",
+    "tg_px_ratio"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "u_vf <= 0.8899",
+    "ld_rank >= 0.625",
+    "u_margin_abs >= 2",
+    "total_points_under <= 1.8388"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.773,
+   "oos_roi": 1.2,
+   "oos_win": 56.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:TG_Hist_0016",
+   "terms": [
+    "ld_rank",
+    "time_at_this_price",
+    "total_points_under",
+    "u_margin_abs",
+    "u_vf"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.8601",
+    "margin_per_possession <= 0.0166",
+    "u_price_open >= 1.34",
+    "X_minute__minus__u_pace >= -18",
+    "needed_rate_for_over >= 3.3176"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "minute"
+   ],
+   "needs_pca": [],
+   "odds": 2.478,
+   "oos_roi": 1.2,
+   "oos_win": 41.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:HT_Unde_0042",
+   "terms": [
+    "X_minute__minus__u_pace",
+    "line_open",
+    "margin_per_possession",
+    "need_frac",
+    "needed_rate_for_over",
+    "prog_score",
+    "rk_odds_ratio",
+    "u_price_open"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "odds_ratio <= 1.227",
+    "lead_changes_total <= 2",
+    "lead_vs_line <= -145.692",
+    "pc_f3e46219 <= 1.9746"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:Leader",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.631,
+   "oos_roi": 1.1,
+   "oos_win": 62.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:Leader_0076",
+   "terms": [
+    "lead_changes_total",
+    "lead_vs_line",
+    "line_move",
+    "odds_ratio",
+    "pc_f3e46219",
+    "prog_score"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "dog_odds_vol_180 <= 0.15546",
+    "price_gap >= 0.04",
+    "lead_changes_300s <= 2"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.713,
+   "oos_roi": 1.1,
+   "oos_win": 59.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_dog_leading_0141",
+   "terms": [
+    "dog_odds_vol_180",
+    "lead_changes_300s",
+    "price_gap"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "u_vf <= 0.8899",
+    "ld_rank >= 0.625",
+    "is_big_lead >= 1",
+    "tg_imp_under >= 0.5462"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.775,
+   "oos_roi": 1.0,
+   "oos_win": 56.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0007",
+   "terms": [
+    "is_big_lead",
+    "ld_rank",
+    "tg_imp_under",
+    "time_at_this_price",
+    "u_vf"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "dog_odds_vol_180 <= 0.15546",
+    "u_pace <= 58.0667",
+    "home_pace >= 2"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.633,
+   "oos_roi": 0.9,
+   "oos_win": 62.6,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_lead_ml_0080",
+   "terms": [
+    "dog_odds_vol_180",
+    "home_pace",
+    "u_pace"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "u_ratio_open <= 3.0575",
+    "u_drought <= 1241.51",
+    "trailer_drift <= 1.0594"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.779,
+   "oos_roi": 0.9,
+   "oos_win": 56.2,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0038",
+   "terms": [
+    "prog_score",
+    "trailer_drift",
+    "u_drought",
+    "u_ratio_open"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "lead_vs_line <= -151.823",
+    "opp_o <= 4.17",
+    "tg_overround <= 1.1237",
+    "time_left <= 0.8889"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.465,
+   "oos_roi": 0.9,
+   "oos_win": 41.0,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_dog_leading_0150",
+   "terms": [
+    "lead_vs_line",
+    "opp_o",
+    "prog_score",
+    "tg_overround",
+    "time_left"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "h_score <= 16.1205",
+    "is_favorite >= 1"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.627,
+   "oos_roi": 0.8,
+   "oos_win": 62.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:first_s_0099",
+   "terms": [
+    "first_scorer_is_backed",
+    "h_score",
+    "is_favorite",
+    "line_open",
+    "prog_score"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8392",
+    "X_u_elapsed__minus__u_time_in_lead <= 1.0763",
+    "total_points_handicap >= 150.4538"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:Leader",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "u_elapsed",
+    "u_time_in_lead"
+   ],
+   "needs_pca": [],
+   "odds": 1.61,
+   "oos_roi": 0.8,
+   "oos_win": 63.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:Leader_0075",
+   "terms": [
+    "X_u_elapsed__minus__u_time_in_lead",
+    "line_open",
+    "prog_score",
+    "rk_dog_odds",
+    "total_points_handicap"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "secs_since_lead_change >= 600",
+    "line_open >= 140",
+    "loser_runmin >= 1.2769",
+    "overround_now <= 1.121"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:held_lead",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.552,
+   "oos_roi": 0.7,
+   "oos_win": 65.1,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:held_le_0172",
+   "terms": [
+    "line_open",
+    "loser_runmin",
+    "overround_now",
+    "secs_since_lead_change"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -151.823",
+    "opp_o <= 4.17",
+    "pace_last_300s_vs_line >= -171.0969"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.634,
+   "oos_roi": 0.7,
+   "oos_win": 62.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0113",
+   "terms": [
+    "abs_lead",
+    "lead_vs_line",
+    "opp_o",
+    "pace_last_300s_vs_line",
+    "prog_score",
+    "u_elapsed"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "pace_last_300s_vs_line <= -115.005",
+    "tg_overround <= 1.1237"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.453,
+   "oos_roi": 0.7,
+   "oos_win": 41.3,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_dog_leading_0149",
+   "terms": [
+    "line_open",
+    "pace_last_300s_vs_line",
+    "tg_overround"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "odds_ratio >= 0.0833"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.701,
+   "oos_roi": 0.6,
+   "oos_win": 60.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:garbage_0057",
+   "terms": [
+    "odds_ratio"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "lead_m15 <= 0",
+    "backed_pts_last_60s <= 4.4718",
+    "pc_dc4196fb <= -2.1901"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:Early_Hammer",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.99,
+   "oos_roi": 0.6,
+   "oos_win": 50.9,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:Early_H_0088",
+   "terms": [
+    "backed_pts_last_60s",
+    "lead_m15",
+    "pc_dc4196fb"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog >= 0.3672",
+    "lead_size >= 4",
+    "lead_odds >= 1.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 2.642,
+   "oos_roi": 0.5,
+   "oos_win": 48.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "LZ_V270_BASK_008",
+   "terms": [
+    "lead_odds",
+    "lead_size",
+    "prog"
+   ],
+   "tier": "Jobber"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "trailer",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead <= 6",
+    "u_elapsed >= 0.75",
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "rk_fav_odds >= 1.0142",
+    "lead_change_last_300s >= -5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:q4_close_trailer",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 5.205,
+   "oos_roi": 0.5,
+   "oos_win": 20.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:q4_clos_0129",
+   "terms": [
+    "abs_lead",
+    "lead_change_last_300s",
+    "line_open",
+    "pm_away",
+    "rk_fav_odds",
+    "u_elapsed"
+   ],
+   "tier": "Feeder"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "trailer",
+   "bets_sha": "",
+   "conditions": [
+    "lead_jump <= 0.9429",
+    "pc_aa16b0a5 >= -0.6013"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "trail_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 5.451,
+   "oos_roi": 0.5,
+   "oos_win": 18.2,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_trail_ml_0025",
+   "terms": [
+    "lead_jump",
+    "pc_aa16b0a5"
+   ],
+   "tier": "Ino"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8392",
+    "X_u_elapsed__minus__u_time_in_lead <= 1.0763",
+    "wall_min >= 131.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "u_elapsed",
+    "u_time_in_lead"
+   ],
+   "needs_pca": [],
+   "odds": 1.607,
+   "oos_roi": 0.4,
+   "oos_win": 62.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_late_lead_ho_0106",
+   "terms": [
+    "X_u_elapsed__minus__u_time_in_lead",
+    "abs_lead",
+    "line_open",
+    "prog_score",
+    "rk_dog_odds",
+    "u_elapsed",
+    "wall_min"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "total_points_under >= 1.75",
+    "pm_away <= 2.85",
+    "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead <= -19.1179",
+    "dog_odds_vol_180 <= 0.653"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [
+    "u_elapsed",
+    "u_time_in_lead"
+   ],
+   "needs_pca": [],
+   "odds": 1.909,
+   "oos_roi": 0.4,
+   "oos_win": 53.0,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_0066",
+   "terms": [
+    "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead",
+    "dog_odds_vol_180",
+    "pm_away",
+    "total_points_under"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "secs_since_lead_change >= 600",
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "leader_runmax <= 3.66",
+    "lead_vs_med <= 1.175",
+    "line_flat >= 1.6026"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "prop:held_lead",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.561,
+   "oos_roi": 0.3,
+   "oos_win": 64.8,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_prop:held_le_0171",
+   "terms": [
+    "lead_vs_med",
+    "leader_runmax",
+    "line_flat",
+    "line_open",
+    "pm_away",
+    "secs_since_lead_change"
+   ],
+   "tier": "Npc"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "dog_odds_vol_180 <= 0.15546",
+    "odds_ratio <= 1.209",
+    "spread_cover_now >= -4.4051"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.919,
+   "oos_roi": 0.3,
+   "oos_win": 52.7,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0131",
+   "terms": [
+    "dog_odds_vol_180",
+    "odds_ratio",
+    "spread_cover_now"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "odds_ratio <= 1.2094",
+    "pts_last_60s <= 6",
+    "lead_m15 <= 1",
+    "eng_score_tied <= 0"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.926,
+   "oos_roi": 0.3,
+   "oos_win": 52.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0137",
+   "terms": [
+    "eng_score_tied",
+    "lead_m15",
+    "odds_ratio",
+    "prog_score",
+    "pts_last_60s"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "pm_ratio <= 3.6843",
+    "imbal >= 0.0164",
+    "line_flat >= 0.8667",
+    "pts_last_60s <= 4.4615"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 1.91,
+   "oos_roi": 0.2,
+   "oos_win": 52.5,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_tg_under_lag_0133",
+   "terms": [
+    "imbal",
+    "line_flat",
+    "pm_ratio",
+    "pts_last_60s"
+   ],
+   "tier": "Vision"
+  },
+  {
+   "base_mask": [],
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "leader_runmax <= 3.66",
+    "secs_since_run_started >= 0",
+    "fav_lead_m30 >= -1",
+    "u_trend <= -5.7851",
+    "total_goals_handicap_ffill >= 145.5"
+   ],
+   "enabled": true,
+   "entry_window": 60,
+   "exec_sha": "",
+   "execution": [],
+   "family": "spec:Loser_1G",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "needs_feature": [],
+   "needs_pca": [],
+   "odds": 5.2,
+   "oos_roi": 0.1,
+   "oos_win": 19.4,
+   "spec_sha": "",
+   "sport": "basketball",
+   "strategy": "BAS_spec:Loser_1_0024",
+   "terms": [
+    "fav_lead_m30",
+    "leader_runmax",
+    "line_open",
+    "pm_away",
+    "secs_since_run_started",
+    "total_goals_handicap_ffill",
+    "u_trend"
+   ],
+   "tier": "Ino"
+  }
+ ],
+ "pca": {
+  "pc_2f7f4d0c": {
+   "mu": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "n_fit": 1200,
+   "sdv": [
+    0.5,
+    1.5,
+    2.5
+   ],
+   "sport": "basketball",
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ],
+   "w": [
+    0.6,
+    -0.5,
+    0.62
+   ]
+  },
+  "pc_428f55cf": {
+   "mu": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "n_fit": 1200,
+   "sdv": [
+    0.5,
+    1.5,
+    2.5
+   ],
+   "sport": "basketball",
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ],
+   "w": [
+    0.6,
+    -0.5,
+    0.62
+   ]
+  },
+  "pc_51f228a2": {
+   "mu": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "n_fit": 1200,
+   "sdv": [
+    0.5,
+    1.5,
+    2.5
+   ],
+   "sport": "basketball",
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ],
+   "w": [
+    0.6,
+    -0.5,
+    0.62
+   ]
+  },
+  "pc_6a99ae09": {
+   "mu": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "n_fit": 1200,
+   "sdv": [
+    0.5,
+    1.5,
+    2.5
+   ],
+   "sport": "basketball",
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ],
+   "w": [
+    0.6,
+    -0.5,
+    0.62
+   ]
+  },
+  "pc_aa16b0a5": {
+   "mu": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "n_fit": 1200,
+   "sdv": [
+    0.5,
+    1.5,
+    2.5
+   ],
+   "sport": "basketball",
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ],
+   "w": [
+    0.6,
+    -0.5,
+    0.62
+   ]
+  },
+  "pc_dc4196fb": {
+   "mu": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "n_fit": 1200,
+   "sdv": [
+    0.5,
+    1.5,
+    2.5
+   ],
+   "sport": "basketball",
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ],
+   "w": [
+    0.6,
+    -0.5,
+    0.62
+   ]
+  },
+  "pc_f3e46219": {
+   "mu": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "n_fit": 1200,
+   "sdv": [
+    0.5,
+    1.5,
+    2.5
+   ],
+   "sport": "basketball",
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ],
+   "w": [
+    0.6,
+    -0.5,
+    0.62
+   ]
+  },
+  "pc_fea3bd2c": {
+   "mu": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "n_fit": 1200,
+   "sdv": [
+    0.5,
+    1.5,
+    2.5
+   ],
+   "sport": "basketball",
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ],
+   "w": [
+    0.6,
+    -0.5,
+    0.62
+   ]
+  }
+ },
+ "registered_not_live": [
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "price_gap >= 0.06",
+    "dog_odds_vol_180 <= 0.2508"
+   ],
+   "entry_window": 60,
+   "family": "spread_dog_cover",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_spread_dog_c_0156",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
+   "conditions": [
+    "prog_score <= 0.35",
+    "lead_vs_line <= -140.5",
+    "dog_odds_vol_180 <= 0.2346"
+   ],
+   "entry_window": 60,
+   "family": "spread_dog_cover",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_spread_dog_c_0154",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'q1_result' (base 'q1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['q1_result']",
+   "conditions": [
+    "X_q1_lead__minus__u_overround >= 1.88889",
+    "rk_implied_edge >= 0.0764"
+   ],
+   "entry_window": 60,
+   "family": "q1_winner",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_q1_winner_0139",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -154.5",
+    "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead >= -0.0083"
+   ],
+   "entry_window": 60,
+   "family": "spread_dog_cover",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_spread_dog_c_0118",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "base 'prop:match_total_pace' settles a total but its own name does not say UNDER or OVER; registering the wrong direction settles the bet on the opposite event",
+   "conditions": [
+    "rk_odds_ratio <= 2.6602",
+    "lead_vs_line >= -173.8462"
+   ],
+   "entry_window": 60,
+   "family": "prop:match_total_pace",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:match_t_0073",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'q1_result' (base 'q1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['q1_result']",
+   "conditions": [
+    "X_pace_ratio__minus__q1_lead <= -2.60393",
+    "signed_lead <= 4.5385"
+   ],
+   "entry_window": 60,
+   "family": "q1_winner",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_q1_winner_0130",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'h1_result' (base 'h1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['h1_result']",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "price_rank_in_match >= 0.3333",
+    "u_flat <= 0.4769"
+   ],
+   "entry_window": 60,
+   "family": "h1_winner",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_h1_winner_0177",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "base 'prop:match_total_pace' settles a total but its own name does not say UNDER or OVER; registering the wrong direction settles the bet on the opposite event",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "trail <= 6",
+    "pace_last_300s_vs_line >= -174.5"
+   ],
+   "entry_window": 60,
+   "family": "prop:match_total_pace",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:match_t_0021",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
+   "conditions": [
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8392",
+    "lead_changes_300s <= 1"
+   ],
+   "entry_window": 60,
+   "family": "spread_dog_cover",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_spread_dog_c_0155",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "u_ratio_open <= 3.0051",
+    "point_spread_handicap <= -1.5"
+   ],
+   "entry_window": 60,
+   "family": "spread_dog_cover",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_spread_dog_c_0119",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
+   "conditions": [
+    "line_open >= 140",
+    "retrace_lead <= 0.3163",
+    "secs_since_run_started >= 0",
+    "X_u_elapsed__minus__u_time_in_lead >= -0.1992"
+   ],
+   "entry_window": 60,
+   "family": "spread_dog_cover",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_spread_dog_c_0120",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
+   "conditions": [
+    "price_move_since_score <= 1",
+    "u_overround <= 1.1091"
+   ],
+   "entry_window": 60,
+   "family": "spread_dog_cover",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_spread_dog_c_0178",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "blocked_reason": "market '' / outcome '' (base 'prop:h1_leader_hold') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing",
+   "conditions": [
+    "u_elapsed >= 0.05",
+    "u_elapsed <= 0.49",
+    "line_open >= 140",
+    "rk_lead_off_high >= 0.2333",
+    "lead_m15 <= 1",
+    "X_point_spread_home__x__q1_lead >= 1.8237"
+   ],
+   "entry_window": 60,
+   "family": "prop:h1_leader_hold",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:h1_lead_0175",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome 'h1_result' (base 'h1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['h1_result']",
+   "conditions": [
+    "total_points_under <= 1.9407",
+    "lead_q1h <= 1",
+    "pc_4fa6ab33 <= 0.6116"
+   ],
+   "entry_window": 60,
+   "family": "h1_winner",
+   "market": null,
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "strategy": "BAS_h1_winner_0176",
+   "tier": "Npc"
+  }
+ ],
+ "schema": "amunev.strategy_spec/1",
+ "sport": "basketball"
+}

@@ -1,0 +1,3501 @@
+{
+ "emitted_utc": "2026-09-22T23:30:45.974770+00:00",
+ "engine_sha256": "engine_e2e_test",
+ "engine_version": "AmunEV_V2.9",
+ "feature_namespace": [
+  {
+   "column_name": "x_x_minute__x__u_pace__minus__x_u_elapsed__minus__u_ti_34d4ce1c",
+   "feature": "X_X_minute__x__u_pace__minus__X_u_elapsed__minus__u_time_in_lead",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_x_u_elapsed__minus__u_time_in_lead__minus__x_u_pace__aec3c7da",
+   "feature": "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_x_u_elapsed__minus__u_time_in_lead__over__x_u_pace___1dd07084",
+   "feature": "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_a_score__over__home_odds",
+   "feature": "X_a_score__over__home_odds",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_home_odds__x__point_spread_away",
+   "feature": "X_home_odds__x__point_spread_away",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_minute__minus__u_drought",
+   "feature": "X_minute__minus__u_drought",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_minute__minus__u_pace",
+   "feature": "X_minute__minus__u_pace",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_minute__over__u_pace",
+   "feature": "X_minute__over__u_pace",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_minute__over__u_vol",
+   "feature": "X_minute__over__u_vol",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "x_u_elapsed__minus__u_time_in_lead",
+   "feature": "X_u_elapsed__minus__u_time_in_lead",
+   "kind": "manufactured"
+  },
+  {
+   "column_name": "abs_lead",
+   "feature": "abs_lead",
+   "kind": "feature"
+  },
+  {
+   "column_name": "abs_margin_per_remaining_s",
+   "feature": "abs_margin_per_remaining_s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "away_odds",
+   "feature": "away_odds",
+   "kind": "feature"
+  },
+  {
+   "column_name": "backed_pts_last_60s",
+   "feature": "backed_pts_last_60s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "both_scored",
+   "feature": "both_scored",
+   "kind": "feature"
+  },
+  {
+   "column_name": "dog_odds_vol_180",
+   "feature": "dog_odds_vol_180",
+   "kind": "feature"
+  },
+  {
+   "column_name": "dow",
+   "feature": "dow",
+   "kind": "feature"
+  },
+  {
+   "column_name": "drift_ratio",
+   "feature": "drift_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "eng_minute_ge_2",
+   "feature": "eng_minute_ge_2",
+   "kind": "feature"
+  },
+  {
+   "column_name": "eng_score_tied",
+   "feature": "eng_score_tied",
+   "kind": "feature"
+  },
+  {
+   "column_name": "fav_lead_m30",
+   "feature": "fav_lead_m30",
+   "kind": "feature"
+  },
+  {
+   "column_name": "fav_odds_trend_60",
+   "feature": "fav_odds_trend_60",
+   "kind": "feature"
+  },
+  {
+   "column_name": "first_scorer_is_backed",
+   "feature": "first_scorer_is_backed",
+   "kind": "feature"
+  },
+  {
+   "column_name": "h_score",
+   "feature": "h_score",
+   "kind": "feature"
+  },
+  {
+   "column_name": "home_pace",
+   "feature": "home_pace",
+   "kind": "feature"
+  },
+  {
+   "column_name": "hour",
+   "feature": "hour",
+   "kind": "feature"
+  },
+  {
+   "column_name": "imbal",
+   "feature": "imbal",
+   "kind": "feature"
+  },
+  {
+   "column_name": "is_big_lead",
+   "feature": "is_big_lead",
+   "kind": "feature"
+  },
+  {
+   "column_name": "is_favorite",
+   "feature": "is_favorite",
+   "kind": "feature"
+  },
+  {
+   "column_name": "is_trailer",
+   "feature": "is_trailer",
+   "kind": "feature"
+  },
+  {
+   "column_name": "jump_loser",
+   "feature": "jump_loser",
+   "kind": "feature"
+  },
+  {
+   "column_name": "ld_rank",
+   "feature": "ld_rank",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_change_last_300s",
+   "feature": "lead_change_last_300s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_changes_300s",
+   "feature": "lead_changes_300s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_changes_total",
+   "feature": "lead_changes_total",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_jump",
+   "feature": "lead_jump",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_m15",
+   "feature": "lead_m15",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_m30",
+   "feature": "lead_m30",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_m75",
+   "feature": "lead_m75",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_odds",
+   "feature": "lead_odds",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_size",
+   "feature": "lead_size",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_vs_line",
+   "feature": "lead_vs_line",
+   "kind": "feature"
+  },
+  {
+   "column_name": "lead_vs_med",
+   "feature": "lead_vs_med",
+   "kind": "feature"
+  },
+  {
+   "column_name": "leader_implied_gap",
+   "feature": "leader_implied_gap",
+   "kind": "feature"
+  },
+  {
+   "column_name": "leader_runmax",
+   "feature": "leader_runmax",
+   "kind": "feature"
+  },
+  {
+   "column_name": "line",
+   "feature": "line",
+   "kind": "feature"
+  },
+  {
+   "column_name": "line_flat",
+   "feature": "line_flat",
+   "kind": "feature"
+  },
+  {
+   "column_name": "line_move",
+   "feature": "line_move",
+   "kind": "feature"
+  },
+  {
+   "column_name": "line_open",
+   "feature": "line_open",
+   "kind": "feature"
+  },
+  {
+   "column_name": "line_vel",
+   "feature": "line_vel",
+   "kind": "feature"
+  },
+  {
+   "column_name": "loser_runmax",
+   "feature": "loser_runmax",
+   "kind": "feature"
+  },
+  {
+   "column_name": "loser_runmin",
+   "feature": "loser_runmin",
+   "kind": "feature"
+  },
+  {
+   "column_name": "margin_per_possession",
+   "feature": "margin_per_possession",
+   "kind": "feature"
+  },
+  {
+   "column_name": "margin_range_300s",
+   "feature": "margin_range_300s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "margin_rate",
+   "feature": "margin_rate",
+   "kind": "feature"
+  },
+  {
+   "column_name": "motif_0",
+   "feature": "motif_0",
+   "kind": "feature"
+  },
+  {
+   "column_name": "motif_2",
+   "feature": "motif_2",
+   "kind": "feature"
+  },
+  {
+   "column_name": "nchg_120",
+   "feature": "nchg_120",
+   "kind": "feature"
+  },
+  {
+   "column_name": "need_frac",
+   "feature": "need_frac",
+   "kind": "feature"
+  },
+  {
+   "column_name": "need_vs_expected",
+   "feature": "need_vs_expected",
+   "kind": "feature"
+  },
+  {
+   "column_name": "needed_rate_for_over",
+   "feature": "needed_rate_for_over",
+   "kind": "feature"
+  },
+  {
+   "column_name": "odds_ratio",
+   "feature": "odds_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "open_gap",
+   "feature": "open_gap",
+   "kind": "feature"
+  },
+  {
+   "column_name": "open_vs_now_lead",
+   "feature": "open_vs_now_lead",
+   "kind": "feature"
+  },
+  {
+   "column_name": "opp",
+   "feature": "opp",
+   "kind": "feature"
+  },
+  {
+   "column_name": "opp_drift",
+   "feature": "opp_drift",
+   "kind": "feature"
+  },
+  {
+   "column_name": "opp_o",
+   "feature": "opp_o",
+   "kind": "feature"
+  },
+  {
+   "column_name": "opp_velocity",
+   "feature": "opp_velocity",
+   "kind": "feature"
+  },
+  {
+   "column_name": "overround_now",
+   "feature": "overround_now",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pace_last_300s_vs_line",
+   "feature": "pace_last_300s_vs_line",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pace_vs_line_pct",
+   "feature": "pace_vs_line_pct",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pc_2f7f4d0c",
+   "feature": "pc_2f7f4d0c",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_428f55cf",
+   "feature": "pc_428f55cf",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_51f228a2",
+   "feature": "pc_51f228a2",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_6a99ae09",
+   "feature": "pc_6a99ae09",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_aa16b0a5",
+   "feature": "pc_aa16b0a5",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_dc4196fb",
+   "feature": "pc_dc4196fb",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_f3e46219",
+   "feature": "pc_f3e46219",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pc_fea3bd2c",
+   "feature": "pc_fea3bd2c",
+   "kind": "pca"
+  },
+  {
+   "column_name": "pm_away",
+   "feature": "pm_away",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pm_home",
+   "feature": "pm_home",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pm_ratio",
+   "feature": "pm_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "prematch_dog_odds",
+   "feature": "prematch_dog_odds",
+   "kind": "feature"
+  },
+  {
+   "column_name": "price_gap",
+   "feature": "price_gap",
+   "kind": "feature"
+  },
+  {
+   "column_name": "price_rank_in_match",
+   "feature": "price_rank_in_match",
+   "kind": "feature"
+  },
+  {
+   "column_name": "prog",
+   "feature": "prog",
+   "kind": "feature"
+  },
+  {
+   "column_name": "prog_q",
+   "feature": "prog_q",
+   "kind": "feature"
+  },
+  {
+   "column_name": "prog_score",
+   "feature": "prog_score",
+   "kind": "feature"
+  },
+  {
+   "column_name": "prog_x_margin",
+   "feature": "prog_x_margin",
+   "kind": "feature"
+  },
+  {
+   "column_name": "pts_last_60s",
+   "feature": "pts_last_60s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "px_gap_ratio",
+   "feature": "px_gap_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "q",
+   "feature": "q",
+   "kind": "feature"
+  },
+  {
+   "column_name": "recovery_x",
+   "feature": "recovery_x",
+   "kind": "feature"
+  },
+  {
+   "column_name": "req_ratio",
+   "feature": "req_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "retrace_lead",
+   "feature": "retrace_lead",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_dog_odds",
+   "feature": "rk_dog_odds",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_fav_odds",
+   "feature": "rk_fav_odds",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_implied_edge",
+   "feature": "rk_implied_edge",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_lead_off_high",
+   "feature": "rk_lead_off_high",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_lead_off_low",
+   "feature": "rk_lead_off_low",
+   "kind": "feature"
+  },
+  {
+   "column_name": "rk_odds_ratio",
+   "feature": "rk_odds_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "runmin",
+   "feature": "runmin",
+   "kind": "feature"
+  },
+  {
+   "column_name": "scores_300s",
+   "feature": "scores_300s",
+   "kind": "feature"
+  },
+  {
+   "column_name": "secs_since_lead_change",
+   "feature": "secs_since_lead_change",
+   "kind": "feature"
+  },
+  {
+   "column_name": "secs_since_price",
+   "feature": "secs_since_price",
+   "kind": "feature"
+  },
+  {
+   "column_name": "secs_since_quarter_start",
+   "feature": "secs_since_quarter_start",
+   "kind": "feature"
+  },
+  {
+   "column_name": "secs_since_run_started",
+   "feature": "secs_since_run_started",
+   "kind": "feature"
+  },
+  {
+   "column_name": "secs_since_score",
+   "feature": "secs_since_score",
+   "kind": "feature"
+  },
+  {
+   "column_name": "spread_cover_now",
+   "feature": "spread_cover_now",
+   "kind": "feature"
+  },
+  {
+   "column_name": "team_pace_gap",
+   "feature": "team_pace_gap",
+   "kind": "feature"
+  },
+  {
+   "column_name": "ten_mins",
+   "feature": "ten_mins",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tg_imp_over",
+   "feature": "tg_imp_over",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tg_imp_under",
+   "feature": "tg_imp_under",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tg_overround",
+   "feature": "tg_overround",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tg_proj_vs_line",
+   "feature": "tg_proj_vs_line",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tg_px_ratio",
+   "feature": "tg_px_ratio",
+   "kind": "feature"
+  },
+  {
+   "column_name": "time_at_this_price",
+   "feature": "time_at_this_price",
+   "kind": "feature"
+  },
+  {
+   "column_name": "time_left",
+   "feature": "time_left",
+   "kind": "feature"
+  },
+  {
+   "column_name": "tot_vs_line",
+   "feature": "tot_vs_line",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_goals_handicap_ffill",
+   "feature": "total_goals_handicap_ffill",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_line_move",
+   "feature": "total_line_move",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_points_handicap",
+   "feature": "total_points_handicap",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_points_over",
+   "feature": "total_points_over",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_points_under",
+   "feature": "total_points_under",
+   "kind": "feature"
+  },
+  {
+   "column_name": "total_pts",
+   "feature": "total_pts",
+   "kind": "feature"
+  },
+  {
+   "column_name": "trail",
+   "feature": "trail",
+   "kind": "feature"
+  },
+  {
+   "column_name": "trailer_drift",
+   "feature": "trailer_drift",
+   "kind": "feature"
+  },
+  {
+   "column_name": "trailer_price",
+   "feature": "trailer_price",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_drift_opp",
+   "feature": "u_drift_opp",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_drought",
+   "feature": "u_drought",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_elapsed",
+   "feature": "u_elapsed",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_hazard",
+   "feature": "u_hazard",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_jump",
+   "feature": "u_jump",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_margin_abs",
+   "feature": "u_margin_abs",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_open",
+   "feature": "u_open",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_overround",
+   "feature": "u_overround",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_pace",
+   "feature": "u_pace",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_price",
+   "feature": "u_price",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_price_open",
+   "feature": "u_price_open",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_ratio_open",
+   "feature": "u_ratio_open",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_ratio_shift",
+   "feature": "u_ratio_shift",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_trend",
+   "feature": "u_trend",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_vel_t",
+   "feature": "u_vel_t",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_vf",
+   "feature": "u_vf",
+   "kind": "feature"
+  },
+  {
+   "column_name": "u_vol",
+   "feature": "u_vol",
+   "kind": "feature"
+  },
+  {
+   "column_name": "wall_min",
+   "feature": "wall_min",
+   "kind": "feature"
+  }
+ ],
+ "generated_terms": [
+  "X_X_minute__x__u_pace__minus__X_u_elapsed__minus__u_time_in_lead",
+  "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead",
+  "X_a_score__over__home_odds",
+  "X_home_odds__x__point_spread_away",
+  "X_minute__minus__u_pace",
+  "X_minute__over__u_pace",
+  "X_minute__x__u_pace",
+  "X_u_elapsed__minus__u_time_in_lead",
+  "X_u_pace__over__u_time_in_lead",
+  "a_score",
+  "abs_lead",
+  "away_odds",
+  "dog_odds_vol_180",
+  "drift_ratio",
+  "fav_odds_trend_60",
+  "h_score",
+  "home_odds",
+  "hour",
+  "imbal",
+  "is_big_lead",
+  "is_favorite",
+  "jump_loser",
+  "ld_rank",
+  "lead_jump",
+  "lead_m30",
+  "lead_odds",
+  "lead_size",
+  "lead_vs_med",
+  "minute",
+  "nchg_120",
+  "needed_rate_for_over",
+  "odds_ratio",
+  "open_gap",
+  "opp",
+  "opp_drift",
+  "opp_o",
+  "opp_velocity",
+  "pm_away",
+  "pm_home",
+  "point_spread_away",
+  "prematch_dog_odds",
+  "price_gap",
+  "price_rank_in_match",
+  "prog_q",
+  "px_gap_ratio",
+  "q",
+  "recovery_x",
+  "retrace_lead",
+  "rk_dog_odds",
+  "rk_fav_odds",
+  "runmin",
+  "secs_since_price",
+  "ten_mins",
+  "tg_imp_over",
+  "tg_imp_under",
+  "total_points_handicap",
+  "total_points_over",
+  "total_points_under",
+  "total_pts",
+  "u_drift_opp",
+  "u_elapsed",
+  "u_hazard",
+  "u_margin_abs",
+  "u_open",
+  "u_overround",
+  "u_pace",
+  "u_price_open",
+  "u_ratio",
+  "u_ratio_shift",
+  "u_time_in_lead",
+  "u_vf"
+ ],
+ "n_deployable": 128,
+ "n_feature_columns": 146,
+ "n_pca": 8,
+ "n_validated": 142,
+ "n_withheld": 14,
+ "pca": {
+  "pc_2f7f4d0c": {
+   "n_fit": 1200,
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ]
+  },
+  "pc_428f55cf": {
+   "n_fit": 1200,
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ]
+  },
+  "pc_51f228a2": {
+   "n_fit": 1200,
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ]
+  },
+  "pc_6a99ae09": {
+   "n_fit": 1200,
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ]
+  },
+  "pc_aa16b0a5": {
+   "n_fit": 1200,
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ]
+  },
+  "pc_dc4196fb": {
+   "n_fit": 1200,
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ]
+  },
+  "pc_f3e46219": {
+   "n_fit": 1200,
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ]
+  },
+  "pc_fea3bd2c": {
+   "n_fit": 1200,
+   "terms": [
+    "line_move",
+    "line_open",
+    "wall_min"
+   ]
+  }
+ },
+ "preflight": "PASS",
+ "preflight_failures": [],
+ "resolvable_roles": [
+  "Draw",
+  "Total_Goals_Under",
+  "Total_Points_Under",
+  "Total_Under",
+  "dog_leader",
+  "drifted",
+  "fav_trailer",
+  "leader",
+  "pm_favourite",
+  "pm_underdog",
+  "shortened",
+  "trailer"
+ ],
+ "schema": "amunev.deploy/1",
+ "settleable_markets": [
+  "lead_ml",
+  "match_winner",
+  "total_points_under",
+  "trail_ml"
+ ],
+ "sport": "basketball",
+ "strategies": [
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "lead_vs_line <= -160.315",
+    "open_gap <= 2.2797",
+    "ten_mins <= 23.4333"
+   ],
+   "entry_window": 60,
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:HT_Unde_0017",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "X_minute__minus__u_drought <= 27.3487",
+    "tg_overround <= 1.1237",
+    "tg_imp_over <= 0.605"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0049",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "lead_vs_med >= 1.0267",
+    "lead_size >= 7",
+    "lead_odds >= 1.5"
+   ],
+   "entry_window": 60,
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "LZ_V270_BASK_022",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "lead_vs_line <= -170.833",
+    "X_home_odds__x__point_spread_away <= 10.82",
+    "u_vol >= 0.0119"
+   ],
+   "entry_window": 60,
+   "family": "prop:drifter_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:drifter_0027",
+   "tier": "Feeder"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "lead_size >= 7",
+    "drift_ratio >= 0.6632",
+    "lead_odds >= 1.5"
+   ],
+   "entry_window": 60,
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "LZ_V270_BASK_015",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "open_vs_now_lead <= 0.9043",
+    "motif_0 <= 0",
+    "X_minute__minus__u_drought <= 26.2769",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0169",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "lead_vs_line <= -143",
+    "u_ratio_open <= 2.9167",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0062",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_q >= 0.5",
+    "u_open >= 1.2",
+    "is_trailer <= 0.8231"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0005",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "odds_ratio <= 1.227",
+    "trailer_price >= 1.8518",
+    "total_points_over <= 1.9442",
+    "lead_changes_300s <= 1"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0110",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "lead_size >= 3",
+    "u_ratio_open <= 2.8107",
+    "open_gap <= 3.55"
+   ],
+   "entry_window": 60,
+   "family": "prop:late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:late_le_0181",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0056",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "trailer_price >= 1.92",
+    "pc_f3e46219 <= 2.3868"
+   ],
+   "entry_window": 60,
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_lead_ml_0081",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -150.5",
+    "u_ratio_open <= 2.5724",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0060",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "line >= 170",
+    "pm_home <= 2.6314"
+   ],
+   "entry_window": 60,
+   "family": "DRIFTED",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_DRIFTED_0046",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog >= 0.71510175543680066",
+    "time_at_this_price < 52.915909090909054",
+    "pace_last_300s_vs_line >= -159.72"
+   ],
+   "entry_window": 60,
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:TG_Hist_0072",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "u_overround <= 1.1109",
+    "req_ratio <= 1.3805"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0059",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "wall_min <= 171.805",
+    "lead_m15 <= 1",
+    "pc_51f228a2 <= -0.1057",
+    "secs_since_price <= 0"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0009",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "leader_runmax >= 1.8456",
+    "tot_vs_line <= -128.8692"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0054",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "trail <= 6"
+   ],
+   "entry_window": 60,
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0007",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -140.5",
+    "req_ratio >= 1.195",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0055",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8351",
+    "opp >= 1.91"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0098",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "leader_runmax <= 3.66",
+    "secs_since_run_started >= 0",
+    "u_trend <= -5.7851",
+    "total_goals_handicap_ffill <= 197.5",
+    "team_pace_gap <= 13.3333"
+   ],
+   "entry_window": 60,
+   "family": "prop:drifter_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:drifter_0029",
+   "tier": "Feeder"
+  },
+  {
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "line >= 170",
+    "X_minute__over__u_vol <= 2696.29",
+    "both_scored >= 1"
+   ],
+   "entry_window": 60,
+   "family": "prop:drifter_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:drifter_0026",
+   "tier": "Ino"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "prog_score <= 0.35",
+    "u_ratio_open <= 3.0575",
+    "trailer_price >= 1.8315",
+    "prematch_dog_odds >= 1.9465"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0115",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "dog_odds_vol_180 <= 0.15546",
+    "price_gap >= 0.04",
+    "lead_changes_300s <= 2",
+    "line_open >= 134.5"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0103",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score >= 0.45",
+    "u_drift_opp <= 11.7818"
+   ],
+   "entry_window": 60,
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:TG_Hist_0071",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "lead_m15 <= 0",
+    "u_overround >= 1.0508"
+   ],
+   "entry_window": 60,
+   "family": "prop:garbage_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:garbage_0127",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "dog_odds_vol_180 >= 0.0469",
+    "u_ratio_shift >= 0.395"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0135",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "u_ratio_open <= 3.0575",
+    "trailer_price >= 1.8315",
+    "pc_f3e46219 <= 2.0943",
+    "lead_changes_300s <= 1"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0089",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "X_minute__minus__u_drought <= 28.0923",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0047",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "dog_odds_vol_180 <= 0.15546",
+    "rk_dog_odds >= 1.85",
+    "pc_f3e46219 <= 2.0943",
+    "lead_changes_300s <= 1"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0097",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "total_points_under >= 1.75",
+    "hour >= 2",
+    "away_odds >= 1.159999966621399",
+    "tot_vs_line <= -129.823",
+    "opp >= 1.53"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0091",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "secs_since_lead_change >= 600",
+    "rk_fav_odds >= 1.23",
+    "u_ratio_open <= 2.842"
+   ],
+   "entry_window": 60,
+   "family": "prop:held_lead",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:held_le_0182",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "open_vs_now_lead <= 0.9043",
+    "motif_0 <= 0",
+    "pc_f3e46219 >= -0.4756"
+   ],
+   "entry_window": 60,
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_dog_leading_0148",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "lead_vs_line <= -170.833",
+    "total_line_move >= -4",
+    "lead_m30 <= 1"
+   ],
+   "entry_window": 60,
+   "family": "spec:Loser_1G",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:Loser_1_0023",
+   "tier": "Ino"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "rk_lead_off_high >= 0.2333",
+    "lead_m15 <= 1",
+    "line_vel <= 1"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0136",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "open_vs_now_lead <= 0.9043",
+    "motif_0 <= 0",
+    "X_minute__minus__u_drought <= 26.2769",
+    "req_ratio >= 1.1951",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_lead_ml_0144",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "need_vs_expected <= 168.5"
+   ],
+   "entry_window": 60,
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:TG_Hist_0014",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "u_vf <= 0.8899",
+    "ld_rank >= 0.625",
+    "is_big_lead >= 0.2821"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0035",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "rk_implied_edge >= 0.107",
+    "u_drought <= 71.4786"
+   ],
+   "entry_window": 60,
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_lead_ml_0082",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog >= 0.71510175543680066",
+    "time_at_this_price < 52.915909090909054",
+    "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead <= 0.0249"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0068",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "tot_vs_line >= -174.5"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0003",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "trailer_price >= 1.8471",
+    "pace_vs_line_pct >= -0.9852",
+    "eng_minute_ge_2 >= 1"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0132",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "X_minute__minus__u_drought <= 28.0923",
+    "lead_changes_300s <= 2",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0166",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "u_jump >= 0.9449",
+    "total_points_under <= 1.8"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0012",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "u_price <= 1.7584",
+    "overround_now <= 1.1135"
+   ],
+   "entry_window": 60,
+   "family": "spec:Leader",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:Leader_0077",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "wall_min <= 171.805",
+    "lead_m15 <= 1",
+    "tg_imp_under >= 0.5435",
+    "secs_since_price <= 0"
+   ],
+   "entry_window": 60,
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:TG_Hist_0018",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "rk_odds_ratio <= 2.6602",
+    "lead_vs_line >= -173.8462"
+   ],
+   "entry_window": 60,
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:TG_Hist_0069",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8351",
+    "lead_changes_300s <= 2"
+   ],
+   "entry_window": 60,
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:HT_Unde_0122",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "rk_odds_ratio <= 2.6602",
+    "prog_q >= 0.4444",
+    "tg_proj_vs_line >= -167.5197"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0001",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "total_line_move >= -4"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0052",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "dog_odds_vol_180 <= 0.15546",
+    "u_pace <= 58.0667",
+    "needed_rate_for_over >= 2.9473"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0114",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -151.823",
+    "opp_o <= 4.17",
+    "px_gap_ratio <= 1.442"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0058",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -140.5",
+    "secs_since_quarter_start <= 41.6871",
+    "rk_fav_odds >= 1.2738"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0051",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "prog_score <= 0.35",
+    "rk_fav_odds <= 1.75",
+    "u_overround <= 1.113"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0111",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "odds_ratio <= 1.2094",
+    "pts_last_60s <= 6",
+    "lead_m15 <= 1",
+    "rk_odds_ratio >= 1.0318"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0096",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "price_rank_in_match >= 0.36363651141645542",
+    "secs_since_score < 97",
+    "X_minute__over__u_pace <= 1.5057"
+   ],
+   "entry_window": 60,
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:TG_Hist_0070",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "rk_dog_odds >= 1.84",
+    "pc_2f7f4d0c <= 0.6721",
+    "lead_changes_300s <= 2",
+    "u_drought <= 3213.791318359375"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0116",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "total_points_under >= 1.75",
+    "pm_away <= 2.85",
+    "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead <= -19.1179",
+    "u_vel_t <= 0.0198"
+   ],
+   "entry_window": 60,
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:HT_Unde_0123",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.1318",
+    "px_gap_ratio <= 1.4925"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0053",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "trail <= 6",
+    "pace_last_300s_vs_line >= -185.8205",
+    "prog_q >= 0.4444"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0004",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "tg_proj_vs_line >= -168.5"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0037",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "dog_odds_vol_180 <= 0.15546",
+    "price_gap >= 0.04",
+    "lead_changes_300s <= 2",
+    "line_flat >= 1"
+   ],
+   "entry_window": 60,
+   "family": "prop:late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:late_le_0157",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "leader_runmax <= 3.66",
+    "lead_vs_med <= 1.175",
+    "rk_dog_odds >= 1.83",
+    "u_trend <= -2.6556"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0102",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "trailer_price >= 1.8471",
+    "pc_2f7f4d0c <= 0.6917"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0105",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "tg_proj_vs_line >= -168.1895"
+   ],
+   "entry_window": 60,
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:TG_Hist_0017",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "total_points_under >= 1.75",
+    "hour >= 2",
+    "away_odds >= 1.159999966621399",
+    "prog >= 0.25",
+    "recovery_x >= 1",
+    "pace_last_300s_vs_line >= -156.5908"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0134",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "price_gap >= 0.2",
+    "jump_loser >= 0.9075"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0101",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "pm_ratio <= 3.6843",
+    "imbal >= 0.0164",
+    "line_flat >= 0.8667",
+    "trailer_drift >= 1.0222"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0112",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "imbal >= 0.0217",
+    "pc_6a99ae09 >= -0.6204"
+   ],
+   "entry_window": 60,
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:HT_Unde_0124",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "u_vf <= 0.8899",
+    "abs_margin_per_remaining_s >= 0.0004",
+    "lead_vs_line >= -180.341"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0031",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "pm_underdog",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 170",
+    "odds_ratio <= 2.4922",
+    "pc_fea3bd2c >= -0.66349512338638306"
+   ],
+   "entry_window": 60,
+   "family": "pm_underdog",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_pm_underdog_0044",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "X_X_minute__x__u_pace__minus__X_u_elapsed__minus__u_time_in_lead <= 169.724",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_dog_leading_0147",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "dog_odds_vol_180 <= 0.1733",
+    "req_ratio <= 1.3177"
+   ],
+   "entry_window": 60,
+   "family": "spec:Leader",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:Leader_0079",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "u_hazard <= -0.1409",
+    "needed_rate_for_over <= 3.6355",
+    "prog_q >= 0.0456"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0006",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "shortened",
+   "bets_sha": "",
+   "conditions": [
+    "pm_ratio <= 3.6843",
+    "imbal >= 0.0164",
+    "u_jump >= 0.9459"
+   ],
+   "entry_window": 60,
+   "family": "prop:shortener_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:shorten_0163",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "h_score <= 16.1205",
+    "u_hazard <= -0.1356",
+    "opp_velocity >= -0.0842"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0104",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "dog_odds_vol_180 <= 0.15546",
+    "X_minute__over__u_vol <= 353.579",
+    "home_pace <= 23.5316"
+   ],
+   "entry_window": 60,
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_lead_ml_0085",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "nchg_120 <= 2",
+    "retrace_lead <= 0.3623",
+    "dow >= 2"
+   ],
+   "entry_window": 60,
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_lead_ml_0086",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "trailer_price >= 1.8471",
+    "pc_f3e46219 <= 2.3571"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0090",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "total_line_move >= -5.8769",
+    "total_line_move >= 0"
+   ],
+   "entry_window": 60,
+   "family": "prop:garbage_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:garbage_0128",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "rk_odds_ratio <= 2.6602",
+    "u_drift_opp >= 0.7584",
+    "motif_2 <= 0",
+    "prog_x_margin >= -2.5026",
+    "X_u_elapsed__minus__u_time_in_lead >= -0.2546"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0067",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "secs_since_lead_change >= 600",
+    "rk_implied_edge >= 0.1704",
+    "pc_428f55cf <= 2.0819"
+   ],
+   "entry_window": 60,
+   "family": "prop:held_lead",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:held_le_0170",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "lead_odds <= 2.25",
+    "lead_size >= 6",
+    "lead_odds >= 1.5"
+   ],
+   "entry_window": 60,
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "LZ_V270_BASK_016",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "trailer_price >= 1.34",
+    "retrace_lead <= 0.0439"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0168",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.8601",
+    "margin_per_possession <= 0.0166",
+    "tg_overround <= 1.1236"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0065",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.75",
+    "u_overround <= 1.1109",
+    "u_ratio_open <= 2.8919",
+    "tg_imp_over <= 0.6235"
+   ],
+   "entry_window": 60,
+   "family": "prop:dog_leading_late",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:dog_lea_0151",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.8601",
+    "wall_min >= 138.5"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0064",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "loser_runmax >= 1.8722",
+    "dow >= 1.041"
+   ],
+   "entry_window": 60,
+   "family": "spec:Leader",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:Leader_0078",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "leader_runmax <= 3.66",
+    "secs_since_run_started >= 0",
+    "fav_lead_m30 >= -1",
+    "u_trend <= -6.5658"
+   ],
+   "entry_window": 60,
+   "family": "prop:drifter_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:drifter_0028",
+   "tier": "Feeder"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "X_a_score__over__home_odds >= 0",
+    "lead_m75 <= 1"
+   ],
+   "entry_window": 60,
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0002",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "q <= 1",
+    "lead_m30 <= 1",
+    "opp >= 1.5927"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0093",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "price_rank_in_match >= 0.3333",
+    "tg_imp_under >= 0.5682"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0008",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "total_pts >= 122",
+    "runmin >= 1.129",
+    "lead_odds >= 1.5"
+   ],
+   "entry_window": 60,
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "LZ_V270_BASK_021",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "rk_lead_off_low <= 2.1135",
+    "imbal >= 0.0217",
+    "u_ratio_open >= 0.6317"
+   ],
+   "entry_window": 60,
+   "family": "DRIFTED",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_DRIFTED_0121",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "dog_odds_vol_180 <= 0.15546",
+    "margin_range_300s >= 4",
+    "ten_mins <= 23.4436"
+   ],
+   "entry_window": 60,
+   "family": "prop:late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:late_le_0158",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "shortened",
+   "bets_sha": "",
+   "conditions": [
+    "lead_size >= 3",
+    "u_ratio_open <= 2.8107",
+    "scores_300s <= 4",
+    "fav_odds_trend_60 <= 0.2231",
+    "ten_mins <= 23.0897"
+   ],
+   "entry_window": 60,
+   "family": "prop:shortener_vs_open",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:shorten_0152",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "total_points_under >= 1.75",
+    "hour >= 2",
+    "away_odds >= 1.159999966621399",
+    "total_points_over < 1.899999976158142",
+    "tot_vs_line <= -112.908",
+    "rk_odds_ratio >= 1.0867"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0095",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "drifted",
+   "bets_sha": "",
+   "conditions": [
+    "lead_vs_line <= -160.315",
+    "open_gap <= 2.2797",
+    "pm_away >= 1.4"
+   ],
+   "entry_window": 60,
+   "family": "DRIFTED",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_DRIFTED_0045",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "secs_since_lead_change <= 60",
+    "lead_vs_med <= 1.0759",
+    "margin_range_300s <= 5"
+   ],
+   "entry_window": 60,
+   "family": "prop:fresh_lead",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:fresh_l_0183",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "open_vs_now_lead <= 0.9043",
+    "motif_0 <= 0",
+    "X_minute__minus__u_drought <= 26.2769",
+    "tg_overround <= 1.1172"
+   ],
+   "entry_window": 60,
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_dog_leading_0146",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "rk_fav_odds <= 1.75",
+    "margin_rate <= 6.6917",
+    "pc_428f55cf <= 2.0819"
+   ],
+   "entry_window": 60,
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_lead_ml_0087",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "prog_score <= 0.35",
+    "rk_fav_odds <= 1.75",
+    "leader_implied_gap >= -0.1701",
+    "tg_px_ratio <= 1.1098"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0094",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "u_vf <= 0.8899",
+    "ld_rank >= 0.625",
+    "u_margin_abs >= 2",
+    "total_points_under <= 1.8388"
+   ],
+   "entry_window": 60,
+   "family": "spec:TG_Historical_vs_Handicap_Under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:TG_Hist_0016",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.8601",
+    "margin_per_possession <= 0.0166",
+    "u_price_open >= 1.34",
+    "X_minute__minus__u_pace >= -18",
+    "needed_rate_for_over >= 3.3176"
+   ],
+   "entry_window": 60,
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:HT_Unde_0042",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "odds_ratio <= 1.227",
+    "lead_changes_total <= 2",
+    "lead_vs_line <= -145.692",
+    "pc_f3e46219 <= 1.9746"
+   ],
+   "entry_window": 60,
+   "family": "spec:Leader",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:Leader_0076",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "dog_odds_vol_180 <= 0.15546",
+    "price_gap >= 0.04",
+    "lead_changes_300s <= 2"
+   ],
+   "entry_window": 60,
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_dog_leading_0141",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "time_at_this_price <= 28.2017",
+    "u_vf <= 0.8899",
+    "ld_rank >= 0.625",
+    "is_big_lead >= 1",
+    "tg_imp_under >= 0.5462"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0007",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "dog_odds_vol_180 <= 0.15546",
+    "u_pace <= 58.0667",
+    "home_pace >= 2"
+   ],
+   "entry_window": 60,
+   "family": "lead_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_lead_ml_0080",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "u_ratio_open <= 3.0575",
+    "u_drought <= 1241.51",
+    "trailer_drift <= 1.0594"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0038",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "lead_vs_line <= -151.823",
+    "opp_o <= 4.17",
+    "tg_overround <= 1.1237",
+    "time_left <= 0.8889"
+   ],
+   "entry_window": 60,
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_dog_leading_0150",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "first_scorer_is_backed >= 1",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "h_score <= 16.1205",
+    "is_favorite >= 1"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:first_s_0099",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8392",
+    "X_u_elapsed__minus__u_time_in_lead <= 1.0763",
+    "total_points_handicap >= 150.4538"
+   ],
+   "entry_window": 60,
+   "family": "spec:Leader",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:Leader_0075",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "secs_since_lead_change >= 600",
+    "line_open >= 140",
+    "loser_runmin >= 1.2769",
+    "overround_now <= 1.121"
+   ],
+   "entry_window": 60,
+   "family": "prop:held_lead",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:held_le_0172",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "prog_score <= 0.35",
+    "lead_vs_line <= -151.823",
+    "opp_o <= 4.17",
+    "pace_last_300s_vs_line >= -171.0969"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0113",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "dog_leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "pace_last_300s_vs_line <= -115.005",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "dog_leading",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_dog_leading_0149",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "odds_ratio >= 0.0833"
+   ],
+   "entry_window": 60,
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:garbage_0057",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "lead_m15 <= 0",
+    "backed_pts_last_60s <= 4.4718",
+    "pc_dc4196fb <= -2.1901"
+   ],
+   "entry_window": 60,
+   "family": "spec:Early_Hammer",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:Early_H_0088",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "prog >= 0.3672",
+    "lead_size >= 4",
+    "lead_odds >= 1.5"
+   ],
+   "entry_window": 60,
+   "family": null,
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "LZ_V270_BASK_008",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": "trailer",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead <= 6",
+    "u_elapsed >= 0.75",
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "rk_fav_odds >= 1.0142",
+    "lead_change_last_300s >= -5"
+   ],
+   "entry_window": 60,
+   "family": "prop:q4_close_trailer",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:q4_clos_0129",
+   "tier": "Feeder"
+  },
+  {
+   "bet_role": "trailer",
+   "bets_sha": "",
+   "conditions": [
+    "lead_jump <= 0.9429",
+    "pc_aa16b0a5 >= -0.6013"
+   ],
+   "entry_window": 60,
+   "family": "trail_ml",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_trail_ml_0025",
+   "tier": "Ino"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "abs_lead > 3",
+    "u_elapsed <= 1.2",
+    "u_elapsed >= 0.85",
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8392",
+    "X_u_elapsed__minus__u_time_in_lead <= 1.0763",
+    "wall_min >= 131.5"
+   ],
+   "entry_window": 60,
+   "family": "late_lead_hold",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_late_lead_ho_0106",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "total_points_under >= 1.75",
+    "pm_away <= 2.85",
+    "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead <= -19.1179",
+    "dog_odds_vol_180 <= 0.653"
+   ],
+   "entry_window": 60,
+   "family": "tg_under",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_0066",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "secs_since_lead_change >= 600",
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "leader_runmax <= 3.66",
+    "lead_vs_med <= 1.175",
+    "line_flat >= 1.6026"
+   ],
+   "entry_window": 60,
+   "family": "prop:held_lead",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_prop:held_le_0171",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "dog_odds_vol_180 <= 0.15546",
+    "odds_ratio <= 1.209",
+    "spread_cover_now >= -4.4051"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0131",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "prog_score <= 0.35",
+    "odds_ratio <= 1.2094",
+    "pts_last_60s <= 6",
+    "lead_m15 <= 1",
+    "eng_score_tied <= 0"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0137",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "Total_Points_Under",
+   "bets_sha": "",
+   "conditions": [
+    "pm_ratio <= 3.6843",
+    "imbal >= 0.0164",
+    "line_flat >= 0.8667",
+    "pts_last_60s <= 4.4615"
+   ],
+   "entry_window": 60,
+   "family": "tg_under_lag",
+   "market": "total_points_under",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_tg_under_lag_0133",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": "leader",
+   "bets_sha": "",
+   "conditions": [
+    "line_open >= 140",
+    "pm_away <= 2.92",
+    "leader_runmax <= 3.66",
+    "secs_since_run_started >= 0",
+    "fav_lead_m30 >= -1",
+    "u_trend <= -5.7851",
+    "total_goals_handicap_ffill >= 145.5"
+   ],
+   "entry_window": 60,
+   "family": "spec:Loser_1G",
+   "market": "match_winner",
+   "max_odds": 4.2,
+   "min_odds": 1.4,
+   "n_bets": null,
+   "spec_sha": "",
+   "strategy": "BAS_spec:Loser_1_0024",
+   "tier": "Ino"
+  }
+ ],
+ "terms_the_generator_could_not_write": [
+  "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead",
+  "X_minute__minus__u_drought",
+  "X_minute__over__u_vol",
+  "abs_margin_per_remaining_s",
+  "backed_pts_last_60s",
+  "both_scored",
+  "dow",
+  "eng_minute_ge_2",
+  "eng_score_tied",
+  "fav_lead_m30",
+  "first_scorer_is_backed",
+  "home_pace",
+  "is_trailer",
+  "lead_change_last_300s",
+  "lead_changes_300s",
+  "lead_changes_total",
+  "lead_m15",
+  "lead_m75",
+  "lead_vs_line",
+  "leader_implied_gap",
+  "leader_runmax",
+  "line",
+  "line_flat",
+  "line_move",
+  "line_open",
+  "line_vel",
+  "loser_runmax",
+  "loser_runmin",
+  "margin_per_possession",
+  "margin_range_300s",
+  "margin_rate",
+  "motif_0",
+  "motif_2",
+  "need_frac",
+  "need_vs_expected",
+  "open_vs_now_lead",
+  "overround_now",
+  "pace_last_300s_vs_line",
+  "pace_vs_line_pct",
+  "pm_ratio",
+  "prog",
+  "prog_score",
+  "prog_x_margin",
+  "pts_last_60s",
+  "req_ratio",
+  "rk_implied_edge",
+  "rk_lead_off_high",
+  "rk_lead_off_low",
+  "rk_odds_ratio",
+  "scores_300s",
+  "secs_since_lead_change",
+  "secs_since_quarter_start",
+  "secs_since_run_started",
+  "secs_since_score",
+  "spread_cover_now",
+  "team_pace_gap",
+  "tg_overround",
+  "tg_proj_vs_line",
+  "tg_px_ratio",
+  "time_at_this_price",
+  "time_left",
+  "tot_vs_line",
+  "total_goals_handicap_ffill",
+  "total_line_move",
+  "trail",
+  "trailer_drift",
+  "trailer_price",
+  "u_drought",
+  "u_jump",
+  "u_price",
+  "u_ratio_open",
+  "u_trend",
+  "u_vel_t",
+  "u_vol",
+  "wall_min"
+ ]
+}

@@ -84717,7 +84717,7 @@ _LAZ_MODULE_API = {
  'laz_docs': ('write_all','names','text'),
  'laz_audit': ('run','run_all','gate','KINDS','SCRIPTS'),
  'laz_production': ('export','coverage','term_lineage','strategy_record'),
- 'laz_deploy': ('emit','row','preflight','sql','namespace','pca_manifest','pca_module','column_name','threshold','condition','leaves'),
+ 'laz_deploy': ('emit','row','preflight','sql','namespace','pca_manifest','pca_module','column_name','threshold','condition','leaves','spec_doc','role','market','band'),
  'laz_combine_all': ('run','build_bet_book','merge_from','BET_BOOK'),
 }
 # Populated by the engine builder: module -> {clean name: prefixed global}.
@@ -91180,10 +91180,10 @@ class _S:
 def _norm_phase(v):
     x = str(v).upper().strip().split(',')[0].replace(' ', '').replace('QUARTER', 'Q').replace('HALF', 'H')
     import re as _re
-    m = _re.match('^(\\d)(ST|ND|RD|TH)?Q$|^Q(\\d)$', x)
+    m = _re.match(r'^(\\d)(ST|ND|RD|TH)?Q$|^Q(\\d)$', x)
     if m:
         return 'Q' + (m.group(1) or m.group(3))
-    m = _re.match('^(\\d)(ST|ND|RD|TH)?H$|^H(\\d)$', x)
+    m = _re.match(r'^(\\d)(ST|ND|RD|TH)?H$|^H(\\d)$', x)
     if m:
         return '1H' if (m.group(1) or m.group(3)) == '1' else '2H'
     if x.startswith('HT') or 'HALFT' in x:
@@ -91231,7 +91231,7 @@ def _fv_open(ho0, ao0):
 def _phase_min(v):
     # [v246-FG] the minute token after the comma, exactly the genome's laz_genome___phase_minute
     import re as _re3
-    m = _re3.search(',\\s*(\\d+(?:\\.\\d+)?)\\s*MIN', str(v).upper())
+    m = _re3.search(r',\\s*(\\d+(?:\\.\\d+)?)\\s*MIN', str(v).upper())
     return float(m.group(1)) if m else np.nan
 
 
@@ -92692,10 +92692,10 @@ laz_quarantine___UNKNOWN_PHASE = {'', 'NAN', 'NONE', 'NULL', 'UNKNOWN'}
 def laz_quarantine___phase_norm(v):
     x = str(v).upper().strip().split(',')[0].replace(' ', '').replace('QUARTER', 'Q').replace('HALF', 'H')
     import re as _re
-    m = _re.match('^(\\d)(ST|ND|RD|TH)?Q$|^Q(\\d)$', x)
+    m = _re.match(r'^(\\d)(ST|ND|RD|TH)?Q$|^Q(\\d)$', x)
     if m:
         return 'Q' + (m.group(1) or m.group(3))
-    m = _re.match('^(\\d)(ST|ND|RD|TH)?H$|^H(\\d)$', x)
+    m = _re.match(r'^(\\d)(ST|ND|RD|TH)?H$|^H(\\d)$', x)
     if m:
         return '1H' if (m.group(1) or m.group(3)) == '1' else '2H'
     if x.startswith('HT') or 'HALFT' in x:
@@ -94391,10 +94391,10 @@ def laz_genome___phase_norm(v):
     map to quarter numbers; a trailing minute token is ignored here (see _phase_minute)."""
     x = str(v).upper().strip().split(',')[0].replace(' ', '').replace('QUARTER', 'Q').replace('HALF', 'H')
     import re as _re
-    m = _re.match('^(\\d)(ST|ND|RD|TH)?Q$|^Q(\\d)$', x)
+    m = _re.match(r'^(\\d)(ST|ND|RD|TH)?Q$|^Q(\\d)$', x)
     if m:
         return 'Q' + (m.group(1) or m.group(3))
-    m = _re.match('^(\\d)(ST|ND|RD|TH)?H$|^H(\\d)$', x)
+    m = _re.match(r'^(\\d)(ST|ND|RD|TH)?H$|^H(\\d)$', x)
     if m:
         return '1H' if (m.group(1) or m.group(3)) == '1' else '2H'
     if x.startswith('HT') or 'HALFT' in x:
@@ -103757,6 +103757,187 @@ def laz_mode3___eval_text(txt, pool, rows=None):
     return m, ''
 
 
+def laz_mode3___mask_residual(base_name):
+    """The base's arm mask, as ORDINARY CONDITIONS on terms the engine emits.
+
+    A base is not a label. `late_lead_hold` is `_lead(C, 0.85, 1.2, 3)`: back the leader,
+    but only while elapsed is in [0.85, 1.2] and the margin is over 3. Production's
+    resolve_side says the first half and nothing about the second, so shipping the base as
+    the bare role `leader` fires on every leading tick of the match instead of the last
+    15% at 4+ up. That is a different strategy wearing the same name.
+
+    So the residual is emitted as CLAUSES, in the engine's own terms, and stacked with the
+    strategy's own conditions. u_elapsed IS the engine's `el` -- the generated production
+    feature file emits `out['u_elapsed'] = el` and the replay proof diffs it against the
+    pool -- so the window is reproduced from the same number the search measured on, not
+    from a clock somebody assumed was equivalent.
+
+    Returns (role, [(term, op, value), ...], note). role None means the mask cannot be
+    expressed at all, and the note says what it needs.
+    """
+    b = str(base_name or '')
+    if ':' in b:
+        b = b.split(':', 1)[1]
+    W = laz_mode3___MASK_WINDOWS.get(b)
+    if W is None:
+        return None, [], ''
+    role, lo, hi, k, extra, note = W
+    cl = []
+    if lo is not None:
+        cl.append(('u_elapsed', '>=', float(lo)))
+    if hi is not None:
+        cl.append(('u_elapsed', '<=', float(hi)))
+    if k:
+        # abs_lead is the UNSIGNED margin, and the role has already fixed which side is
+        # backed, so |margin| > k is the same test the mask makes on the signed one.
+        cl.append(('abs_lead', '>', float(k)))
+    cl += list(extra or ())
+    return role, cl, note
+
+
+# base -> (role, elapsed_lo, elapsed_hi, margin_k, extra clauses, note)
+# Transcribed from laz_propose__BASES' own lambdas and laz_registry__BASES. A base absent
+# from this table ships on its family's measured role with no residual; a base whose mask
+# needs a quantity the engine does not emit carries role None and says so.
+laz_mode3___MASK_WINDOWS = {
+    'lead_ml':            ('leader', None, None, 0, (), ''),
+    'trail_ml':           ('trailer', None, None, 0, (), ''),
+    'sets_leader':        ('leader', None, None, 0, (), ''),
+    'sets_trailer':       ('trailer', None, None, 0, (), ''),
+    'maps_leader':        ('leader', None, None, 0, (), ''),
+    'maps_trailer':       ('trailer', None, None, 0, (), ''),
+    'dog_leading':        ('dog_leader', None, None, 0, (), ''),
+    'fav_trailing':       ('fav_trailer', None, None, 0, (), ''),
+    'pm_favourite':       ('pm_favourite', None, None, 0, (), ''),
+    'pm_underdog':        ('pm_underdog', None, None, 0, (), ''),
+    'SHORTENED':          ('shortened', None, None, 0, (), ''),
+    'shortener_vs_open':  ('shortened', None, None, 0, (), ''),
+    'DRIFTED':            ('drifted', None, None, 0, (), ''),
+    'drifter_vs_open':    ('drifted', None, None, 0, (), ''),
+    'draw_hold':          ('Draw', None, None, 0, (), ''),
+    # _lead / _trail with an explicit window: the residual IS the window
+    'late_lead_hold':     ('leader', 0.85, 1.2, 3, (), ''),
+    'mid_leader':         ('leader', 0.4, 0.7, 0, (), ''),
+    'mid_trailer':        ('trailer', 0.4, 0.7, 0, (), ''),
+    'early_trailer':      ('trailer', 0.0, 0.25, 0, (), ''),
+    'q3_run_leader':      ('leader', 0.5, 0.75, 9, (), ''),
+    'two_goal_leader':    ('leader', 0.3, 1.2, 1, (), ''),
+    'dog_leading_late':   ('dog_leader', 0.75, 1.2, 0, (), ''),
+    'dog_leading_mid':    ('dog_leader', 0.4, 0.7, 0, (), ''),
+    'fav_trailing_early': ('fav_trailer', 0.0, 0.35, 0, (), ''),
+    'q4_close_trailer':   ('trailer', 0.75, None, 0, (('abs_lead', '<=', 6.0),), ''),
+    'h1_result_leader':   ('leader', 0.05, 0.49, 0, (), ''),
+    'h1_dnb_leader':      ('leader', 0.05, 0.49, 0, (), ''),
+    'dnb_leader':         ('leader', 0.3, None, 0, (), ''),
+    'h1_leader_hold':     ('leader', 0.05, 0.49, 0, (), ''),
+    # masks whose extra predicate is a term the engine emits
+    'quiet_leader':       ('leader', None, None, 0, (('secs_since_score', '>=', 300.0),), ''),
+    'fresh_lead':         ('leader', None, None, 0, (('secs_since_lead_change', '<=', 60.0),),
+                           'needs secs_since_lead_change from the generated feature file'),
+    'held_lead':          ('leader', None, None, 0, (('secs_since_lead_change', '>=', 600.0),),
+                           'needs secs_since_lead_change from the generated feature file'),
+    'volatile_fav':       ('pm_favourite', None, None, 0, (('lead_changes_300s', '>=', 2.0),),
+                           'needs lead_changes_300s from the generated feature file'),
+    'first_scorer_hold':  ('leader', None, None, 0, (('first_scorer_is_backed', '>=', 1.0),),
+                           'needs first_scorer_is_backed: 1 when the backed side scored first'),
+    'one_goal_leader_late': ('leader', 0.75, None, 0, (('abs_lead', '<=', 1.0),), ''),
+}
+
+
+def laz_mode3___execution_spec(rec, base_name, seed_txt, clauses, lo, hi, sport, market):
+    """[EXEC SPEC] EVERY ELEMENT, IN THE EXACT ORDER IT HAS TO HAPPEN, WITH ITS EXACT TRIGGER.
+
+    THE FAILURE THIS ENDS. A strategy used to be documented as a bag of conditions and a
+    band. That is not enough to rebuild it: it does not say what is tested FIRST, what the
+    base mask contributes, which side the price comes from, or at which tick the bet is
+    taken. Two implementations of the same bag of conditions place different bets, and the
+    only way to tell was to run both.
+
+    So every element is written here, ordered, with the exact expression that has to be
+    true and what happens when it is not. Read top to bottom, this IS the implementation:
+    a reader who evaluates each step in order, stopping at the first that fails, places
+    exactly the bets the search measured.
+
+    Returns a list of steps. Each step carries:
+        step         its position in the order -- this is the order, not a suggestion
+        gate         what kind of check it is
+        trigger      the EXACT expression that must be true, in production terms
+        reads        the terms/columns it needs on this tick
+        on_fail      what production does when it is not true
+        why          why it is at this position and not another
+    """
+    role, residual, note = laz_mode3___mask_residual(base_name)
+    steps = []
+
+    def add(gate, trigger, reads, on_fail, why):
+        steps.append(dict(step=len(steps) + 1, gate=gate, trigger=trigger,
+                          reads=list(reads), on_fail=on_fail, why=why))
+
+    add('MARKET OPEN',
+        "market_status == 'Open'",
+        ['market_status'],
+        'skip this tick entirely; no strategy is evaluated',
+        'a suspended market cannot be bet into, so nothing below it is meaningful')
+    add('FEED FRESH',
+        'tick_gap_s is null OR tick_gap_s <= 180',
+        ['tick_gap_s'],
+        'skip this tick entirely',
+        'a stale tick carries a price that is no longer quoted; the search measured on '
+        'live ticks only')
+    add('BASE ARM MASK — SIDE',
+        (f"resolve_side({role!r}) is not null" if role else
+         f'base {base_name!r}: the arm mask cannot be expressed as a role'),
+        ['h_score', 'a_score', 'home_odds', 'away_odds', 'prematch home/away odds'],
+        'do not fire on this tick; never guess a side',
+        'the base decides WHICH SIDE is backed before any condition is read, because a '
+        'condition on the backed side\'s price means nothing until the side is known')
+    for i, (t, o, v) in enumerate(residual, 1):
+        add(f'BASE ARM MASK — WINDOW {i}',
+            f'{t} {o} {v!r}',
+            [t],
+            'do not fire on this tick',
+            'part of the base\'s own mask, not of the strategy\'s conditions; without it '
+            'the strategy fires outside the region it was measured in')
+    add('PRICE OF THE BACKED SIDE',
+        'price = price_for_side(side) ; price is not null AND price == price',
+        ['home_odds', 'away_odds', 'draw_odds', 'total_*_under'],
+        'do not fire; a NaN price passes every bound check because every NaN comparison '
+        'is False',
+        'the band below compares against this exact number, so it is resolved before the '
+        'band and not after')
+    add('PRICE BAND',
+        f'{float(lo)!r} <= price <= {float(hi)!r}',
+        ['the price resolved above'],
+        'do not fire on this tick',
+        'the strategy was measured ONLY on bets inside this band; a bet outside it is a '
+        'bet the search never priced')
+    for i, c in enumerate(clauses or [], 1):
+        add(f'CONDITION {i}',
+            str(c),
+            [str(c).split()[0]] if str(c).split() else [],
+            'do not fire on this tick (a null value fails closed, it never passes)',
+            'evaluated after the side is known, because a side-aware term reads the '
+            'backed side\'s value, not home\'s')
+    add('FIRST TICK ONLY',
+        'this (match_id, strategy) has not fired before',
+        ['the fired set'],
+        'do not fire again in this match',
+        'the search took ONE bet per match, at the FIRST tick where everything above held; '
+        'firing again would place bets it never measured')
+    add('PLACE',
+        f'back {role or "the base side"} at price, market {market!r}',
+        [],
+        '—',
+        'every gate above held on this tick and on no earlier one')
+    add('SETTLE',
+        (f'the total is under the line stored on the bet row' if 'under' in str(market)
+         else f'the backed side wins the match'),
+        ['the recorded final result'],
+        'unsettled bets are excluded, never counted as losses',
+        'the same settlement the search graded on')
+    return steps
+
+
 def laz_mode3___element_record(rec, base_name, seed_txt, seed_id, seed_kind, lo, hi, chain, idx, pool, sport):
     """[ELEMENT DOC] Document every element of a strategy AT THE MOMENT IT VALIDATES.
 
@@ -103795,8 +103976,21 @@ def laz_mode3___element_record(rec, base_name, seed_txt, seed_id, seed_kind, lo,
         _fp, _n, _first, _last = None, None, None, None
     terms = sorted({str(c['term']) for c in parsed if c.get('term')})
     missing = [t for t in terms if pool is not None and pool.get(t) is None]
+    # [EXEC SPEC] the ordered implementation, built here because the base name, the seed
+    # and the exact band are all in hand at this instant and nowhere else.
+    try:
+        _exec = laz_mode3___execution_spec(rec, base_name, seed_txt, clauses, lo, hi, sport,
+                                           str(rec.get('market') or ''))
+        _role, _resid, _mask_note = laz_mode3___mask_residual(base_name)
+    except Exception as _xe:
+        _exec, _role, _resid, _mask_note = [], None, [], f'exec spec raised {type(_xe).__name__}'
+        laz_sink__swallow('mode3:exec_spec', _xe)
     doc = dict(
-        schema='amunev.element_doc/1',
+        schema='amunev.element_doc/2',
+        execution=_exec,
+        bet_role=_role,
+        base_mask_clauses=[dict(term=t, op=o, value=v) for t, o, v in (_resid or ())],
+        base_mask_note=_mask_note,
         strategy=str(rec.get('strategy_name') or ''),
         sport=str(sport), base=str(base_name),
         market=str(rec.get('market') or ''),
@@ -103821,8 +104015,16 @@ def laz_mode3___element_record(rec, base_name, seed_txt, seed_id, seed_kind, lo,
         documented_at='acceptance')
     doc['spec_sha'] = hashlib.sha256(json.dumps(
         dict(base=doc['base'], conditions=doc['conditions_text'], band=doc['band'],
-             seed=doc['seed']['text'], market=doc['market']),
+             seed=doc['seed']['text'], market=doc['market'],
+             # the base mask is half the specification: two strategies with identical
+             # conditions and different masks are different strategies, and a spec_sha
+             # that ignored the mask called them the same one.
+             role=doc['bet_role'],
+             mask=[(c['term'], c['op'], c['value']) for c in doc['base_mask_clauses']]),
         sort_keys=True, default=str).encode('utf-8')).hexdigest()[:16]
+    doc['exec_sha'] = hashlib.sha256(json.dumps(doc['execution'], sort_keys=True,
+                                                default=str).encode('utf-8')).hexdigest()[:16]
+    doc['n_steps'] = len(doc['execution'])
     # the reasons this strategy could not ship UNCHANGED, stated at acceptance
     gaps = []
     if unreadable:
@@ -118898,52 +119100,61 @@ def laz_deploy__market(rec, sport, doc=None):
 
 
 def laz_deploy__role(rec, sport, market, doc=None):
-    """The production bet_role for a leg, or (None, reason).
+    """The production bet_role for a leg, and the base-mask clauses that go with it.
 
-    A role production cannot resolve is the worst outcome in this file, because it
-    raises nothing: resolve_side answers None, the evaluator's `continue` runs, and the
-    strategy never fires again for the rest of its life -- no log line, no exception, no
-    bet. So a role is returned only when the base's mask is reproduced EXACTLY, and the
-    residual is named when it is not.
+    Returns (role, mask_clauses, reason). reason is set ONLY when the mask cannot be
+    expressed at all -- not when it needs more than a bare role.
+
+    WHAT CHANGED AND WHY. This used to refuse any base that armed on more than a role:
+    `late_lead_hold` is the leader, but only in the last 15% at 4+ up, and production's
+    resolve_side says nothing about a window. Refusing it withheld strategies the search
+    had already validated over every gate it has -- which is not this file's decision to
+    make. The window is not missing information; it is IN the base's own mask, the engine
+    knows it exactly, and it is an ordinary condition on u_elapsed and abs_lead. So it is
+    EMITTED as conditions and stacked with the strategy's own, which is what makes the
+    shipped row fire on exactly the ticks the search measured.
+
+    The clauses are read from the element doc first, where the worker wrote them at
+    acceptance with the base still in hand, and re-derived only for rows that predate it.
     """
     if market in ('total_points_under',):
-        return 'Total_Points_Under', None
+        return 'Total_Points_Under', [], None
     if market in ('total_goals_under',):
-        return 'Total_Goals_Under', None
+        return 'Total_Goals_Under', [], None
     if market in ('total_points_over', 'total_goals_over'):
-        # laz_features' _ROLE_FIXED carries no OVER role and price_for_side prices no
-        # OVER side, so the evaluator would answer None on every tick.
-        return None, ('production has no OVER role: _ROLE_FIXED and price_for_side both '
-                      'stop at the UNDER, so an over strategy never resolves a side')
+        return None, [], ('production has no OVER role: _ROLE_FIXED and price_for_side '
+                          'both stop at the UNDER, so an over strategy resolves no side')
     if market == 'lead_ml':
-        return 'leader', None
+        return 'leader', [], None
     if market == 'trail_ml':
-        return 'trailer', None
+        return 'trailer', [], None
+
+    # written at acceptance -- the authoritative answer
+    if doc and doc.get('bet_role'):
+        return (str(doc['bet_role']),
+                [(c.get('term'), c.get('op'), c.get('value'))
+                 for c in (doc.get('base_mask_clauses') or [])], None)
+
     base = laz_deploy___clean(str((doc or {}).get('base') or rec.get('base') or ''))
     fam = laz_deploy___clean(str(rec.get('family') or ''))
+    MR = globals().get('laz_mode3___mask_residual')
     for key in (base, fam):
-        mk = laz_deploy__BASE_MASK.get(key)
-        if mk is None and ':' in key:
-            mk = laz_deploy__BASE_MASK.get(key.split(':', 1)[1])
-        if mk is None:
+        if not key or MR is None:
             continue
-        if mk['residual']:
-            return None, (f'base {key!r} arms on more than a role: production would have to '
-                          'reproduce ' + '; '.join(mk['residual']) +
-                          '. Shipping it as ' + repr(mk['role'] or 'a role') +
-                          ' alone fires on ticks the strategy was never measured on')
-        return mk['role'], None
+        role, resid, _note = MR(key)
+        if role:
+            return role, list(resid), None
     for key in (fam, base):
         if key in laz_deploy__FAMILY_ROLE:
-            return laz_deploy__FAMILY_ROLE[key], None
+            return laz_deploy__FAMILY_ROLE[key], [], None
         if ':' in key and key.split(':', 1)[1] in laz_deploy__FAMILY_ROLE:
-            return laz_deploy__FAMILY_ROLE[key.split(':', 1)[1]], None
+            return laz_deploy__FAMILY_ROLE[key.split(':', 1)[1]], [], None
     if not fam and not base:
-        # laz_features measured every family-less strategy at 100% leader over 50,928 bets.
-        return 'leader', None
-    return None, (f'family {fam!r} / base {base!r} is in neither the measured role table nor '
-                  'the reproducible base masks; resolve_side would answer None and the '
-                  'strategy would silently never fire')
+        # laz_features measured every family-less strategy at 100% LEADER over 50,928 bets.
+        return 'leader', [], None
+    return None, [], (f'family {fam!r} / base {base!r} names no side at all: neither the '
+                      'engine\'s base masks nor the measured family table say which side '
+                      'it backs, and resolve_side would answer None on every tick')
 
 
 def laz_deploy__band(rec, doc=None):
@@ -119094,7 +119305,9 @@ def laz_deploy__row(rec, sport, log=None):
 
     trips, bad = laz_deploy__clauses(rec, doc)
     reasons += bad
-    unknown, pcbad = [], []
+    # What the BUNDLE has to supply for this row to fire. Recorded, never a refusal:
+    # the engine emits the feature file and the PCA module alongside the registry.
+    needs_feature, needs_pca = [], []
     conds, terms = [], []
     for t, o, v in trips:
         txt, why = laz_deploy__condition(t, o, v)
@@ -119103,19 +119316,12 @@ def laz_deploy__row(rec, sport, log=None):
             continue
         conds.append(txt)
         terms.append(str(t))
-    # A registry row with no conditions passes every tick's condition loop trivially and
-    # fires on the FIRST tick of every match in the sport. That is not the strategy that
-    # was measured; it is a bet on everything.
-    if not conds:
-        reasons.append('no clause survives into production grammar; a zero-condition row '
-                       'fires on the first tick of every match')
-
-    # G14. Every condition term must be a term production can COMPUTE. A term it cannot
-    # build makes resolve_for_condition answer None on every tick, the condition loop
-    # breaks, and the strategy never fires -- with no error anywhere, which is precisely
-    # the failure mode this whole file exists to make impossible. The quarantine entry
-    # names the term, so it can be built into laz_features and shipped on the next run.
-    # LAZ_DEPLOY_STRICT_TERMS=0 ships them anyway, knowing they will not fire.
+    # A TERM PRODUCTION DOES NOT YET COMPUTE IS THE ENGINE'S JOB, NOT THE STRATEGY'S FAULT.
+    # This used to withhold the strategy. That was wrong: laz_featuregen__write emits the
+    # term's implementation 1:1 from the engine's own builder, and laz_featuregen__prove
+    # replays the frame through it and diffs every value against the pool the search used,
+    # exact to float32. So the bundle SHIPS the feature file with the strategy, and the
+    # terms are recorded here for the manifest rather than held against the row.
     catalogue = laz_deploy___CATALOGUE_CACHE.get(sp)
     if catalogue is None:
         try:
@@ -119125,48 +119331,48 @@ def laz_deploy__row(rec, sport, log=None):
             laz_sink__swallow('deploy:catalogue', _ce)
             catalogue = set()
         laz_deploy___CATALOGUE_CACHE[sp] = catalogue
-    if catalogue and os.environ.get('LAZ_DEPLOY_STRICT_TERMS', '1') != '0':
-        pcn = laz_deploy___PCA_CACHE.get(sp) or {}
-        flat = []
-        for t in terms:
-            flat += (laz_deploy__leaves(t) if t.startswith('X_') else [t])
-        unknown[:] = sorted({t for t in flat if t not in catalogue and not t.startswith('pc_')})
-        if unknown:
-            reasons.append('production computes no ' + ', '.join(unknown[:6])
-                           + (' (+%d more)' % (len(unknown) - 6) if len(unknown) > 6 else '')
-                           + '; the condition would answer None on every tick and the '
-                             'strategy would never fire')
-        pcbad[:] = sorted({leaf for t in terms if t in pcn for i in pcn[t]['terms']
-                        for leaf in laz_deploy__leaves(i) if leaf not in catalogue})
-        if pcbad:
-            reasons.append('a PCA composite here is built from ' + ', '.join(pcbad[:6])
-                           + ', which production does not compute; the composite would be '
-                             'None on every tick')
-
-    # G13. A pc_* composite is a number only its frozen transform can produce. With the
-    # transform in hand production recomputes it exactly, tick by tick, and the condition
-    # holds or does not exactly as it did in the sweep. Without it the term is a name with
-    # no definition, and every strategy conditioning on one was excluded for that reason.
-    pcas = laz_deploy___PCA_CACHE.get(sp) or {}
+    flat = []
     for t in terms:
-        if str(t).startswith('pc_') and str(t) not in pcas:
-            reasons.append(f'{t}: a PCA composite with no frozen transform in '
-                           f'laz_pca_{sp}.json; production cannot compute it')
-        elif str(t).startswith('pc_'):
-            missing = [x for x in pcas[str(t)]['terms'] if str(x).startswith('pc_')
-                       and x not in pcas]
-            if missing:
-                reasons.append(f'{t}: its own inputs {missing} have no frozen transform')
+        flat += (laz_deploy__leaves(t) if t.startswith('X_') else [t])
+    needs_feature[:] = sorted({t for t in flat
+                               if t not in catalogue and not t.startswith('pc_')})
+
+    # A pc_* composite is a number only its frozen transform can produce -- and the run
+    # that made the composite also wrote the transform, so it is normally there. When it
+    # is not, the composite is RECORDED as needing one; it is not a reason to withhold a
+    # strategy the search validated.
+    pcas = laz_deploy___PCA_CACHE.get(sp) or {}
+    needs_pca[:] = sorted({str(t) for t in terms
+                           if str(t).startswith('pc_') and str(t) not in pcas})
 
     market, why = laz_deploy__market(rec, sp, doc)
     if market is None:
         reasons.append(why)
-    role, why = (laz_deploy__role(rec, sp, market, doc) if market else (None, None))
+    role, mask, why = (laz_deploy__role(rec, sp, market, doc) if market
+                       else (None, [], None))
     if market and role is None:
         reasons.append(why)
+    # THE BASE MASK IS STACKED WITH THE CONDITIONS, FIRST, IN THE ENGINE'S OWN ORDER.
+    # The mask is evaluated before any condition in the search, so it is emitted before
+    # them here: the registry's condition list IS the execution order, and a reader who
+    # tests them top to bottom arms exactly where the search armed.
+    for t, o, v in (mask or ()):
+        txt, mwhy = laz_deploy__condition(t, o, v)
+        if txt is None:
+            reasons.append(f'base mask clause {t} {o} {v!r}: {mwhy}')
+        elif txt not in conds:
+            conds.insert(0, txt)
+            terms.append(str(t))
     lo, hi, why = laz_deploy__band(rec, doc)
     if why:
         reasons.append(why)
+    # A registry row with no conditions AND no mask passes the condition loop trivially
+    # and fires on the FIRST tick of every match in the sport. That is not the strategy
+    # that was measured; it is a bet on everything. Checked after the mask is stacked in,
+    # because a base-only strategy is a real strategy -- its mask IS its specification.
+    if not conds:
+        reasons.append('no clause and no base-mask clause survives into production '
+                       'grammar; a zero-condition row fires on the first tick of every match')
 
     rt = str(doc.get('text_rebuild') or rec.get('text_rebuild') or 'untested')
     if rt not in ('exact', 'untested'):
@@ -119177,12 +119383,13 @@ def laz_deploy__row(rec, sport, log=None):
 
     if reasons:
         return dict(ok=False, row=None, reasons=reasons, doc=doc,
-                    blocking_terms=sorted(set(unknown) | set(pcbad)),
+                    needs_feature=list(needs_feature), needs_pca=list(needs_pca),
                     blocking_base=(str((doc or {}).get('base') or rec.get('base') or '')
                                    if any('base ' in str(r) or 'family ' in str(r)
                                           or 'settles' in str(r) for r in reasons) else None))
 
-    return dict(ok=True, doc=doc, reasons=[], row=dict(
+    return dict(ok=True, doc=doc, reasons=[],
+                needs_feature=list(needs_feature), needs_pca=list(needs_pca), row=dict(
         sport=sp, strategy=name, conditions=conds, market=market,
         min_odds=lo, max_odds=hi,
         tier=(laz_deploy___clean(str(rec.get('tier'))) or None),
@@ -119195,7 +119402,11 @@ def laz_deploy__row(rec, sport, log=None):
         spec_sha=str(doc.get('spec_sha') or rec.get('spec_sha') or ''),
         bets_sha=str((doc.get('measured') or {}).get('bets_sha') or ''),
         n_bets=(doc.get('measured') or {}).get('n_bets'),
-        oos_win=rec.get('oos_win'), oos_roi=rec.get('oos_roi'), odds=rec.get('odds')))
+        oos_win=rec.get('oos_win'), oos_roi=rec.get('oos_roi'), odds=rec.get('odds'),
+        needs_feature=list(needs_feature), needs_pca=list(needs_pca),
+        execution=list(doc.get('execution') or []), exec_sha=str(doc.get('exec_sha') or ''),
+        base_mask=[(c.get('term'), c.get('op'), c.get('value'))
+                   for c in (doc.get('base_mask_clauses') or [])]))
 
 
 def laz_deploy___window(rec):
@@ -119433,7 +119644,7 @@ def laz_deploy___sql_num(v):
     return 'NULL' if f != f else repr(f)
 
 
-def laz_deploy__sql(rows, ns, sport):
+def laz_deploy__sql(rows, ns, sport, held=None):
     """The whole deployment as one idempotent, transactional script."""
     sp = laz_deploy__sport(sport)
     L = [f'-- laz_deploy: {sp} — GENERATED BY THE ENGINE. Idempotent; safe to re-run.',
@@ -119488,6 +119699,29 @@ def laz_deploy__sql(rows, ns, sport):
                  'tier = EXCLUDED.tier, family = EXCLUDED.family, '
                  'entry_window = EXCLUDED.entry_window, bet_role = EXCLUDED.bet_role, '
                  'enabled = true;')
+    if held:
+        L += ['', '-- 3b. EVERY OTHER STRATEGY THIS RUN VALIDATED, registered and DISABLED.',
+              '--     Nothing the search validated is thrown away. The loader reads',
+              '--     `WHERE enabled`, so a disabled row cannot fire and cannot break the',
+              '--     load; it is here so the strategy exists in the database, joinable to',
+              '--     its provenance, with the exact reason it is not live yet.']
+        L.append('ALTER TABLE laz_strategy_registry ADD COLUMN IF NOT EXISTS blocked_reason text;')
+        for r in held:
+            arr = ('ARRAY[' + ', '.join(laz_deploy___sql_str(c) for c in r['conditions'])
+                   + ']::text[]') if r.get('conditions') else "ARRAY[]::text[]"
+            L.append('INSERT INTO laz_strategy_registry (sport, strategy, conditions, market, '
+                     'min_odds, max_odds, tier, family, entry_window, bet_role, enabled, '
+                     'blocked_reason) VALUES ('
+                     f'{laz_deploy___sql_str(sp)}, {laz_deploy___sql_str(r["strategy"])}, {arr}, '
+                     f'{laz_deploy___sql_str(r.get("market"))}, {laz_deploy___sql_num(r.get("min_odds"))}, '
+                     f'{laz_deploy___sql_num(r.get("max_odds"))}, {laz_deploy___sql_str(r.get("tier"))}, '
+                     f'{laz_deploy___sql_str(r.get("family"))}, '
+                     f'{("NULL" if r.get("entry_window") is None else int(r["entry_window"]))}, '
+                     f'{laz_deploy___sql_str(r.get("bet_role"))}, false, '
+                     f'{laz_deploy___sql_str(r.get("blocked_reason"))}) '
+                     'ON CONFLICT (sport, strategy) DO UPDATE SET '
+                     'conditions = EXCLUDED.conditions, market = EXCLUDED.market, '
+                     'blocked_reason = EXCLUDED.blocked_reason, enabled = false;')
     L += ['', '-- 4. provenance: what each shipped row was MEASURED on, so a live bet can',
           '--    always be traced back to the exact search that validated it.']
     L.append('CREATE TABLE IF NOT EXISTS laz_strategy_provenance ('
@@ -119528,7 +119762,122 @@ def laz_deploy__namespace(terms, pcas=None):
     return out
 
 
-def laz_deploy__runbook(sport, rows, ns, pcas, failures, quarantined, paths):
+def laz_deploy__spec_doc(rows, held, ns, pcas, sport, fg_covered=None, log=print):
+    """THE SPECIFICATION. Every strategy, every element, in the exact order it happens.
+
+    One section per strategy. Each section is the implementation, not a description of
+    one: a reader who evaluates the numbered steps in order, stopping at the first that is
+    not true, places exactly the bets the search measured. Nothing is left to interpretation
+    -- the side, the price, the band, the base mask and every condition are all here, with
+    the exact expression and the exact number.
+
+    The ordered steps come from the record the worker wrote AT ACCEPTANCE, inside the
+    search, while the base, the seed and the fitted thresholds were still in hand. They are
+    not re-derived here, because re-deriving them at export time is what let the engine and
+    production come apart.
+    """
+    sp = laz_deploy__sport(sport)
+    cov = set(fg_covered or ())
+    byfeat = {r['feature']: r['column_name'] for r in ns}
+    L = [f'# {sp.upper()} — STRATEGY SPECIFICATION', '',
+         f'Engine `{laz_xl___engine_sha256() or "unknown"}`', '',
+         '_This document is a pure function of the engine and the book it validated: the',
+         'same run always produces the same bytes. The wall clock lives in MANIFEST.json,',
+         'so a diff between two deployments shows only what actually changed._', '',
+         f'{len(rows)} live · {len(held)} registered but not yet settleable · '
+         f'{len(ns)} feature columns · {len(pcas)} PCA composites', '',
+         '## How to read this', '',
+         'Each strategy below is a numbered list of gates in the order the engine applies',
+         'them. On every tick, evaluate them in order and stop at the first that is not',
+         'true. When all of them hold, and this is the first tick in the match on which',
+         'they all hold, the bet is placed at the price named in the price step.', '',
+         'A null value never passes a condition. Every comparison against a null or a NaN',
+         'is false, so a missing feature means the strategy does not fire — it never means',
+         'the strategy fires on a default.', '',
+         '## The columns every strategy reads', '',
+         '| feature | column on rt_allsports_laz_features | how it is produced |',
+         '|---|---|---|']
+    for r in ns:
+        f = r['feature']
+        how = ('frozen PCA transform — see the PCA section' if f in pcas else
+               'generated 1:1 from the engine builder' if f in cov else
+               'manufactured from its leaves: ' + ', '.join(laz_deploy__leaves(f))
+               if f.startswith('X_') else
+               'supplied by the live feature layer')
+        L.append(f'| `{f}` | `{r["column_name"]}` | {how} |')
+    L.append('')
+    if pcas:
+        L += ['## The PCA composites', '',
+              'Each is a FROZEN linear map fitted once on this run\'s in-sample rows and',
+              'never refitted. `laz_pca_features_' + sp + '.py` computes them; the numbers',
+              'below are the whole definition.', '']
+        for k in sorted(pcas):
+            v = pcas[k]
+            L += [f'### `{k}`', '',
+                  f'Inputs, in this exact order: {", ".join("`%s`" % t for t in v["terms"])}', '',
+                  '```',
+                  f'pc = ((x - mu) / sdv) . w    as float32',
+                  f'mu  = {[round(float(x), 10) for x in v["mu"]]}',
+                  f'sdv = {[round(float(x), 10) for x in v["sdv"]]}',
+                  f'w   = {[round(float(x), 10) for x in v["w"]]}',
+                  '```', '',
+                  'If ANY input is missing or non-finite on a tick, the composite is NULL —',
+                  'never 0. The fit dropped exactly those rows, so a 0 would be a value the',
+                  'engine never saw.', '']
+    def section(r, live):
+        out = [f'### {r["strategy"]}', '',
+               (f'**LIVE** · ' if live else '**REGISTERED, NOT LIVE** · ')
+               + f'market `{r.get("market")}` · backs `{r.get("bet_role")}` · '
+               + f'price band `{r.get("min_odds")}` to `{r.get("max_odds")}`'
+               + (f' · tier {r.get("tier")}' if r.get('tier') else '')]
+        if not live and r.get('blocked_reason'):
+            out += ['', f'> Not enabled: {r["blocked_reason"]}']
+        if r.get('spec_sha'):
+            out += ['', f'`spec_sha {r["spec_sha"]}`'
+                        + (f' · `exec_sha {r["exec_sha"]}`' if r.get('exec_sha') else '')
+                        + (f' · measured on {r["n_bets"]} bets, fingerprint `{r["bets_sha"]}`'
+                           if r.get('bets_sha') else '')]
+        steps = r.get('execution') or []
+        if steps:
+            out += ['', '| # | gate | must be true | if not |', '|---|---|---|---|']
+            for st in steps:
+                out.append(f'| {st["step"]} | {st["gate"]} | `{st["trigger"]}` | {st["on_fail"]} |')
+        else:
+            out += ['', 'Ordered gates, in this order:', '',
+                    '1. the market is open',
+                    '2. the feed is fresh',
+                    f'3. the side resolves: `{r.get("bet_role")}`',
+                    f'4. the backed price is inside `{r.get("min_odds")}`–`{r.get("max_odds")}`']
+            for i, c in enumerate(r.get('conditions') or [], 5):
+                out.append(f'{i}. `{c}`')
+            out.append(f'{4 + len(r.get("conditions") or [])+1}. first tick in the match on '
+                       'which all of the above hold')
+        if r.get('base_mask'):
+            out += ['', 'The first ' + str(len(r['base_mask'])) + ' condition(s) come from '
+                    'the BASE MASK, not from the search: they are what the base itself arms '
+                    'on, and without them the strategy fires outside the region it was '
+                    'measured in.']
+        if r.get('needs_feature'):
+            out += ['', '> This strategy reads ' +
+                    ', '.join('`%s`' % t for t in r['needs_feature']) +
+                    ', which the bundle supplies in `laz_features_' + sp + '.py`.']
+        out.append('')
+        return out
+    L += ['## Live strategies', '']
+    for r in rows:
+        L += section(r, True)
+    if held:
+        L += ['## Registered, not yet live', '',
+              'Validated by this run and written to `laz_strategy_registry` with',
+              '`enabled = false`, so they exist in the database, joinable to their',
+              'provenance, and cannot fire or break the load.', '']
+        for r in held:
+            L += section(r, False)
+    return '\n'.join(L)
+
+
+def laz_deploy__runbook(sport, rows, ns, pcas, failures, quarantined, paths,
+                        fg_covered=None, fg_terms=None):
     """The operator's page: what was written, what to run, and in what order."""
     sp = laz_deploy__sport(sport)
     L = [f'# GO LIVE — {sp.upper()}', '',
@@ -119628,6 +119977,20 @@ def laz_deploy__runbook(sport, rows, ns, pcas, failures, quarantined, paths):
                 res = '; '.join(mk.get('residual') or ()) or 'no settleable production market'
                 L.append(f'| `{b}` | {n} | {res} |')
             L.append('')
+    gap = sorted(set(fg_terms or ()) - set(fg_covered or ()))
+    if gap:
+        L += ['## Terms the generator could not write', '',
+              f'`laz_features_{sp}.py` emits {len(fg_covered or ())} of {len(fg_terms or ())}',
+              'terms 1:1 from the engine builders. These it could not, so it wrote `NaN`',
+              'for them rather than invent a value — a strategy reading one will not fire',
+              'until the term is implemented. The strategies are still registered and',
+              'enabled: they were validated, and nothing about them is wrong.', '',
+              '| term | strategies reading it |', '|---|---|']
+        import collections as _cc
+        cnt = _cc.Counter(t for r in rows for t in (r.get('needs_feature') or []) if t in set(gap))
+        for t in gap[:40]:
+            L.append(f'| `{t}` | {cnt.get(t, 0)} |')
+        L.append('')
     L += ['## Files', '']
     for k in sorted(paths):
         L.append(f'- `{os.path.basename(paths[k])}` — {k}')
@@ -119750,7 +120113,24 @@ def laz_deploy__emit(A, sport, out_dir=None, log=print):
         if v['ok']:
             shipped.append(v['row'])
         else:
+            _qd = v.get('doc') or {}
+            _qm, _ = laz_deploy__market(rec, sp, _qd)
+            try:
+                _qr, _qmask, _ = laz_deploy__role(rec, sp, _qm, _qd)
+            except Exception:
+                _qr, _qmask = None, []
+            _qlo, _qhi, _ = laz_deploy__band(rec, _qd)
             quarantined.append(dict(strategy=str(rec.get('strategy_name') or ''),
+                                    prod_market=_qm, bet_role=_qr,
+                                    min_odds=_qlo, max_odds=_qhi,
+                                    tier=laz_deploy___clean(str(rec.get('tier'))) or None,
+                                    entry_window=laz_deploy___window(rec),
+                                    conditions=[c for c in (
+                                        [laz_deploy__condition(t, o, val)[0]
+                                         for t, o, val in (_qmask or ())]
+                                        + [laz_deploy__condition(t, o, val)[0]
+                                           for t, o, val in laz_deploy__clauses(rec, _qd)[0]])
+                                        if c],
                                     family=str(rec.get('family') or ''),
                                     base=str(rec.get('base') or ''),
                                     market=str(rec.get('market') or ''),
@@ -119781,8 +120161,43 @@ def laz_deploy__emit(A, sport, out_dir=None, log=print):
         except Exception as e:
             laz_sink__swallow('deploy:write:' + name, e)
 
+    # EVERY strategy this run validated reaches the database. The ones production can
+    # settle are enabled; the rest are registered disabled with their reason, so nothing
+    # the search found is lost and nothing unsettleable can fire.
+    held = []
+    for q in quarantined:
+        d = q.get('element_doc') or {}
+        held.append(dict(strategy=q['strategy'], conditions=q.get('conditions') or [],
+                         market=q.get('prod_market'), min_odds=q.get('min_odds'),
+                         max_odds=q.get('max_odds'), tier=q.get('tier'),
+                         family=laz_deploy___clean(q.get('family')) or None,
+                         entry_window=q.get('entry_window'), bet_role=q.get('bet_role'),
+                         blocked_reason=' | '.join(str(r) for r in q['reasons'])[:600]))
     _w('the whole deployment, one transaction, idempotent',
-       'deploy.sql', laz_deploy__sql(shipped, ns, sp))
+       'deploy.sql', laz_deploy__sql(shipped, ns, sp, held=held))
+
+    # THE FEATURE FILE. Every term any shipped strategy reads, implemented 1:1 from the
+    # engine's own builders by laz_featuregen. This is why a term production does not yet
+    # compute is no longer a reason to withhold a strategy: the bundle brings the term.
+    FG = globals().get('laz_featuregen__write')
+    feat_terms = sorted({t for r in shipped for t in r['terms'] if not t.startswith('pc_')}
+                        | {leaf for r in shipped for t in r['terms']
+                           if t.startswith('X_') for leaf in laz_deploy__leaves(t)}
+                        | {i for k in pc_used for i in pc_used[k]['terms']})
+    fg_covered = []
+    if FG is not None and feat_terms:
+        try:
+            _fp = os.path.join(base, f'laz_features_{sp}.py')
+            # STAMPED WITH THE ENGINE, NOT THE CLOCK. The file is a pure function of
+            # (engine, sport, terms): the same book must produce the same bytes, or a
+            # diff between two deployments shows a change that is only the time of day.
+            _esha = laz_xl___engine_sha256() or ''
+            _, fg_covered = FG(_fp, sp, terms=feat_terms, engine_sha=_esha, log=None,
+                               generated_at=f'engine {_esha} · {len(feat_terms)} terms')
+            paths['every term implemented 1:1 from the engine builders'] = _fp
+        except Exception as _fe:
+            laz_sink__swallow('deploy:featuregen', _fe)
+            log(f'[deploy] feature file: {type(_fe).__name__}: {str(_fe)[:90]}')
     if pc_used:
         _w('the frozen PCA transforms, as importable production code',
            f'laz_pca_features_{sp}.py', laz_deploy__pca_module(pc_used, sp))
@@ -119798,6 +120213,8 @@ def laz_deploy__emit(A, sport, out_dir=None, log=print):
         resolvable_roles=sorted(laz_deploy__ROLES),
         n_validated=len(recs), n_deployable=len(shipped), n_withheld=len(quarantined),
         n_feature_columns=len(ns), n_pca=len(pc_used),
+        generated_terms=sorted(fg_covered or ()),
+        terms_the_generator_could_not_write=sorted(set(feat_terms) - set(fg_covered or ())),
         preflight='PASS' if not failures else 'FAIL',
         preflight_failures=failures,
         feature_namespace=ns,
@@ -119823,8 +120240,26 @@ def laz_deploy__emit(A, sport, out_dir=None, log=print):
            'quarantine.json', json.dumps(quarantined, indent=1, sort_keys=True, default=str))
     except Exception as e:
         laz_sink__swallow('deploy:quarantine', e)
+    _w('EVERY strategy, every element, in the exact order it happens',
+       'STRATEGY_SPEC.md',
+       laz_deploy__spec_doc(shipped, held, ns, pc_used, sp, fg_covered=fg_covered, log=log))
+    try:
+        _w('the same, machine-readable: every ordered step, every threshold, every column',
+           'strategies_full.json',
+           json.dumps(dict(schema='amunev.strategy_spec/1', sport=sp,
+                           engine_sha256=laz_xl___engine_sha256(),
+                           # no wall clock: the spec is a function of the book, and the
+                           # run's timestamp is in MANIFEST.json where a diff expects it
+                           feature_namespace=ns,
+                           pca={k: pc_used[k] for k in pc_used},
+                           generated_terms=sorted(fg_covered or ()),
+                           live=shipped, registered_not_live=held),
+                      indent=1, sort_keys=True, default=str))
+    except Exception as _je:
+        laz_sink__swallow('deploy:strategies_full', _je)
     _w('the operator page: what to run, in what order, and what each gate protects',
-       'RUNBOOK.md', laz_deploy__runbook(sp, shipped, ns, pc_used, failures, quarantined, paths))
+       'RUNBOOK.md', laz_deploy__runbook(sp, shipped, ns, pc_used, failures, quarantined,
+                                          paths, fg_covered=fg_covered, fg_terms=feat_terms))
 
     verdict = 'PASS' if not failures else f'FAIL ({len(failures)})'
     log(f'[deploy] {sp}: {len(shipped)}/{len(recs)} strategies deployable · '

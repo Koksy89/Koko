@@ -16,12 +16,14 @@ ns = {'os': os, 'json': json, 're': re, 'sys': sys}
 import pandas as pd, numpy as np
 ns['pd'] = pd
 ns['np'] = np
+_EXTRA = ('laz_mode3___mask_residual', 'laz_mode3___execution_spec')
 for n in tree.body:
     nm = getattr(n, 'name', None)
-    if nm and str(nm).startswith('laz_deploy'):
+    if (nm and str(nm).startswith('laz_deploy')) or nm in _EXTRA:
         exec(compile(ast.Module(body=[n], type_ignores=[]), ENGINE, 'exec'), ns)
-    elif isinstance(n, ast.Assign) and any(str(getattr(t, 'id', '')).startswith('laz_deploy')
-                                           for t in n.targets):
+    elif isinstance(n, ast.Assign) and any(
+            str(getattr(t, 'id', '')).startswith(('laz_deploy', 'laz_mode3___MASK_WINDOWS'))
+            for t in n.targets):
         exec(compile(ast.Module(body=[n], type_ignores=[]), ENGINE, 'exec'), ns)
 _SW = []
 ns['_m'] = lambda x: (type('O', (), {'LAZ_OWNER': {'paths': {'output_dir': os.getcwd()}}})()
@@ -153,16 +155,22 @@ if lf:
 
 # ── 5. the base masks production cannot reproduce are refused ────────────────
 print('\na base that arms on more than a role is never shipped as that role')
-for b, mk in ns['laz_deploy__BASE_MASK'].items():
-    r, why = ns['laz_deploy__role'](dict(base=b, family=b), 'basketball', 'match_winner',
-                                    dict(base=b))
-    if mk['residual']:
-        check(f'{b}: refused, with the residual named', r is None and why and 'reproduce' in why)
-    else:
-        check(f'{b}: ships as {mk["role"]!r}', r == mk['role'], f'got {r!r} ({why})')
-check('a role outside the vocabulary can never be emitted',
-      all((mk['role'] in ns['laz_deploy__ROLES'] or mk['role'] is None)
-          for mk in ns['laz_deploy__BASE_MASK'].values()))
+for b, W in ns['laz_mode3___MASK_WINDOWS'].items():
+    role, mask, why = ns['laz_deploy__role'](dict(base=b, family=b), 'basketball',
+                                             'match_winner', dict(base=b))
+    check(f'{b}: ships as {W[0]!r} with {len(W[4]) + (W[1] is not None) + (W[2] is not None) + (1 if W[3] else 0)} mask clause(s)',
+          role == W[0] and why is None, f'got {role!r} ({why})')
+check('every mask role is one resolve_side answers',
+      all(W[0] in ns['laz_deploy__ROLES'] for W in ns['laz_mode3___MASK_WINDOWS'].values()))
+check('a windowed base is NEVER shipped as the bare role',
+      ns['laz_deploy__role'](dict(base='late_lead_hold', family='late_lead_hold'),
+                             'basketball', 'match_winner', dict(base='late_lead_hold'))[1]
+      == [('u_elapsed', '>=', 0.85), ('u_elapsed', '<=', 1.2), ('abs_lead', '>', 3.0)])
+check('the element doc written at acceptance wins over any re-derivation',
+      ns['laz_deploy__role']({}, 'basketball', 'match_winner',
+                             dict(bet_role='trailer',
+                                  base_mask_clauses=[dict(term='u_elapsed', op='>=', value=0.4)]))
+      == ('trailer', [('u_elapsed', '>=', 0.4)], None))
 check('an OVER market is refused (production prices no OVER side)',
       ns['laz_deploy__role']({}, 'football', 'total_goals_over', {})[0] is None)
 check('a family-less record is the measured leader population',
@@ -366,6 +374,85 @@ check('the module never executes, imports or unpickles target code',
       and not re.search(r'(?<!re)\.compile\s*\(', dep))
 check('the legacy PCA manifest merges instead of overwriting',
       '_old_pc.update({' in src and "_jp.dump(_old_pc, _pf1" in src)
+
+
+# ── 13. the ordered execution spec: every element, in order, with its trigger ─
+print('\nevery element is documented in the exact order it happens')
+ES = ns['laz_mode3___execution_spec']
+steps = ES(dict(market='moneyline'), 'late_lead_hold', None,
+           ['line_move <= 4.0', 'trailer_price >= 1.92'], 1.40, 4.20, 'basketball',
+           'match_winner')
+gates = [x['gate'] for x in steps]
+check('the steps are numbered 1..n with no gaps',
+      [x['step'] for x in steps] == list(range(1, len(steps) + 1)))
+check('the market gate is first', gates[0] == 'MARKET OPEN')
+check('the side is resolved BEFORE the price',
+      gates.index('BASE ARM MASK — SIDE') < gates.index('PRICE OF THE BACKED SIDE'))
+check('the price is resolved BEFORE the band',
+      gates.index('PRICE OF THE BACKED SIDE') < gates.index('PRICE BAND'))
+check('the band is checked BEFORE the conditions',
+      gates.index('PRICE BAND') < gates.index('CONDITION 1'))
+check('the base mask window is part of the order, not a footnote',
+      'BASE ARM MASK — WINDOW 1' in gates)
+check('one bet per match is an explicit step', 'FIRST TICK ONLY' in gates)
+check('placement and settlement are stated', gates[-2:] == ['PLACE', 'SETTLE'])
+check('every step says exactly what must be true',
+      all(x['trigger'] and isinstance(x['trigger'], str) for x in steps))
+check('every step says what happens when it is not',
+      all(x['on_fail'] for x in steps))
+check('every step says why it is at that position', all(x['why'] for x in steps))
+check('the band step carries the exact numbers',
+      any('1.4 <= price <= 4.2' in x['trigger'] for x in steps))
+check('each condition appears verbatim, with its exact threshold',
+      any(x['trigger'] == 'line_move <= 4.0' for x in steps)
+      and any(x['trigger'] == 'trailer_price >= 1.92' for x in steps))
+MR = ns['laz_mode3___mask_residual']
+check('a windowed base decomposes to clauses on terms the engine emits',
+      MR('late_lead_hold') == ('leader',
+                               [('u_elapsed', '>=', 0.85), ('u_elapsed', '<=', 1.2),
+                                ('abs_lead', '>', 3.0)], ''))
+check('the prop:/spec: prefix does not hide a base',
+      MR('prop:late_lead_hold')[0] == 'leader')
+check('a base that is exactly its role has no residual',
+      MR('lead_ml') == ('leader', [], ''))
+check('every mask clause is renderable in production grammar',
+      all(ns['laz_deploy__condition'](t, o, v)[0] is not None
+          for W in ns['laz_mode3___MASK_WINDOWS'].values()
+          for t, o, v in MR([k for k, vv in ns['laz_mode3___MASK_WINDOWS'].items()
+                             if vv is W][0])[1]))
+
+print('\nnothing the search validated is thrown away')
+_sql_held = ns['laz_deploy__sql'](
+    [good], NS, 'basketball',
+    held=[dict(strategy='H1', conditions=['a >= 1'], market='spread', min_odds=1.4,
+               max_odds=4.0, tier='Beta', family=None, entry_window=60, bet_role='leader',
+               blocked_reason='basketball settles no spread')])
+check('a strategy production cannot settle is STILL written to the registry',
+      "'H1'" in _sql_held)
+check('it is written DISABLED so it cannot fire or break the load',
+      'enabled, blocked_reason) VALUES' in _sql_held and 'false,' in _sql_held)
+check('and it carries the exact reason, in the database',
+      'basketball settles no spread' in _sql_held)
+check('a term production does not compute is NOT a reason to withhold a strategy',
+      ns['laz_deploy__row'](dict(strategy_name='S9', base='lead_ml', family='lead_ml',
+                                 band='1.40-4.20', text_rebuild='exact',
+                                 element_doc=json.dumps(dict(
+                                     base='lead_ml', market='moneyline', bet_role='leader',
+                                     base_mask_clauses=[], band=dict(lo=1.4, hi=4.2),
+                                     text_rebuild='exact',
+                                     clauses=[dict(term='a_term_nobody_has', op='>=',
+                                                   value=1)]))),
+                           'basketball')['ok'])
+check('the row records what the bundle must supply for it',
+      ns['laz_deploy__row'](dict(strategy_name='S9', base='lead_ml', family='lead_ml',
+                                 band='1.40-4.20', text_rebuild='exact',
+                                 element_doc=json.dumps(dict(
+                                     base='lead_ml', market='moneyline', bet_role='leader',
+                                     base_mask_clauses=[], band=dict(lo=1.4, hi=4.2),
+                                     text_rebuild='exact',
+                                     clauses=[dict(term='a_term_nobody_has', op='>=',
+                                                   value=1)]))),
+                           'basketball')['row']['needs_feature'] == ['a_term_nobody_has'])
 
 print(f'\n{"ALL PASS" if not fails else str(len(fails)) + " FAILED: " + ", ".join(fails)}')
 sys.exit(1 if fails else 0)
