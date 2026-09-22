@@ -61,7 +61,7 @@ ORDER = [
     "ingest/python_module.py", "ingest/data_files.py", "ingest/cache.py",
     "ingest/inventory.py",
     "resolve.py", "cascade.py", "lineage.py", "findings.py", "diff.py",
-    "docrecords.py", "enrichment.py",
+    "dependencies.py", "docrecords.py", "enrichment.py",
     "harness/errors.py", "harness/hashing.py", "harness/config.py",
     "harness/sandbox.py", "harness/harness.py",
     "tracer/limits.py", "tracer/capture.py", "tracer/static_index.py",

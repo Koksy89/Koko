@@ -277,7 +277,9 @@ def parse_version(text: str) -> Version | None:
     )
 
 
-_CLAUSE_RE = re.compile(r"^\s*(?P<op>===|==|!=|<=|>=|~=|\^|<|>|=)\s*(?P<ver>.+?)\s*$")
+_CLAUSE_RE = re.compile(
+    r"^\s*(?P<op>===|==|!=|<=|>=|~=|\^|~|<|>|=)\s*(?P<ver>.+?)\s*$"
+)
 
 
 def _expand_dialect(op: str, raw: str, dialect: str) -> list[tuple[str, str]] | None:
@@ -288,10 +290,18 @@ def _expand_dialect(op: str, raw: str, dialect: str) -> list[tuple[str, str]] | 
     still stores the string the owner typed. An expansion this function cannot
     do returns ``None`` and the caller reports the specifier as unevaluable.
     """
+    if raw.endswith("*") and op in {"==", "!="}:
+        # A prefix match is evaluated whole, later; there is no version to
+        # parse here and parsing one would refuse a form we can answer.
+        return [(op, raw)]
     version = parse_version(raw)
     if version is None:
         return None
     release = version.release
+    if op in {"^", "~"} and dialect != "poetry":
+        # `^` and `~` are poetry syntax. Read anywhere else they are not a
+        # form this tool evaluates, and saying so beats assuming poetry.
+        return None
     if op == "^":  # poetry caret: up to the next left-most non-zero bump
         upper: tuple[int, ...]
         if release and release[0] != 0:

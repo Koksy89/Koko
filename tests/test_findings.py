@@ -728,8 +728,17 @@ def test_no_false_positive_on_fully_live_graph() -> None:
 
 
 def test_all_finding_kinds_are_emitted_by_the_test_suite() -> None:
-    """Sanity check: every FindingKind has at least one test above proving it
-    can be produced. Prevents a silently-unimplemented kind."""
+    """Sanity check: every FindingKind has at least one test proving it can be
+    produced. Prevents a silently-unimplemented kind.
+
+    The five dependency kinds belong to card 17 and are emitted by
+    `cascade_map.dependencies`, not by `Findings`, so their tests live in
+    `tests/test_dependencies.py`. They are named here rather than excluded:
+    this set is the index of which kinds the suite actually exercises, and
+    `test_dependencies.py::test_all_five_dependency_finding_kinds_are_emitted_by_this_suite`
+    derives the same five from real runs over the corpus, so one of the two
+    fails if a kind stops being emitted.
+    """
     exercised = {
         FindingKind.UNREACHABLE_ELEMENT,
         FindingKind.UNCONSUMED_FEATURE,
@@ -740,7 +749,15 @@ def test_all_finding_kinds_are_emitted_by_the_test_suite() -> None:
         FindingKind.DUPLICATED_LOGIC,
         FindingKind.DECISION_IRRELEVANT,
     }
-    assert exercised == set(FindingKind)
+    card_17 = {
+        FindingKind.UNDECLARED_DEPENDENCY,
+        FindingKind.MISSING_DEPENDENCY,
+        FindingKind.VERSION_CONFLICT,
+        FindingKind.UNUSED_DEPENDENCY,
+        FindingKind.INTERPRETER_TOO_OLD,
+    }
+    assert exercised | card_17 == set(FindingKind)
+    assert not exercised & card_17
 
 
 def test_determinism_same_input_same_output() -> None:

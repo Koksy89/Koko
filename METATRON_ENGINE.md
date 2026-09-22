@@ -92,6 +92,7 @@ python3 metatron_engine.py analyze ROOT --out DIR [options]
 | `--entry ID` | declare an entry point by element id; repeatable | when auto-detection guesses wrong |
 | `--sink ID` | declare a final-decision element by id; repeatable | **strongly recommended** — see below |
 | `--config PATH` | a JSON/config file that wires components by name; repeatable | when your engine names classes/functions in config |
+| `--env PATH` | the interpreter whose installed packages to read (`.venv-target`) | **to catch wrong-package-version bugs** — see [section 8b](#8b-package-versions--which-versions-each-element-is-applicable-to) |
 | `--cache DIR` | move the incremental cache (default `./.cascade_map/cache`) | to keep it off a network drive, or out of your repo |
 | `--no-gate` | write the map even if the completeness check fails, and exit 0 | rarely; the gate exists for a reason |
 
@@ -506,6 +507,67 @@ Every finding carries a confidence and a hint. `HEURISTIC` findings are suggesti
 check, not accusations.
 
 ---
+
+## 8b. Package versions — which versions each element is applicable to
+
+The failure this exists for: the machine has the wrong version of a package for what a
+function is written against, and you spend a day hunting a bug in your own logic that
+was never there.
+
+Run `analyze` with `--env` pointed at the interpreter your engine actually runs under:
+
+```
+python3 metatron_engine.py analyze C:\code\amun --env C:\code\amun\.venv --out out\amun
+```
+
+### Three answers, kept apart
+
+| Answer | Source | Artifact |
+|---|---|---|
+| what your project **declares** it needs | `requirements*.txt`, `pyproject.toml`, `setup.cfg`, `Pipfile`, `environment.yml`, PEP 723 headers — recorded with the file and **line** | `requirements.jsonl` |
+| what is actually **installed** | `*.dist-info/METADATA` and `*.egg-info/PKG-INFO`, read **as text** | `installed.jsonl` |
+| what the code actually **uses** | the import edges already in your map | `package_usage.jsonl` |
+
+They are never merged, because every version bug is a *disagreement* between two of
+them, and a single combined list would hide exactly what you came to find.
+
+### The disagreements it reports
+
+| Finding | What it means |
+|---|---|
+| `UNDECLARED_DEPENDENCY` | imported, declared nowhere — works on your machine, dies on the next one |
+| `MISSING_DEPENDENCY` | imported, not installed — an `ImportError` waiting for the code path that reaches it |
+| `VERSION_CONFLICT` | installed version outside the declared range — the classic "it worked yesterday" |
+| `UNUSED_DEPENDENCY` | declared and installed, nothing imports it — usually a leftover pinning you for no reason |
+| `INTERPRETER_TOO_OLD` | an element's own syntax needs a newer Python than you have |
+
+Each is joined back to your map, so you do not get "pandas is pinned wrong" — you get
+which elements use it, which API surface they touch (`pandas.DataFrame.append`, not just
+"pandas"), and **which of them are on a path to your final decision**.
+
+### What it will not do, on purpose
+
+- **It will not tell you an API was removed in some version.** That would mean shipping a
+  stale copy of every library's release notes and presenting guesses as facts. It shows
+  you the surface you touch and the version you have; you judge.
+- **It will not guess which package an import belongs to.** `cv2` is `opencv-python` and
+  `sklearn` is `scikit-learn` — it learns that from the installed metadata on your disk.
+  An import that matches no installed distribution, or more than one, is reported as
+  unresolved with the candidates listed.
+- **It will not import anything to ask its version.** Reading a package's metadata must
+  not run its startup code, and `pip` is never invoked.
+
+### Without `--env`
+
+The installed column reads **`NOT CHECKED: no environment was read`** and names the flag.
+It never renders an unchecked environment as a clean one — "nothing here says your
+installed versions are right; it says they were not looked at."
+
+### Also free: minimum Python per element
+
+`interpreter.jsonl` records the lowest Python version each element's own **syntax**
+requires — a `match` statement is 3.10+, `except*` is 3.11+, a walrus is 3.8+. Read off
+the grammar, so `CERTAIN`, not inferred.
 
 ## 9. Version control and change impact
 
