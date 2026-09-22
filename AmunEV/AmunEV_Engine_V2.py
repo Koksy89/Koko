@@ -103703,6 +103703,191 @@ def laz_mode3___rej_report(rej, sport, attempts, legs, log=print, out_dir=None, 
         log(f'  [mode3] rejection report: {type(_e).__name__}: {str(_e)[:60]}')
         return None
 
+def laz_mode3___split_clauses(txt):
+    """The clause list a text splits into, by the SAME rule laz_release__parse_conditions
+    uses. Kept in one place so the round-trip can never disagree with the production
+    parser about how many clauses a chain has -- a disagreement there reports a false
+    mismatch on an honest leg."""
+    _t = str(txt or '')
+    parts = _t.split(' AND ') if ' AND ' in _t else (_t.split(';') if ';' in _t else [_t])
+    return [c.strip() for c in parts if c.strip()]
+
+
+def laz_mode3___eval_text(txt, pool, rows=None):
+    """[PORT V2.29] Evaluate condition text ('a >= 1.5 AND b <= 2') on the pool with the
+    PRODUCTION semantics: every clause must hold, and a NULL/NaN term value fails its
+    clause. Returns (mask, '') or (None, why).
+
+    rows (optional, int index): evaluate only those rows; the returned mask is full
+    length, False elsewhere.
+    """
+    PC = globals().get('laz_release__parse_conditions')
+    if PC is None or not txt:
+        return None, 'no text'
+    clauses = laz_mode3___split_clauses(txt)
+    conds = PC(str(txt))
+    if len(conds) != len(clauses):
+        return None, f'{len(clauses) - len(conds)} clause(s) the production parser cannot read'
+    m = None
+    n_full = None
+    for c in conds:
+        a = pool.get(c['term'])
+        if a is None:
+            return None, f"term {c['term']} not in the pool"
+        n_full = len(a)
+        a = np.asarray(a, float) if rows is None else np.asarray(a, float)[rows]
+        with np.errstate(invalid='ignore'):
+            if c['op'] == 'band':
+                r = (a >= c['lo']) & (a <= c['hi'])
+            elif c['op'] == 'band_ge':
+                r = ((a > c['lo']) if c.get('lo_strict') else (a >= c['lo'])) & ((a < c['hi']) if c.get('hi_strict') else (a <= c['hi']))
+            else:
+                try:
+                    v = float(c['value'])
+                except Exception:
+                    return None, f"value not numeric: {c['term']} {c['op']} {c['value']!r}"
+                r = {'>=': a >= v, '<=': a <= v, '>': a > v, '<': a < v, '==': a == v, '!=': a != v}[c['op']]
+        r = np.nan_to_num(r, nan=False).astype(bool) & ~np.isnan(a)
+        m = r if m is None else (m & r)
+    if rows is not None and m is not None:
+        full = np.zeros(n_full, bool)
+        full[rows] = m
+        return full, ''
+    return m, ''
+
+
+def laz_mode3___element_record(rec, base_name, seed_txt, seed_id, seed_kind, lo, hi, chain, idx, pool, sport):
+    """[ELEMENT DOC] Document every element of a strategy AT THE MOMENT IT VALIDATES.
+
+    WHY THIS EXISTS. Documentation used to be rebuilt at export time from whatever
+    survived into the book row -- and what the book row carries is lossy. The seed's own
+    condition text, the seed's identity and kind, the exact fitted thresholds and the
+    exact band edges are known ONLY here, inside the worker, at the moment the leg is
+    accepted. By export time a threshold has been through a float->string->float trip, a
+    seed reference has become an unparsable 'recovered:NAME@dK' clause, and the arm mask
+    the leg was measured on is gone. Every one of those is a silent divergence between
+    what the engine measured and what production would place.
+
+    So the record is written HERE, first, before anything else happens to the strategy,
+    and it travels with it into the book, the registry and the dossier. Later stages READ
+    it; they never re-derive it.
+
+    WHAT IS DELIBERATELY NOT HERE. Per-term build recipes (genome arithmetic, builder
+    source, causality, resolves_at) are NOT captured per leg. They are identical for every
+    leg using the same term, and deriving them needs a genome bootstrap that would run
+    once per accepted leg inside the sweep -- the stage that is ~87% of a run. They are
+    joined once per TERM at export, from the same genome, which is both cheaper and
+    identical in content. What is captured here is only what cannot be recovered later.
+
+    Returns a dict. Cheap: string and array work on data already in hand.
+    """
+    PC = globals().get('laz_release__parse_conditions')
+    clauses = [str(c).strip() for c in (chain or []) if str(c).strip()]
+    txt = ' AND '.join(clauses)
+    parsed = PC(txt, keep_unparsed=True) if PC is not None else []
+    unreadable = [c for c in parsed if c.get('op') == 'UNPARSED']
+    try:
+        _ix = np.asarray(idx).astype('int64')
+        _fp = hashlib.sha256(_ix.tobytes()).hexdigest()[:16]
+        _n, _first, _last = int(_ix.size), (int(_ix[0]) if _ix.size else None), (int(_ix[-1]) if _ix.size else None)
+    except Exception:
+        _fp, _n, _first, _last = None, None, None, None
+    terms = sorted({str(c['term']) for c in parsed if c.get('term')})
+    missing = [t for t in terms if pool is not None and pool.get(t) is None]
+    doc = dict(
+        schema='amunev.element_doc/1',
+        strategy=str(rec.get('strategy_name') or ''),
+        sport=str(sport), base=str(base_name),
+        market=str(rec.get('market') or ''),
+        # --- the seed: the half of the specification that used to be lost -------------
+        seed=dict(id=str(seed_id), kind=str(seed_kind), text=(None if seed_txt is None else str(seed_txt)),
+                  has_text=bool(seed_txt),
+                  note=('this seed carries no condition text, so the chain below cannot express the '
+                        'mask the leg was measured on -- see text_rebuild' if not seed_txt else None)),
+        # --- the shipping definition, exactly as measured -----------------------------
+        conditions_text=txt,
+        clauses=[dict(term=c.get('term'), op=c.get('op'), value=c.get('value'),
+                      lo=c.get('lo'), hi=c.get('hi'), raw=c.get('raw')) for c in parsed],
+        n_clauses=len(clauses), n_unreadable=len(unreadable),
+        unreadable=[c.get('raw') for c in unreadable],
+        band=dict(lo=float(lo), hi=float(hi), text=f'{float(lo)!r}-{float(hi)!r}'),
+        min_odds=float(lo),
+        terms=terms, terms_absent_from_pool=missing,
+        # --- what it was measured on, so production can prove it replays the same ------
+        measured=dict(n_bets=_n, first_row=_first, last_row=_last, bets_sha=_fp),
+        text_rebuild=str(rec.get('text_rebuild') or 'untested'),
+        engine_fingerprint=(_laz_code_fingerprint() if '_laz_code_fingerprint' in globals() else None),
+        documented_at='acceptance')
+    doc['spec_sha'] = hashlib.sha256(json.dumps(
+        dict(base=doc['base'], conditions=doc['conditions_text'], band=doc['band'],
+             seed=doc['seed']['text'], market=doc['market']),
+        sort_keys=True, default=str).encode('utf-8')).hexdigest()[:16]
+    # the reasons this strategy could not ship UNCHANGED, stated at acceptance
+    gaps = []
+    if unreadable:
+        gaps.append(f'{len(unreadable)} clause(s) the production parser cannot read: '
+                    + '; '.join(str(c.get('raw'))[:60] for c in unreadable[:3]))
+    if missing:
+        gaps.append(f'{len(missing)} term(s) not in the pool: ' + ', '.join(missing[:5]))
+    if doc['text_rebuild'] not in ('exact', 'untested'):
+        gaps.append(f'round-trip: {doc["text_rebuild"]}')
+    if not seed_txt and str(seed_kind) not in ('none',):
+        gaps.append(f'the {seed_kind} seed carries no condition text, so its mask is not in the chain')
+    doc['ships_unchanged'] = not gaps
+    doc['gaps'] = gaps
+    return doc
+
+
+def laz_mode3___roundtrip(rec, armable, price, pool, midc, legal, idx):
+    """[PORT V2.27 + V2.29] Rebuild a leg's bets from its SHIPPING record alone and compare
+    with the bets it was measured on. Returns (ok, why).
+
+    The record is rec['conditions'] parsed by laz_release__parse_conditions -- the
+    production parser, the same one the registry uses -- plus rec['band'], evaluated with
+    the search's own arming (armable, the base price, one tick per match, the legal
+    window). Exact equality, no tolerance: the text either says what was measured or it
+    does not.
+
+    THIS RECORDS. IT NEVER REJECTS. V2.27 shipped this as a rejection at acceptance and it
+    threw away 154 honest strategies on one basketball run -- 175 became 11 -- because a
+    reclaimed seed's mask carries the base's arming that its text does not. The owner's
+    numbers decide what is validated; this decides only what can be SHIPPED unchanged, and
+    it says so per strategy instead of deleting it.
+    """
+    PC = globals().get('laz_release__parse_conditions')
+    COL = globals().get('laz_cascades__collapse_to_matches')
+    if PC is None or COL is None:
+        return False, 'round-trip helpers unreachable'
+    txt = str(rec.get('conditions') or '')
+    clauses = laz_mode3___split_clauses(txt)
+    conds = PC(txt)
+    if len(conds) != len(clauses):
+        import re as _rer
+        bad = [c for c in clauses if not _rer.search(r'(>=|<=|==|!=|>|<)', c)]
+        return False, f'{len(clauses) - len(conds)} clause(s) the production parser cannot read: ' + '; '.join(bad)[:100]
+    import re as _rer
+    mb = _rer.match(r'^\s*([0-9.]+(?:e\+?\d+)?)\s*-\s*([0-9.]+(?:e\+?\d+)?)\s*$', str(rec.get('band') or ''))
+    if not mb:
+        return False, f"band not parseable: {rec.get('band')!r}"
+    lo, hi = float(mb.group(1)), float(mb.group(2))
+    px = np.asarray(price, float)
+    b = np.asarray(armable, bool) & (px >= lo) & (px < hi)
+    b = COL(b, midc)
+    if clauses:
+        mt, why = laz_mode3___eval_text(txt, pool)
+        if mt is None:
+            return False, why
+        b &= mt
+    it = np.where(b)[0]
+    if legal is not None and len(legal) == len(b) and not np.asarray(legal, bool).all():
+        it = it[np.asarray(legal, bool)[it]]
+    idx = np.asarray(idx)
+    if len(it) == len(idx) and np.array_equal(it, idx):
+        return True, ''
+    _d = len(set(it.tolist()) ^ set(idx.tolist()))
+    return False, f'the shipping text rebuilds {len(it)} bets, {len(idx)} were measured, {_d} differ'
+
+
 def laz_mode3___sweep_one_base(bt, rung_ix=None):
     """Every rung for ONE base — or ONE rung of it when rung_ix is given.
     Returns (rows, ledgers, dupes, attempts, known_hits, known_by_seed, novel_by_seed).
@@ -104047,7 +104232,17 @@ def laz_mode3___sweep_one_base(bt, rung_ix=None):
             m = np.nan_to_num(m, nan=False).astype(bool)
             if (m & iA).sum() >= min_n and (m & iB).sum() >= min_n // 2:
                 seeds.append(m)
-                _seed_txt.append((str(getattr(r, 'feature', None) or f'{r.condition} {r.op} {r.cut:g}')) if r.op in ('>=', '<=') else None)   # [v246b] band seeds gate only ~isnan (the NULL rule) — the printed edges were the enumerate cut, never a real gate; only >=/<= seeds are real cuts and get recorded
+                # [PORT V2.27] THE SEED'S TEXT MUST REBUILD THE SEED'S MASK, EXACTLY.
+                # Three defects lived on the old line:
+                #  (1) `{r.cut:g}` rounds the fitted threshold to 6 significant digits, so
+                #      the shipped text selects a different set of ticks than the mask the
+                #      leg was measured on. 0.123456789012345 shipped as 0.123457.
+                #  (2) `getattr(r, 'feature', None) or ...` wrote the bare FEATURE NAME when
+                #      the row carried one, dropping the operator and the threshold entirely.
+                #  (3) a seed whose op is neither >= nor <= gates only ~isnan (the NULL rule)
+                #      and got `None` -- no text at all, so its legs can never ship. Written
+                #      as '>= -inf', which is exactly that gate: NULL fails, every value passes.
+                _seed_txt.append(f'{r.condition} {r.op} {float(r.cut)!r}' if r.op in ('>=', '<=') else f'{r.condition} >= -inf')
                 _seed_id.append(f'search:{r.condition} {r.op} {r.cut:g}')
                 _seed_kind.append('search')
         _n_tick = len(list(_tick_seeds))
@@ -104223,6 +104418,45 @@ def laz_mode3___sweep_one_base(bt, rung_ix=None):
                 laz_mode3___rej(_REJ, 'market_not_allowed', base=_base_name, rung=f'{lo:.2f}-{hi:.2f}', chain=chain, detail=str(_mk))
                 continue
             rec.update(base=_base_name, market='totals' if str(_base_name).startswith('tg_') else 'total_goals_handicap' if str(_base_name).startswith('spec:') and 'TGU' in str(_base_name) else (_bmkt if _bmkt not in ('', 'moneyline') else _mk), sport=sport, rung=f'{lo:.2f}-{hi:.2f}', band=f'{lo:.2f}-{hi:.2f}', bets=len(idx), per_day=per_day, conditions=' AND '.join((([locals().get('_stxt')] if locals().get('_stxt') else []) + chain)), combo_tier=tier, tier_reason=why, twofold_win=p2, twofold_payout=pay2, twofold_roi=roi2, origin=_origin, seed_kind='mode3_combination', seed_name=(str(_stxt).replace('recovered:', '', 1) if locals().get('_stxt') else ''), source_table=man['lineage'].get('source_table'), **(laz_arming__spec_fields_for(_base_name) or {}))   # [v243] the spec arming rule rides on every spec row
+            # [PORT V2.27 + V2.29] THE ROUND-TRIP, RECORDED. The leg's SHIPPING text -- its
+            # conditions and band, read by the production parser -- either rebuilds exactly
+            # the bets it was measured on, or it does not. Anything the text cannot say (an
+            # unexpanded seed reference, a seed with no text, a rounded threshold or band)
+            # makes the rebuilt bets differ, and production would then place bets the search
+            # never measured.
+            # RECORDED, NEVER REJECTED. Shipped as a rejection this threw away 154 honest
+            # strategies on one basketball run (175 -> 11), because a reclaimed seed's mask
+            # carries the base's arming that its text does not. Validation is the owner's
+            # numbers; this says only whether a strategy can ship UNCHANGED, per strategy.
+            try:
+                _rt_ok, _rt_why = laz_mode3___roundtrip(rec, armable, price, pool, _midc, _legal, idx)
+            except Exception as _rte:
+                _rt_ok, _rt_why = False, f'rebuild raised {type(_rte).__name__}'
+            rec['text_rebuild'] = 'exact' if _rt_ok else str(_rt_why)[:160]
+            # [ELEMENT DOC] THE FIRST THING THAT HAPPENS TO A VALIDATED STRATEGY.
+            # Every element is documented here, at acceptance, while the facts still
+            # exist: the seed's own text, identity and kind; the exact fitted thresholds
+            # and band edges; the terms; the bets it was measured on, fingerprinted. By
+            # export time those are lossy or gone, and re-deriving them there is what let
+            # the engine and production diverge silently. Later stages read this record.
+            try:
+                rec['element_doc'] = json.dumps(
+                    laz_mode3___element_record(rec, _base_name, _stxt, _sid, _skind,
+                                               lo, hi, chain, idx, pool, sport),
+                    sort_keys=True, default=str)
+                _ed = json.loads(rec['element_doc'])
+                rec['spec_sha'] = _ed['spec_sha']
+                rec['ships_unchanged'] = bool(_ed['ships_unchanged'])
+                rec['doc_gaps'] = ' | '.join(_ed['gaps'])[:300]
+                rec['seed_text'] = _ed['seed']['text']
+                rec['seed_id'] = _ed['seed']['id']
+                rec['seed_kind'] = _ed['seed']['kind']
+            except Exception as _edx:
+                # never lose a validated strategy to a documentation failure -- record it
+                rec['element_doc'] = None
+                rec['ships_unchanged'] = False
+                rec['doc_gaps'] = f'element documentation failed: {type(_edx).__name__}: {str(_edx)[:120]}'
+                laz_sink__swallow('mode3:element_doc', _edx)
             _key = (len(idx), int(idx[0]), int(idx[-1]), round(float(rec['oos_win']), 2), round(float(rec['odds']), 4))
             if _key in _seen:
                 _dupes += 1
@@ -117362,7 +117596,23 @@ def laz_production__stack(rec, sport):
     """
     base = str(rec.get('base') or '')
     bc = laz_production__base_card(base, sport)
+    # [ELEMENT DOC] The record written at acceptance is AUTHORITATIVE. It holds the facts
+    # this row cannot: the seed's own text, the exact fitted thresholds and band edges, and
+    # the bets the leg was measured on. Re-deriving them from the row is what let the engine
+    # and production diverge. Older rows carry no element_doc, and those fall back to the
+    # recovery path below -- unchanged behaviour for anything found before this landed.
+    _ed = None
+    try:
+        _edr = rec.get('element_doc')
+        if _edr:
+            _ed = json.loads(_edr) if isinstance(_edr, str) else dict(_edr)
+            if str(_ed.get('schema') or '').split('/')[0] != 'amunev.element_doc':
+                _ed = None
+    except Exception:
+        _ed = None
     text, key = laz_production___conditions_raw(rec)
+    if _ed and _ed.get('conditions_text') and not text:
+        text, key = str(_ed['conditions_text']), 'element_doc'
     clauses = laz_release__parse_conditions(text, keep_unparsed=True)
     band = str(rec.get('band') or rec.get('rung') or '')
     bm = re.match(r'\s*([0-9.]+)\s*-\s*([0-9.]+)', band)
@@ -117392,7 +117642,18 @@ def laz_production__stack(rec, sport):
         frame_arrays_required=bc['needs'], tie_rule=bc['tie_rule'],
         mask_fn=bc['mask_fn'], mask_source=bc['mask_source'],
         reproducible=bc['reproducible'], gap=bc['gap']))
-    for i, c in enumerate(clauses, start=2):
+    if _ed and (_ed.get('seed') or {}).get('kind') not in (None, 'none'):
+        _sd = _ed['seed']
+        gates.append(dict(
+            n=len(gates) + 1, gate='SEED', kind='seed',
+            rule=('the leg was grown from this seed; its mask is part of the arm and must be '
+                  'reproduced alongside the base'),
+            seed_id=_sd.get('id'), seed_kind=_sd.get('kind'), seed_text=_sd.get('text'),
+            reproducible=bool(_sd.get('has_text')),
+            gap=(None if _sd.get('has_text') else
+                 f"the {_sd.get('kind')} seed {_sd.get('id')!r} carries no condition text, so the "
+                 f"chain below does not express the mask this leg was measured on")))
+    for i, c in enumerate(clauses, start=len(gates) + 1):
         if c.get('op') == 'band':
             expr = '%s <= %s <= %s' % (c['lo'], c['term'], c['hi'])
         elif c.get('op') == 'band_ge':
@@ -117432,12 +117693,38 @@ def laz_production__stack(rec, sport):
     gates.append(dict(
         n=n + 3, gate='SETTLEMENT', kind='settle', rule=settled,
         reproducible=True, gap=None))
+    # [PORT V2.29] THE MEASURED ROUND-TRIP. text_rebuild is recorded at acceptance by
+    # laz_mode3___roundtrip: it rebuilt this leg's bets from its shipping text alone and
+    # compared them with the bets actually measured. 'exact' means the text ships
+    # unchanged. Anything else names how they differed, and this strategy must not be
+    # staked on that text -- not because the strategy is bad (the owner's numbers decide
+    # that) but because production would fire it differently from the search.
+    _trb = rec.get('text_rebuild')
+    try:
+        _trb = None if _trb is None else str(_trb)
+    except Exception:
+        _trb = None
+    if _trb is not None and _trb not in ('', 'nan', 'None'):
+        gates.append(dict(
+            n=n + 4, gate='ROUND-TRIP (measured)', kind='roundtrip',
+            rule=('the shipping text above rebuilt the measured bets EXACTLY'
+                  if _trb == 'exact' else
+                  f'the shipping text does NOT rebuild the measured bets: {_trb}'),
+            text_rebuild=_trb,
+            reproducible=(_trb == 'exact'),
+            gap=(None if _trb == 'exact' else
+                 f'round-trip at acceptance: {_trb}. Production would place a different set '
+                 f'of bets than the search measured, so this text must not be staked as-is.')))
     expr = ' AND '.join(['BASE(%s)' % bc['base']] +
                         [g['expr'] for g in gates if g['kind'] == 'condition'] +
                         ['backed_price >= %s' % mo] +
                         (['backed_price <= %s' % float(bm.group(2))] if bm else []) +
                         ['market_open'])
     gaps = [g['gap'] for g in gates if g.get('gap')]
+    if _ed:
+        for _g in (_ed.get('gaps') or []):
+            if _g not in gaps:
+                gaps.append(str(_g))
     payload = json.dumps([{k: v for k, v in g.items() if k != 'mask_source'} for g in gates],
                           sort_keys=True, default=str)
     return dict(
@@ -117445,7 +117732,11 @@ def laz_production__stack(rec, sport):
         n_conditions=sum(1 for g in gates if g['kind'] == 'condition'),
         n_unparsed=sum(1 for g in gates if g['kind'] == 'condition' and not g['reproducible']),
         base_card=bc, market=mkt, min_odds=mo, settlement=settled,
-        spec_sha=hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16],
+        spec_sha=((_ed or {}).get('spec_sha')
+                  or hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]),
+        documented_at=((_ed or {}).get('documented_at') or 'export'),
+        measured=((_ed or {}).get('measured') or None),
+        seed=((_ed or {}).get('seed') or None),
         deployable=(not gaps), blocked=gaps)
 
 
