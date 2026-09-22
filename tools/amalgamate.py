@@ -69,6 +69,7 @@ ORDER = [
     "tracer/contradictions.py", "tracer/tracer.py",
     "alignment.py", "narrative.py",
     "viewer/loader.py", "viewer/views.py", "viewer/html_export.py",
+    "viewer/blueprint.py",
     "viewer/__init__.py",
     "cli.py",
 ]

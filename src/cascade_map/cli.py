@@ -588,6 +588,35 @@ def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Cross-linking the tabular report and the blueprint canvas
+# ---------------------------------------------------------------------------
+
+
+def _crosslink_report_to_blueprint(report_path: Path) -> None:
+    """Best-effort, additive cross-link from the phase B report page to a
+    sibling ``blueprint.html``, when one already exists next to it.
+
+    Card 15 phase C's blueprint page links back to the report on its own
+    (:func:`cascade_map.viewer.render_blueprint_to_file` checks for
+    ``index.html`` next to its own output). The reverse direction is done
+    **here**, not by editing ``viewer/html_export.py``, which phase C was
+    told not to touch: a single, deterministic string insertion right after
+    the report page's one ``<nav>`` opening tag. If that anchor is not
+    found -- e.g. a future template change -- the file is left untouched
+    rather than partially spliced.
+    """
+    blueprint_candidate = report_path.parent / "blueprint.html"
+    if not blueprint_candidate.exists():
+        return
+    html = report_path.read_text(encoding="utf-8")
+    anchor = "<nav>\n"
+    if html.count(anchor) != 1:
+        return
+    link = f'<a href="{blueprint_candidate.name}">Blueprint canvas</a>\n'
+    report_path.write_text(html.replace(anchor, anchor + link, 1), encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -623,6 +652,18 @@ def _build_parser() -> argparse.ArgumentParser:
     show = sub.add_parser("view", help="render an analysed tree as offline HTML")
     show.add_argument("out_dir", type=Path)
     show.add_argument("--html", type=Path, default=None)
+
+    blue = sub.add_parser(
+        "blueprint",
+        help="render an analysed tree as an interactive, UE5-Blueprint-styled node canvas",
+    )
+    blue.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
+    blue.add_argument("--html", type=Path, default=None)
+    blue.add_argument("--diff", type=Path, default=None,
+                      help="a `metatron diff` output directory (changes.jsonl/impacts.jsonl); "
+                           "without it, the Diff tab states that it has nothing loaded")
+    blue.add_argument("--run", default=None, metavar="RUN_ID",
+                      help="a run id under graph_dir/runtime/; layers the runtime overlay on")
 
     run_a = sub.add_parser("trace", help="Mode A — run the target under the harness")
     run_a.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
@@ -672,6 +713,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         target = args.html or (args.out_dir / "index.html")
         render_to_file(args.out_dir, target)
+        _crosslink_report_to_blueprint(target)
+        print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
+        return EXIT_OK
+
+    if args.command == "blueprint":
+        from cascade_map.viewer import render_blueprint_to_file
+
+        target = args.html or (args.graph_dir / "blueprint.html")
+        render_blueprint_to_file(args.graph_dir, target, run_id=args.run, diff_root=args.diff)
         print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
         return EXIT_OK
 

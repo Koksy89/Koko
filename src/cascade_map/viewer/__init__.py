@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .blueprint import render_blueprint_to_file
 from .html_export import render_site
 from .loader import ArtifactStore, LoadError, RuntimeStore, list_runs
 from .views import (
@@ -69,6 +70,7 @@ __all__ = [
     "render_site",
     "render_to_file",
     "render_to_file_with_runtime",
+    "render_blueprint_to_file",
 ]
 
 
