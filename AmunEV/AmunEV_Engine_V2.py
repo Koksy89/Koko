@@ -115031,6 +115031,64 @@ def laz_xl___safe_table(b, log, df, name, **kw):
         log(f'[xl] {name}: {type(e).__name__}: {str(e)[:90]} — sheet skipped, workbook continues')
         return False
 
+def laz_xl___engine_sha256():
+    """sha256 of the engine file actually running, or None if it cannot be read."""
+    import hashlib as _h, os as _o
+    p = None
+    try:
+        p = laz_audit___engine_path()
+    except Exception:
+        p = None
+    if not p or not _o.path.exists(p):
+        p = globals().get('__file__')
+    try:
+        with open(p, 'rb') as _fh:
+            return _h.sha256(_fh.read()).hexdigest()
+    except Exception:
+        return None
+
+
+def laz_xl___provenance(sport, mode, A, path):
+    """WHO MADE THIS WORKBOOK. Facts only, all read from the running process.
+
+    THE FAILURE THIS ENDS. A workbook recorded which strategies were validated and
+    nothing whatever about the engine that validated them -- dc:creator said only
+    'openpyxl'. After a few iterations nobody could say which build produced which
+    book, and two engines that write byte-identical sheet structures cannot be told
+    apart from the output. A validated strategy you cannot trace to a build is a
+    strategy you cannot reproduce in production.
+    """
+    import platform as _pl, sys as _sy
+    _sha = laz_xl___engine_sha256()
+    try:
+        _n = int(len(A))
+    except Exception:
+        _n = None
+    _ndoc = 0
+    try:
+        if A is not None and 'element_doc' in getattr(A, 'columns', []):
+            _ndoc = int(A['element_doc'].notna().sum())
+    except Exception:
+        _ndoc = 0
+    return dict(
+        schema='amunev.workbook_provenance/1',
+        engine_version=str(globals().get('LAZ_ENGINE_VERSION', '') or ''),
+        engine_fingerprint=(_laz_code_fingerprint() if '_laz_code_fingerprint' in globals() else None),
+        engine_sha256=_sha,
+        engine_sha256_short=(_sha[:16] if _sha else None),
+        engine_path=(laz_audit___engine_path() if 'laz_audit___engine_path' in globals() else None),
+        sport=str(sport), mode=str(mode),
+        run_utc=str(pd.Timestamp.now('UTC').strftime('%Y-%m-%dT%H:%M:%SZ')),
+        workbook=str(path),
+        n_strategies=_n,
+        n_with_element_doc=_ndoc,
+        element_doc_coverage=(f'{_ndoc}/{_n}' if _n else '0/0'),
+        python=_sy.version.split()[0], platform=_pl.platform(),
+        note=('element_doc is the per-strategy documentation written AT ACCEPTANCE. '
+              'Coverage below n_strategies means some rows predate it and must be '
+              'documented from the export path instead.'))
+
+
 def laz_xl__write(A, sport, mode, run_log=None, sim=None, path=None, log=print, version='', ledgers=None, combina=None):
     """A: the accepted legs. sim: (placed, events) from combine(), if it ran."""
     WB = _m('laz_workbook')
@@ -115611,11 +115669,39 @@ def laz_xl__write(A, sport, mode, run_log=None, sim=None, path=None, log=print, 
             _wbo._sheets = _rest + _ones
     except Exception as _e:
         log('[xl] sheet order: %s' % type(_e).__name__)
+    # [PROVENANCE] The workbook now says which engine made it. Stamped into the file
+    # properties (where any reader looks first) and written beside it as a sidecar
+    # manifest, so a book can always be traced back to the exact build.
+    _prov = None
+    try:
+        _prov = laz_xl___provenance(sport, mode, A, path)
+        _wbp = getattr(b, 'wb', None)
+        if _wbp is not None:
+            _wbp.properties.creator = f"AmunEV {_prov['engine_version']} · fp {_prov['engine_fingerprint']} · sha {_prov['engine_sha256_short']}"
+            _wbp.properties.lastModifiedBy = str(_prov['engine_sha256_short'] or '')
+            _wbp.properties.title = f"LAZARUS {str(sport).upper()} MODE{mode}"
+            _wbp.properties.keywords = (f"engine_fingerprint={_prov['engine_fingerprint']};"
+                                        f"engine_sha256={_prov['engine_sha256_short']};"
+                                        f"run={_prov['run_utc']};strategies={_prov['n_strategies']}")
+            _wbp.properties.description = json.dumps(_prov, sort_keys=True, default=str)[:3800]
+        log(f"[xl] provenance: engine {_prov['engine_version']} · fp {_prov['engine_fingerprint']} · "
+            f"sha {_prov['engine_sha256_short']} · element_doc {_prov['element_doc_coverage']}")
+    except Exception as _pe:
+        laz_sink__swallow('xl:provenance', _pe)
+        log(f'[xl] provenance stamp: {type(_pe).__name__}: {str(_pe)[:90]}')
     try:
         out = b.save(log)
     except Exception as _e:
         log(f'[xl] SAVE FAILED: {type(_e).__name__}: {str(_e)[:100]}')
         raise
+    try:
+        if _prov is not None and out:
+            _sidecar = str(out) + '.provenance.json'
+            with open(_sidecar, 'w') as _fh:
+                json.dump(_prov, _fh, indent=1, sort_keys=True, default=str)
+            log(f'[xl] provenance sidecar -> {_sidecar}')
+    except Exception as _se:
+        laz_sink__swallow('xl:provenance_sidecar', _se)
     return out
 # ==========================================================================
 # LAZ_BRAIN MODULE: laz_onetoone
