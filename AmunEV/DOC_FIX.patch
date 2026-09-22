@@ -1,0 +1,488 @@
+--- /root/.claude/uploads/5ae43139-c189-53a1-b53a-86251fc03117/122e2e65-AmunEV_Engine_V2.py	2026-09-22 18:09:16.019159380 +0000
++++ AmunEV_Engine_V2.py	2026-09-22 18:21:04.963201522 +0000
+@@ -92078,11 +92078,26 @@
+     return 'tick'
+ 
+ 
+-def laz_release__parse_conditions(conditions):
++def laz_release__parse_conditions(conditions, keep_unparsed=False):
+     """'a >= 1.2 AND b < 3' -> [{'term':'a','op':'>=','value':1.2}, ...]; double-sided
+-    'x <= a <= y' (the seed band form) -> op 'band' with lo/hi. NULL value fails at eval."""
++    'x <= a <= y' (the seed band form) -> op 'band' with lo/hi. NULL value fails at eval.
++
++    [DOC-FIX 1] A CLAUSE IS NEVER SILENTLY DROPPED. Every clause that matches no
++    pattern used to fall off the end of the loop and vanish. The strategy then
++    shipped with FEWER conditions than it was measured on, so production placed
++    bets the search never measured -- and nothing anywhere said so. With
++    keep_unparsed=True the clause is returned as {'op': 'UNPARSED', 'raw': ...}
++    so the caller can refuse it. The default stays False so every existing
++    caller, the registry SQL included, is byte-identical to before.
++
++    [DOC-FIX 1] The separator is ' AND ' or ';'. The book writes both: the sweep
++    joins with ' AND ', the recovery path in _laz_conditions_of splits on ';'.
++    Splitting on one only returned the whole chain as a single unparsable clause.
++    """
++    _raw = str(conditions or '')
++    _parts = _raw.split(' AND ') if ' AND ' in _raw else ([p for p in _raw.split(';')] if ';' in _raw else [_raw])
+     out = []
+-    for c in str(conditions or '').split(' AND '):
++    for c in _parts:
+         mb = _re.match(r'\s*([0-9.eE+-]+)\s*(<=|<)\s*(\S+?)\s*(<=|<)\s*([0-9.eE+-]+)\s*$', c)
+         if mb:
+             out.append(dict(term=mb.group(3), op='band', lo=float(mb.group(1)), hi=float(mb.group(5))))
+@@ -92095,6 +92110,12 @@
+         m = _re.match(r'\s*(\S+)\s*(>=|<=|==|!=|>|<)\s*(\S+)', c)
+         if m:
+             out.append(dict(term=m.group(1), op=m.group(2), value=m.group(3)))
++            continue
++        if str(c).strip() and keep_unparsed:
++            # [DOC-FIX 1] the clause the strategy was measured on that no pattern
++            # matched. Reported, never dropped -- a half-specified strategy must
++            # not reach a deployment document looking complete.
++            out.append(dict(term=None, op='UNPARSED', raw=str(c).strip()))
+     return out
+ 
+ 
+@@ -98079,7 +98100,7 @@
+     except Exception:
+         return 'unknown'
+ 
+-def laz_featdoc__document_feature(name, depth=0, seen=None):
++def laz_featdoc__document_feature_lines(name, depth=0, seen=None):
+     """Walk a term to PRIMITIVES and emit the full rebuild for every node."""
+     seen = seen or set()
+     n = str(name)
+@@ -98100,9 +98121,9 @@
+         L.append(f'{ind}               {n} = {ofml}')
+         L.append(f"{ind}   RESOLVES  : the LATER of A and B — a derived term inherits its parents' resolution")
+         L.append(f'{ind}   BUILD A:')
+-        L += laz_featdoc__document_feature(a, depth + 2, seen)
++        L += laz_featdoc__document_feature_lines(a, depth + 2, seen)
+         L.append(f'{ind}   BUILD B:')
+-        L += laz_featdoc__document_feature(b, depth + 2, seen)
++        L += laz_featdoc__document_feature_lines(b, depth + 2, seen)
+         return L
+     p = laz_featdoc__PRIMITIVES.get(key)
+     if p:
+@@ -98121,7 +98142,7 @@
+                 L.append(f'{ind}   BUILD {dpn}: (already documented above)')
+             else:
+                 L.append(f'{ind}   BUILD {dpn}:')
+-                L += laz_featdoc__document_feature(dpn, depth + 2, seen)
++                L += laz_featdoc__document_feature_lines(dpn, depth + 2, seen)
+         return L
+     r = laz_featdoc___resolve_via_sibling(key)
+     nat = laz_featdoc__NATIVES.get(n) or laz_featdoc__NATIVES.get(key)
+@@ -98152,7 +98173,7 @@
+         term = p[0] if len(p) == 3 else c
+         test = c
+     out = [f'CONDITION: {test}', '']
+-    out += laz_featdoc__document_feature(term)
++    out += laz_featdoc__document_feature_lines(term)
+     return '\n'.join(out)
+ 
+ def laz_featdoc__document_all(terms):
+@@ -117179,20 +117200,232 @@
+     removed = term in ('n_ticks', 'ticks', 'ticks_since_goal') or '_REMOVED' in term
+     return dict(term=term, arithmetic=d.get('arithmetic') or G.get('arithmetic'), inputs=d.get('inputs') or G.get('inputs'), kind=G.get('kind'), sports=G.get('sports', 'all'), causality=G.get('causality'), resolves_at=ra if ra is not None else 0.0, guard='allowed' if ok else f'DENIED: {why[:60]}', builder_source=src, manufactured=manu, production_has=term in prod or term in raw, production_source='rt_laz_features' if term in prod else 'rt_betting_conditions (raw)' if term in raw else None, removed=removed, removed_reason='row count of a match — the scrape interval, not the match; removed by operator rule' if removed else None, units='wall seconds' if term.startswith('secs_') or term.endswith('_s') else 'match units')
+ 
+-def laz_production__strategy_record(rec, sport):
+-    """One book strategy in the dict form production's Lazarus_EFB_Strategies uses."""
+-    conds = [c.strip() for c in str(rec.get('conditions', '')).split(' AND ') if c.strip()]
+-    base = str(rec.get('base') or '')
+-    OW = _m('laz_owner')
++def laz_production___conditions_raw(rec):
++    """The strategy's condition chain as TEXT, from the best key the record carries.
++
++    [DOC-FIX 2] THE FAILURE THIS ENDS. strategy_record read the chain with
++        str(rec.get('conditions','')).split(' AND ')
++    which is the exact pattern _laz_conditions_of exists to replace. A record
++    carrying the chain under any other key produced [''] -> filtered to [] ->
++    the dossier printed "No conditions on record - treat the ledger as the spec"
++    and stamped the strategy NEEDS_FEATURE_BUILD. The strategy was measured on a
++    real chain; the document simply could not find it. Returns (text, key).
++    """
++    for key in ('conditions', 'trigger', 'triggers', 'raw_spec', 'spec', 'condition'):
++        try:
++            v = rec.get(key)
++        except Exception:
++            v = None
++        if v is None:
++            continue
++        if isinstance(v, (list, tuple, set)):
++            t = ' AND '.join(str(c).strip() for c in v if str(c).strip())
++        else:
++            t = str(v).strip()
++        if t and t.lower() not in ('nan', 'none', ''):
++            return (t, key)
++    return ('', None)
++
++
++def laz_production__base_card(base, sport=None):
++    """The base's ARM MASK, exactly as production must reproduce it.
++
++    [DOC-FIX 3] THE FAILURE THIS ENDS. A strategy's conditions are only half its
++    specification. The BASE decides which ticks are eligible at all, which side
++    is backed, and at what price -- and until now it reached the dossier only as
++    an English sentence from BASE_WORDS. A reader had the conditions but not the
++    mask they sit on, so the documented text could not rebuild the measured bets.
++    This is the defect behind "165 of 175 strategies would have shipped without
++    their seed's conditions": the seed's conditions ARE the base mask.
++
++    Emits the base's executable source, the frame arrays it consumes, its market,
++    its tie rule and whether it is blocked. Facts only -- every field is read from
++    laz_registry.BASES or from the function's own source.
++    """
+     REG = _m('laz_registry')
+-    side_rule = None
++    B = ((getattr(REG, 'BASES', None) or {}) if REG is not None else {}).get(str(base)) or {}
++    fn = B.get('fn')
++    src = None
++    if fn is not None:
++        try:
++            src = inspect.getsource(fn).strip()
++        except Exception:
++            src = None
++    tie = str(B.get('tie_rule') or '') or {
++        'DRIFTED': 'away', 'SHORTENED': 'away',
++        'lead_ml': 'none (level = no side)', 'trail_ml': 'none (level = no side)',
++        'pm_favourite': 'home (equal prematch prices)',
++        'pm_underdog': 'away (equal prematch prices)'}.get(str(base), 'none')
++    known = bool(B)
++    return dict(
++        base=str(base),
++        known_to_registry=known,
++        backs=B.get('backs') or laz_production___BASE_WORDS.get(str(base)) or 'side defined by the base',
++        market=str(B.get('market') or 'moneyline'),
++        needs=list(B.get('needs') or ()),
++        sports=B.get('sports', 'all'),
++        tie_rule=tie,
++        blocked_by=B.get('blocked_by'),
++        mask_fn=getattr(fn, '__name__', None),
++        mask_source=src,
++        pool_built=bool(B.get('pool_built')),
++        evidence=B.get('evidence'),
++        reproducible=bool(src) or bool(B.get('pool_built')),
++        gap=(None if (src or B.get('pool_built')) else
++             ('base %r is not in laz_registry.BASES - its arm mask is unknown, so the '
++              'documented text cannot rebuild the measured bets' % str(base) if not known else
++              'base %r is registered but carries no builder source - record the mask before deploying'
++              % str(base))))
++
++
++def laz_production__stack(rec, sport):
++    """The COMPLETE, ORDERED evaluation stack for one strategy.
++
++    [DOC-FIX 4] THE FAILURE THIS ENDS. The dossier listed the conditions but never
++    stated how they compose, in what order, or what else has to hold for a tick to
++    become a bet. "Every condition holds AND the price is at or above min_odds" is
++    a sentence, not a specification: it omits the base mask, the band ceiling, the
++    market-status gate, the NaN rule and the one-bet-per-match rule. Production
++    implementing from that document does NOT reproduce the measured bets.
++
++    Returns the ordered gates a tick passes through. Every gate carries the data it
++    needs, so the list is a build instruction rather than a description.
++    """
++    base = str(rec.get('base') or '')
++    bc = laz_production__base_card(base, sport)
++    text, key = laz_production___conditions_raw(rec)
++    clauses = laz_release__parse_conditions(text, keep_unparsed=True)
++    band = str(rec.get('band') or rec.get('rung') or '')
++    bm = re.match(r'\s*([0-9.]+)\s*-\s*([0-9.]+)', band)
++    try:
++        mo = float(rec.get('min_odds'))
++        if not np.isfinite(mo) or mo <= 0:
++            mo = float(bm.group(1)) if bm else 1.4
++    except Exception:
++        mo = float(bm.group(1)) if bm else 1.4
++    mkt = str(rec.get('market') or bc.get('market') or
++              ('totals' if base.startswith('tg_') else 'moneyline'))
++    OW = _m('laz_owner')
++    stat = (((OW.LAZ_OWNER.get('combination', {}) or {}).get('status_columns', {}) or {})
++            if OW else {}).get(mkt) or (((OW.LAZ_OWNER.get('combination', {}) or {})
++            .get('status_columns', {}) or {}).get('any') if OW else ()) or ()
+     try:
+-        b = REG.BASES.get(base) if REG else None
+-        side_rule = (b.get('side') if isinstance(b, dict) else None) or ('backs the LEADER' if base == 'lead_ml' else 'backs the TRAILER' if base == 'trail_ml' else 'backs the pre-match favourite' if base == 'pm_favourite' else 'backs the pre-match underdog' if base == 'pm_underdog' else 'UNDER the line' if base.startswith('tg_under') else 'OVER the line' if base.startswith('tg_over') else 'the side the model favours' if base == 'model_pick' else None)
+-    except Exception as _e:
+-        pass
+-    mkt = str(rec.get('market') or ('totals' if base.startswith('tg_') else 'moneyline'))
+-    return dict(name=str(rec.get('strategy_name')), laz_id=str(rec.get('laz_id') or rec.get('strategy_name')), sport=sport, tier=rec.get('tier'), family=rec.get('family'), base=base, side_rule=side_rule, market=mkt, min_odds=float(rec.get('min_odds')) if isinstance(rec.get('min_odds'), (int, float)) and np.isfinite(float(rec.get('min_odds'))) and (float(rec.get('min_odds')) > 0) else 1.4, conditions=conds, condition_terms=[dict(term=t, op=o, value=v) for c in conds for t, o, v in laz_production___split_condition(c)], arming='FIRST tick per match on which every condition holds AND the backed price >= min_odds; one bet per match', settlement='final total vs the line captured at the arm tick' if mkt == 'totals' else 'final_winner == backed side (running MAX of the scores, not the last tick)', oos_win=rec.get('oos_win'), oos_roi=rec.get('oos_roi'), odds=rec.get('odds'), bets=rec.get('bets'), n_is=rec.get('n_is'), n_oos=rec.get('n_oos'), gate=f'n>={rec.get('n_is') and 100} IS · n>=100 OOS · OOS ROI >= {rec.get('min_roi_applied', 15)}% · mean odds >= 1.40', engine_version=str((OW.LAZ_OWNER.get('version') if OW else '') or 'v186'), enabled=False, port_status='NEEDS_FEATURE_BUILD')
++        settled = laz_settlement__settled_by(sport)
++    except Exception:
++        settled = ('final total vs the line captured at the arm tick' if mkt == 'totals'
++                   else 'final_winner == backed side (running MAX of the scores, not the last tick)')
++    gates = []
++    gates.append(dict(
++        n=1, gate='BASE / ARM MASK', kind='base',
++        rule='the tick is eligible only where the base mask is true; the mask also fixes '
++             'WHICH SIDE is backed and which price series is read',
++        base=bc['base'], backs=bc['backs'], market=bc['market'],
++        frame_arrays_required=bc['needs'], tie_rule=bc['tie_rule'],
++        mask_fn=bc['mask_fn'], mask_source=bc['mask_source'],
++        reproducible=bc['reproducible'], gap=bc['gap']))
++    for i, c in enumerate(clauses, start=2):
++        if c.get('op') == 'band':
++            expr = '%s <= %s <= %s' % (c['lo'], c['term'], c['hi'])
++        elif c.get('op') == 'band_ge':
++            expr = '%s %s %s %s %s' % (c['lo'], '>' if c.get('lo_strict') else '>=',
++                                       c['term'], '>' if c.get('hi_strict') else '>=', c['hi'])
++        elif c.get('op') == 'UNPARSED':
++            expr = c.get('raw')
++        else:
++            expr = '%s %s %s' % (c.get('term'), c.get('op'), c.get('value'))
++        gates.append(dict(
++            n=i, gate='CONDITION %d' % (i - 1), kind='condition', clause=c, expr=expr,
++            rule='must be true at the tick; a NaN value NEVER satisfies a comparison',
++            reproducible=(c.get('op') != 'UNPARSED'),
++            gap=(None if c.get('op') != 'UNPARSED' else
++                 'this clause was measured but no parser pattern matches it - production '
++                 'cannot implement it and MUST NOT silently omit it')))
++    n = len(gates) + 1
++    gates.append(dict(
++        n=n, gate='PRICE', kind='price',
++        rule='the backed side price at this tick must be >= min_odds and inside the band',
++        min_odds=mo, band_lo=(float(bm.group(1)) if bm else None),
++        band_hi=(float(bm.group(2)) if bm else None), band_text=band or None,
++        reproducible=True, gap=None))
++    gates.append(dict(
++        n=n + 1, gate='MARKET STATUS', kind='status',
++        rule='the market must be open at this tick; a suspended or closed market cannot be '
++             'backed however well the conditions read',
++        status_columns=list(stat), open_values=list((((OW.LAZ_OWNER.get('combination', {}) or {})
++            .get('open_values', ())) if OW else ()) or ()),
++        reproducible=True, gap=None))
++    gates.append(dict(
++        n=n + 2, gate='FIRST TICK', kind='dedupe',
++        rule='the FIRST tick of the match that passes every gate above becomes the bet; later '
++             'ticks of that match are ignored at measurement (one bet per match). Live placement '
++             'MAY fire again on a fresh re-qualification and each firing is a real bet.',
++        reproducible=True, gap=None))
++    gates.append(dict(
++        n=n + 3, gate='SETTLEMENT', kind='settle', rule=settled,
++        reproducible=True, gap=None))
++    expr = ' AND '.join(['BASE(%s)' % bc['base']] +
++                        [g['expr'] for g in gates if g['kind'] == 'condition'] +
++                        ['backed_price >= %s' % mo] +
++                        (['backed_price <= %s' % float(bm.group(2))] if bm else []) +
++                        ['market_open'])
++    gaps = [g['gap'] for g in gates if g.get('gap')]
++    payload = json.dumps([{k: v for k, v in g.items() if k != 'mask_source'} for g in gates],
++                          sort_keys=True, default=str)
++    return dict(
++        gates=gates, expression=expr, conditions_text=text, conditions_source_key=key,
++        n_conditions=sum(1 for g in gates if g['kind'] == 'condition'),
++        n_unparsed=sum(1 for g in gates if g['kind'] == 'condition' and not g['reproducible']),
++        base_card=bc, market=mkt, min_odds=mo, settlement=settled,
++        spec_sha=hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16],
++        deployable=(not gaps), blocked=gaps)
++
++
++def laz_production__strategy_record(rec, sport):
++    """One book strategy in the dict form production's Lazarus_EFB_Strategies uses.
++
++    [DOC-FIX 2/3/4] Now carries the COMPLETE specification: the base arm mask, the
++    ordered evaluation stack, the canonical boolean expression, a spec hash and a
++    deployability verdict. The three old defects are gone:
++      * conditions were read by the banned `str(rec.get('conditions','')).split(' AND ')`
++        pattern and silently became [] -- now recovered through every known key;
++      * the base mask was never documented, only described in English -- now emitted
++        with its executable source and the frame arrays it consumes;
++      * nothing said how the clauses STACK -- now an ordered gate list.
++    Every previously-emitted key is still present and unchanged in meaning.
++    """
++    st = laz_production__stack(rec, sport)
++    conds = [g['expr'] for g in st['gates'] if g['kind'] == 'condition']
++    base = st['base_card']['base']
++    OW = _m('laz_owner')
++    return dict(
++        name=str(rec.get('strategy_name')),
++        laz_id=str(rec.get('laz_id') or rec.get('strategy_name')),
++        sport=sport, tier=rec.get('tier'), family=rec.get('family'),
++        base=base, side_rule=st['base_card']['backs'], base_card=st['base_card'],
++        market=st['market'], min_odds=st['min_odds'],
++        conditions=conds,
++        conditions_text=st['conditions_text'],
++        conditions_source_key=st['conditions_source_key'],
++        condition_terms=[dict(term=g['clause'].get('term'), op=g['clause'].get('op'),
++                              value=g['clause'].get('value', g['clause'].get('lo')),
++                              lo=g['clause'].get('lo'), hi=g['clause'].get('hi'),
++                              expr=g['expr'])
++                         for g in st['gates'] if g['kind'] == 'condition'
++                         and g['clause'].get('op') != 'UNPARSED'],
++        stack=st['gates'], stack_expression=st['expression'], spec_sha=st['spec_sha'],
++        n_conditions=st['n_conditions'], n_unparsed=st['n_unparsed'],
++        arming=('FIRST tick per match on which the base mask holds AND every condition holds '
++                'AND the backed price >= min_odds and is inside the band AND the market is open; '
++                'one bet per match at measurement'),
++        settlement=st['settlement'],
++        oos_win=rec.get('oos_win'), oos_roi=rec.get('oos_roi'), odds=rec.get('odds'),
++        bets=rec.get('bets'), n_is=rec.get('n_is'), n_oos=rec.get('n_oos'),
++        band=str(rec.get('band') or rec.get('rung') or '') or None,
++        gate=f'n>={rec.get('n_is') and 100} IS · n>=100 OOS · OOS ROI >= {rec.get('min_roi_applied', 15)}% · mean odds >= 1.40',
++        engine_version=str((OW.LAZ_OWNER.get('version') if OW else '') or 'v186'),
++        deployable=st['deployable'], blocked=st['blocked'],
++        enabled=False,
++        port_status=('READY' if st['deployable'] else 'BLOCKED'))
+ 
+ def laz_production__coverage(sport, log=print):
+     """The gap, without writing: which terms production must build, ranked by strategies served."""
+@@ -117294,9 +117527,22 @@
+     A = md.append
+     A(f'# IMPLEMENTATION DOSSIER — {sport.upper()}')
+     A('')
++    _ready = [x for x in S if x.get('deployable')]
++    _blocked = [x for x in S if not x.get('deployable')]
+     A(f'Generated {__import__("datetime").datetime.now():%Y-%m-%d %H:%M} · {len(S)} placeable strategies · '
+       f'{len(terms)} distinct condition elements · engine reads this document as the contract for deployment.')
+     A('')
++    A(f'**DEPLOYABLE: {len(_ready)} of {len(S)}.** A strategy is deployable when every gate in its '
++      f'stack is reproducible: the base arm mask has recorded source, and every measured clause parses. '
++      f'{len(_blocked)} strategy(ies) are BLOCKED and are marked as such at their own heading — a blocked '
++      f'strategy must NOT be staked, because the text below would not rebuild the bets it was measured on.')
++    A('')
++    if _blocked:
++        A('| blocked strategy | why |')
++        A('|---|---|')
++        for _b in _blocked:
++            A(f'| `{_b["name"]}` | {"; ".join(str(x) for x in (_b.get("blocked") or []))[:300].replace("|", "/")} |')
++        A('')
+     A('## HOW A TICK BECOMES A BET (the pipeline every strategy lives inside)')
+     A('')
+     A('1. **INGEST** — one row per tick (~5 s cadence): match id, timestamp, league, phase, scores, home/draw/away odds, totals line and prices.')
+@@ -117329,10 +117575,60 @@
+         A('')
+         A(f'**Arming rule:** {s["arming"]}.  **Settlement:** {s["settlement"]}.')
+         A('')
++        A(f'**Deployment verdict:** {"DEPLOYABLE" if s.get("deployable") else "**BLOCKED — DO NOT STAKE**"} '
++          f'· spec hash `{s.get("spec_sha")}` · {s.get("n_conditions")} condition(s) recovered from the book '
++          f'key `{s.get("conditions_source_key")}`.')
++        if not s.get('deployable'):
++            A('')
++            for _g in (s.get('blocked') or []):
++                A(f'> BLOCKED: {_g}')
++        A('')
++        _bcard = s.get('base_card') or {}
++        A('### The base — which ticks qualify at all')
++        A('')
++        A(f'Every condition below sits ON TOP of the base mask. The base decides which ticks are eligible '
++          f'and which side is backed; without it the conditions alone do not define the bet.')
++        A('')
++        A(f'- **Base:** `{_bcard.get("base")}` — {_bcard.get("backs")}')
++        A(f'- **Market:** {_bcard.get("market")} · **tie rule:** {_bcard.get("tie_rule")}')
++        A(f'- **Frame arrays the mask consumes:** {_bcard.get("needs") or "none recorded"}')
++        if _bcard.get('blocked_by'):
++            A(f'- **BLOCKED BY:** {_bcard.get("blocked_by")}')
++        if _bcard.get('mask_source'):
++            A(f'- **Arm mask — the exact code the search used** (`{_bcard.get("mask_fn")}`):')
++            A('')
++            A('```python')
++            for _ln in str(_bcard.get('mask_source')).splitlines():
++                A(_ln)
++            A('```')
++        elif _bcard.get('pool_built'):
++            A('- **Arm mask:** built in the sweep from the pool, not from a registry function '
++              '(`pool_built`) — reproduce it from the pool builder named in the evidence below.')
++        else:
++            A('- **Arm mask: NOT ON RECORD** — this is why the strategy is blocked. '
++              'The mask must be recorded before the strategy can be deployed.')
++        if _bcard.get('evidence'):
++            A(f'- **Why this base exists:** {_bcard.get("evidence")}')
++        A('')
++        A('### How the conditions stack — the exact order a tick is tested in')
++        A('')
++        A('A tick becomes a bet only by passing EVERY gate below, in this order. '
++          'All gates are AND-ed; a NaN value never satisfies a comparison.')
++        A('')
++        A(f'```\n{s.get("stack_expression")}\n```')
++        A('')
++        A('| # | gate | rule | reproducible |')
++        A('|---|---|---|---|')
++        for _g in (s.get('stack') or []):
++            _r = str(_g.get('expr') or _g.get('rule') or '')[:200].replace('|', '/').replace(chr(10), ' ')
++            A(f'| {_g.get("n")} | {_g.get("gate")} | {_r} | {"yes" if _g.get("reproducible") else "**NO**"} |')
++        A('')
+         A('### Conditions — every element, literally')
+         A('')
+         if not s['condition_terms']:
+-            A('*No conditions on record — the full specification is its base arm mask; treat the ledger as the spec.*')
++            A('*No parsable conditions on record.* The specification is the base arm mask above. '
++              'If this strategy was measured with conditions, they did not survive into the book under any '
++              'known key — treat it as BLOCKED rather than deploying the base alone.')
+         for ct in s['condition_terms']:
+             L = T.get(ct['term'], {}) or {}
+             opw = laz_production___OP_WORDS.get(str(ct['op']), str(ct['op']))
+@@ -117363,12 +117659,14 @@
+     if gap and os.path.exists(gap):
+         A('---'); A(''); A('## PRODUCTION GAP (terms production must still build)'); A('')
+         try:
+-            for ln in open(gap).read().splitlines()[3:]:
+-                A(ln)
++            with open(gap) as _fh:
++                for ln in _fh.read().splitlines()[3:]:
++                    A(ln)
+         except Exception:
+             pass
+     path = os.path.join(out, f'IMPLEMENTATION_{sport.upper()}.md')
+-    open(path, 'w').write('\n'.join(md) + '\n')
++    with open(path, 'w') as _fh:
++        _fh.write('\n'.join(md) + '\n')
+     log(f'[impl-docs] {sport}: {len(S)} strategies · {len(terms)} terms · {len(md)} lines -> {path}')
+     return dict(implementation=path, **(bundle or {}))
+ 
+@@ -117425,8 +117723,44 @@
+     paths = dict(strategies=os.path.join(out, f'{sport}_strategies.json'), terms=os.path.join(out, f'{sport}_terms.json'), gap=os.path.join(out, f'{sport}_gap.md'), reference=ref_path)
+     _laz_json_write(paths['strategies'], S, indent=1, default=str)
+     _laz_json_write(paths['terms'], T, indent=1, default=str)
+-    open(paths['gap'], 'w').write('\n'.join(G) + '\n')
+-    log(f'[production] {sport}: {len(S)} strategies · {len(terms)} terms · {len(missing)} to build · reference values for {n_ref_matches} matches -> {out}')
++    with open(paths['gap'], 'w') as _fh:
++        _fh.write('\n'.join(G) + '\n')
++    # [DOC-FIX 5] THE DEPLOYMENT MANIFEST. The bundle used to hand production a
++    # strategy list and a term list and leave it to infer how a tick becomes a bet.
++    # This file states it outright, per strategy: the ordered gate stack, the
++    # canonical boolean expression, the base arm mask, the band, the settlement
++    # rule and a spec hash production can echo back. A strategy whose stack has an
++    # unreproducible gate is listed as BLOCKED with the reason, and is never
++    # presented as ready to stake.
++    _ready = [s for s in S if s.get('deployable')]
++    _blocked = [s for s in S if not s.get('deployable')]
++    paths['deployment'] = os.path.join(out, f'{sport}_deployment.json')
++    _laz_json_write(paths['deployment'], dict(
++        sport=sport,
++        generated=str(__import__('datetime').datetime.now()),
++        engine_fingerprint=(_laz_code_fingerprint() if '_laz_code_fingerprint' in globals() else None),
++        engine_version=str(globals().get('LAZ_ENGINE_VERSION', '') or ''),
++        n_strategies=len(S), n_deployable=len(_ready), n_blocked=len(_blocked),
++        terms_required=terms,
++        terms_production_must_build=sorted(missing),
++        reference_values=(os.path.basename(ref_path) if ref_path else None),
++        contract=('A tick becomes a bet only when EVERY gate in the strategy stack passes, in the '
++                  'order given. All gates are AND-ed. A NaN value never satisfies a comparison. The '
++                  'first passing tick of a match is the bet; later ticks are ignored at measurement. '
++                  'Reproduce spec_sha from the same stack to prove the implementation matches.'),
++        strategies=[dict(name=s['name'], laz_id=s['laz_id'], spec_sha=s['spec_sha'],
++                         deployable=s['deployable'], blocked=s['blocked'],
++                         base=s['base'], base_card=s['base_card'], market=s['market'],
++                         min_odds=s['min_odds'], band=s.get('band'),
++                         stack=s['stack'], expression=s['stack_expression'],
++                         settlement=s['settlement'], arming=s['arming'],
++                         n_conditions=s['n_conditions'], n_unparsed=s['n_unparsed'],
++                         oos_win=s.get('oos_win'), oos_roi=s.get('oos_roi'), bets=s.get('bets'))
++                    for s in S]),
++        indent=1, default=str)
++    log(f'[production] {sport}: {len(S)} strategies · {len(_ready)} DEPLOYABLE · {len(_blocked)} BLOCKED · {len(terms)} terms · {len(missing)} to build · reference values for {n_ref_matches} matches -> {out}')
++    for _s in _blocked:
++        log(f'[production]    BLOCKED {_s["name"]}: {"; ".join(str(x) for x in (_s.get("blocked") or []))[:120]}')
+     return paths
+ laz_production___PROD_SNAPSHOT_FEATURES = ['abs_lead', 'ao', 'away_player_total_games', 'both_cannon', 'both_low', 'cb_prog', 'combined_avg_matchgoals', 'consec_loser_odds_high', 'down1', 'draw_odds', 'early_first_goal', 'efb_line', 'efb_need', 'efb_prog', 'efb_u_flat', 'elo_advantage_loser', 'elo_away', 'elo_leader', 'elo_loser', 'fat_adv_leader', 'fav_rt', 'first_goal_prog', 'gap_abs', 'gap_rel', 'goal_num', 'goal_scored', 'h2h_exp', 'h2h_wall', 'h2h_wr_loser', 'h_score', 'ho', 'home_player_wr', 'hour', 'hp_avggoals_scored_5', 'is_first_half', 'lag_score', 'lam', 'ld_o', 'lead_net10', 'lead_streak', 'leader_exp', 'leader_form10', 'leader_games_24h', 'leader_odds_now', 'leader_odds_rt', 'leader_player_wr', 'league', 'line', 'line_vs_h2h', 'line_vs_pair', 'lmin', 'loser_form10', 'loser_form20', 'loser_form5', 'loser_odds_now', 'loser_odds_rt', 'loser_player_wr', 'loser_runmax', 'losing_team_rt', 'min_rest_min', 'minute', 'opp_velocity', 'overround', 'p_und_mod', 'pair_g10', 'pair_g5', 'pm_ratio', 'prematch_dog_odds', 'prematch_draw_odds', 'price_rank_in_match', 'prog', 'prog_t', 'proj_gap_n', 'recovery_x', 'role_reversal', 'rt_score_difference', 's00', 'sd_abs', 'secs_since_score', 'spread', 'tg', 'tied', 'time_at_this_price', 'trailer_at_high', 'u_drift', 'u_flat', 'u_rank', 'wall_min', 'wall_min_rel', 'wall_pair', 'wall_prod', 'wall_sum', 'wl', 'a_score', 'anchor', 'anchor_ge', 'any_set1', 'away_odds', 'bb_line_flat', 'bb_line_move', 'bb_line_open', 'bb_line_vel', 'bb_ml_spread', 'bb_need_frac', 'bb_prog_score', 'bb_q', 'bb_sd_abs', 'bb_tp_vel_n', 'bb_u_drift', 'bb_u_flat', 'cold_form', 'conc_bottom_q', 'feed_gap', 'h2h_gap', 'need_frac_min', 'price_flat', 'steam_down', 'rest_hp', 'rest_ap', 'rest_lead', 'rest_trail']
+ laz_production___PROD_SNAPSHOT_RAW = ['match_id', 'match_name', 'first_timestamp', 'timestamp', 'league', 'league_minutes', 'phase', 'period', 'phase_minute', 'period_length', 'market_status', 'h_score', 'a_score', 'home_odds', 'draw_odds', 'away_odds', 'prematch_home_odds', 'prematch_away_odds', 'total_goals_handicap', 'total_goals_over', 'total_goals_under', 'total_points_handicap', 'total_points_over', 'total_points_under', 'favourite_prematch', 'underdog_prematch', 'first_observed_home_odds', 'first_observed_draw_odds', 'first_observed_away_odds']
+@@ -118806,7 +119140,7 @@
+         howtxt = ''
+         if FD is not None:
+             try:
+-                howtxt = '\n'.join(FD.document_feature(t))
++                howtxt = '\n'.join(FD.document_feature_lines(t))
+             except Exception:
+                 howtxt = ''
+         crows.append(dict(condition=t, type=kind, uses=info['uses'], sports='|'.join(sorted(info['sports'])), best_oos_win=info['best_oos'], parents=par, resolves_at=LA.resolves_at(tl) if LA else '', meaning=prim.get('meaning', ''), formula=prim.get('formula', ''), requires=prim.get('requires', ''), note=prim.get('note', ''), HOW_TO_BUILD=howtxt))
