@@ -1,0 +1,1624 @@
+[
+ {
+  "strategy": "BAS_prop:first_s_0039",
+  "base": "prop:first_scorer_hold",
+  "tier": "Jobber",
+  "odds": 2.524,
+  "oos_win": 43.5,
+  "oos_roi": 8.6,
+  "bets": 346,
+  "backed": "prop:first_scorer_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -1.19,
+  "conditions": [
+   {
+    "term": "pc_dc4196fb",
+    "op": ">=",
+    "value": "-4.0218"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "pc_dc4196fb"
+  ],
+  "terms_unbuildable": [
+   "pc_dc4196fb"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_dc4196fb",
+  "sql_predicate": "\"pc_dc4196fb\" IS NOT NULL AND \"pc_dc4196fb\" >= -4.0218",
+  "blocked_terms": [
+   "pc_dc4196fb"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:first_s_0085",
+  "base": "prop:first_scorer_hold",
+  "tier": "Npc",
+  "odds": 1.606,
+  "oos_win": 67.8,
+  "oos_roi": 7.8,
+  "bets": 370,
+  "backed": "prop:first_scorer_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -1.09,
+  "conditions": [
+   {
+    "term": "pc_dc4196fb",
+    "op": ">=",
+    "value": "-4.4701"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "pc_dc4196fb"
+  ],
+  "terms_unbuildable": [
+   "pc_dc4196fb"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_dc4196fb",
+  "sql_predicate": "\"pc_dc4196fb\" IS NOT NULL AND \"pc_dc4196fb\" >= -4.4701",
+  "blocked_terms": [
+   "pc_dc4196fb"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:first_s_0024",
+  "base": "prop:first_scorer_hold",
+  "tier": "Jobber",
+  "odds": 2.213,
+  "oos_win": 49.1,
+  "oos_roi": 7,
+  "bets": 320,
+  "backed": "prop:first_scorer_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -1.66,
+  "conditions": [
+   {
+    "term": "tg_overround",
+    "op": "<=",
+    "value": "1.1237"
+   },
+   {
+    "term": "pc_f3e46219",
+    "op": ">=",
+    "value": "-2.5774"
+   },
+   {
+    "term": "leader_runmax",
+    "op": ">=",
+    "value": "1.8456"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "leader_runmax",
+   "pc_f3e46219",
+   "tg_overround"
+  ],
+  "terms_unbuildable": [
+   "pc_f3e46219",
+   "tg_overround"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_f3e46219",
+  "sql_predicate": "\"tg_overround\" IS NOT NULL AND \"tg_overround\" <= 1.1237 AND \"pc_f3e46219\" IS NOT NULL AND \"pc_f3e46219\" >= -2.5774 AND \"leader_runmax\" IS NOT NULL AND \"leader_runmax\" >= 1.8456",
+  "blocked_terms": [
+   "pc_f3e46219"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_q1_winner_0130",
+  "base": "q1_winner",
+  "tier": "Npc",
+  "odds": 1.493,
+  "oos_win": 71.3,
+  "oos_roi": 6.2,
+  "bets": 302,
+  "backed": "q1_winner",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.25,
+  "conditions": [
+   {
+    "term": "pc_dc4196fb",
+    "op": ">=",
+    "value": "-3.8392"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [
+   "MODE3_202748.xlsx"
+  ],
+  "novel": false,
+  "name_reused_with_different_conditions": true,
+  "terms": [
+   "pc_dc4196fb"
+  ],
+  "terms_unbuildable": [
+   "pc_dc4196fb"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_dc4196fb",
+  "sql_predicate": "\"pc_dc4196fb\" IS NOT NULL AND \"pc_dc4196fb\" >= -3.8392",
+  "blocked_terms": [
+   "pc_dc4196fb"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_late_lead_ho_0094",
+  "base": "late_lead_hold",
+  "tier": "Npc",
+  "odds": 1.6,
+  "oos_win": 66.7,
+  "oos_roi": 5.8,
+  "bets": 358,
+  "backed": "late_lead_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.92,
+  "conditions": [
+   {
+    "term": "u_velocity",
+    "op": "<=",
+    "value": "0.04"
+   },
+   {
+    "term": "pc_f3e46219",
+    "op": "<=",
+    "value": "2.261"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "pc_f3e46219",
+   "u_velocity"
+  ],
+  "terms_unbuildable": [
+   "pc_f3e46219"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_f3e46219",
+  "sql_predicate": "\"u_velocity\" IS NOT NULL AND \"u_velocity\" <= 0.04 AND \"pc_f3e46219\" IS NOT NULL AND \"pc_f3e46219\" <= 2.261",
+  "blocked_terms": [
+   "pc_f3e46219"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_lead_ml_0063",
+  "base": "lead_ml",
+  "tier": "Npc",
+  "odds": 1.612,
+  "oos_win": 66.3,
+  "oos_roi": 5.5,
+  "bets": 352,
+  "backed": "lead_ml",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -1.38,
+  "conditions": [
+   {
+    "term": "rk_dog_odds",
+    "op": ">=",
+    "value": "1.8351"
+   },
+   {
+    "term": "pc_c8103e63",
+    "op": ">=",
+    "value": "-1.2162"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "pc_c8103e63",
+   "rk_dog_odds"
+  ],
+  "terms_unbuildable": [
+   "pc_c8103e63",
+   "rk_dog_odds"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_c8103e63",
+  "sql_predicate": "\"rk_dog_odds\" IS NOT NULL AND \"rk_dog_odds\" >= 1.8351 AND \"pc_c8103e63\" IS NOT NULL AND \"pc_c8103e63\" >= -1.2162",
+  "blocked_terms": [
+   "pc_c8103e63"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:held_le_0230",
+  "base": "prop:held_lead",
+  "tier": "Npc",
+  "odds": 1.534,
+  "oos_win": 69.3,
+  "oos_roi": 5.1,
+  "bets": 331,
+  "backed": "prop:held_lead",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -1.21,
+  "conditions": [
+   {
+    "term": "pc_428f55cf",
+    "op": "<=",
+    "value": "2.3887"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "pc_428f55cf"
+  ],
+  "terms_unbuildable": [
+   "pc_428f55cf"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_428f55cf",
+  "sql_predicate": "\"pc_428f55cf\" IS NOT NULL AND \"pc_428f55cf\" <= 2.3887",
+  "blocked_terms": [
+   "pc_428f55cf"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:dog_lea_0179",
+  "base": "prop:dog_leading_late",
+  "tier": "Jobber",
+  "odds": 2.204,
+  "oos_win": 47.1,
+  "oos_roi": 3.8,
+  "bets": 289,
+  "backed": "prop:dog_leading_late",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.01,
+  "conditions": [
+   {
+    "term": "pc_aa16b0a5",
+    "op": ">=",
+    "value": "-0.2943"
+   },
+   {
+    "term": "u_velocity",
+    "op": "<=",
+    "value": "1.08"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "pc_aa16b0a5",
+   "u_velocity"
+  ],
+  "terms_unbuildable": [
+   "pc_aa16b0a5"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_aa16b0a5",
+  "sql_predicate": "\"pc_aa16b0a5\" IS NOT NULL AND \"pc_aa16b0a5\" >= -0.2943 AND \"u_velocity\" IS NOT NULL AND \"u_velocity\" <= 1.08",
+  "blocked_terms": [
+   "pc_aa16b0a5"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_tg_under_lag_0009",
+  "base": "tg_under_lag",
+  "tier": "Vision",
+  "odds": 1.77,
+  "oos_win": 58.1,
+  "oos_roi": 3.6,
+  "bets": 395,
+  "backed": "tg_under_lag",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": 0.76,
+  "conditions": [
+   {
+    "term": "pc_51f228a2",
+    "op": "<=",
+    "value": "0.3508"
+   },
+   {
+    "term": "price_rank_in_match",
+    "op": ">=",
+    "value": "0.3333"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "pc_51f228a2",
+   "price_rank_in_match"
+  ],
+  "terms_unbuildable": [
+   "pc_51f228a2"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_51f228a2",
+  "sql_predicate": "\"pc_51f228a2\" IS NOT NULL AND \"pc_51f228a2\" <= 0.3508 AND \"price_rank_in_match\" IS NOT NULL AND \"price_rank_in_match\" >= 0.3333",
+  "blocked_terms": [
+   "pc_51f228a2"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:shorten_0191",
+  "base": "prop:shortener_vs_open",
+  "tier": "Npc",
+  "odds": 1.68,
+  "oos_win": 61.6,
+  "oos_roi": 3.1,
+  "bets": 329,
+  "backed": "prop:shortener_vs_open",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.39,
+  "conditions": [
+   {
+    "term": "dog_odds_vol_180",
+    "op": ">=",
+    "value": "0.0469"
+   },
+   {
+    "term": "price_gap",
+    "op": "<=",
+    "value": "0.96"
+   },
+   {
+    "term": "pc_7b8a13a5",
+    "op": "<=",
+    "value": "2.1294"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "dog_odds_vol_180",
+   "pc_7b8a13a5",
+   "price_gap"
+  ],
+  "terms_unbuildable": [
+   "pc_7b8a13a5"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_7b8a13a5",
+  "sql_predicate": "\"dog_odds_vol_180\" IS NOT NULL AND \"dog_odds_vol_180\" >= 0.0469 AND \"price_gap\" IS NOT NULL AND \"price_gap\" <= 0.96 AND \"pc_7b8a13a5\" IS NOT NULL AND \"pc_7b8a13a5\" <= 2.1294",
+  "blocked_terms": [
+   "pc_7b8a13a5"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:first_s_0081",
+  "base": "prop:first_scorer_hold",
+  "tier": "Npc",
+  "odds": 1.6,
+  "oos_win": 64.8,
+  "oos_roi": 2.7,
+  "bets": 338,
+  "backed": "prop:first_scorer_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.98,
+  "conditions": [
+   {
+    "term": "pc_dc4196fb",
+    "op": ">=",
+    "value": "-4.4615"
+   },
+   {
+    "term": "lead_changes_300s",
+    "op": "<=",
+    "value": "2"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "lead_changes_300s",
+   "pc_dc4196fb"
+  ],
+  "terms_unbuildable": [
+   "lead_changes_300s",
+   "pc_dc4196fb"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_dc4196fb",
+  "sql_predicate": "\"pc_dc4196fb\" IS NOT NULL AND \"pc_dc4196fb\" >= -4.4615 AND \"lead_changes_300s\" IS NOT NULL AND \"lead_changes_300s\" <= 2",
+  "blocked_terms": [
+   "pc_dc4196fb"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:match_t_0004",
+  "base": "prop:match_total_pace",
+  "tier": "Vision",
+  "odds": 1.774,
+  "oos_win": 57.5,
+  "oos_roi": 2.4,
+  "bets": 392,
+  "backed": "prop:match_total_pace",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": 0.4,
+  "conditions": [
+   {
+    "term": "pc_51f228a2",
+    "op": "<=",
+    "value": "0.3534"
+   },
+   {
+    "term": "abs_margin_per_remaining_s",
+    "op": ">=",
+    "value": "0.0004"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "abs_margin_per_remaining_s",
+   "pc_51f228a2"
+  ],
+  "terms_unbuildable": [
+   "abs_margin_per_remaining_s",
+   "pc_51f228a2"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_51f228a2",
+  "sql_predicate": "\"pc_51f228a2\" IS NOT NULL AND \"pc_51f228a2\" <= 0.3534 AND \"abs_margin_per_remaining_s\" IS NOT NULL AND \"abs_margin_per_remaining_s\" >= 0.0004",
+  "blocked_terms": [
+   "pc_51f228a2"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:held_le_0234",
+  "base": "prop:held_lead",
+  "tier": "Npc",
+  "odds": 1.565,
+  "oos_win": 65.5,
+  "oos_roi": 1.4,
+  "bets": 346,
+  "backed": "prop:held_lead",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -1.11,
+  "conditions": [
+   {
+    "term": "pc_428f55cf",
+    "op": "<=",
+    "value": "2.3973"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "pc_428f55cf"
+  ],
+  "terms_unbuildable": [
+   "pc_428f55cf"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_428f55cf",
+  "sql_predicate": "\"pc_428f55cf\" IS NOT NULL AND \"pc_428f55cf\" <= 2.3973",
+  "blocked_terms": [
+   "pc_428f55cf"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_spec:HT_Unde_0114",
+  "base": "spec:HT_Underdog_Fade",
+  "tier": "Vision",
+  "odds": 1.735,
+  "oos_win": 58.3,
+  "oos_roi": 1.2,
+  "bets": 370,
+  "backed": "spec:HT_Underdog_Fade",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": 0.05,
+  "conditions": [
+   {
+    "term": "pc_7b8a13a5",
+    "op": "<=",
+    "value": "2.0842"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "pc_7b8a13a5"
+  ],
+  "terms_unbuildable": [
+   "pc_7b8a13a5"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_7b8a13a5",
+  "sql_predicate": "\"pc_7b8a13a5\" IS NOT NULL AND \"pc_7b8a13a5\" <= 2.0842",
+  "blocked_terms": [
+   "pc_7b8a13a5"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:first_s_0083",
+  "base": "prop:first_scorer_hold",
+  "tier": "Npc",
+  "odds": 1.597,
+  "oos_win": 63.5,
+  "oos_roi": 0.6,
+  "bets": 342,
+  "backed": "prop:first_scorer_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.81,
+  "conditions": [
+   {
+    "term": "pc_dc4196fb",
+    "op": ">=",
+    "value": "-4.315"
+   }
+  ],
+  "first_seen_in": "COMBINA_1027.xlsx",
+  "also_in": [],
+  "novel": false,
+  "terms": [
+   "pc_dc4196fb"
+  ],
+  "terms_unbuildable": [
+   "pc_dc4196fb"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_dc4196fb",
+  "sql_predicate": "\"pc_dc4196fb\" IS NOT NULL AND \"pc_dc4196fb\" >= -4.315",
+  "blocked_terms": [
+   "pc_dc4196fb"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_lead_ml_0081",
+  "base": "lead_ml",
+  "tier": "Npc",
+  "odds": 1.528,
+  "oos_win": 70.4,
+  "oos_roi": 8.2,
+  "bets": 350,
+  "backed": "lead_ml",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": 0.63,
+  "conditions": [
+   {
+    "term": "prog_score",
+    "op": "<=",
+    "value": "0.35"
+   },
+   {
+    "term": "line_move",
+    "op": "<=",
+    "value": "4.0"
+   },
+   {
+    "term": "trailer_price",
+    "op": ">=",
+    "value": "1.92"
+   },
+   {
+    "term": "pc_f3e46219",
+    "op": "<=",
+    "value": "2.3868"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "line_move",
+   "pc_f3e46219",
+   "prog_score",
+   "trailer_price"
+  ],
+  "terms_unbuildable": [
+   "pc_f3e46219",
+   "trailer_price"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_f3e46219",
+  "sql_predicate": "\"prog_score\" IS NOT NULL AND \"prog_score\" <= 0.35 AND \"line_move\" IS NOT NULL AND \"line_move\" <= 4.0 AND \"trailer_price\" IS NOT NULL AND \"trailer_price\" >= 1.92 AND \"pc_f3e46219\" IS NOT NULL AND \"pc_f3e46219\" <= 2.3868",
+  "blocked_terms": [
+   "pc_f3e46219"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_tg_under_0009",
+  "base": "tg_under",
+  "tier": "Npc",
+  "odds": 1.755,
+  "oos_win": 60.7,
+  "oos_roi": 7.1,
+  "bets": 403,
+  "backed": "tg_under",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": 0.57,
+  "conditions": [
+   {
+    "term": "wall_min",
+    "op": "<=",
+    "value": "171.805"
+   },
+   {
+    "term": "lead_m15",
+    "op": "<=",
+    "value": "1.0"
+   },
+   {
+    "term": "pc_51f228a2",
+    "op": "<=",
+    "value": "-0.1057"
+   },
+   {
+    "term": "secs_since_price",
+    "op": "<=",
+    "value": "0.0"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "lead_m15",
+   "pc_51f228a2",
+   "secs_since_price",
+   "wall_min"
+  ],
+  "terms_unbuildable": [
+   "pc_51f228a2"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_51f228a2",
+  "sql_predicate": "\"wall_min\" IS NOT NULL AND \"wall_min\" <= 171.805 AND \"lead_m15\" IS NOT NULL AND \"lead_m15\" <= 1.0 AND \"pc_51f228a2\" IS NOT NULL AND \"pc_51f228a2\" <= -0.1057 AND \"secs_since_price\" IS NOT NULL AND \"secs_since_price\" <= 0.0",
+  "blocked_terms": [
+   "pc_51f228a2"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:first_s_0089",
+  "base": "prop:first_scorer_hold",
+  "tier": "Npc",
+  "odds": 1.612,
+  "oos_win": 65.5,
+  "oos_roi": 5.2,
+  "bets": 370,
+  "backed": "prop:first_scorer_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.39,
+  "conditions": [
+   {
+    "term": "prog_score",
+    "op": "<=",
+    "value": "0.35"
+   },
+   {
+    "term": "u_ratio_open",
+    "op": "<=",
+    "value": "3.0575"
+   },
+   {
+    "term": "trailer_price",
+    "op": ">=",
+    "value": "1.8315"
+   },
+   {
+    "term": "pc_f3e46219",
+    "op": "<=",
+    "value": "2.0943"
+   },
+   {
+    "term": "lead_changes_300s",
+    "op": "<=",
+    "value": "1.0"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "lead_changes_300s",
+   "pc_f3e46219",
+   "prog_score",
+   "trailer_price",
+   "u_ratio_open"
+  ],
+  "terms_unbuildable": [
+   "lead_changes_300s",
+   "pc_f3e46219",
+   "trailer_price"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_f3e46219",
+  "sql_predicate": "\"prog_score\" IS NOT NULL AND \"prog_score\" <= 0.35 AND \"u_ratio_open\" IS NOT NULL AND \"u_ratio_open\" <= 3.0575 AND \"trailer_price\" IS NOT NULL AND \"trailer_price\" >= 1.8315 AND \"pc_f3e46219\" IS NOT NULL AND \"pc_f3e46219\" <= 2.0943 AND \"lead_changes_300s\" IS NOT NULL AND \"lead_changes_300s\" <= 1.0",
+  "blocked_terms": [
+   "pc_f3e46219"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:first_s_0097",
+  "base": "prop:first_scorer_hold",
+  "tier": "Npc",
+  "odds": 1.599,
+  "oos_win": 66.1,
+  "oos_roi": 5.1,
+  "bets": 338,
+  "backed": "prop:first_scorer_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.59,
+  "conditions": [
+   {
+    "term": "dog_odds_vol_180",
+    "op": "<=",
+    "value": "0.15546"
+   },
+   {
+    "term": "rk_dog_odds",
+    "op": ">=",
+    "value": "1.85"
+   },
+   {
+    "term": "pc_f3e46219",
+    "op": "<=",
+    "value": "2.0943"
+   },
+   {
+    "term": "lead_changes_300s",
+    "op": "<=",
+    "value": "1.0"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "dog_odds_vol_180",
+   "lead_changes_300s",
+   "pc_f3e46219",
+   "rk_dog_odds"
+  ],
+  "terms_unbuildable": [
+   "lead_changes_300s",
+   "pc_f3e46219",
+   "rk_dog_odds"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_f3e46219",
+  "sql_predicate": "\"dog_odds_vol_180\" IS NOT NULL AND \"dog_odds_vol_180\" <= 0.15546 AND \"rk_dog_odds\" IS NOT NULL AND \"rk_dog_odds\" >= 1.85 AND \"pc_f3e46219\" IS NOT NULL AND \"pc_f3e46219\" <= 2.0943 AND \"lead_changes_300s\" IS NOT NULL AND \"lead_changes_300s\" <= 1.0",
+  "blocked_terms": [
+   "pc_f3e46219"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_dog_leading_0148",
+  "base": "dog_leading",
+  "tier": "Jobber",
+  "odds": 2.406,
+  "oos_win": 43.6,
+  "oos_roi": 4.9,
+  "bets": 319,
+  "backed": "dog_leading",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": 0,
+  "conditions": [
+   {
+    "term": "line_open",
+    "op": ">=",
+    "value": "140.0"
+   },
+   {
+    "term": "need_frac",
+    "op": ">=",
+    "value": "0.4"
+   },
+   {
+    "term": "open_vs_now_lead",
+    "op": "<=",
+    "value": "0.9043"
+   },
+   {
+    "term": "motif_0",
+    "op": "<=",
+    "value": "0.0"
+   },
+   {
+    "term": "pc_f3e46219",
+    "op": ">=",
+    "value": "-0.4756"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "line_open",
+   "motif_0",
+   "need_frac",
+   "open_vs_now_lead",
+   "pc_f3e46219"
+  ],
+  "terms_unbuildable": [
+   "open_vs_now_lead",
+   "pc_f3e46219"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_f3e46219",
+  "sql_predicate": "\"line_open\" IS NOT NULL AND \"line_open\" >= 140.0 AND \"need_frac\" IS NOT NULL AND \"need_frac\" >= 0.4 AND \"open_vs_now_lead\" IS NOT NULL AND \"open_vs_now_lead\" <= 0.9043 AND \"motif_0\" IS NOT NULL AND \"motif_0\" <= 0.0 AND \"pc_f3e46219\" IS NOT NULL AND \"pc_f3e46219\" >= -0.4756",
+  "blocked_terms": [
+   "pc_f3e46219"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_late_lead_ho_0116",
+  "base": "late_lead_hold",
+  "tier": "Npc",
+  "odds": 1.585,
+  "oos_win": 65.8,
+  "oos_roi": 3,
+  "bets": 354,
+  "backed": "late_lead_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -1.29,
+  "conditions": [
+   {
+    "term": "line_open",
+    "op": ">=",
+    "value": "140.0"
+   },
+   {
+    "term": "prog_score",
+    "op": "<=",
+    "value": "0.35"
+   },
+   {
+    "term": "rk_odds_ratio",
+    "op": "<=",
+    "value": "2.3716"
+   },
+   {
+    "term": "rk_dog_odds",
+    "op": ">=",
+    "value": "1.84"
+   },
+   {
+    "term": "pc_2f7f4d0c",
+    "op": "<=",
+    "value": "0.6721"
+   },
+   {
+    "term": "lead_changes_300s",
+    "op": "<=",
+    "value": "2.0"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "lead_changes_300s",
+   "line_open",
+   "pc_2f7f4d0c",
+   "prog_score",
+   "rk_dog_odds",
+   "rk_odds_ratio"
+  ],
+  "terms_unbuildable": [
+   "lead_changes_300s",
+   "pc_2f7f4d0c",
+   "rk_dog_odds",
+   "rk_odds_ratio"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_2f7f4d0c",
+  "sql_predicate": "\"line_open\" IS NOT NULL AND \"line_open\" >= 140.0 AND \"prog_score\" IS NOT NULL AND \"prog_score\" <= 0.35 AND \"rk_odds_ratio\" IS NOT NULL AND \"rk_odds_ratio\" <= 2.3716 AND \"rk_dog_odds\" IS NOT NULL AND \"rk_dog_odds\" >= 1.84 AND \"pc_2f7f4d0c\" IS NOT NULL AND \"pc_2f7f4d0c\" <= 0.6721 AND \"lead_changes_300s\" IS NOT NULL AND \"lead_changes_300s\" <= 2.0",
+  "blocked_terms": [
+   "pc_2f7f4d0c"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_late_lead_ho_0105",
+  "base": "late_lead_hold",
+  "tier": "Npc",
+  "odds": 1.557,
+  "oos_win": 66.7,
+  "oos_roi": 2.6,
+  "bets": 371,
+  "backed": "late_lead_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -1.25,
+  "conditions": [
+   {
+    "term": "line_open",
+    "op": ">=",
+    "value": "140.0"
+   },
+   {
+    "term": "need_frac",
+    "op": ">=",
+    "value": "0.4"
+   },
+   {
+    "term": "trailer_price",
+    "op": ">=",
+    "value": "1.8471"
+   },
+   {
+    "term": "pc_2f7f4d0c",
+    "op": "<=",
+    "value": "0.6917"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "line_open",
+   "need_frac",
+   "pc_2f7f4d0c",
+   "trailer_price"
+  ],
+  "terms_unbuildable": [
+   "pc_2f7f4d0c",
+   "trailer_price"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_2f7f4d0c",
+  "sql_predicate": "\"line_open\" IS NOT NULL AND \"line_open\" >= 140.0 AND \"need_frac\" IS NOT NULL AND \"need_frac\" >= 0.4 AND \"trailer_price\" IS NOT NULL AND \"trailer_price\" >= 1.8471 AND \"pc_2f7f4d0c\" IS NOT NULL AND \"pc_2f7f4d0c\" <= 0.6917",
+  "blocked_terms": [
+   "pc_2f7f4d0c"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_spec:HT_Unde_0124",
+  "base": "spec:HT_Underdog_Fade",
+  "tier": "Vision",
+  "odds": 1.719,
+  "oos_win": 59.6,
+  "oos_roi": 2.3,
+  "bets": 334,
+  "backed": "spec:HT_Underdog_Fade",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.15,
+  "conditions": [
+   {
+    "term": "imbal",
+    "op": ">=",
+    "value": "0.0217"
+   },
+   {
+    "term": "pc_6a99ae09",
+    "op": ">=",
+    "value": "-0.6204"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "imbal",
+   "pc_6a99ae09"
+  ],
+  "terms_unbuildable": [
+   "pc_6a99ae09"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_6a99ae09",
+  "sql_predicate": "\"imbal\" IS NOT NULL AND \"imbal\" >= 0.0217 AND \"pc_6a99ae09\" IS NOT NULL AND \"pc_6a99ae09\" >= -0.6204",
+  "blocked_terms": [
+   "pc_6a99ae09"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_pm_underdog_0044",
+  "base": "pm_underdog",
+  "tier": "Jobber",
+  "odds": 2.469,
+  "oos_win": 42.3,
+  "oos_roi": 2.3,
+  "bets": 291,
+  "backed": "pm_underdog",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -2.14,
+  "conditions": [
+   {
+    "term": "line_open",
+    "op": ">=",
+    "value": "170.0"
+   },
+   {
+    "term": "odds_ratio",
+    "op": "<=",
+    "value": "2.4922"
+   },
+   {
+    "term": "pc_fea3bd2c",
+    "op": ">=",
+    "value": "-0.6634951233863831"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "line_open",
+   "odds_ratio",
+   "pc_fea3bd2c"
+  ],
+  "terms_unbuildable": [
+   "pc_fea3bd2c"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_fea3bd2c",
+  "sql_predicate": "\"line_open\" IS NOT NULL AND \"line_open\" >= 170.0 AND \"odds_ratio\" IS NOT NULL AND \"odds_ratio\" <= 2.4922 AND \"pc_fea3bd2c\" IS NOT NULL AND \"pc_fea3bd2c\" >= -0.6634951233863831",
+  "blocked_terms": [
+   "pc_fea3bd2c"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:first_s_0090",
+  "base": "prop:first_scorer_hold",
+  "tier": "Npc",
+  "odds": 1.604,
+  "oos_win": 64,
+  "oos_roi": 1.9,
+  "bets": 339,
+  "backed": "prop:first_scorer_hold",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.76,
+  "conditions": [
+   {
+    "term": "line_open",
+    "op": ">=",
+    "value": "140.0"
+   },
+   {
+    "term": "need_frac",
+    "op": ">=",
+    "value": "0.4"
+   },
+   {
+    "term": "trailer_price",
+    "op": ">=",
+    "value": "1.8471"
+   },
+   {
+    "term": "pc_f3e46219",
+    "op": "<=",
+    "value": "2.3571"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "line_open",
+   "need_frac",
+   "pc_f3e46219",
+   "trailer_price"
+  ],
+  "terms_unbuildable": [
+   "pc_f3e46219",
+   "trailer_price"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_f3e46219",
+  "sql_predicate": "\"line_open\" IS NOT NULL AND \"line_open\" >= 140.0 AND \"need_frac\" IS NOT NULL AND \"need_frac\" >= 0.4 AND \"trailer_price\" IS NOT NULL AND \"trailer_price\" >= 1.8471 AND \"pc_f3e46219\" IS NOT NULL AND \"pc_f3e46219\" <= 2.3571",
+  "blocked_terms": [
+   "pc_f3e46219"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_prop:held_le_0170",
+  "base": "prop:held_lead",
+  "tier": "Npc",
+  "odds": 1.482,
+  "oos_win": 68.5,
+  "oos_roi": 1.8,
+  "bets": 323,
+  "backed": "prop:held_lead",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": 0.28,
+  "conditions": [
+   {
+    "term": "rk_implied_edge",
+    "op": ">=",
+    "value": "0.1704"
+   },
+   {
+    "term": "pc_428f55cf",
+    "op": "<=",
+    "value": "2.0819"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "pc_428f55cf",
+   "rk_implied_edge"
+  ],
+  "terms_unbuildable": [
+   "pc_428f55cf",
+   "rk_implied_edge"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_428f55cf",
+  "sql_predicate": "\"rk_implied_edge\" IS NOT NULL AND \"rk_implied_edge\" >= 0.1704 AND \"pc_428f55cf\" IS NOT NULL AND \"pc_428f55cf\" <= 2.0819",
+  "blocked_terms": [
+   "pc_428f55cf"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_lead_ml_0087",
+  "base": "lead_ml",
+  "tier": "Npc",
+  "odds": 1.533,
+  "oos_win": 66.5,
+  "oos_roi": 1.2,
+  "bets": 344,
+  "backed": "lead_ml",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.74,
+  "conditions": [
+   {
+    "term": "prog_score",
+    "op": "<=",
+    "value": "0.35"
+   },
+   {
+    "term": "rk_fav_odds",
+    "op": "<=",
+    "value": "1.75"
+   },
+   {
+    "term": "margin_rate",
+    "op": "<=",
+    "value": "6.6917"
+   },
+   {
+    "term": "pc_428f55cf",
+    "op": "<=",
+    "value": "2.0819"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "margin_rate",
+   "pc_428f55cf",
+   "prog_score",
+   "rk_fav_odds"
+  ],
+  "terms_unbuildable": [
+   "pc_428f55cf",
+   "rk_fav_odds"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_428f55cf",
+  "sql_predicate": "\"prog_score\" IS NOT NULL AND \"prog_score\" <= 0.35 AND \"rk_fav_odds\" IS NOT NULL AND \"rk_fav_odds\" <= 1.75 AND \"margin_rate\" IS NOT NULL AND \"margin_rate\" <= 6.6917 AND \"pc_428f55cf\" IS NOT NULL AND \"pc_428f55cf\" <= 2.0819",
+  "blocked_terms": [
+   "pc_428f55cf"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_spec:Leader_0076",
+  "base": "spec:Leader",
+  "tier": "Npc",
+  "odds": 1.631,
+  "oos_win": 62.3,
+  "oos_roi": 1.1,
+  "bets": 345,
+  "backed": "spec:Leader",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.51,
+  "conditions": [
+   {
+    "term": "prog_score",
+    "op": "<=",
+    "value": "0.35"
+   },
+   {
+    "term": "line_move",
+    "op": "<=",
+    "value": "4.0"
+   },
+   {
+    "term": "odds_ratio",
+    "op": "<=",
+    "value": "1.227"
+   },
+   {
+    "term": "lead_changes_total",
+    "op": "<=",
+    "value": "2.0"
+   },
+   {
+    "term": "lead_vs_line",
+    "op": "<=",
+    "value": "-145.692"
+   },
+   {
+    "term": "pc_f3e46219",
+    "op": "<=",
+    "value": "1.9746"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "lead_changes_total",
+   "lead_vs_line",
+   "line_move",
+   "odds_ratio",
+   "pc_f3e46219",
+   "prog_score"
+  ],
+  "terms_unbuildable": [
+   "lead_changes_total",
+   "pc_f3e46219"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_f3e46219",
+  "sql_predicate": "\"prog_score\" IS NOT NULL AND \"prog_score\" <= 0.35 AND \"line_move\" IS NOT NULL AND \"line_move\" <= 4.0 AND \"odds_ratio\" IS NOT NULL AND \"odds_ratio\" <= 1.227 AND \"lead_changes_total\" IS NOT NULL AND \"lead_changes_total\" <= 2.0 AND \"lead_vs_line\" IS NOT NULL AND \"lead_vs_line\" <= -145.692 AND \"pc_f3e46219\" IS NOT NULL AND \"pc_f3e46219\" <= 1.9746",
+  "blocked_terms": [
+   "pc_f3e46219"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_spec:Early_H_0088",
+  "base": "spec:Early_Hammer",
+  "tier": "Vision",
+  "odds": 1.99,
+  "oos_win": 50.9,
+  "oos_roi": 0.6,
+  "bets": 340,
+  "backed": "spec:Early_Hammer",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.69,
+  "conditions": [
+   {
+    "term": "lead_m15",
+    "op": "<=",
+    "value": "0.0"
+   },
+   {
+    "term": "backed_pts_last_60s",
+    "op": "<=",
+    "value": "4.4718"
+   },
+   {
+    "term": "pc_dc4196fb",
+    "op": "<=",
+    "value": "-2.1901"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "backed_pts_last_60s",
+   "lead_m15",
+   "pc_dc4196fb"
+  ],
+  "terms_unbuildable": [
+   "pc_dc4196fb"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_dc4196fb",
+  "sql_predicate": "\"lead_m15\" IS NOT NULL AND \"lead_m15\" <= 0.0 AND \"backed_pts_last_60s\" IS NOT NULL AND \"backed_pts_last_60s\" <= 4.4718 AND \"pc_dc4196fb\" IS NOT NULL AND \"pc_dc4196fb\" <= -2.1901",
+  "blocked_terms": [
+   "pc_dc4196fb"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_trail_ml_0025",
+  "base": "trail_ml",
+  "tier": "Ino",
+  "odds": 5.451,
+  "oos_win": 18.2,
+  "oos_roi": 0.5,
+  "bets": 362,
+  "backed": "trail_ml",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": 1.29,
+  "conditions": [
+   {
+    "term": "lead_jump",
+    "op": "<=",
+    "value": "0.9429"
+   },
+   {
+    "term": "pc_aa16b0a5",
+    "op": ">=",
+    "value": "-0.6013"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "lead_jump",
+   "pc_aa16b0a5"
+  ],
+  "terms_unbuildable": [
+   "pc_aa16b0a5"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_aa16b0a5",
+  "sql_predicate": "\"lead_jump\" IS NOT NULL AND \"lead_jump\" <= 0.9429 AND \"pc_aa16b0a5\" IS NOT NULL AND \"pc_aa16b0a5\" >= -0.6013",
+  "blocked_terms": [
+   "pc_aa16b0a5"
+  ],
+  "deployable": false
+ },
+ {
+  "strategy": "BAS_h1_winner_0176",
+  "base": "h1_winner",
+  "tier": "Npc",
+  "odds": 1.548,
+  "oos_win": 65.3,
+  "oos_roi": 0.1,
+  "bets": 421,
+  "backed": "h1_winner",
+  "price_column": "backed-side price at arm",
+  "graded_against": "final_winner (recorded settlement, never derived)",
+  "min_odds_floor": 1.4,
+  "hold_sec": 5,
+  "window_sec": 60,
+  "market_status_columns": "market_status \u00b7 total_goals_market_active where present",
+  "reconciliation_gap": -0.98,
+  "conditions": [
+   {
+    "term": "total_points_under",
+    "op": "<=",
+    "value": "1.9407"
+   },
+   {
+    "term": "lead_q1h",
+    "op": "<=",
+    "value": "1.0"
+   },
+   {
+    "term": "pc_4fa6ab33",
+    "op": "<=",
+    "value": "0.6116"
+   }
+  ],
+  "first_seen_in": "MODE3_202748.xlsx",
+  "also_in": [],
+  "novel": true,
+  "terms": [
+   "lead_q1h",
+   "pc_4fa6ab33",
+   "total_points_under"
+  ],
+  "terms_unbuildable": [
+   "pc_4fa6ab33"
+  ],
+  "terms_not_in_lineage": [],
+  "replicable": false,
+  "blocked_reason": "needs term(s) with no recoverable recipe: pc_4fa6ab33",
+  "sql_predicate": "\"total_points_under\" IS NOT NULL AND \"total_points_under\" <= 1.9407 AND \"lead_q1h\" IS NOT NULL AND \"lead_q1h\" <= 1.0 AND \"pc_4fa6ab33\" IS NOT NULL AND \"pc_4fa6ab33\" <= 0.6116",
+  "blocked_terms": [
+   "pc_4fa6ab33"
+  ],
+  "deployable": false
+ }
+]

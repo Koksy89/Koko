@@ -1,0 +1,2118 @@
+{
+ "X_X_minute__x__u_pace__minus__X_u_elapsed__minus__u_time_in_lead": {
+  "term": "X_X_minute__x__u_pace__minus__X_u_elapsed__minus__u_time_in_lead",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead": {
+  "term": "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead": {
+  "term": "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_a_score__over__home_odds": {
+  "term": "X_a_score__over__home_odds",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_home_odds__x__point_spread_away": {
+  "term": "X_home_odds__x__point_spread_away",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_minute__minus__u_drought": {
+  "term": "X_minute__minus__u_drought",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_minute__over__u_elapsed": {
+  "term": "X_minute__over__u_elapsed",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_minute__over__u_pace": {
+  "term": "X_minute__over__u_pace",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_minute__over__u_vol": {
+  "term": "X_minute__over__u_vol",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_minute__x__u_pace": {
+  "term": "X_minute__x__u_pace",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_point_spread_home__x__q1_lead": {
+  "term": "X_point_spread_home__x__q1_lead",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_q1_lead__minus__u_overround": {
+  "term": "X_q1_lead__minus__u_overround",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_u_elapsed__minus__u_time_in_lead": {
+  "term": "X_u_elapsed__minus__u_time_in_lead",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "X_u_elapsed__x__u_time_in_lead": {
+  "term": "X_u_elapsed__x__u_time_in_lead",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "abs_margin_per_remaining_s": {
+  "term": "abs_margin_per_remaining_s",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 105851,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'abs_margin_per_remaining_s': _f(lambda C: np.where(C['remain_s'] > 0, np.abs(C['sd']) / np.maximum(C['remain_s'], 1), np.nan), 'elapsed', False, 'moneyline', 'side-agnostic form for trailer bases', 'MARGIN_RATE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "away_odds": {
+  "term": "away_odds",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "backed_pts_last_60s": {
+  "term": "backed_pts_last_60s",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "both_scored": {
+  "term": "both_scored",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 95571,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "laz_everything__FULL_DERIVED = {'leader_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'loser_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'leader_price': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'trailer_price': lambda C, M: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'fav_odds_rt': lambda C, M: np.minimum(C['ho'], C['ao']), 'dog_odds_rt': lambda C, M: np.maximum(C['ho'], C['ao']), 'is_favorite': lambda C, M: (np.where(C['sd'] > 0, C['ho'], C['ao']) <= np.where(C['sd'] > 0, C['ao'], C['ho'])).astype(float), 'is_favourite': lambda C, M: (np.where(C['sd'] > 0, C['ho'], C['ao']) <= np.where(C['sd'] > 0, C['ao'], C['ho'])).astype(float), 'lead_is_dog': lambda C, M: (np.where(C['sd'] > 0, C['ho'], C['ao']) > np.where(C['sd'] > 0, C['ao'], C['ho'])).astype(float), 'fb_prog': lambda C, M: C['el'], 'ef_prog': lambda C, M: C['el'], 'tt_prog': lambda C, M: C['el'], 'bb_prog': lambda C, M: C['el'], 'remain': lambda C, M: 1.0 - C['el'], 'time_left': lambda C, M: 1.0 - C['el'], 'q': lambda C, M: np.where(np.isfinite(C['el']), np.clip(np.nan_to_num(C['el'] * 4, nan=0).astype(int) + 1, 1, 4), np.nan).astype(float), 'period': lambda C, M: np.where(np.isfinite(C['el']), np.clip(np.nan_to_num(C['el'] * 4, nan=0).astype(int) + 1, 1, 4), np.nan).astype(float), 'half': lambda C, M: np.where(np.isfinite(C['el']), np.where(C['el'] < 0.5, 1.0, 2.0), np.nan), 'imbal': lambda C, M: np.abs(C['sd']) / np.maximum(C['tot'], 1.0), 'ht_diff': lambda C, M: C['sd'], 'margin_rate': lambda C, M: C['sd'] / np.maximum(C['el'], 0.02), 'score_rate': lambda C, M: C['tot'] / np.maximum(C['el'], 0.02), 'both_scored': lambda C, M: ((C['hs'] > 0) & (C['as_'] > 0)).astype(float), 'clean_sheet': lambda C, M: ((C['hs'] == 0) | (C['as_'] == 0)).astype(float), 'imp_home': lambda C, M: 1.0 / np.where(C['ho'] > 1, C['ho'], np.nan), 'imp_away': lambda C, M: 1.0 / np.where(C['ao'] > 1, C['ao'], np.nan), 'imp_sum': lambda C, M: 1.0 / np.where(C['ho'] > 1, C['ho'], np.nan) + 1.0 / np.where(C['ao'] > 1, C['ao'], np.nan), 'price_gap': lambda C, M: np.abs(C['ho'] - C['ao']), 'price_rank_in_match': lambda C, M: (lambda u: laz_everything___rank_in_match(u, M))(np.where(C['sd'] >= 0, C['ho'], C['ao'])), 'opp_velocity': lambda C, M: laz_everything___diff_in_match(np.where(C['sd'] >= 0, C['ao'], C['ho']), M), 'u_velocity': lambda C, M: laz_everything___diff_in_match(np.where(C['sd'] >= 0, C['ho'], C['ao']), M), 'lead_vs_line': lambda C, M: C['sd'] - C['line'], 'need_vs_expected': lambda C, M: C['line'] - C['tot'] - C['tot'] / np.maximum(C['el'], 0.02) * (1 - C['el']), 'tot_vs_line': lambda C, M: C['tot'] - C['line'], 'line_gap': lambda C, M: np.abs(C['line'] - C['tot'])}"
+   },
+   {
+    "engine_line": 105907,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'both_scored':             _f(lambda C: ((C['hs'] > 0) & (C['as'] > 0)).astype(float), 'tick', False, 'btts', 'BTTS already landed', 'structure'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "clean_sheet": {
+  "term": "clean_sheet",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 95571,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "laz_everything__FULL_DERIVED = {'leader_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'loser_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'leader_price': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'trailer_price': lambda C, M: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'fav_odds_rt': lambda C, M: np.minimum(C['ho'], C['ao']), 'dog_odds_rt': lambda C, M: np.maximum(C['ho'], C['ao']), 'is_favorite': lambda C, M: (np.where(C['sd'] > 0, C['ho'], C['ao']) <= np.where(C['sd'] > 0, C['ao'], C['ho'])).astype(float), 'is_favourite': lambda C, M: (np.where(C['sd'] > 0, C['ho'], C['ao']) <= np.where(C['sd'] > 0, C['ao'], C['ho'])).astype(float), 'lead_is_dog': lambda C, M: (np.where(C['sd'] > 0, C['ho'], C['ao']) > np.where(C['sd'] > 0, C['ao'], C['ho'])).astype(float), 'fb_prog': lambda C, M: C['el'], 'ef_prog': lambda C, M: C['el'], 'tt_prog': lambda C, M: C['el'], 'bb_prog': lambda C, M: C['el'], 'remain': lambda C, M: 1.0 - C['el'], 'time_left': lambda C, M: 1.0 - C['el'], 'q': lambda C, M: np.where(np.isfinite(C['el']), np.clip(np.nan_to_num(C['el'] * 4, nan=0).astype(int) + 1, 1, 4), np.nan).astype(float), 'period': lambda C, M: np.where(np.isfinite(C['el']), np.clip(np.nan_to_num(C['el'] * 4, nan=0).astype(int) + 1, 1, 4), np.nan).astype(float), 'half': lambda C, M: np.where(np.isfinite(C['el']), np.where(C['el'] < 0.5, 1.0, 2.0), np.nan), 'imbal': lambda C, M: np.abs(C['sd']) / np.maximum(C['tot'], 1.0), 'ht_diff': lambda C, M: C['sd'], 'margin_rate': lambda C, M: C['sd'] / np.maximum(C['el'], 0.02), 'score_rate': lambda C, M: C['tot'] / np.maximum(C['el'], 0.02), 'both_scored': lambda C, M: ((C['hs'] > 0) & (C['as_'] > 0)).astype(float), 'clean_sheet': lambda C, M: ((C['hs'] == 0) | (C['as_'] == 0)).astype(float), 'imp_home': lambda C, M: 1.0 / np.where(C['ho'] > 1, C['ho'], np.nan), 'imp_away': lambda C, M: 1.0 / np.where(C['ao'] > 1, C['ao'], np.nan), 'imp_sum': lambda C, M: 1.0 / np.where(C['ho'] > 1, C['ho'], np.nan) + 1.0 / np.where(C['ao'] > 1, C['ao'], np.nan), 'price_gap': lambda C, M: np.abs(C['ho'] - C['ao']), 'price_rank_in_match': lambda C, M: (lambda u: laz_everything___rank_in_match(u, M))(np.where(C['sd'] >= 0, C['ho'], C['ao'])), 'opp_velocity': lambda C, M: laz_everything___diff_in_match(np.where(C['sd'] >= 0, C['ao'], C['ho']), M), 'u_velocity': lambda C, M: laz_everything___diff_in_match(np.where(C['sd'] >= 0, C['ho'], C['ao']), M), 'lead_vs_line': lambda C, M: C['sd'] - C['line'], 'need_vs_expected': lambda C, M: C['line'] - C['tot'] - C['tot'] / np.maximum(C['el'], 0.02) * (1 - C['el']), 'tot_vs_line': lambda C, M: C['tot'] - C['line'], 'line_gap': lambda C, M: np.abs(C['line'] - C['tot'])}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "dog_odds_trend_60": {
+  "term": "dog_odds_trend_60",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "dog_odds_vol_180": {
+  "term": "dog_odds_vol_180",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "dow": {
+  "term": "dow",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "dp_lead_open": {
+  "term": "dp_lead_open",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "drift_ratio": {
+  "term": "drift_ratio",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "eng_minute_ge_2": {
+  "term": "eng_minute_ge_2",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "eng_score_tied": {
+  "term": "eng_score_tied",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "fav_lead_m30": {
+  "term": "fav_lead_m30",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "fav_odds_trend_60": {
+  "term": "fav_odds_trend_60",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "h_score": {
+  "term": "h_score",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "home_odds": {
+  "term": "home_odds",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "home_pace": {
+  "term": "home_pace",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 105884,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'home_pace':               _f(lambda C: np.where(C['el'] > 0.05, C['hs'] / C['el'], np.nan), 'elapsed', False, 'home_total', 'home projected total', 'PACE_TOTAL'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "hour": {
+  "term": "hour",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "imbal": {
+  "term": "imbal",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "imp_away": {
+  "term": "imp_away",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "is_big_lead": {
+  "term": "is_big_lead",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "is_favorite": {
+  "term": "is_favorite",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "is_trailer": {
+  "term": "is_trailer",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 95180,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "laz_everything__BUILDERS = {'efb_prog': lambda P, C: C['el'], 'cb_prog': lambda P, C: C['el'], 'prog_t': lambda P, C: C['el'], 'ebb_prog': lambda P, C: C['el'], 'ten_prog': lambda P, C: C['el'], 'prog': lambda P, C: C['el'], 'progress': lambda P, C: C['el'], 'minute': lambda P, C: C['el'] * laz_everything___clk(C) if laz_everything___clk(C) is not None else None, 'ten_minute': lambda P, C: C['el'] * laz_everything___clk(C) if laz_everything___clk(C) is not None else None, 'league_minutes': lambda P, C: C['el'] * laz_everything___clk(C) if laz_everything___clk(C) is not None else None, 'league_nominal_minutes': lambda P, C: (laz_everything___clk(C) * np.ones_like(C['el']) if np.isscalar(laz_everything___clk(C)) else laz_everything___clk(C)) if laz_everything___clk(C) is not None else None, 'elapsed': lambda P, C: C['el'], 'u_prog': lambda P, C: C['el'], 'sd_abs': lambda P, C: np.abs(C['sd']), 'sd': lambda P, C: C['sd'], 'lead': lambda P, C: C['sd'], 'margin': lambda P, C: C['sd'], 'is_leader': lambda P, C: (C['sd'] > 0).astype(float), 'is_trailer': lambda P, C: (C['sd'] < 0).astype(float), 'score_diff': lambda P, C: C['sd'], 'total_goals': lambda P, C: C['tot'], 'tg': lambda P, C: C['tot'], 'current_total_goals': lambda P, C: C['tot'], 'odds_ratio': lambda P, C: np.where(C['ao'] > 0, C['ho'] / C['ao'], np.nan), 'pm_ratio': lambda P, C: np.where(C['ao'] > 0, C['ho'] / C['ao'], np.nan), 'leader_price': lambda P, C: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'loser_odds': lambda P, C: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'draw_odds': lambda P, C: C['do'], 'home_odds': lambda P, C: C['ho'], 'away_odds': lambda P, C: C['ao'], 'overround': lambda P, C: 1 / np.where(C['ho'] > 1, C['ho'], np.nan) + 1 / np.where(C['ao'] > 1, C['ao'], np.nan)}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "jump_loser": {
+  "term": "jump_loser",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "ld_rank": {
+  "term": "ld_rank",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_age_s": {
+  "term": "lead_age_s",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_change_last_300s": {
+  "term": "lead_change_last_300s",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_changes_300s": {
+  "term": "lead_changes_300s",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 105854,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'lead_changes_300s':       _f(lambda C: C['lead_changes_300'], 'event', True, 'moneyline', 'volatile matches misprice the favourite', 'structure'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "lead_changes_total": {
+  "term": "lead_changes_total",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 106318,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'lead_changes_total':      _f(lambda C: pd.Series(C['lead_change'].astype(int)).groupby(C['mid']).cumsum().values, 'event', True, 'match_ml', 'lead changes so far in the match', 'structure'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "lead_delta_last_120s": {
+  "term": "lead_delta_last_120s",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_jump": {
+  "term": "lead_jump",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_m15": {
+  "term": "lead_m15",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_m30": {
+  "term": "lead_m30",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_m75": {
+  "term": "lead_m75",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_margin_m30": {
+  "term": "lead_margin_m30",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_odds": {
+  "term": "lead_odds",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_poss": {
+  "term": "lead_poss",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_q1h": {
+  "term": "lead_q1h",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_size": {
+  "term": "lead_size",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_vs_line": {
+  "term": "lead_vs_line",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_vs_med": {
+  "term": "lead_vs_med",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "lead_vs_prematch_gap": {
+  "term": "lead_vs_prematch_gap",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 105864,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'lead_vs_prematch_gap':    _f(lambda C: np.where(C['sd'] != 0, np.abs(C['imp_h'] - C['imp_a']) * np.sign(C['sd']) * np.where(C['pm_fav'] == 'home', 1, -1), np.nan), 'tick', False, 'moneyline', 'how far the lead contradicts the pre-match view', 'structure'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "leader_drift": {
+  "term": "leader_drift",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 3,
+  "definitions": [
+   {
+    "engine_line": 98930,
+    "enclosing_function": "fb_features__build",
+    "enclosing_span": [
+     98908,
+     98962
+    ],
+    "kind": "put_call",
+    "source": "put('leader_drift', lo / g('pm_ratio').replace(0, np.nan))"
+   },
+   {
+    "engine_line": 106316,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'leader_drift':            _f(lambda C: np.where(C['sd'] > 0, C['drift_h'], np.where(C['sd'] < 0, C['drift_a'], np.nan)), 'tick', False, 'match_ml', 'how far the leader has shortened from open', 'DRIFT'),"
+   },
+   {
+    "engine_line": 106345,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'leader_drift':            _f(lambda C: np.where(C['sd'] > 0, C['drift_h'], np.where(C['sd'] < 0, C['drift_a'], np.nan)), 'tick', False, 'match_ml', 'leader shortening from open', 'DRIFT'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "leader_implied_gap": {
+  "term": "leader_implied_gap",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106313,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'leader_implied_gap':      _f(lambda C: np.where(C['sd'] > 0, C['imp_h'] - C['imp_a'], np.where(C['sd'] < 0, C['imp_a'] - C['imp_h'], np.nan)), 'tick', False, 'match_ml', 'how far the market separates leader from trailer', 'MARKET_SHAPE'),"
+   },
+   {
+    "engine_line": 106343,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'leader_implied_gap':      _f(lambda C: np.where(C['sd'] > 0, C['imp_h'] - C['imp_a'], np.where(C['sd'] < 0, C['imp_a'] - C['imp_h'], np.nan)), 'tick', False, 'match_ml', 'leader minus trailer implied', 'MARKET_SHAPE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "leader_runmax": {
+  "term": "leader_runmax",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "line": {
+  "term": "line",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "line_flat": {
+  "term": "line_flat",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "line_move": {
+  "term": "line_move",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "line_open": {
+  "term": "line_open",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "line_vel": {
+  "term": "line_vel",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "loser_runmax": {
+  "term": "loser_runmax",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "loser_runmin": {
+  "term": "loser_runmin",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "margin_per_implied": {
+  "term": "margin_per_implied",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 106314,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'margin_per_implied':      _f(lambda C: np.where(np.isfinite(C['imp_h']), np.abs(C['sd']) / np.maximum(np.where(C['sd'] > 0, C['imp_h'], C['imp_a']), 0.05), np.nan), 'tick', False, 'match_ml', 'margin per unit of implied probability \u2014 a big lead the market still doubts', 'MARKET_SHAPE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "margin_per_possession": {
+  "term": "margin_per_possession",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 105873,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'margin_per_possession':   _f(lambda C: np.where(C['remain_s'] > 14, C['sd'] / (C['remain_s'] / 14.0), np.nan), 'elapsed', False, 'moneyline', 'lead in possessions', 'structure'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "margin_range_300s": {
+  "term": "margin_range_300s",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 106319,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'margin_range_300s':       _f(lambda C: pd.Series(C['sd']).groupby(C['mid']).transform(lambda z: z.rolling(60, min_periods=1).max() - z.rolling(60, min_periods=1).min()).values, 'event', True, 'match_ml', 'margin volatility over the last ~5 minutes (60 ticks at 5s)', 'structure'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "margin_rate": {
+  "term": "margin_rate",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "motif_0": {
+  "term": "motif_0",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "motif_1": {
+  "term": "motif_1",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "motif_2": {
+  "term": "motif_2",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "nchg_120": {
+  "term": "nchg_120",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "need_frac": {
+  "term": "need_frac",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "need_vs_expected": {
+  "term": "need_vs_expected",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "needed_rate_for_over": {
+  "term": "needed_rate_for_over",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 106301,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'needed_rate_for_over':    _f(lambda C: np.where(C['remain_s'] > 30, (C['g']('total_points_handicap') - C['tot']) / (C['remain_s'] / 60.0), np.nan) if C['g']('total_points_handicap') is not None else None, 'elapsed', False, 'match_total', 'points per minute still needed for the over', 'LINE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "odds_ratio": {
+  "term": "odds_ratio",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "open_gap": {
+  "term": "open_gap",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "open_vs_now_lead": {
+  "term": "open_vs_now_lead",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106385,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "'open_vs_now_lead':    dict(cls='STATE',      use='BOTH',  kf='tick',    formula='leader\\'s opening price - p_lead', why='LIVE_CERTAINTY', note='the same move in price units'),"
+   },
+   {
+    "engine_line": 106446,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'open_vs_now_lead':    _f(lambda C: np.where(C['sd'] > 0, C['open_h'] - C['ho'], np.where(C['sd'] < 0, C['open_a'] - C['ao'], np.nan)), 'tick', False, 'match_ml', 'the leader\\'s price move in price units', 'review: STATE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "opp": {
+  "term": "opp",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "opp_drift": {
+  "term": "opp_drift",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "opp_o": {
+  "term": "opp_o",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "opp_pts_last_60s": {
+  "term": "opp_pts_last_60s",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "opp_velocity": {
+  "term": "opp_velocity",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "overround_now": {
+  "term": "overround_now",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 105858,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'overround_now':           _f(lambda C: C['imp_h'] + C['imp_a'] + (np.nan_to_num(C['imp_d']) if C.get('imp_d') is not None else 0), 'tick', False, 'moneyline', 'book uncertainty', 'MARKET_SHAPE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "pace_last_300s_vs_line": {
+  "term": "pace_last_300s_vs_line",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 106295,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'pace_last_300s_vs_line':  _f(lambda C: (C['scores_300'] * 2 / 300.0 * C['nominal']) - C['g']('total_points_handicap') if C['nominal'] and C['g']('total_points_handicap') is not None else None, 'event', True, 'match_total', 'recent pace against the line', 'PACE_TOTAL'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "pace_vs_line_pct": {
+  "term": "pace_vs_line_pct",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 106296,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'pace_vs_line_pct':        _f(lambda C: np.where(C['el'] > 0.05, (C['tot'] / C['el']) / C['g']('total_points_handicap') - 1, np.nan) if C['g']('total_points_handicap') is not None else None, 'elapsed', False, 'match_total', 'projected total as a % of the line', 'PACE_TOTAL'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "pc_2f7f4d0c": {
+  "term": "pc_2f7f4d0c",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pc_428f55cf": {
+  "term": "pc_428f55cf",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pc_4fa6ab33": {
+  "term": "pc_4fa6ab33",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pc_51f228a2": {
+  "term": "pc_51f228a2",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pc_6a99ae09": {
+  "term": "pc_6a99ae09",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pc_7b8a13a5": {
+  "term": "pc_7b8a13a5",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pc_aa16b0a5": {
+  "term": "pc_aa16b0a5",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pc_c8103e63": {
+  "term": "pc_c8103e63",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pc_dc4196fb": {
+  "term": "pc_dc4196fb",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pc_f3e46219": {
+  "term": "pc_f3e46219",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pc_fea3bd2c": {
+  "term": "pc_fea3bd2c",
+  "verdict": "PCA_COMPONENT",
+  "buildable": false,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "PCA component: its inputs and loadings live in the run's PCA manifest, not in the engine source. Export the manifest from the run that produced it, or drop the strategies that use it."
+ },
+ "pm_away": {
+  "term": "pm_away",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "pm_home": {
+  "term": "pm_home",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "pm_ratio": {
+  "term": "pm_ratio",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "point_spread_handicap": {
+  "term": "point_spread_handicap",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "point_spread_home": {
+  "term": "point_spread_home",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "prematch_dog_odds": {
+  "term": "prematch_dog_odds",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "price_gap": {
+  "term": "price_gap",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "price_move_since_score": {
+  "term": "price_move_since_score",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 91495,
+    "enclosing_function": "laz_featuregen__term_lines",
+    "enclosing_span": [
+     91375,
+     91583
+    ],
+    "kind": "out_assign",
+    "source": "'price_move_since_score': \"out['price_move_since_score'] = (lambda _h: (ho / _h) if (not _isnan(_h) and _h > 0 and not _isnan(ho)) else np.nan)(S.ho_at_last_score(tot, ho))\",   # pool: ho / ho at the last score change (eTennis replay proof failed on it at tick 69)"
+   },
+   {
+    "engine_line": 105865,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'price_move_since_score':  _f(lambda C: np.where(C['ho_at_last_score'] > 0, C['ho'] / C['ho_at_last_score'], np.nan) if C.get('ho_at_last_score') is not None else None, 'event', True, 'moneyline', 'has the price digested the last score', 'structure'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "price_rank_in_match": {
+  "term": "price_rank_in_match",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "prog": {
+  "term": "prog",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "prog_period": {
+  "term": "prog_period",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 3,
+  "definitions": [
+   {
+    "engine_line": 82433,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "'prog_period': dict(rt=['phase', 'timestamp'], live=\"(seconds since this period began) / (the previous period's observed length in this match, else nominal/periods), clipped 0..1\","
+   },
+   {
+    "engine_line": 91498,
+    "enclosing_function": "laz_featuregen__term_lines",
+    "enclosing_span": [
+     91375,
+     91583
+    ],
+    "kind": "out_assign",
+    "source": "'prog_period': \"out['prog_period'] = S.period_clock(ph_now, ts_now, _FAMILY, _SPORT_SECONDS, _league_periods(tick))[1]\","
+   },
+   {
+    "engine_line": 106472,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'prog_period':         _f(lambda C: C['prog_period'], 'tick', True, 'match_ml', '% of the CURRENT period elapsed: time since this period began over the previous period\\'s observed length in this match (else nominal / periods)', 'observed on this match\\'s own ticks; the owner\\'s \"within X% of the quarter\"'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "prog_q": {
+  "term": "prog_q",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "prog_score": {
+  "term": "prog_score",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "prog_x_margin": {
+  "term": "prog_x_margin",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 105867,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'prog_x_margin':           _f(lambda C: C['el'] * C['sd'], 'elapsed', False, 'moneyline', 'a lead weighted by how much of the match it has survived', 'MARGIN_RATE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "proj_gap_n": {
+  "term": "proj_gap_n",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "pts_last_60s": {
+  "term": "pts_last_60s",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "px_gap_ratio": {
+  "term": "px_gap_ratio",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "q": {
+  "term": "q",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "recovery_x": {
+  "term": "recovery_x",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "req_ratio": {
+  "term": "req_ratio",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "retrace_lead": {
+  "term": "retrace_lead",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "retrace_lo": {
+  "term": "retrace_lo",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "rk_dog_odds": {
+  "term": "rk_dog_odds",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106387,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "'rk_dog_odds':         dict(cls='STATE',      use='BOTH',  kf='tick',    formula='max(ho, ao)', why='LIVE_CERTAINTY', note=''),"
+   },
+   {
+    "engine_line": 106448,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'rk_dog_odds':         _f(lambda C: np.maximum(C['ho'], C['ao']), 'tick', False, 'match_ml', 'the live underdog\\'s price', 'review: STATE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "rk_fav_odds": {
+  "term": "rk_fav_odds",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106386,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "'rk_fav_odds':         dict(cls='STATE',      use='BOTH',  kf='tick',    formula='min(ho, ao) \u2014 the live favourite\\'s price', why='LIVE_CERTAINTY', note=''),"
+   },
+   {
+    "engine_line": 106447,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'rk_fav_odds':         _f(lambda C: np.minimum(C['ho'], C['ao']), 'tick', False, 'match_ml', 'the live favourite\\'s price', 'review: STATE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "rk_implied_edge": {
+  "term": "rk_implied_edge",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106389,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "'rk_implied_edge':     dict(cls='STATE',      use='BOTH',  kf='tick',    formula='|1/ho - 1/ao|', why='LIVE_CERTAINTY', note='the implied gap; same family as imbal'),"
+   },
+   {
+    "engine_line": 106450,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'rk_implied_edge':     _f(lambda C: np.abs(C['imp_h'] - C['imp_a']), 'tick', False, 'match_ml', 'the implied gap', 'review: STATE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "rk_lead_off_high": {
+  "term": "rk_lead_off_high",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106391,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "'rk_lead_off_high':    dict(cls='STATE',      use='WOE',   kf='tick',    formula='3.6 - p_lead (distance below the upper rung)', why='LIVE_CERTAINTY', note='rung position from the top'),"
+   },
+   {
+    "engine_line": 106452,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'rk_lead_off_high':    _f(lambda C: 3.6 - np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'tick', False, 'match_ml', 'leader price below the upper rung', 'review: STATE/WOE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "rk_lead_off_low": {
+  "term": "rk_lead_off_low",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106390,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "'rk_lead_off_low':     dict(cls='STATE',      use='WOE',   kf='tick',    formula='p_lead - min_odds (1.4)', why='LIVE_CERTAINTY', note='how far the leader\\'s price sits above the ladder floor; a rung-position variable'),"
+   },
+   {
+    "engine_line": 106451,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'rk_lead_off_low':     _f(lambda C: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)) - 1.4, 'tick', False, 'match_ml', 'leader price above the ladder floor', 'review: STATE/WOE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "rk_odds_ratio": {
+  "term": "rk_odds_ratio",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106388,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "'rk_odds_ratio':       dict(cls='STATE',      use='WOE',   kf='tick',    formula='rk_dog_odds / rk_fav_odds', why='LIVE_CERTAINTY', note='the market\\'s confidence as a ratio; a banding variable'),"
+   },
+   {
+    "engine_line": 106449,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'rk_odds_ratio':       _f(lambda C: np.maximum(C['ho'], C['ao']) / np.minimum(C['ho'], C['ao']), 'tick', False, 'match_ml', 'the market\\'s confidence as a ratio', 'review: STATE/WOE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "runmin": {
+  "term": "runmin",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "scores_300s": {
+  "term": "scores_300s",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 105856,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'scores_300s':             _f(lambda C: C['scores_300'], 'event', True, 'totals', 'five-minute scoring rate', 'PACE_TOTAL'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "scoring_rate": {
+  "term": "scoring_rate",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106402,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "'scoring_rate':        dict(cls='STATE',      use='BOTH',  kf='elapsed', formula='tot / minutes elapsed', why='LIVE_CERTAINTY', note='= current_rate_per_min'),"
+   },
+   {
+    "engine_line": 106460,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'scoring_rate':        _f(lambda C: np.where(C['elapsed_s'] > 60, C['tot'] / (C['elapsed_s'] / 60.0), np.nan), 'elapsed', False, 'match_total', 'points per minute so far', 'review: STATE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "secs_since_price": {
+  "term": "secs_since_price",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "secs_since_quarter_start": {
+  "term": "secs_since_quarter_start",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "secs_since_run_started": {
+  "term": "secs_since_run_started",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "secs_since_score": {
+  "term": "secs_since_score",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "spread_cover_now": {
+  "term": "spread_cover_now",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 105890,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'spread_cover_now':        _f(lambda C: C['sd'] + C['g']('point_spread_handicap') if C['g']('point_spread_handicap') is not None else None, 'tick', False, 'match_spread', 'current cover margin', 'LINE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "ten_mins": {
+  "term": "ten_mins",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "tg_imp_over": {
+  "term": "tg_imp_over",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 114045,
+    "enclosing_function": "laz_totals__conditions",
+    "enclosing_span": [
+     114036,
+     114053
+    ],
+    "kind": "dict_local",
+    "source": "out = {'tg_line': L, 'tg_now': now, 'tg_to_go': L - now, 'tg_over_px': ov, 'tg_under_px': un, 'tg_imp_over': io, 'tg_imp_under': iu, 'tg_overround': io + iu, 'tg_px_ratio': np.where(un > 1, ov / un, np.nan), 'tg_pace': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan), 'tg_proj_vs_line': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan) - L, 'tg_wall_vs_handicap': num('tg_wall_vs_handicap'), 'tg_remaining_rate': np.where(el < 0.98, (L - now) / np.maximum(1 - el, 0.02), np.nan)}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "tg_imp_under": {
+  "term": "tg_imp_under",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 114045,
+    "enclosing_function": "laz_totals__conditions",
+    "enclosing_span": [
+     114036,
+     114053
+    ],
+    "kind": "dict_local",
+    "source": "out = {'tg_line': L, 'tg_now': now, 'tg_to_go': L - now, 'tg_over_px': ov, 'tg_under_px': un, 'tg_imp_over': io, 'tg_imp_under': iu, 'tg_overround': io + iu, 'tg_px_ratio': np.where(un > 1, ov / un, np.nan), 'tg_pace': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan), 'tg_proj_vs_line': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan) - L, 'tg_wall_vs_handicap': num('tg_wall_vs_handicap'), 'tg_remaining_rate': np.where(el < 0.98, (L - now) / np.maximum(1 - el, 0.02), np.nan)}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "tg_overround": {
+  "term": "tg_overround",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 114045,
+    "enclosing_function": "laz_totals__conditions",
+    "enclosing_span": [
+     114036,
+     114053
+    ],
+    "kind": "dict_formula",
+    "source": "out = {'tg_line': L, 'tg_now': now, 'tg_to_go': L - now, 'tg_over_px': ov, 'tg_under_px': un, 'tg_imp_over': io, 'tg_imp_under': iu, 'tg_overround': io + iu, 'tg_px_ratio': np.where(un > 1, ov / un, np.nan), 'tg_pace': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan), 'tg_proj_vs_line': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan) - L, 'tg_wall_vs_handicap': num('tg_wall_vs_handicap'), 'tg_remaining_rate': np.where(el < 0.98, (L - now) / np.maximum(1 - el, 0.02), np.nan)}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "tg_proj_vs_line": {
+  "term": "tg_proj_vs_line",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 114045,
+    "enclosing_function": "laz_totals__conditions",
+    "enclosing_span": [
+     114036,
+     114053
+    ],
+    "kind": "dict_formula",
+    "source": "out = {'tg_line': L, 'tg_now': now, 'tg_to_go': L - now, 'tg_over_px': ov, 'tg_under_px': un, 'tg_imp_over': io, 'tg_imp_under': iu, 'tg_overround': io + iu, 'tg_px_ratio': np.where(un > 1, ov / un, np.nan), 'tg_pace': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan), 'tg_proj_vs_line': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan) - L, 'tg_wall_vs_handicap': num('tg_wall_vs_handicap'), 'tg_remaining_rate': np.where(el < 0.98, (L - now) / np.maximum(1 - el, 0.02), np.nan)}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "tg_px_ratio": {
+  "term": "tg_px_ratio",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 1,
+  "definitions": [
+   {
+    "engine_line": 114045,
+    "enclosing_function": "laz_totals__conditions",
+    "enclosing_span": [
+     114036,
+     114053
+    ],
+    "kind": "dict_formula",
+    "source": "out = {'tg_line': L, 'tg_now': now, 'tg_to_go': L - now, 'tg_over_px': ov, 'tg_under_px': un, 'tg_imp_over': io, 'tg_imp_under': iu, 'tg_overround': io + iu, 'tg_px_ratio': np.where(un > 1, ov / un, np.nan), 'tg_pace': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan), 'tg_proj_vs_line': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan) - L, 'tg_wall_vs_handicap': num('tg_wall_vs_handicap'), 'tg_remaining_rate': np.where(el < 0.98, (L - now) / np.maximum(1 - el, 0.02), np.nan)}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "time_at_this_price": {
+  "term": "time_at_this_price",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "time_left": {
+  "term": "time_left",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "tot_vs_line": {
+  "term": "tot_vs_line",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "total_goals_handicap_ffill": {
+  "term": "total_goals_handicap_ffill",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "total_line_move": {
+  "term": "total_line_move",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106298,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'total_line_move':         _f(lambda C: C['g']('total_points_handicap') - pd.Series(C['g']('total_points_handicap')).groupby(C['mid']).transform('first').values if C['g']('total_points_handicap') is not None else None, 'tick', False, 'match_total', 'how far the line has moved from its open', 'LINE'),"
+   },
+   {
+    "engine_line": 106330,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'total_line_move':         _f(lambda C: C['g']('total_goals_handicap') - pd.Series(C['g']('total_goals_handicap')).groupby(C['mid']).transform('first').values if C['g']('total_goals_handicap') is not None else None, 'tick', False, 'match_total', 'line move from open', 'LINE'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "total_points_handicap": {
+  "term": "total_points_handicap",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "total_points_over": {
+  "term": "total_points_over",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "total_points_under": {
+  "term": "total_points_under",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "total_pts": {
+  "term": "total_pts",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "tp_vel_n": {
+  "term": "tp_vel_n",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "trail": {
+  "term": "trail",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "trailer_drift": {
+  "term": "trailer_drift",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 106315,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'trailer_drift':           _f(lambda C: np.where(C['sd'] > 0, C['drift_a'], np.where(C['sd'] < 0, C['drift_h'], np.nan)), 'tick', False, 'match_ml', 'how far the trailer has drifted from open', 'DRIFT'),"
+   },
+   {
+    "engine_line": 106344,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'trailer_drift':           _f(lambda C: np.where(C['sd'] > 0, C['drift_a'], np.where(C['sd'] < 0, C['drift_h'], np.nan)), 'tick', False, 'match_ml', 'trailer drift from open', 'DRIFT'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "trailer_price": {
+  "term": "trailer_price",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 95571,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "laz_everything__FULL_DERIVED = {'leader_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'loser_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'leader_price': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'trailer_price': lambda C, M: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'fav_odds_rt': lambda C, M: np.minimum(C['ho'], C['ao']), 'dog_odds_rt': lambda C, M: np.maximum(C['ho'], C['ao']), 'is_favorite': lambda C, M: (np.where(C['sd'] > 0, C['ho'], C['ao']) <= np.where(C['sd'] > 0, C['ao'], C['ho'])).astype(float), 'is_favourite': lambda C, M: (np.where(C['sd'] > 0, C['ho'], C['ao']) <= np.where(C['sd'] > 0, C['ao'], C['ho'])).astype(float), 'lead_is_dog': lambda C, M: (np.where(C['sd'] > 0, C['ho'], C['ao']) > np.where(C['sd'] > 0, C['ao'], C['ho'])).astype(float), 'fb_prog': lambda C, M: C['el'], 'ef_prog': lambda C, M: C['el'], 'tt_prog': lambda C, M: C['el'], 'bb_prog': lambda C, M: C['el'], 'remain': lambda C, M: 1.0 - C['el'], 'time_left': lambda C, M: 1.0 - C['el'], 'q': lambda C, M: np.where(np.isfinite(C['el']), np.clip(np.nan_to_num(C['el'] * 4, nan=0).astype(int) + 1, 1, 4), np.nan).astype(float), 'period': lambda C, M: np.where(np.isfinite(C['el']), np.clip(np.nan_to_num(C['el'] * 4, nan=0).astype(int) + 1, 1, 4), np.nan).astype(float), 'half': lambda C, M: np.where(np.isfinite(C['el']), np.where(C['el'] < 0.5, 1.0, 2.0), np.nan), 'imbal': lambda C, M: np.abs(C['sd']) / np.maximum(C['tot'], 1.0), 'ht_diff': lambda C, M: C['sd'], 'margin_rate': lambda C, M: C['sd'] / np.maximum(C['el'], 0.02), 'score_rate': lambda C, M: C['tot'] / np.maximum(C['el'], 0.02), 'both_scored': lambda C, M: ((C['hs'] > 0) & (C['as_'] > 0)).astype(float), 'clean_sheet': lambda C, M: ((C['hs'] == 0) | (C['as_'] == 0)).astype(float), 'imp_home': lambda C, M: 1.0 / np.where(C['ho'] > 1, C['ho'], np.nan), 'imp_away': lambda C, M: 1.0 / np.where(C['ao'] > 1, C['ao'], np.nan), 'imp_sum': lambda C, M: 1.0 / np.where(C['ho'] > 1, C['ho'], np.nan) + 1.0 / np.where(C['ao'] > 1, C['ao'], np.nan), 'price_gap': lambda C, M: np.abs(C['ho'] - C['ao']), 'price_rank_in_match': lambda C, M: (lambda u: laz_everything___rank_in_match(u, M))(np.where(C['sd'] >= 0, C['ho'], C['ao'])), 'opp_velocity': lambda C, M: laz_everything___diff_in_match(np.where(C['sd'] >= 0, C['ao'], C['ho']), M), 'u_velocity': lambda C, M: laz_everything___diff_in_match(np.where(C['sd'] >= 0, C['ho'], C['ao']), M), 'lead_vs_line': lambda C, M: C['sd'] - C['line'], 'need_vs_expected': lambda C, M: C['line'] - C['tot'] - C['tot'] / np.maximum(C['el'], 0.02) * (1 - C['el']), 'tot_vs_line': lambda C, M: C['tot'] - C['line'], 'line_gap': lambda C, M: np.abs(C['line'] - C['tot'])}"
+   },
+   {
+    "engine_line": 105862,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "builder_lambda",
+    "source": "'trailer_price':           _f(lambda C: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'tick', False, 'moneyline', 'what the comeback pays', 'LIVE_TRAILER'),"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "u_drift": {
+  "term": "u_drift",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_drift_opp": {
+  "term": "u_drift_opp",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_drought": {
+  "term": "u_drought",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 3,
+  "definitions": [
+   {
+    "engine_line": 96827,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "recipe",
+    "source": "laz_transfer__UNIVERSAL = {'u_remain': 'share of the contest still to play', 'u_elapsed': 'share already played', 'u_margin': 'score margin from the BACKED side', 'u_margin_abs': 'absolute margin', 'u_margin_rate': 'margin per unit of time remaining \u2014 decisiveness', 'u_total': 'combined score so far', 'u_pace': 'combined score per unit elapsed', 'u_since_score': 'SECONDS since the last score change (wall clock; never ticks)', 'u_drought': 'ticks since the last score, over the time remaining', 'u_price': 'live price of the backed side', 'u_price_open': 'that side price at the first valid tick', 'u_drift': 'live price over its own opening price', 'u_drift_opp': 'the same for the opposing side', 'u_drift_gap': 'backed drift minus opposing drift \u2014 who the market is leaving', 'u_trend': 'price change against the previous tick', 'u_vol': 'rolling price volatility', 'u_vf': 'vig-free implied probability of the backed side', 'u_overround': 'book overround', 'u_ratio': 'opposing price over backed price', 'u_ratio_open': 'the same at kickoff \u2014 prematch shape', 'u_ratio_shift': 'live ratio over prematch ratio', 'u_fav_backed': 'is the backed side the prematch favourite', 'u_lead_flips': 'how many times the lead has changed', 'u_time_in_lead': 'share of WALL TIME the backed side has led (never ticks)'}"
+   },
+   {
+    "engine_line": 96879,
+    "enclosing_function": "laz_transfer__build",
+    "enclosing_span": [
+     96834,
+     96913
+    ],
+    "kind": "out_assign",
+    "source": "out['u_drought'] = (ss / (1 - el).clip(0.02, 1)).values"
+   },
+   {
+    "engine_line": 98044,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "laz_featdoc__PRIMITIVES = {'u_elapsed': dict(meaning='Share of the contest already played, on [0,1].', formula=\"el = to_numeric(d[elapsed_col]); if el.max()>1.5: el = el / el.groupby(match).transform('max'); el = el.clip(0,1).fillna(0.5)\", requires='an elapsed column (prog / frac) or, failing that, tick position within the match', resolves='0.00 \u2014 observable at every tick', note='If no elapsed column exists, use (cumcount()+1)/size per match. NEVER add a period offset to a cumulative clock: eBasketball minutes are cumulative and doing so armed 70.7% of bets before the period their condition summarised.'), 'u_remain': dict(meaning='Share of the contest still to play.', formula='(1 - u_elapsed).clip(0.01, 1)', requires='u_elapsed', resolves='0.00', note='Floored at 0.01 so it can be divided by.'), 'u_margin': dict(meaning='Score margin FROM THE BACKED SIDE. Positive means the backed side leads.', formula='np.where(backed_is_home, h_score - a_score, a_score - h_score)', requires='h_score, a_score, and the backed side', resolves='0.00', note='ORIENTATION IS THE POINT. A home-oriented feature describes the wrong player on half the bets; orienting to the backed side took qualifying stacks from 28 to 4,168.'), 'u_margin_abs': dict(meaning='Absolute score margin, direction ignored.', formula='np.abs(u_margin)', requires='u_margin', resolves='0.00', note=''), 'u_margin_rate': dict(meaning='Margin per unit of time REMAINING \u2014 how decisive the lead is given the clock. A two-goal lead with 10% left is a different object from the same lead at half-time.', formula='u_margin / (1 - u_elapsed).clip(0.02, 1)', requires='u_margin, u_elapsed', resolves='0.00', note='THE SINGLE MOST PRODUCTIVE CONDITION IN THE BOOK. Underpins the top eFootball strategies (97.0% at odds 1.500) and is monotone in its threshold: 2.0 -> 88.7%, 3.0 -> 93.1%, 4.0 -> 95.8%. It exists in no frame; it is constructed.'), 'u_total': dict(meaning='Combined score so far.', formula='h_score + a_score', requires='h_score, a_score', resolves='0.00', note=''), 'u_pace': dict(meaning='Scoring rate: combined score per unit of elapsed time.', formula='u_total / u_elapsed.clip(0.02, 1)', requires='u_total, u_elapsed', resolves='0.00', note='Early in a match this is volatile; the 0.02 floor prevents a division blow-up.'), 'u_since_score': dict(meaning='Ticks since the last score CHANGE \u2014 a drought counter.', formula='chg = (u_total.groupby(match).diff().fillna(0) != 0); grp = chg.groupby(match).cumsum(); d.groupby([match, grp]).cumcount()', requires='u_total, match_id', resolves='0.00', note='Backward-looking by construction: it counts what has already happened.'), 'u_drought': dict(meaning='Drought measured against the time left \u2014 a long gap late means more.', formula='u_since_score / (1 - u_elapsed).clip(0.02, 1)', requires='u_since_score, u_elapsed', resolves='0.00', note=''), 'u_price': dict(meaning='Live price of the BACKED side.', formula='np.where(backed_is_home, home_odds, away_odds)', requires='home_odds, away_odds, backed side', resolves='0.00', note=''), 'u_price_open': dict(meaning=\"That side's price at the first valid-odds tick of the match.\", formula=\"u_price.groupby(match).transform('first')\", requires='u_price, match_id', resolves='0.00', note='Prematch and IMMUTABLE once the match starts.'), 'u_drift': dict(meaning='How far the live price has moved from its OWN opening price. >1 means drifted out.', formula='u_price / u_price_open.replace(0, np.nan)', requires='u_price, u_price_open', resolves='0.00', note='The DRIFTED base backs whichever side has the larger drift. Score-agnostic and designation-agnostic; it reached 90.4% in football and was invisible to every score-based base.'), 'u_drift_opp': dict(meaning='The same ratio for the OPPOSING side.', formula='u_price_opp / u_price_opp_open.replace(0, np.nan)', requires='opposing price and its open', resolves='0.00', note=''), 'u_drift_gap': dict(meaning='Backed drift minus opposing drift \u2014 which side the market is leaving behind.', formula='u_drift - u_drift_opp', requires='u_drift, u_drift_opp', resolves='0.00', note=''), 'u_trend': dict(meaning='Percentage price change against the PREVIOUS tick.', formula='(u_price - u_price.groupby(match).shift(1)) / u_price.groupby(match).shift(1).replace(0,np.nan) * 100', requires='u_price, match_id', resolves='0.00', note='Backward: it compares to a tick already seen.'), 'u_vol': dict(meaning='Rolling volatility of the backed price over the last 10 ticks.', formula='u_price.groupby(match).transform(lambda s: s.rolling(10, min_periods=3).std())', requires='u_price, match_id', resolves='0.00', note='min_periods=3 so it is NaN until three ticks exist rather than silently zero.'), 'u_vf': dict(meaning=\"VIG-FREE implied probability of the backed side \u2014 the market's honest price.\", formula='ib = 1/u_price; io = 1/u_price_opp; idr = (1/draw_odds) if a draw exists else 0; ib / (ib + io + idr)', requires='both prices, and draw_odds for three-way markets', resolves='0.00', note='THE DENOMINATOR MUST INCLUDE THE DRAW in three-way markets or the implied probability is overstated. The RESIDUAL (outcome minus this) is what the causal tree splits on, because a 90% strategy at 1.10 has a high win rate and no edge.'), 'u_overround': dict(meaning=\"The book's overround: how much above 100% the implied probabilities sum to.\", formula='1/u_price + 1/u_price_opp + (1/draw_odds if draw else 0)', requires='all prices', resolves='0.00', note=''), 'u_ratio': dict(meaning='Opposing price over backed price \u2014 the live shape of the market.', formula='u_price_opp / u_price.replace(0, np.nan)', requires='both prices', resolves='0.00', note=''), 'u_ratio_open': dict(meaning='The same ratio at kickoff \u2014 the PREMATCH shape.', formula='u_price_opp_open / u_price_open.replace(0, np.nan)', requires='both opening prices', resolves='0.00', note='Fixed before the match starts.'), 'u_ratio_shift': dict(meaning='Live ratio over prematch ratio \u2014 how far the shape has moved.', formula='u_ratio / u_ratio_open.replace(0, np.nan)', requires='u_ratio, u_ratio_open', resolves='0.00', note=''), 'u_fav_backed': dict(meaning='Is the backed side the PREMATCH favourite (1) or not (0)?', formula='(u_price_open <= u_price_opp_open).astype(float)', requires='both opening prices', resolves='0.00', note='Draw cheapest in a three-way market means NO favourite; exclude those matches.'), 'u_lead_flips': dict(meaning='How many times the lead has changed hands so far.', formula='(np.sign(u_margin).groupby(match).diff().fillna(0) != 0).groupby(match).cumsum()', requires='u_margin, match_id', resolves='0.00', note='A contest that has swung repeatedly behaves differently from one that has been one-sided.'), 'u_time_in_lead': dict(meaning='Share of the OBSERVED ticks so far on which the backed side has been ahead.', formula='(u_margin > 0).groupby(match).cumsum() / (d.groupby(match).cumcount() + 1)', requires='u_margin, match_id', resolves='0.00', note='CARRIES FOUR OF FIVE TABLETENNIS STRATEGIES. Strictly backward: it counts only ticks already seen, so its value at any tick is final at that tick.')}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "u_flat": {
+  "term": "u_flat",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_hazard": {
+  "term": "u_hazard",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 2,
+  "definitions": [
+   {
+    "engine_line": 91507,
+    "enclosing_function": "laz_featuregen__term_lines",
+    "enclosing_span": [
+     91375,
+     91583
+    ],
+    "kind": "out_assign",
+    "source": "'u_hazard': \"out['u_hazard'] = _hazard_lin(out, ho, ao)\","
+   },
+   {
+    "engine_line": 97539,
+    "enclosing_function": "laz_cox__hazard_condition",
+    "enclosing_span": [
+     97511,
+     97564
+    ],
+    "kind": "pool_assign",
+    "source": "pool['u_hazard'] = lin"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "u_jump": {
+  "term": "u_jump",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_margin_abs": {
+  "term": "u_margin_abs",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 4,
+  "definitions": [
+   {
+    "engine_line": 91477,
+    "enclosing_function": "laz_featuregen__term_lines",
+    "enclosing_span": [
+     91375,
+     91583
+    ],
+    "kind": "out_assign",
+    "source": "'u_margin_abs': \"out['u_margin_abs'] = abs(sd) if not _isnan(sd) else np.nan\","
+   },
+   {
+    "engine_line": 96827,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "recipe",
+    "source": "laz_transfer__UNIVERSAL = {'u_remain': 'share of the contest still to play', 'u_elapsed': 'share already played', 'u_margin': 'score margin from the BACKED side', 'u_margin_abs': 'absolute margin', 'u_margin_rate': 'margin per unit of time remaining \u2014 decisiveness', 'u_total': 'combined score so far', 'u_pace': 'combined score per unit elapsed', 'u_since_score': 'SECONDS since the last score change (wall clock; never ticks)', 'u_drought': 'ticks since the last score, over the time remaining', 'u_price': 'live price of the backed side', 'u_price_open': 'that side price at the first valid tick', 'u_drift': 'live price over its own opening price', 'u_drift_opp': 'the same for the opposing side', 'u_drift_gap': 'backed drift minus opposing drift \u2014 who the market is leaving', 'u_trend': 'price change against the previous tick', 'u_vol': 'rolling price volatility', 'u_vf': 'vig-free implied probability of the backed side', 'u_overround': 'book overround', 'u_ratio': 'opposing price over backed price', 'u_ratio_open': 'the same at kickoff \u2014 prematch shape', 'u_ratio_shift': 'live ratio over prematch ratio', 'u_fav_backed': 'is the backed side the prematch favourite', 'u_lead_flips': 'how many times the lead has changed', 'u_time_in_lead': 'share of WALL TIME the backed side has led (never ticks)'}"
+   },
+   {
+    "engine_line": 96865,
+    "enclosing_function": "laz_transfer__build",
+    "enclosing_span": [
+     96834,
+     96913
+    ],
+    "kind": "out_assign",
+    "source": "out['u_margin_abs'] = mar.abs().values"
+   },
+   {
+    "engine_line": 98044,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "laz_featdoc__PRIMITIVES = {'u_elapsed': dict(meaning='Share of the contest already played, on [0,1].', formula=\"el = to_numeric(d[elapsed_col]); if el.max()>1.5: el = el / el.groupby(match).transform('max'); el = el.clip(0,1).fillna(0.5)\", requires='an elapsed column (prog / frac) or, failing that, tick position within the match', resolves='0.00 \u2014 observable at every tick', note='If no elapsed column exists, use (cumcount()+1)/size per match. NEVER add a period offset to a cumulative clock: eBasketball minutes are cumulative and doing so armed 70.7% of bets before the period their condition summarised.'), 'u_remain': dict(meaning='Share of the contest still to play.', formula='(1 - u_elapsed).clip(0.01, 1)', requires='u_elapsed', resolves='0.00', note='Floored at 0.01 so it can be divided by.'), 'u_margin': dict(meaning='Score margin FROM THE BACKED SIDE. Positive means the backed side leads.', formula='np.where(backed_is_home, h_score - a_score, a_score - h_score)', requires='h_score, a_score, and the backed side', resolves='0.00', note='ORIENTATION IS THE POINT. A home-oriented feature describes the wrong player on half the bets; orienting to the backed side took qualifying stacks from 28 to 4,168.'), 'u_margin_abs': dict(meaning='Absolute score margin, direction ignored.', formula='np.abs(u_margin)', requires='u_margin', resolves='0.00', note=''), 'u_margin_rate': dict(meaning='Margin per unit of time REMAINING \u2014 how decisive the lead is given the clock. A two-goal lead with 10% left is a different object from the same lead at half-time.', formula='u_margin / (1 - u_elapsed).clip(0.02, 1)', requires='u_margin, u_elapsed', resolves='0.00', note='THE SINGLE MOST PRODUCTIVE CONDITION IN THE BOOK. Underpins the top eFootball strategies (97.0% at odds 1.500) and is monotone in its threshold: 2.0 -> 88.7%, 3.0 -> 93.1%, 4.0 -> 95.8%. It exists in no frame; it is constructed.'), 'u_total': dict(meaning='Combined score so far.', formula='h_score + a_score', requires='h_score, a_score', resolves='0.00', note=''), 'u_pace': dict(meaning='Scoring rate: combined score per unit of elapsed time.', formula='u_total / u_elapsed.clip(0.02, 1)', requires='u_total, u_elapsed', resolves='0.00', note='Early in a match this is volatile; the 0.02 floor prevents a division blow-up.'), 'u_since_score': dict(meaning='Ticks since the last score CHANGE \u2014 a drought counter.', formula='chg = (u_total.groupby(match).diff().fillna(0) != 0); grp = chg.groupby(match).cumsum(); d.groupby([match, grp]).cumcount()', requires='u_total, match_id', resolves='0.00', note='Backward-looking by construction: it counts what has already happened.'), 'u_drought': dict(meaning='Drought measured against the time left \u2014 a long gap late means more.', formula='u_since_score / (1 - u_elapsed).clip(0.02, 1)', requires='u_since_score, u_elapsed', resolves='0.00', note=''), 'u_price': dict(meaning='Live price of the BACKED side.', formula='np.where(backed_is_home, home_odds, away_odds)', requires='home_odds, away_odds, backed side', resolves='0.00', note=''), 'u_price_open': dict(meaning=\"That side's price at the first valid-odds tick of the match.\", formula=\"u_price.groupby(match).transform('first')\", requires='u_price, match_id', resolves='0.00', note='Prematch and IMMUTABLE once the match starts.'), 'u_drift': dict(meaning='How far the live price has moved from its OWN opening price. >1 means drifted out.', formula='u_price / u_price_open.replace(0, np.nan)', requires='u_price, u_price_open', resolves='0.00', note='The DRIFTED base backs whichever side has the larger drift. Score-agnostic and designation-agnostic; it reached 90.4% in football and was invisible to every score-based base.'), 'u_drift_opp': dict(meaning='The same ratio for the OPPOSING side.', formula='u_price_opp / u_price_opp_open.replace(0, np.nan)', requires='opposing price and its open', resolves='0.00', note=''), 'u_drift_gap': dict(meaning='Backed drift minus opposing drift \u2014 which side the market is leaving behind.', formula='u_drift - u_drift_opp', requires='u_drift, u_drift_opp', resolves='0.00', note=''), 'u_trend': dict(meaning='Percentage price change against the PREVIOUS tick.', formula='(u_price - u_price.groupby(match).shift(1)) / u_price.groupby(match).shift(1).replace(0,np.nan) * 100', requires='u_price, match_id', resolves='0.00', note='Backward: it compares to a tick already seen.'), 'u_vol': dict(meaning='Rolling volatility of the backed price over the last 10 ticks.', formula='u_price.groupby(match).transform(lambda s: s.rolling(10, min_periods=3).std())', requires='u_price, match_id', resolves='0.00', note='min_periods=3 so it is NaN until three ticks exist rather than silently zero.'), 'u_vf': dict(meaning=\"VIG-FREE implied probability of the backed side \u2014 the market's honest price.\", formula='ib = 1/u_price; io = 1/u_price_opp; idr = (1/draw_odds) if a draw exists else 0; ib / (ib + io + idr)', requires='both prices, and draw_odds for three-way markets', resolves='0.00', note='THE DENOMINATOR MUST INCLUDE THE DRAW in three-way markets or the implied probability is overstated. The RESIDUAL (outcome minus this) is what the causal tree splits on, because a 90% strategy at 1.10 has a high win rate and no edge.'), 'u_overround': dict(meaning=\"The book's overround: how much above 100% the implied probabilities sum to.\", formula='1/u_price + 1/u_price_opp + (1/draw_odds if draw else 0)', requires='all prices', resolves='0.00', note=''), 'u_ratio': dict(meaning='Opposing price over backed price \u2014 the live shape of the market.', formula='u_price_opp / u_price.replace(0, np.nan)', requires='both prices', resolves='0.00', note=''), 'u_ratio_open': dict(meaning='The same ratio at kickoff \u2014 the PREMATCH shape.', formula='u_price_opp_open / u_price_open.replace(0, np.nan)', requires='both opening prices', resolves='0.00', note='Fixed before the match starts.'), 'u_ratio_shift': dict(meaning='Live ratio over prematch ratio \u2014 how far the shape has moved.', formula='u_ratio / u_ratio_open.replace(0, np.nan)', requires='u_ratio, u_ratio_open', resolves='0.00', note=''), 'u_fav_backed': dict(meaning='Is the backed side the PREMATCH favourite (1) or not (0)?', formula='(u_price_open <= u_price_opp_open).astype(float)', requires='both opening prices', resolves='0.00', note='Draw cheapest in a three-way market means NO favourite; exclude those matches.'), 'u_lead_flips': dict(meaning='How many times the lead has changed hands so far.', formula='(np.sign(u_margin).groupby(match).diff().fillna(0) != 0).groupby(match).cumsum()', requires='u_margin, match_id', resolves='0.00', note='A contest that has swung repeatedly behaves differently from one that has been one-sided.'), 'u_time_in_lead': dict(meaning='Share of the OBSERVED ticks so far on which the backed side has been ahead.', formula='(u_margin > 0).groupby(match).cumsum() / (d.groupby(match).cumcount() + 1)', requires='u_margin, match_id', resolves='0.00', note='CARRIES FOUR OF FIVE TABLETENNIS STRATEGIES. Strictly backward: it counts only ticks already seen, so its value at any tick is final at that tick.')}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "u_open": {
+  "term": "u_open",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_overround": {
+  "term": "u_overround",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_pace": {
+  "term": "u_pace",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_price": {
+  "term": "u_price",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 3,
+  "definitions": [
+   {
+    "engine_line": 96827,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "recipe",
+    "source": "laz_transfer__UNIVERSAL = {'u_remain': 'share of the contest still to play', 'u_elapsed': 'share already played', 'u_margin': 'score margin from the BACKED side', 'u_margin_abs': 'absolute margin', 'u_margin_rate': 'margin per unit of time remaining \u2014 decisiveness', 'u_total': 'combined score so far', 'u_pace': 'combined score per unit elapsed', 'u_since_score': 'SECONDS since the last score change (wall clock; never ticks)', 'u_drought': 'ticks since the last score, over the time remaining', 'u_price': 'live price of the backed side', 'u_price_open': 'that side price at the first valid tick', 'u_drift': 'live price over its own opening price', 'u_drift_opp': 'the same for the opposing side', 'u_drift_gap': 'backed drift minus opposing drift \u2014 who the market is leaving', 'u_trend': 'price change against the previous tick', 'u_vol': 'rolling price volatility', 'u_vf': 'vig-free implied probability of the backed side', 'u_overround': 'book overround', 'u_ratio': 'opposing price over backed price', 'u_ratio_open': 'the same at kickoff \u2014 prematch shape', 'u_ratio_shift': 'live ratio over prematch ratio', 'u_fav_backed': 'is the backed side the prematch favourite', 'u_lead_flips': 'how many times the lead has changed', 'u_time_in_lead': 'share of WALL TIME the backed side has led (never ticks)'}"
+   },
+   {
+    "engine_line": 96882,
+    "enclosing_function": "laz_transfer__build",
+    "enclosing_span": [
+     96834,
+     96913
+    ],
+    "kind": "out_assign",
+    "source": "out['u_price'] = pb.values"
+   },
+   {
+    "engine_line": 98044,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "laz_featdoc__PRIMITIVES = {'u_elapsed': dict(meaning='Share of the contest already played, on [0,1].', formula=\"el = to_numeric(d[elapsed_col]); if el.max()>1.5: el = el / el.groupby(match).transform('max'); el = el.clip(0,1).fillna(0.5)\", requires='an elapsed column (prog / frac) or, failing that, tick position within the match', resolves='0.00 \u2014 observable at every tick', note='If no elapsed column exists, use (cumcount()+1)/size per match. NEVER add a period offset to a cumulative clock: eBasketball minutes are cumulative and doing so armed 70.7% of bets before the period their condition summarised.'), 'u_remain': dict(meaning='Share of the contest still to play.', formula='(1 - u_elapsed).clip(0.01, 1)', requires='u_elapsed', resolves='0.00', note='Floored at 0.01 so it can be divided by.'), 'u_margin': dict(meaning='Score margin FROM THE BACKED SIDE. Positive means the backed side leads.', formula='np.where(backed_is_home, h_score - a_score, a_score - h_score)', requires='h_score, a_score, and the backed side', resolves='0.00', note='ORIENTATION IS THE POINT. A home-oriented feature describes the wrong player on half the bets; orienting to the backed side took qualifying stacks from 28 to 4,168.'), 'u_margin_abs': dict(meaning='Absolute score margin, direction ignored.', formula='np.abs(u_margin)', requires='u_margin', resolves='0.00', note=''), 'u_margin_rate': dict(meaning='Margin per unit of time REMAINING \u2014 how decisive the lead is given the clock. A two-goal lead with 10% left is a different object from the same lead at half-time.', formula='u_margin / (1 - u_elapsed).clip(0.02, 1)', requires='u_margin, u_elapsed', resolves='0.00', note='THE SINGLE MOST PRODUCTIVE CONDITION IN THE BOOK. Underpins the top eFootball strategies (97.0% at odds 1.500) and is monotone in its threshold: 2.0 -> 88.7%, 3.0 -> 93.1%, 4.0 -> 95.8%. It exists in no frame; it is constructed.'), 'u_total': dict(meaning='Combined score so far.', formula='h_score + a_score', requires='h_score, a_score', resolves='0.00', note=''), 'u_pace': dict(meaning='Scoring rate: combined score per unit of elapsed time.', formula='u_total / u_elapsed.clip(0.02, 1)', requires='u_total, u_elapsed', resolves='0.00', note='Early in a match this is volatile; the 0.02 floor prevents a division blow-up.'), 'u_since_score': dict(meaning='Ticks since the last score CHANGE \u2014 a drought counter.', formula='chg = (u_total.groupby(match).diff().fillna(0) != 0); grp = chg.groupby(match).cumsum(); d.groupby([match, grp]).cumcount()', requires='u_total, match_id', resolves='0.00', note='Backward-looking by construction: it counts what has already happened.'), 'u_drought': dict(meaning='Drought measured against the time left \u2014 a long gap late means more.', formula='u_since_score / (1 - u_elapsed).clip(0.02, 1)', requires='u_since_score, u_elapsed', resolves='0.00', note=''), 'u_price': dict(meaning='Live price of the BACKED side.', formula='np.where(backed_is_home, home_odds, away_odds)', requires='home_odds, away_odds, backed side', resolves='0.00', note=''), 'u_price_open': dict(meaning=\"That side's price at the first valid-odds tick of the match.\", formula=\"u_price.groupby(match).transform('first')\", requires='u_price, match_id', resolves='0.00', note='Prematch and IMMUTABLE once the match starts.'), 'u_drift': dict(meaning='How far the live price has moved from its OWN opening price. >1 means drifted out.', formula='u_price / u_price_open.replace(0, np.nan)', requires='u_price, u_price_open', resolves='0.00', note='The DRIFTED base backs whichever side has the larger drift. Score-agnostic and designation-agnostic; it reached 90.4% in football and was invisible to every score-based base.'), 'u_drift_opp': dict(meaning='The same ratio for the OPPOSING side.', formula='u_price_opp / u_price_opp_open.replace(0, np.nan)', requires='opposing price and its open', resolves='0.00', note=''), 'u_drift_gap': dict(meaning='Backed drift minus opposing drift \u2014 which side the market is leaving behind.', formula='u_drift - u_drift_opp', requires='u_drift, u_drift_opp', resolves='0.00', note=''), 'u_trend': dict(meaning='Percentage price change against the PREVIOUS tick.', formula='(u_price - u_price.groupby(match).shift(1)) / u_price.groupby(match).shift(1).replace(0,np.nan) * 100', requires='u_price, match_id', resolves='0.00', note='Backward: it compares to a tick already seen.'), 'u_vol': dict(meaning='Rolling volatility of the backed price over the last 10 ticks.', formula='u_price.groupby(match).transform(lambda s: s.rolling(10, min_periods=3).std())', requires='u_price, match_id', resolves='0.00', note='min_periods=3 so it is NaN until three ticks exist rather than silently zero.'), 'u_vf': dict(meaning=\"VIG-FREE implied probability of the backed side \u2014 the market's honest price.\", formula='ib = 1/u_price; io = 1/u_price_opp; idr = (1/draw_odds) if a draw exists else 0; ib / (ib + io + idr)', requires='both prices, and draw_odds for three-way markets', resolves='0.00', note='THE DENOMINATOR MUST INCLUDE THE DRAW in three-way markets or the implied probability is overstated. The RESIDUAL (outcome minus this) is what the causal tree splits on, because a 90% strategy at 1.10 has a high win rate and no edge.'), 'u_overround': dict(meaning=\"The book's overround: how much above 100% the implied probabilities sum to.\", formula='1/u_price + 1/u_price_opp + (1/draw_odds if draw else 0)', requires='all prices', resolves='0.00', note=''), 'u_ratio': dict(meaning='Opposing price over backed price \u2014 the live shape of the market.', formula='u_price_opp / u_price.replace(0, np.nan)', requires='both prices', resolves='0.00', note=''), 'u_ratio_open': dict(meaning='The same ratio at kickoff \u2014 the PREMATCH shape.', formula='u_price_opp_open / u_price_open.replace(0, np.nan)', requires='both opening prices', resolves='0.00', note='Fixed before the match starts.'), 'u_ratio_shift': dict(meaning='Live ratio over prematch ratio \u2014 how far the shape has moved.', formula='u_ratio / u_ratio_open.replace(0, np.nan)', requires='u_ratio, u_ratio_open', resolves='0.00', note=''), 'u_fav_backed': dict(meaning='Is the backed side the PREMATCH favourite (1) or not (0)?', formula='(u_price_open <= u_price_opp_open).astype(float)', requires='both opening prices', resolves='0.00', note='Draw cheapest in a three-way market means NO favourite; exclude those matches.'), 'u_lead_flips': dict(meaning='How many times the lead has changed hands so far.', formula='(np.sign(u_margin).groupby(match).diff().fillna(0) != 0).groupby(match).cumsum()', requires='u_margin, match_id', resolves='0.00', note='A contest that has swung repeatedly behaves differently from one that has been one-sided.'), 'u_time_in_lead': dict(meaning='Share of the OBSERVED ticks so far on which the backed side has been ahead.', formula='(u_margin > 0).groupby(match).cumsum() / (d.groupby(match).cumcount() + 1)', requires='u_margin, match_id', resolves='0.00', note='CARRIES FOUR OF FIVE TABLETENNIS STRATEGIES. Strictly backward: it counts only ticks already seen, so its value at any tick is final at that tick.')}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "u_price_open": {
+  "term": "u_price_open",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_ratio_open": {
+  "term": "u_ratio_open",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_ratio_shift": {
+  "term": "u_ratio_shift",
+  "verdict": "DEFINED_IN_ENGINE",
+  "buildable": true,
+  "n_define_sites": 4,
+  "definitions": [
+   {
+    "engine_line": 91460,
+    "enclosing_function": "laz_featuregen__term_lines",
+    "enclosing_span": [
+     91375,
+     91583
+    ],
+    "kind": "out_assign",
+    "source": "'u_ratio_shift': \"out['u_ratio_shift'] = (out['u_ratio'] / max(_latch0(st, 'u_ratio', out['u_ratio']), 1e-09)) if not _isnan(out['u_ratio']) else np.nan\","
+   },
+   {
+    "engine_line": 96827,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "recipe",
+    "source": "laz_transfer__UNIVERSAL = {'u_remain': 'share of the contest still to play', 'u_elapsed': 'share already played', 'u_margin': 'score margin from the BACKED side', 'u_margin_abs': 'absolute margin', 'u_margin_rate': 'margin per unit of time remaining \u2014 decisiveness', 'u_total': 'combined score so far', 'u_pace': 'combined score per unit elapsed', 'u_since_score': 'SECONDS since the last score change (wall clock; never ticks)', 'u_drought': 'ticks since the last score, over the time remaining', 'u_price': 'live price of the backed side', 'u_price_open': 'that side price at the first valid tick', 'u_drift': 'live price over its own opening price', 'u_drift_opp': 'the same for the opposing side', 'u_drift_gap': 'backed drift minus opposing drift \u2014 who the market is leaving', 'u_trend': 'price change against the previous tick', 'u_vol': 'rolling price volatility', 'u_vf': 'vig-free implied probability of the backed side', 'u_overround': 'book overround', 'u_ratio': 'opposing price over backed price', 'u_ratio_open': 'the same at kickoff \u2014 prematch shape', 'u_ratio_shift': 'live ratio over prematch ratio', 'u_fav_backed': 'is the backed side the prematch favourite', 'u_lead_flips': 'how many times the lead has changed', 'u_time_in_lead': 'share of WALL TIME the backed side has led (never ticks)'}"
+   },
+   {
+    "engine_line": 96897,
+    "enclosing_function": "laz_transfer__build",
+    "enclosing_span": [
+     96834,
+     96913
+    ],
+    "kind": "out_assign",
+    "source": "out['u_ratio_shift'] = (po / pb.replace(0, np.nan) / (oo / ob.replace(0, np.nan)).replace(0, np.nan)).values"
+   },
+   {
+    "engine_line": 98044,
+    "enclosing_function": "<module>",
+    "enclosing_span": null,
+    "kind": "provenance",
+    "source": "laz_featdoc__PRIMITIVES = {'u_elapsed': dict(meaning='Share of the contest already played, on [0,1].', formula=\"el = to_numeric(d[elapsed_col]); if el.max()>1.5: el = el / el.groupby(match).transform('max'); el = el.clip(0,1).fillna(0.5)\", requires='an elapsed column (prog / frac) or, failing that, tick position within the match', resolves='0.00 \u2014 observable at every tick', note='If no elapsed column exists, use (cumcount()+1)/size per match. NEVER add a period offset to a cumulative clock: eBasketball minutes are cumulative and doing so armed 70.7% of bets before the period their condition summarised.'), 'u_remain': dict(meaning='Share of the contest still to play.', formula='(1 - u_elapsed).clip(0.01, 1)', requires='u_elapsed', resolves='0.00', note='Floored at 0.01 so it can be divided by.'), 'u_margin': dict(meaning='Score margin FROM THE BACKED SIDE. Positive means the backed side leads.', formula='np.where(backed_is_home, h_score - a_score, a_score - h_score)', requires='h_score, a_score, and the backed side', resolves='0.00', note='ORIENTATION IS THE POINT. A home-oriented feature describes the wrong player on half the bets; orienting to the backed side took qualifying stacks from 28 to 4,168.'), 'u_margin_abs': dict(meaning='Absolute score margin, direction ignored.', formula='np.abs(u_margin)', requires='u_margin', resolves='0.00', note=''), 'u_margin_rate': dict(meaning='Margin per unit of time REMAINING \u2014 how decisive the lead is given the clock. A two-goal lead with 10% left is a different object from the same lead at half-time.', formula='u_margin / (1 - u_elapsed).clip(0.02, 1)', requires='u_margin, u_elapsed', resolves='0.00', note='THE SINGLE MOST PRODUCTIVE CONDITION IN THE BOOK. Underpins the top eFootball strategies (97.0% at odds 1.500) and is monotone in its threshold: 2.0 -> 88.7%, 3.0 -> 93.1%, 4.0 -> 95.8%. It exists in no frame; it is constructed.'), 'u_total': dict(meaning='Combined score so far.', formula='h_score + a_score', requires='h_score, a_score', resolves='0.00', note=''), 'u_pace': dict(meaning='Scoring rate: combined score per unit of elapsed time.', formula='u_total / u_elapsed.clip(0.02, 1)', requires='u_total, u_elapsed', resolves='0.00', note='Early in a match this is volatile; the 0.02 floor prevents a division blow-up.'), 'u_since_score': dict(meaning='Ticks since the last score CHANGE \u2014 a drought counter.', formula='chg = (u_total.groupby(match).diff().fillna(0) != 0); grp = chg.groupby(match).cumsum(); d.groupby([match, grp]).cumcount()', requires='u_total, match_id', resolves='0.00', note='Backward-looking by construction: it counts what has already happened.'), 'u_drought': dict(meaning='Drought measured against the time left \u2014 a long gap late means more.', formula='u_since_score / (1 - u_elapsed).clip(0.02, 1)', requires='u_since_score, u_elapsed', resolves='0.00', note=''), 'u_price': dict(meaning='Live price of the BACKED side.', formula='np.where(backed_is_home, home_odds, away_odds)', requires='home_odds, away_odds, backed side', resolves='0.00', note=''), 'u_price_open': dict(meaning=\"That side's price at the first valid-odds tick of the match.\", formula=\"u_price.groupby(match).transform('first')\", requires='u_price, match_id', resolves='0.00', note='Prematch and IMMUTABLE once the match starts.'), 'u_drift': dict(meaning='How far the live price has moved from its OWN opening price. >1 means drifted out.', formula='u_price / u_price_open.replace(0, np.nan)', requires='u_price, u_price_open', resolves='0.00', note='The DRIFTED base backs whichever side has the larger drift. Score-agnostic and designation-agnostic; it reached 90.4% in football and was invisible to every score-based base.'), 'u_drift_opp': dict(meaning='The same ratio for the OPPOSING side.', formula='u_price_opp / u_price_opp_open.replace(0, np.nan)', requires='opposing price and its open', resolves='0.00', note=''), 'u_drift_gap': dict(meaning='Backed drift minus opposing drift \u2014 which side the market is leaving behind.', formula='u_drift - u_drift_opp', requires='u_drift, u_drift_opp', resolves='0.00', note=''), 'u_trend': dict(meaning='Percentage price change against the PREVIOUS tick.', formula='(u_price - u_price.groupby(match).shift(1)) / u_price.groupby(match).shift(1).replace(0,np.nan) * 100', requires='u_price, match_id', resolves='0.00', note='Backward: it compares to a tick already seen.'), 'u_vol': dict(meaning='Rolling volatility of the backed price over the last 10 ticks.', formula='u_price.groupby(match).transform(lambda s: s.rolling(10, min_periods=3).std())', requires='u_price, match_id', resolves='0.00', note='min_periods=3 so it is NaN until three ticks exist rather than silently zero.'), 'u_vf': dict(meaning=\"VIG-FREE implied probability of the backed side \u2014 the market's honest price.\", formula='ib = 1/u_price; io = 1/u_price_opp; idr = (1/draw_odds) if a draw exists else 0; ib / (ib + io + idr)', requires='both prices, and draw_odds for three-way markets', resolves='0.00', note='THE DENOMINATOR MUST INCLUDE THE DRAW in three-way markets or the implied probability is overstated. The RESIDUAL (outcome minus this) is what the causal tree splits on, because a 90% strategy at 1.10 has a high win rate and no edge.'), 'u_overround': dict(meaning=\"The book's overround: how much above 100% the implied probabilities sum to.\", formula='1/u_price + 1/u_price_opp + (1/draw_odds if draw else 0)', requires='all prices', resolves='0.00', note=''), 'u_ratio': dict(meaning='Opposing price over backed price \u2014 the live shape of the market.', formula='u_price_opp / u_price.replace(0, np.nan)', requires='both prices', resolves='0.00', note=''), 'u_ratio_open': dict(meaning='The same ratio at kickoff \u2014 the PREMATCH shape.', formula='u_price_opp_open / u_price_open.replace(0, np.nan)', requires='both opening prices', resolves='0.00', note='Fixed before the match starts.'), 'u_ratio_shift': dict(meaning='Live ratio over prematch ratio \u2014 how far the shape has moved.', formula='u_ratio / u_ratio_open.replace(0, np.nan)', requires='u_ratio, u_ratio_open', resolves='0.00', note=''), 'u_fav_backed': dict(meaning='Is the backed side the PREMATCH favourite (1) or not (0)?', formula='(u_price_open <= u_price_opp_open).astype(float)', requires='both opening prices', resolves='0.00', note='Draw cheapest in a three-way market means NO favourite; exclude those matches.'), 'u_lead_flips': dict(meaning='How many times the lead has changed hands so far.', formula='(np.sign(u_margin).groupby(match).diff().fillna(0) != 0).groupby(match).cumsum()', requires='u_margin, match_id', resolves='0.00', note='A contest that has swung repeatedly behaves differently from one that has been one-sided.'), 'u_time_in_lead': dict(meaning='Share of the OBSERVED ticks so far on which the backed side has been ahead.', formula='(u_margin > 0).groupby(match).cumsum() / (d.groupby(match).cumcount() + 1)', requires='u_margin, match_id', resolves='0.00', note='CARRIES FOUR OF FIVE TABLETENNIS STRATEGIES. Strictly backward: it counts only ticks already seen, so its value at any tick is final at that tick.')}"
+   }
+  ],
+  "blocked_reason": ""
+ },
+ "u_time_in_lead": {
+  "term": "u_time_in_lead",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_trend": {
+  "term": "u_trend",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_vel_t": {
+  "term": "u_vel_t",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_velocity": {
+  "term": "u_velocity",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_vf": {
+  "term": "u_vf",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "u_vol": {
+  "term": "u_vol",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ },
+ "wall_min": {
+  "term": "wall_min",
+  "verdict": "LINEAGE_BUILDABLE",
+  "buildable": true,
+  "n_define_sites": 0,
+  "definitions": [],
+  "blocked_reason": "",
+  "note": "the workbook lineage sheet carried this term's arithmetic"
+ }
+}

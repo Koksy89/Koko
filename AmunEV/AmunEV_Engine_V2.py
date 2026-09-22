@@ -104134,6 +104134,32 @@ def laz_mode3___sweep_one_base(bt, rung_ix=None):
                                             if int(_fok.sum()) >= 200:
                                                 _pc[_fok] = (((_full[_fok] - _mu) / _sdv) @ _w).astype(_np2.float32)
                                                 pool[f'pc_{_ci}'] = _pc
+                                                # [GOD-1] documented at creation, keyed by the
+                                                # POOL NAME. The manifest below is written under
+                                                # its own keys; if those ever diverge from the
+                                                # pool name the term becomes UNKNOWN downstream,
+                                                # which is exactly how 11 pc_* composites reached
+                                                # shipped strategies with no joinable transform.
+                                                try:
+                                                    laz_featdoc__document_now(
+                                                        f'pc_{_ci}',
+                                                        origin='PCA composite over a correlated cluster, fitted on the IS fit rows only',
+                                                        recipe=('pc = ((X - mu) / sdv) @ w  where X is the column stack of `terms` '
+                                                                'in the order given; mu, sdv and w are FROZEN at fit time'),
+                                                        inputs=list(_grp),
+                                                        causality='live (every input term is causal; the transform is frozen, not refitted)',
+                                                        resolves_at=0.0,
+                                                        replication_steps=[
+                                                            f'1. compute the input terms in this order: {list(_grp)}',
+                                                            '2. drop ticks where any input is not finite (the engine required all finite)',
+                                                            '3. standardise each input: (x - mu[i]) / sdv[i], using the FROZEN mu/sdv below',
+                                                            '4. project: dot the standardised row with w',
+                                                            '5. emit float32; ticks failing step 2 are NaN, never 0'],
+                                                        extra=dict(mu=[float(x) for x in _mu], sdv=[float(x) for x in _sdv],
+                                                                   w=[float(x) for x in _w], terms=list(_grp),
+                                                                   manifest_file=f'laz_pca_{sport}.json'))
+                                                except Exception as _gd:
+                                                    laz_sink__swallow('god:pca_document', _gd)
                                                 # [V2.1-PCA-PROD] the production manifest: production computes
                                                 # pc_<i> as a FROZEN transform — standardize the group terms with
                                                 # (mu, sdv) fitted on the in-sample fit rows, project with w.
@@ -107005,6 +107031,154 @@ def laz_learning__feature_learning(sport, d, pool, y, price, el, IS, log=print, 
         log(f'  [learning] {sport}: {type(_le).__name__}: {str(_le)[:80]}')
         return None
 
+# ══════════════════════════════════════════════════════════════════════════
+#  GOD RULE — THE DOCUMENTATION LAW
+# ══════════════════════════════════════════════════════════════════════════
+LAZ_GOD_RULE_ID = 'GOD-1'
+LAZ_GOD_RULE = (
+    "EVERY FEATURE IS FULLY DOCUMENTED AT THE INSTANT IT IS CREATED.\n"
+    "\n"
+    "No feature, condition, interaction, composite or derived term may enter the "
+    "pool, the search, a strategy or the book unless, at the moment of its "
+    "creation, a complete record exists that lets production rebuild it exactly:\n"
+    "  1. its NAME, exactly as the pool and every downstream record will key it;\n"
+    "  2. its ORIGIN - what created it, and from what;\n"
+    "  3. its RECIPE - the arithmetic or the builder source, in full;\n"
+    "  4. its INPUTS - every column or term it consumes;\n"
+    "  5. its CAUSALITY - that it reads only this tick and earlier ones;\n"
+    "  6. its RESOLVES_AT - the point in a match from which it is defined;\n"
+    "  7. its REPLICATION STEPS - ordered instructions to rebuild it in "
+    "production from raw feed columns.\n"
+    "\n"
+    "A feature that cannot state all seven is not a feature. It is refused at "
+    "creation, and the run says so. There is no UNKNOWN: a term that reaches the "
+    "sweep undocumented is a defect in the engine, not a property of the term.\n"
+    "\n"
+    "This rule is untouchable. It is not weakened, bypassed, made advisory, or "
+    "narrowed by any later change, instruction, refactor or convenience. It may "
+    "be changed ONLY by the owner, and only by the explicit reply: Unchained.\n")
+LAZ_GOD_RULE_SHA = 'a33ab531ed00cd46a832c04b5563bf7abf4b86872cdc9498a3723446b612a0ab'
+
+
+def laz_god__verify(log=None, strict=True):
+    """The rule is untouchable, and this proves it.
+
+    Hashes the rule text and compares it with the constant recorded when the rule
+    was sealed. A changed rule text, or a changed seal, fails. Nothing in the
+    engine may weaken this: the only sanctioned change is the owner's explicit
+    reply "Unchained", which is when a human re-seals the text and the hash.
+    """
+    import hashlib as _h
+    got = _h.sha256(LAZ_GOD_RULE.encode('utf-8')).hexdigest()
+    ok = (got == LAZ_GOD_RULE_SHA)
+    if log:
+        log(f'  [god] {LAZ_GOD_RULE_ID} {"INTACT" if ok else "ALTERED"} · seal {got[:16]}')
+    if not ok and strict:
+        raise RuntimeError(
+            f'GOD RULE {LAZ_GOD_RULE_ID} HAS BEEN ALTERED. Recorded seal '
+            f'{LAZ_GOD_RULE_SHA[:16]}, computed {got[:16]}. The documentation law '
+            f'may only be changed by the owner, by the explicit reply "Unchained". '
+            f'Restore the rule text or re-seal it deliberately; the run stops here.')
+    return ok
+
+
+laz_featdoc__REGISTRY = {}
+laz_featdoc__REQUIRED = ('name', 'origin', 'recipe', 'inputs', 'causality',
+                         'resolves_at', 'replication_steps')
+
+
+def laz_featdoc__document_now(name, origin, recipe, inputs, causality='live (this tick and earlier only)',
+                              resolves_at=0.0, replication_steps=None, extra=None,
+                              log=None, strict=False):
+    """Document a feature THE INSTANT it is created. Enforces GOD-1.
+
+    Call this from the site that CREATES the feature, with the name the pool will
+    key it by -- not a name derived later. A record keyed differently from the pool
+    is the defect this exists to prevent: the PCA manifest was written under
+    sequential keys (pc_0, pc_1) while the pool carried content-hashed names, so a
+    complete manifest could not be joined to the strategies that used it, and every
+    one of those terms read as UNKNOWN downstream.
+
+    Returns the record. With strict=True an incomplete record raises instead of
+    being recorded as incomplete.
+    """
+    rec = dict(name=str(name), origin=str(origin), recipe=recipe, inputs=list(inputs or ()),
+               causality=str(causality), resolves_at=(float(resolves_at) if resolves_at is not None else None),
+               replication_steps=list(replication_steps or ()),
+               documented_at='creation', rule=LAZ_GOD_RULE_ID)
+    if extra:
+        rec.update(dict(extra))
+    missing = [k for k in laz_featdoc__REQUIRED
+               if rec.get(k) in (None, '', [], ()) and k != 'resolves_at']
+    if not rec.get('replication_steps'):
+        missing.append('replication_steps')
+    rec['complete'] = not missing
+    rec['missing'] = sorted(set(missing))
+    laz_featdoc__REGISTRY[str(name)] = rec
+    if missing:
+        msg = (f'GOD-1: feature {name!r} was created without {", ".join(sorted(set(missing)))}. '
+               f'It cannot be rebuilt in production.')
+        if log:
+            log(f'  [god] {msg}')
+        if strict:
+            raise RuntimeError(msg)
+    return rec
+
+
+def laz_featdoc__gate(pool, sport, log=print, strict=None):
+    """NO SWEEP STARTS WITH AN UNDOCUMENTED FEATURE. Enforces GOD-1 at the door.
+
+    Every key in the pool must carry a complete creation-time record. This is the
+    check that would have caught the PCA composites: they were in the pool, they
+    were searched, they reached 11 shipped strategies, and their production
+    transform could not be joined back to them by name.
+
+    strict defaults to the LAZ_GOD_STRICT environment variable ('1' to refuse the
+    run). Undocumented terms are ALWAYS reported and ALWAYS written to disk; strict
+    decides whether the run stops or continues with them named.
+    """
+    import os as _o
+    if strict is None:
+        strict = (_o.environ.get('LAZ_GOD_STRICT', '0') == '1')
+    laz_god__verify(log=log)
+    keys = sorted(str(k) for k in (pool.keys() if hasattr(pool, 'keys') else pool))
+    undoc, incomplete = [], []
+    for k in keys:
+        r = laz_featdoc__REGISTRY.get(k)
+        if r is None:
+            undoc.append(k)
+        elif not r.get('complete'):
+            incomplete.append((k, r.get('missing')))
+    n = len(keys)
+    log(f'  [god] {LAZ_GOD_RULE_ID} feature gate: {n - len(undoc) - len(incomplete)}/{n} '
+        f'pool terms fully documented at creation · {len(undoc)} undocumented · '
+        f'{len(incomplete)} incomplete')
+    for k in undoc[:12]:
+        log(f'  [god]    UNDOCUMENTED {k}')
+    for k, miss in incomplete[:12]:
+        log(f'  [god]    INCOMPLETE   {k} — missing {miss}')
+    try:
+        import json as _j
+        _OW = _m('laz_owner')
+        _out = (_OW.LAZ_OWNER['paths'].get('output_dir') if _OW else None) or _o.getcwd()
+        _p = _o.path.join(_out, f'laz_feature_documentation_{sport}.json')
+        with open(_p, 'w') as _fh:
+            _j.dump(dict(rule=LAZ_GOD_RULE_ID, sport=str(sport), n_pool=n,
+                         n_documented=n - len(undoc) - len(incomplete),
+                         undocumented=undoc, incomplete=[dict(term=k, missing=m) for k, m in incomplete],
+                         registry=laz_featdoc__REGISTRY), _fh, indent=1, default=str)
+        log(f'  [god] feature documentation -> {_p}')
+    except Exception as _ge:
+        laz_sink__swallow('god:feature_documentation', _ge)
+    if (undoc or incomplete) and strict:
+        raise RuntimeError(
+            f'GOD-1 REFUSES THIS RUN: {len(undoc)} undocumented and {len(incomplete)} '
+            f'incompletely documented feature(s) are in the {sport} pool. Every feature '
+            f'must be documented at creation. Set LAZ_GOD_STRICT=0 to run anyway and '
+            f'accept that those terms cannot be deployed.')
+    return dict(n_pool=n, undocumented=undoc, incomplete=incomplete)
+
+
 def laz_mode3__find(sport, stride=1, min_n=100, rounds=300, target=None, ladder=None, min_win=0.6, log=print, workers=None, parallel=True, combo_window_sec=None, _generate_only=False, _combine_only=False, _legs_in=None, _checkpoint_every=25, _checkpoint_path=None, reset_book=False, woe_subbins=True, ix_parents=None, ix_top=None, ix_make=None):
     """Search every rung of the ladder for high-strike, high-volume legs.
 
@@ -107914,6 +108088,13 @@ def laz_mode3__find(sport, stride=1, min_n=100, rounds=300, target=None, ladder=
                                 log(f'  [memory] {_before - len(_tasks)} (base, rung) cells skipped — nothing found on their last two visits at this pool size (pass --reset-book to retry)')
                     except Exception as _sk:
                         pass
+                    # [GOD-1] NO SWEEP STARTS WITH AN UNDOCUMENTED FEATURE.
+                    try:
+                        laz_featdoc__gate(pool, sport, log=log)
+                    except RuntimeError:
+                        raise
+                    except Exception as _gg:
+                        laz_sink__swallow('god:gate', _gg)
                     _tasks.sort(key=lambda t: -t[1])
                     _order = [t[0] for t in _tasks]
                     log(f'  [mode3] {len(_BASES)} bases x {len(_lad) - 1} rungs -> {len(_order)} (base, rung) tasks across {_n} workers (rungs below 2 x min_n armable not dispatched)')

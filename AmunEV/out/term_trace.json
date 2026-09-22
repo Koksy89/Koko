@@ -1,0 +1,783 @@
+{
+ "abs_margin_per_remaining_s": {
+  "term": "abs_margin_per_remaining_s",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 2,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 105851,
+    "text": "'abs_margin_per_remaining_s': _f(lambda C: np.where(C['remain_s'] > 0, np.abs(C['sd']) / np.maximum(C['remain_s'], 1), np.nan), 'elapsed', False, 'moneyline', 'side-agnostic form for trailer bases', 'MARGIN_RATE'),"
+   }
+  ]
+ },
+ "both_scored": {
+  "term": "both_scored",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 3,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 95571,
+    "text": "laz_everything__FULL_DERIVED = {'leader_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'loser_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'leader_price': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'trailer_price': lambda C, M: np.where(C['sd'] > 0, C['ao'], n"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 105907,
+    "text": "'both_scored':             _f(lambda C: ((C['hs'] > 0) & (C['as'] > 0)).astype(float), 'tick', False, 'btts', 'BTTS already landed', 'structure'),"
+   }
+  ]
+ },
+ "clean_sheet": {
+  "term": "clean_sheet",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 8,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 95571,
+    "text": "laz_everything__FULL_DERIVED = {'leader_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'loser_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'leader_price': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'trailer_price': lambda C, M: np.where(C['sd'] > 0, C['ao'], n"
+   }
+  ]
+ },
+ "home_pace": {
+  "term": "home_pace",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 11,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 105884,
+    "text": "'home_pace':               _f(lambda C: np.where(C['el'] > 0.05, C['hs'] / C['el'], np.nan), 'elapsed', False, 'home_total', 'home projected total', 'PACE_TOTAL'),"
+   }
+  ]
+ },
+ "is_trailer": {
+  "term": "is_trailer",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 1,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 95180,
+    "text": "laz_everything__BUILDERS = {'efb_prog': lambda P, C: C['el'], 'cb_prog': lambda P, C: C['el'], 'prog_t': lambda P, C: C['el'], 'ebb_prog': lambda P, C: C['el'], 'ten_prog': lambda P, C: C['el'], 'prog': lambda P, C: C['el'], 'progress': lambda P, C: C['el'], 'minute': lambda P, C: C['el'] * laz_everything___clk(C) if laz_everything___clk(C) is not None else None, 'ten_minute': lambda P, C: C['el']"
+   }
+  ]
+ },
+ "lead_changes_300s": {
+  "term": "lead_changes_300s",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 3,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 105854,
+    "text": "'lead_changes_300s':       _f(lambda C: C['lead_changes_300'], 'event', True, 'moneyline', 'volatile matches misprice the favourite', 'structure'),"
+   }
+  ]
+ },
+ "lead_changes_total": {
+  "term": "lead_changes_total",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 2,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 106318,
+    "text": "'lead_changes_total':      _f(lambda C: pd.Series(C['lead_change'].astype(int)).groupby(C['mid']).cumsum().values, 'event', True, 'match_ml', 'lead changes so far in the match', 'structure'),"
+   }
+  ]
+ },
+ "lead_vs_prematch_gap": {
+  "term": "lead_vs_prematch_gap",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 2,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 105864,
+    "text": "'lead_vs_prematch_gap':    _f(lambda C: np.where(C['sd'] != 0, np.abs(C['imp_h'] - C['imp_a']) * np.sign(C['sd']) * np.where(C['pm_fav'] == 'home', 1, -1), np.nan), 'tick', False, 'moneyline', 'how far the lead contradicts the pre-match view', 'structure'),"
+   }
+  ]
+ },
+ "leader_drift": {
+  "term": "leader_drift",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 3,
+  "n_mentions": 8,
+  "sites": [
+   {
+    "kind": "put_call",
+    "line": 98930,
+    "text": "put('leader_drift', lo / g('pm_ratio').replace(0, np.nan))"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106316,
+    "text": "'leader_drift':            _f(lambda C: np.where(C['sd'] > 0, C['drift_h'], np.where(C['sd'] < 0, C['drift_a'], np.nan)), 'tick', False, 'match_ml', 'how far the leader has shortened from open', 'DRIFT'),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106345,
+    "text": "'leader_drift':            _f(lambda C: np.where(C['sd'] > 0, C['drift_h'], np.where(C['sd'] < 0, C['drift_a'], np.nan)), 'tick', False, 'match_ml', 'leader shortening from open', 'DRIFT'),"
+   }
+  ]
+ },
+ "leader_implied_gap": {
+  "term": "leader_implied_gap",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 5,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 106313,
+    "text": "'leader_implied_gap':      _f(lambda C: np.where(C['sd'] > 0, C['imp_h'] - C['imp_a'], np.where(C['sd'] < 0, C['imp_a'] - C['imp_h'], np.nan)), 'tick', False, 'match_ml', 'how far the market separates leader from trailer', 'MARKET_SHAPE'),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106343,
+    "text": "'leader_implied_gap':      _f(lambda C: np.where(C['sd'] > 0, C['imp_h'] - C['imp_a'], np.where(C['sd'] < 0, C['imp_a'] - C['imp_h'], np.nan)), 'tick', False, 'match_ml', 'leader minus trailer implied', 'MARKET_SHAPE'),"
+   }
+  ]
+ },
+ "margin_per_implied": {
+  "term": "margin_per_implied",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 2,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 106314,
+    "text": "'margin_per_implied':      _f(lambda C: np.where(np.isfinite(C['imp_h']), np.abs(C['sd']) / np.maximum(np.where(C['sd'] > 0, C['imp_h'], C['imp_a']), 0.05), np.nan), 'tick', False, 'match_ml', 'margin per unit of implied probability \u2014 a big lead the market still doubts', 'MARKET_SHAPE'),"
+   }
+  ]
+ },
+ "margin_per_possession": {
+  "term": "margin_per_possession",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 4,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 105873,
+    "text": "'margin_per_possession':   _f(lambda C: np.where(C['remain_s'] > 14, C['sd'] / (C['remain_s'] / 14.0), np.nan), 'elapsed', False, 'moneyline', 'lead in possessions', 'structure'),"
+   }
+  ]
+ },
+ "margin_range_300s": {
+  "term": "margin_range_300s",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 2,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 106319,
+    "text": "'margin_range_300s':       _f(lambda C: pd.Series(C['sd']).groupby(C['mid']).transform(lambda z: z.rolling(60, min_periods=1).max() - z.rolling(60, min_periods=1).min()).values, 'event', True, 'match_ml', 'margin volatility over the last ~5 minutes (60 ticks at 5s)', 'structure'),"
+   }
+  ]
+ },
+ "needed_rate_for_over": {
+  "term": "needed_rate_for_over",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 4,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 106301,
+    "text": "'needed_rate_for_over':    _f(lambda C: np.where(C['remain_s'] > 30, (C['g']('total_points_handicap') - C['tot']) / (C['remain_s'] / 60.0), np.nan) if C['g']('total_points_handicap') is not None else None, 'elapsed', False, 'match_total', 'points per minute still needed for the over', 'LINE'),"
+   }
+  ]
+ },
+ "open_vs_now_lead": {
+  "term": "open_vs_now_lead",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 5,
+  "sites": [
+   {
+    "kind": "provenance",
+    "line": 106385,
+    "text": "'open_vs_now_lead':    dict(cls='STATE',      use='BOTH',  kf='tick',    formula='leader\\'s opening price - p_lead', why='LIVE_CERTAINTY', note='the same move in price units'),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106446,
+    "text": "'open_vs_now_lead':    _f(lambda C: np.where(C['sd'] > 0, C['open_h'] - C['ho'], np.where(C['sd'] < 0, C['open_a'] - C['ao'], np.nan)), 'tick', False, 'match_ml', 'the leader\\'s price move in price units', 'review: STATE'),"
+   }
+  ]
+ },
+ "overround_now": {
+  "term": "overround_now",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 3,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 105858,
+    "text": "'overround_now':           _f(lambda C: C['imp_h'] + C['imp_a'] + (np.nan_to_num(C['imp_d']) if C.get('imp_d') is not None else 0), 'tick', False, 'moneyline', 'book uncertainty', 'MARKET_SHAPE'),"
+   }
+  ]
+ },
+ "pace_last_300s_vs_line": {
+  "term": "pace_last_300s_vs_line",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 3,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 106295,
+    "text": "'pace_last_300s_vs_line':  _f(lambda C: (C['scores_300'] * 2 / 300.0 * C['nominal']) - C['g']('total_points_handicap') if C['nominal'] and C['g']('total_points_handicap') is not None else None, 'event', True, 'match_total', 'recent pace against the line', 'PACE_TOTAL'),"
+   }
+  ]
+ },
+ "pace_vs_line_pct": {
+  "term": "pace_vs_line_pct",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 4,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 106296,
+    "text": "'pace_vs_line_pct':        _f(lambda C: np.where(C['el'] > 0.05, (C['tot'] / C['el']) / C['g']('total_points_handicap') - 1, np.nan) if C['g']('total_points_handicap') is not None else None, 'elapsed', False, 'match_total', 'projected total as a % of the line', 'PACE_TOTAL'),"
+   }
+  ]
+ },
+ "pc_2f7f4d0c": {
+  "term": "pc_2f7f4d0c",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "pc_428f55cf": {
+  "term": "pc_428f55cf",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "pc_4fa6ab33": {
+  "term": "pc_4fa6ab33",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "pc_51f228a2": {
+  "term": "pc_51f228a2",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "pc_6a99ae09": {
+  "term": "pc_6a99ae09",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "pc_7b8a13a5": {
+  "term": "pc_7b8a13a5",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "pc_aa16b0a5": {
+  "term": "pc_aa16b0a5",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "pc_c8103e63": {
+  "term": "pc_c8103e63",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "pc_dc4196fb": {
+  "term": "pc_dc4196fb",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "pc_f3e46219": {
+  "term": "pc_f3e46219",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "pc_fea3bd2c": {
+  "term": "pc_fea3bd2c",
+  "verdict": "PCA_COMPONENT",
+  "n_define_sites": 0,
+  "n_mentions": 0,
+  "sites": []
+ },
+ "price_move_since_score": {
+  "term": "price_move_since_score",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 3,
+  "sites": [
+   {
+    "kind": "out_assign",
+    "line": 91495,
+    "text": "'price_move_since_score': \"out['price_move_since_score'] = (lambda _h: (ho / _h) if (not _isnan(_h) and _h > 0 and not _isnan(ho)) else np.nan)(S.ho_at_last_score(tot, ho))\",   # pool: ho / ho at the last score change (eTennis replay proof failed on it at tick 69)"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 105865,
+    "text": "'price_move_since_score':  _f(lambda C: np.where(C['ho_at_last_score'] > 0, C['ho'] / C['ho_at_last_score'], np.nan) if C.get('ho_at_last_score') is not None else None, 'event', True, 'moneyline', 'has the price digested the last score', 'structure'),"
+   }
+  ]
+ },
+ "prog_period": {
+  "term": "prog_period",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 3,
+  "n_mentions": 11,
+  "sites": [
+   {
+    "kind": "provenance",
+    "line": 82433,
+    "text": "'prog_period': dict(rt=['phase', 'timestamp'], live=\"(seconds since this period began) / (the previous period's observed length in this match, else nominal/periods), clipped 0..1\","
+   },
+   {
+    "kind": "out_assign",
+    "line": 91498,
+    "text": "'prog_period': \"out['prog_period'] = S.period_clock(ph_now, ts_now, _FAMILY, _SPORT_SECONDS, _league_periods(tick))[1]\","
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106472,
+    "text": "'prog_period':         _f(lambda C: C['prog_period'], 'tick', True, 'match_ml', '% of the CURRENT period elapsed: time since this period began over the previous period\\'s observed length in this match (else nominal / periods)', 'observed on this match\\'s own ticks; the owner\\'s \"within X% of the quarter\"'),"
+   }
+  ]
+ },
+ "prog_x_margin": {
+  "term": "prog_x_margin",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 2,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 105867,
+    "text": "'prog_x_margin':           _f(lambda C: C['el'] * C['sd'], 'elapsed', False, 'moneyline', 'a lead weighted by how much of the match it has survived', 'MARGIN_RATE'),"
+   }
+  ]
+ },
+ "rk_dog_odds": {
+  "term": "rk_dog_odds",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 8,
+  "sites": [
+   {
+    "kind": "provenance",
+    "line": 106387,
+    "text": "'rk_dog_odds':         dict(cls='STATE',      use='BOTH',  kf='tick',    formula='max(ho, ao)', why='LIVE_CERTAINTY', note=''),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106448,
+    "text": "'rk_dog_odds':         _f(lambda C: np.maximum(C['ho'], C['ao']), 'tick', False, 'match_ml', 'the live underdog\\'s price', 'review: STATE'),"
+   }
+  ]
+ },
+ "rk_fav_odds": {
+  "term": "rk_fav_odds",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 8,
+  "sites": [
+   {
+    "kind": "provenance",
+    "line": 106386,
+    "text": "'rk_fav_odds':         dict(cls='STATE',      use='BOTH',  kf='tick',    formula='min(ho, ao) \u2014 the live favourite\\'s price', why='LIVE_CERTAINTY', note=''),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106447,
+    "text": "'rk_fav_odds':         _f(lambda C: np.minimum(C['ho'], C['ao']), 'tick', False, 'match_ml', 'the live favourite\\'s price', 'review: STATE'),"
+   }
+  ]
+ },
+ "rk_implied_edge": {
+  "term": "rk_implied_edge",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 6,
+  "sites": [
+   {
+    "kind": "provenance",
+    "line": 106389,
+    "text": "'rk_implied_edge':     dict(cls='STATE',      use='BOTH',  kf='tick',    formula='|1/ho - 1/ao|', why='LIVE_CERTAINTY', note='the implied gap; same family as imbal'),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106450,
+    "text": "'rk_implied_edge':     _f(lambda C: np.abs(C['imp_h'] - C['imp_a']), 'tick', False, 'match_ml', 'the implied gap', 'review: STATE'),"
+   }
+  ]
+ },
+ "rk_lead_off_high": {
+  "term": "rk_lead_off_high",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 5,
+  "sites": [
+   {
+    "kind": "provenance",
+    "line": 106391,
+    "text": "'rk_lead_off_high':    dict(cls='STATE',      use='WOE',   kf='tick',    formula='3.6 - p_lead (distance below the upper rung)', why='LIVE_CERTAINTY', note='rung position from the top'),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106452,
+    "text": "'rk_lead_off_high':    _f(lambda C: 3.6 - np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'tick', False, 'match_ml', 'leader price below the upper rung', 'review: STATE/WOE'),"
+   }
+  ]
+ },
+ "rk_lead_off_low": {
+  "term": "rk_lead_off_low",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 5,
+  "sites": [
+   {
+    "kind": "provenance",
+    "line": 106390,
+    "text": "'rk_lead_off_low':     dict(cls='STATE',      use='WOE',   kf='tick',    formula='p_lead - min_odds (1.4)', why='LIVE_CERTAINTY', note='how far the leader\\'s price sits above the ladder floor; a rung-position variable'),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106451,
+    "text": "'rk_lead_off_low':     _f(lambda C: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)) - 1.4, 'tick', False, 'match_ml', 'leader price above the ladder floor', 'review: STATE/WOE'),"
+   }
+  ]
+ },
+ "rk_odds_ratio": {
+  "term": "rk_odds_ratio",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 6,
+  "sites": [
+   {
+    "kind": "provenance",
+    "line": 106388,
+    "text": "'rk_odds_ratio':       dict(cls='STATE',      use='WOE',   kf='tick',    formula='rk_dog_odds / rk_fav_odds', why='LIVE_CERTAINTY', note='the market\\'s confidence as a ratio; a banding variable'),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106449,
+    "text": "'rk_odds_ratio':       _f(lambda C: np.maximum(C['ho'], C['ao']) / np.minimum(C['ho'], C['ao']), 'tick', False, 'match_ml', 'the market\\'s confidence as a ratio', 'review: STATE/WOE'),"
+   }
+  ]
+ },
+ "scores_300s": {
+  "term": "scores_300s",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 5,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 105856,
+    "text": "'scores_300s':             _f(lambda C: C['scores_300'], 'event', True, 'totals', 'five-minute scoring rate', 'PACE_TOTAL'),"
+   }
+  ]
+ },
+ "scoring_rate": {
+  "term": "scoring_rate",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 8,
+  "sites": [
+   {
+    "kind": "provenance",
+    "line": 106402,
+    "text": "'scoring_rate':        dict(cls='STATE',      use='BOTH',  kf='elapsed', formula='tot / minutes elapsed', why='LIVE_CERTAINTY', note='= current_rate_per_min'),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106460,
+    "text": "'scoring_rate':        _f(lambda C: np.where(C['elapsed_s'] > 60, C['tot'] / (C['elapsed_s'] / 60.0), np.nan), 'elapsed', False, 'match_total', 'points per minute so far', 'review: STATE'),"
+   }
+  ]
+ },
+ "spread_cover_now": {
+  "term": "spread_cover_now",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 3,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 105890,
+    "text": "'spread_cover_now':        _f(lambda C: C['sd'] + C['g']('point_spread_handicap') if C['g']('point_spread_handicap') is not None else None, 'tick', False, 'match_spread', 'current cover margin', 'LINE'),"
+   }
+  ]
+ },
+ "tg_imp_over": {
+  "term": "tg_imp_over",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 1,
+  "sites": [
+   {
+    "kind": "dict_local",
+    "line": 114045,
+    "text": "out = {'tg_line': L, 'tg_now': now, 'tg_to_go': L - now, 'tg_over_px': ov, 'tg_under_px': un, 'tg_imp_over': io, 'tg_imp_under': iu, 'tg_overround': io + iu, 'tg_px_ratio': np.where(un > 1, ov / un, np.nan), 'tg_pace': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan), 'tg_proj_vs_line': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan) - L, 'tg_wall_vs_handicap': num('tg_wall_vs_handi"
+   }
+  ]
+ },
+ "tg_imp_under": {
+  "term": "tg_imp_under",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 7,
+  "sites": [
+   {
+    "kind": "dict_local",
+    "line": 114045,
+    "text": "out = {'tg_line': L, 'tg_now': now, 'tg_to_go': L - now, 'tg_over_px': ov, 'tg_under_px': un, 'tg_imp_over': io, 'tg_imp_under': iu, 'tg_overround': io + iu, 'tg_px_ratio': np.where(un > 1, ov / un, np.nan), 'tg_pace': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan), 'tg_proj_vs_line': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan) - L, 'tg_wall_vs_handicap': num('tg_wall_vs_handi"
+   }
+  ]
+ },
+ "tg_overround": {
+  "term": "tg_overround",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 1,
+  "sites": [
+   {
+    "kind": "dict_formula",
+    "line": 114045,
+    "text": "out = {'tg_line': L, 'tg_now': now, 'tg_to_go': L - now, 'tg_over_px': ov, 'tg_under_px': un, 'tg_imp_over': io, 'tg_imp_under': iu, 'tg_overround': io + iu, 'tg_px_ratio': np.where(un > 1, ov / un, np.nan), 'tg_pace': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan), 'tg_proj_vs_line': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan) - L, 'tg_wall_vs_handicap': num('tg_wall_vs_handi"
+   }
+  ]
+ },
+ "tg_proj_vs_line": {
+  "term": "tg_proj_vs_line",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 4,
+  "sites": [
+   {
+    "kind": "dict_formula",
+    "line": 114045,
+    "text": "out = {'tg_line': L, 'tg_now': now, 'tg_to_go': L - now, 'tg_over_px': ov, 'tg_under_px': un, 'tg_imp_over': io, 'tg_imp_under': iu, 'tg_overround': io + iu, 'tg_px_ratio': np.where(un > 1, ov / un, np.nan), 'tg_pace': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan), 'tg_proj_vs_line': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan) - L, 'tg_wall_vs_handicap': num('tg_wall_vs_handi"
+   }
+  ]
+ },
+ "tg_px_ratio": {
+  "term": "tg_px_ratio",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 1,
+  "n_mentions": 1,
+  "sites": [
+   {
+    "kind": "dict_formula",
+    "line": 114045,
+    "text": "out = {'tg_line': L, 'tg_now': now, 'tg_to_go': L - now, 'tg_over_px': ov, 'tg_under_px': un, 'tg_imp_over': io, 'tg_imp_under': iu, 'tg_overround': io + iu, 'tg_px_ratio': np.where(un > 1, ov / un, np.nan), 'tg_pace': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan), 'tg_proj_vs_line': np.where(el > 0.02, now / np.maximum(el, 0.02), np.nan) - L, 'tg_wall_vs_handicap': num('tg_wall_vs_handi"
+   }
+  ]
+ },
+ "total_line_move": {
+  "term": "total_line_move",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 6,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 106298,
+    "text": "'total_line_move':         _f(lambda C: C['g']('total_points_handicap') - pd.Series(C['g']('total_points_handicap')).groupby(C['mid']).transform('first').values if C['g']('total_points_handicap') is not None else None, 'tick', False, 'match_total', 'how far the line has moved from its open', 'LINE'),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106330,
+    "text": "'total_line_move':         _f(lambda C: C['g']('total_goals_handicap') - pd.Series(C['g']('total_goals_handicap')).groupby(C['mid']).transform('first').values if C['g']('total_goals_handicap') is not None else None, 'tick', False, 'match_total', 'line move from open', 'LINE'),"
+   }
+  ]
+ },
+ "trailer_drift": {
+  "term": "trailer_drift",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 4,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 106315,
+    "text": "'trailer_drift':           _f(lambda C: np.where(C['sd'] > 0, C['drift_a'], np.where(C['sd'] < 0, C['drift_h'], np.nan)), 'tick', False, 'match_ml', 'how far the trailer has drifted from open', 'DRIFT'),"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 106344,
+    "text": "'trailer_drift':           _f(lambda C: np.where(C['sd'] > 0, C['drift_a'], np.where(C['sd'] < 0, C['drift_h'], np.nan)), 'tick', False, 'match_ml', 'trailer drift from open', 'DRIFT'),"
+   }
+  ]
+ },
+ "trailer_price": {
+  "term": "trailer_price",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 2,
+  "sites": [
+   {
+    "kind": "builder_lambda",
+    "line": 95571,
+    "text": "laz_everything__FULL_DERIVED = {'leader_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'loser_odds_rt': lambda C, M: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'leader_price': lambda C, M: np.where(C['sd'] > 0, C['ho'], np.where(C['sd'] < 0, C['ao'], np.nan)), 'trailer_price': lambda C, M: np.where(C['sd'] > 0, C['ao'], n"
+   },
+   {
+    "kind": "builder_lambda",
+    "line": 105862,
+    "text": "'trailer_price':           _f(lambda C: np.where(C['sd'] > 0, C['ao'], np.where(C['sd'] < 0, C['ho'], np.nan)), 'tick', False, 'moneyline', 'what the comeback pays', 'LIVE_TRAILER'),"
+   }
+  ]
+ },
+ "u_drought": {
+  "term": "u_drought",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 3,
+  "n_mentions": 12,
+  "sites": [
+   {
+    "kind": "recipe",
+    "line": 96827,
+    "text": "laz_transfer__UNIVERSAL = {'u_remain': 'share of the contest still to play', 'u_elapsed': 'share already played', 'u_margin': 'score margin from the BACKED side', 'u_margin_abs': 'absolute margin', 'u_margin_rate': 'margin per unit of time remaining \u2014 decisiveness', 'u_total': 'combined score so far', 'u_pace': 'combined score per unit elapsed', 'u_since_score': 'SECONDS since the last score chang"
+   },
+   {
+    "kind": "out_assign",
+    "line": 96879,
+    "text": "out['u_drought'] = (ss / (1 - el).clip(0.02, 1)).values"
+   },
+   {
+    "kind": "provenance",
+    "line": 98044,
+    "text": "laz_featdoc__PRIMITIVES = {'u_elapsed': dict(meaning='Share of the contest already played, on [0,1].', formula=\"el = to_numeric(d[elapsed_col]); if el.max()>1.5: el = el / el.groupby(match).transform('max'); el = el.clip(0,1).fillna(0.5)\", requires='an elapsed column (prog / frac) or, failing that, tick position within the match', resolves='0.00 \u2014 observable at every tick', note='If no elapsed col"
+   }
+  ]
+ },
+ "u_hazard": {
+  "term": "u_hazard",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 2,
+  "n_mentions": 14,
+  "sites": [
+   {
+    "kind": "out_assign",
+    "line": 91507,
+    "text": "'u_hazard': \"out['u_hazard'] = _hazard_lin(out, ho, ao)\","
+   },
+   {
+    "kind": "pool_assign",
+    "line": 97539,
+    "text": "pool['u_hazard'] = lin"
+   }
+  ]
+ },
+ "u_margin_abs": {
+  "term": "u_margin_abs",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 4,
+  "n_mentions": 7,
+  "sites": [
+   {
+    "kind": "out_assign",
+    "line": 91477,
+    "text": "'u_margin_abs': \"out['u_margin_abs'] = abs(sd) if not _isnan(sd) else np.nan\","
+   },
+   {
+    "kind": "recipe",
+    "line": 96827,
+    "text": "laz_transfer__UNIVERSAL = {'u_remain': 'share of the contest still to play', 'u_elapsed': 'share already played', 'u_margin': 'score margin from the BACKED side', 'u_margin_abs': 'absolute margin', 'u_margin_rate': 'margin per unit of time remaining \u2014 decisiveness', 'u_total': 'combined score so far', 'u_pace': 'combined score per unit elapsed', 'u_since_score': 'SECONDS since the last score chang"
+   },
+   {
+    "kind": "out_assign",
+    "line": 96865,
+    "text": "out['u_margin_abs'] = mar.abs().values"
+   },
+   {
+    "kind": "provenance",
+    "line": 98044,
+    "text": "laz_featdoc__PRIMITIVES = {'u_elapsed': dict(meaning='Share of the contest already played, on [0,1].', formula=\"el = to_numeric(d[elapsed_col]); if el.max()>1.5: el = el / el.groupby(match).transform('max'); el = el.clip(0,1).fillna(0.5)\", requires='an elapsed column (prog / frac) or, failing that, tick position within the match', resolves='0.00 \u2014 observable at every tick', note='If no elapsed col"
+   }
+  ]
+ },
+ "u_price": {
+  "term": "u_price",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 3,
+  "n_mentions": 29,
+  "sites": [
+   {
+    "kind": "recipe",
+    "line": 96827,
+    "text": "laz_transfer__UNIVERSAL = {'u_remain': 'share of the contest still to play', 'u_elapsed': 'share already played', 'u_margin': 'score margin from the BACKED side', 'u_margin_abs': 'absolute margin', 'u_margin_rate': 'margin per unit of time remaining \u2014 decisiveness', 'u_total': 'combined score so far', 'u_pace': 'combined score per unit elapsed', 'u_since_score': 'SECONDS since the last score chang"
+   },
+   {
+    "kind": "out_assign",
+    "line": 96882,
+    "text": "out['u_price'] = pb.values"
+   },
+   {
+    "kind": "provenance",
+    "line": 98044,
+    "text": "laz_featdoc__PRIMITIVES = {'u_elapsed': dict(meaning='Share of the contest already played, on [0,1].', formula=\"el = to_numeric(d[elapsed_col]); if el.max()>1.5: el = el / el.groupby(match).transform('max'); el = el.clip(0,1).fillna(0.5)\", requires='an elapsed column (prog / frac) or, failing that, tick position within the match', resolves='0.00 \u2014 observable at every tick', note='If no elapsed col"
+   }
+  ]
+ },
+ "u_ratio_shift": {
+  "term": "u_ratio_shift",
+  "verdict": "DEFINED_IN_ENGINE",
+  "n_define_sites": 4,
+  "n_mentions": 6,
+  "sites": [
+   {
+    "kind": "out_assign",
+    "line": 91460,
+    "text": "'u_ratio_shift': \"out['u_ratio_shift'] = (out['u_ratio'] / max(_latch0(st, 'u_ratio', out['u_ratio']), 1e-09)) if not _isnan(out['u_ratio']) else np.nan\","
+   },
+   {
+    "kind": "recipe",
+    "line": 96827,
+    "text": "laz_transfer__UNIVERSAL = {'u_remain': 'share of the contest still to play', 'u_elapsed': 'share already played', 'u_margin': 'score margin from the BACKED side', 'u_margin_abs': 'absolute margin', 'u_margin_rate': 'margin per unit of time remaining \u2014 decisiveness', 'u_total': 'combined score so far', 'u_pace': 'combined score per unit elapsed', 'u_since_score': 'SECONDS since the last score chang"
+   },
+   {
+    "kind": "out_assign",
+    "line": 96897,
+    "text": "out['u_ratio_shift'] = (po / pb.replace(0, np.nan) / (oo / ob.replace(0, np.nan)).replace(0, np.nan)).values"
+   },
+   {
+    "kind": "provenance",
+    "line": 98044,
+    "text": "laz_featdoc__PRIMITIVES = {'u_elapsed': dict(meaning='Share of the contest already played, on [0,1].', formula=\"el = to_numeric(d[elapsed_col]); if el.max()>1.5: el = el / el.groupby(match).transform('max'); el = el.clip(0,1).fillna(0.5)\", requires='an elapsed column (prog / frac) or, failing that, tick position within the match', resolves='0.00 \u2014 observable at every tick', note='If no elapsed col"
+   }
+  ]
+ }
+}

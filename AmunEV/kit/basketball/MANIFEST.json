@@ -1,0 +1,71 @@
+{
+ "schema": "amunev.deploy_kit/1",
+ "sport": "basketball",
+ "generated_from": {
+  "merged": "production_strategies.json",
+  "term_trace": "term_trace.json",
+  "engine": "AmunEV_Engine_V2.py",
+  "engine_sha256": "69bd4611031f03796489b8cc1aa82d727cf03866b6e6f234d39ad757ab1b9762",
+  "engine_sha256_short": "69bd4611031f0379"
+ },
+ "source_runs": [
+  {
+   "book": "COMBINA_1027.xlsx",
+   "strategies": 175,
+   "validated_headline": 175,
+   "run_utc": "22 Sep 2026 10:27",
+   "contributed_new": 169
+  },
+  {
+   "book": "MODE3_202748.xlsx",
+   "strategies": 142,
+   "validated_headline": 142,
+   "run_utc": "22 Sep 2026 20:27",
+   "contributed_new": 132
+  }
+ ],
+ "counts": {
+  "strategies_total": 301,
+  "deployable": 270,
+  "excluded": 31,
+  "terms_total": 175,
+  "terms_buildable": 164,
+  "terms_blocked": 11
+ },
+ "blocked_terms": [
+  "pc_2f7f4d0c",
+  "pc_428f55cf",
+  "pc_4fa6ab33",
+  "pc_51f228a2",
+  "pc_6a99ae09",
+  "pc_7b8a13a5",
+  "pc_aa16b0a5",
+  "pc_c8103e63",
+  "pc_dc4196fb",
+  "pc_f3e46219",
+  "pc_fea3bd2c"
+ ],
+ "files": [
+  "MANIFEST.json",
+  "strategies.json",
+  "strategies.csv",
+  "features.json",
+  "excluded_strategies.json",
+  "features/<term>.md",
+  "schema.sql",
+  "evaluate.sql",
+  "reference_impl.py",
+  "verify.py",
+  "RUNBOOK.md"
+ ],
+ "guarantees": [
+  "Every term spec quotes the engine source verbatim, with its line number and enclosing function. No recipe is inferred or invented.",
+  "A strategy is in strategies.json only if EVERY term it uses has a quoted engine definition and every condition has a SQL form."
+ ],
+ "limits": [
+  "THRESHOLDS ARE ALREADY ROUNDED IN THE SOURCE WORKBOOKS (e.g. -160.315, 2.2797). Bets rebuilt from these digits will not match the engine bit-exact. Re-export from a run of the current engine, which records thresholds exactly, for bit-exact reproduction.",
+  "NOTHING IN THIS KIT HAS BEEN EXECUTED against a real frame. The arithmetic is quoted from the engine, not verified by running it.",
+  "The price column in evaluate.sql defaults to GREATEST(home_odds, away_odds). Each strategy states its own backed side and price column; override per strategy before going live.",
+  "Settlement is stated per strategy but not implemented here: the kit selects and prices bets, it does not grade them."
+ ]
+}
