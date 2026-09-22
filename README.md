@@ -32,6 +32,10 @@ One file, no package, no dependencies beyond the standard library; Python 3.11 o
     python3 cascade_map.py view out/first
     python3 cascade_map.py trace out/first --scenarios scenarios.json --scenario baseline
 
+Full A-to-Z documentation for that file — every command, every output, every field, the
+version-control workflow and the known gaps — is in
+**[`METATRON_ENGINE.md`](METATRON_ENGINE.md)**.
+
 It is generated from the package by `tools/amalgamate.py`, not written separately, so
 there is no second implementation to drift. `tests/test_amalgamate.py` runs both shapes
 over the fixture corpus and requires their `analyze`, `view` and `trace` output to match

@@ -1,0 +1,689 @@
+# METATRON ENGINE — full documentation
+
+**What it is:** one Python file that reads a Python codebase and draws you a complete,
+drillable map of it — every element, the order things execute in, what feeds what, which
+parts actually drive the final decision, which parts are plugged into nothing, and what
+changed between two versions.
+
+**What it is not:** it is not a trading engine. It analyses **Amun_Engine** and
+**RA_Engine**; it is not either of them, and it never becomes part of them. Nothing it
+does modifies the code it reads.
+
+The codebase is named CASCADE-MAP internally (you will see that word in the source, in
+error messages and in the repository). Metatron is your name for the shipped file. They
+are the same thing.
+
+---
+
+## Table of contents
+
+1. [Requirements and install](#1-requirements-and-install)
+2. [Quickstart](#2-quickstart)
+3. [The four commands](#3-the-four-commands)
+4. [The ideas everything rests on](#4-the-ideas-everything-rests-on)
+5. [What `analyze` actually does, stage by stage](#5-what-analyze-actually-does-stage-by-stage)
+6. [Every output file, explained](#6-every-output-file-explained)
+7. [Reading the numbers it prints](#7-reading-the-numbers-it-prints)
+8. [Findings — the eight things it looks for](#8-findings--the-eight-things-it-looks-for)
+9. [Version control and change impact](#9-version-control-and-change-impact)
+10. [Mode A — watching it run](#10-mode-a--watching-it-run)
+11. [Safety: what it will and will not do](#11-safety-what-it-will-and-will-not-do)
+12. [Known gaps — read this before you rely on something](#12-known-gaps--read-this-before-you-rely-on-something)
+13. [Troubleshooting](#13-troubleshooting)
+14. [How the file itself is built and maintained](#14-how-the-file-itself-is-built-and-maintained)
+15. [Glossary](#15-glossary)
+
+---
+
+## 1. Requirements and install
+
+| | |
+|---|---|
+| Python | 3.11 or newer |
+| Dependencies | none — standard library only |
+| Install | there isn't one; save the file |
+| Network | never used, in any command |
+| Writes | only into the `--out` directory you name |
+
+Save `metatron_engine.py` anywhere — Desktop is fine. Check it runs:
+
+```
+python3 metatron_engine.py --version
+```
+
+Nothing to install, nothing to configure, no virtual environment. That was deliberate:
+a tool you have to set up is a tool you stop using.
+
+---
+
+## 2. Quickstart
+
+```
+python3 metatron_engine.py analyze C:\code\amun_engine --out out\amun
+python3 metatron_engine.py view out\amun
+```
+
+The first command reads Amun and writes the map into `out\amun`. It takes seconds to
+a minute depending on size. **It does not import, execute, evaluate or unpickle a single
+line of your engine** — it reads the text of your files and parses them, the same way
+you would read them, just exhaustively.
+
+The second command turns that map into a single self-contained HTML page and tells you
+where it wrote it. Open it in any browser. It needs no internet and no server.
+
+Do the same for RA into a different folder. The two are analysed independently and never
+mixed — that is by design and is what you asked for.
+
+---
+
+## 3. The four commands
+
+### `analyze` — build the map
+
+```
+python3 metatron_engine.py analyze ROOT --out DIR [options]
+```
+
+| Option | What it does | When you need it |
+|---|---|---|
+| `ROOT` | the folder holding the engine to read | always |
+| `--out DIR` | where to write the map (default `out/latest`) | always, in practice |
+| `--entry ID` | declare an entry point by element id; repeatable | when auto-detection guesses wrong |
+| `--sink ID` | declare a final-decision element by id; repeatable | **strongly recommended** — see below |
+| `--config PATH` | a JSON/config file that wires components by name; repeatable | when your engine names classes/functions in config |
+| `--cache DIR` | keep an incremental cache here | on a large engine you re-analyse often |
+| `--no-gate` | write the map even if the completeness check fails, and exit 0 | rarely; the gate exists for a reason |
+
+**About `--sink`.** A "sink" is where your final decision comes out — the function or
+variable that holds buy/sell/hold, the position size, the order. Everything the tool says
+about *"which code drives the decision"* is measured as *"can this element reach a
+sink"*. If you don't declare one, the tool guesses by name and clearly labels the guess
+as `HEURISTIC` and prints it under **"Detected, NOT confirmed — these are proposals for
+you"**. Declaring the real one with `--sink` turns those proposals into facts and makes
+the reachability answers trustworthy. This is the single highest-value five minutes you
+can spend on setup.
+
+**Exit codes:** `0` fine · `2` you used it wrong · `3` the completeness gate failed
+(artifacts still written) · `4` a Mode A run refused to start.
+
+### `view` — read the map
+
+```
+python3 metatron_engine.py view DIR [--html PATH]
+```
+
+Renders the analysed directory into one offline HTML page (default `DIR/index.html`).
+Everything on that page was produced by `analyze`; the viewer computes nothing of its
+own. That separation is deliberate: if a number on screen looks wrong, it is wrong in the
+data file, and you can go read the data file.
+
+### `diff` — compare two versions
+
+```
+python3 metatron_engine.py diff BEFORE_DIR AFTER_DIR --out DIR
+```
+
+Both arguments are **analysed output directories**, not source folders. See
+[section 9](#9-version-control-and-change-impact).
+
+### `trace` — watch it actually run (Mode A)
+
+```
+python3 metatron_engine.py trace GRAPH_DIR --scenarios FILE.json --scenario NAME --out DIR
+```
+
+This is the only command that executes your code, it only does so inside a containment
+harness, and it refuses to start unless a completed `analyze` map already exists. See
+[section 10](#10-mode-a--watching-it-run).
+
+---
+
+## 4. The ideas everything rests on
+
+Five decisions shape everything else. Knowing them makes the output readable.
+
+### 4.1 Every element has a stable, structural ID
+
+An element is anything nameable: a package, module, class, function, method, property,
+module-level assignment, parameter, import, data file, config key, embedded blob, or
+engineered feature. Each gets an ID built from *where it sits in the structure*, never
+from its position in the file:
+
+```
+amun.features.momentum::RSIBuilder.build
+└─ module ──────────────┘└─ qualified name ─┘
+```
+
+**Why this matters to you:** add a blank line at the top of a file and every line number
+moves, but no ID changes. So a diff between two versions compares *the same function to
+the same function*, not "line 340 to line 340". Version comparison only works because IDs
+are structural.
+
+### 4.2 Every single fact carries its provenance
+
+No fact in the output is bare. Each one records **how** it was established (`method`) and
+**how much weight it carries** (`confidence`), plus the exact file, line and column.
+
+| Confidence | Means | Example |
+|---|---|---|
+| `CERTAIN` | read straight off the parsed code, no inference | a `def` exists at this path |
+| `RESOLVED` | deterministic, exactly one possible answer | an absolute import naming one module |
+| `PROBABLE` | needed an assumption that holds outside pathological cases | `getattr` with a literal name; method dispatch on a known class |
+| `HEURISTIC` | a pattern, name or config-string match — plausible, possibly wrong | a config string that happens to equal a function name |
+| `UNKNOWN` | not resolved; candidates may be listed but none is claimed | a name computed at runtime |
+
+**Confidence composes by the weakest link.** An execution order built on one `HEURISTIC`
+call edge is a `HEURISTIC` ordering no matter how certain the other forty steps were.
+That rule exists so a guess can never be laundered into a fact by passing through enough
+stages.
+
+The twenty resolution methods you will see in the `method` field:
+`AST_DIRECT`, `IMPORT_ABSOLUTE`, `IMPORT_RELATIVE`, `IMPORT_STAR`, `REEXPORT`,
+`SCOPE_LOOKUP`, `MRO_DISPATCH`, `DECORATOR_UNWRAP`, `GETATTR_LITERAL`, `GETATTR_TRACED`,
+`IMPORTLIB_LITERAL`, `REGISTRY_MEMBERSHIP`, `DECORATOR_REGISTRATION`,
+`CONFIG_STRING_MATCH`, `NAME_HEURISTIC`, `DATAFLOW`, `CFG_REACHABILITY`,
+`STRUCTURAL_MATCH`, `RUNTIME_OBSERVED`, `MODEL_PROPOSED`.
+
+### 4.3 Nothing is silently dropped
+
+Anything the tool could not work out is written to `unresolved.jsonl` with its location
+and the reason (`DYNAMIC_NAME`, `MISSING_TARGET`, `SYNTAX_ERROR`, `DECODE_ERROR`,
+`TOO_LARGE`, `AMBIGUOUS`, `ID_COLLISION`, `THIRD_PARTY`, `NOT_EXERCISED`).
+
+**Why this was built in:** a map that quietly omits what it couldn't parse is worse than
+no map, because you will trust it. An engine with 3.9 MB of embedded strategy books and
+compressed blobs inside `.py` files *will* have things the parser cannot follow. You
+need to see that list, not be protected from it.
+
+### 4.4 The same input always produces the same output
+
+Two runs over unchanged code produce byte-identical files: stable IDs, sorted keys, no
+timestamps inside the data (they live only in `run_meta.json`), floats rejected in favour
+of exact representations.
+
+**Why:** it makes `diff` meaningful. If output could wobble between runs, every
+comparison would be full of noise and you would learn to ignore it.
+
+### 4.5 One graph, two sources of evidence
+
+Runtime observations from `trace` are an **overlay** on the static map, keyed by the same
+element IDs — never a second, competing map. Where a run disagrees with the static
+analysis, the disagreement is recorded as a `Contradiction` and the static graph is left
+alone.
+
+**Why:** two maps that disagree leave you adjudicating between your own tools. One map
+with a disagreement recorded on it tells you exactly where the static analysis was wrong,
+which is the useful information.
+
+---
+
+## 5. What `analyze` actually does, stage by stage
+
+Seven stages, each feeding the next. This is the order they run in.
+
+### Stage 1 — Inventory
+Walks the tree, content-hashes every file, parses each Python file with the standard
+library's `ast` module, and mints the stable ID for every element. Also picks up data
+files (JSON/YAML/CSV/config) and the config keys inside them, and flags embedded blobs.
+
+*Why:* everything downstream addresses code by ID, so the IDs have to exist first and be
+minted exactly once, in one place.
+
+### Stage 2 — Resolution and call graph
+Turns names into edges: imports, attribute chains, method dispatch through the class
+hierarchy, decorators — and then the hard part, **dynamic wiring**: `getattr` with a
+literal name, `importlib` with a literal name, registry dictionaries, decorator-based
+registration, and names that appear as strings in your config files (that's what
+`--config` is for).
+
+Eight edge kinds: `CALLS`, `IMPORTS`, `INHERITS`, `DECORATES`, `REGISTERS`,
+`INSTANTIATES`, `REFERENCES`, `CONFIGURES`.
+
+*Why:* a launcher that reads component names out of JSON is invisible to every ordinary
+call-graph tool. Following that wiring — and labelling it honestly as `CONFIG_STRING_MATCH`
+at `HEURISTIC` confidence rather than pretending it's a real call — is most of the value
+here.
+
+### Stage 3 — Control flow, order, decisions, reachability
+Builds a control-flow graph per function (block kinds: `ENTRY`, `NORMAL`, `BRANCH`,
+`LOOP_HEAD`, `HANDLER`, `FINALLY`, `RETURN`, `RAISE`, `EXIT`), derives the **cascade
+order** from the entry point forward (`SEQUENCE`, `BRANCH`, `MERGE`, `LOOP`, `UNORDERED`,
+`CYCLE`), identifies every decision point with its condition text and outcomes, and marks
+each element `REACHES_SINK`, `NO_SINK_PATH` or `UNKNOWN`.
+
+*Why:* "the order it executes in" and "which elements drive the final decision" are the
+two questions the whole tool exists to answer. `UNKNOWN` is a first-class answer here —
+an element behind an unresolved dynamic call is *not* declared unreachable, because that
+would be a false accusation.
+
+### Stage 4 — Data and feature lineage
+Tracks values from ingestion through data engineering into decision inputs. Eight lineage
+kinds: `ASSIGNS`, `PARAMETER_BINDING`, `RETURNS`, `CONTAINER_WRITE`, `COLUMN_WRITE`,
+`ATTRIBUTE_WRITE`, `READS`, `MUTATES`. Answers backward slices ("what produces this
+feature?") and forward slices ("what does changing this affect?"). Where flow stops being
+traceable it emits a **barrier** saying where and why.
+
+*Why:* in a trading engine the question is rarely "who calls this function" — it's
+"which raw column ends up inside this signal, and what breaks if I change it". Barriers
+are there so the slice tells you where its own edge is instead of silently stopping.
+
+### Stage 5 — Findings
+Eight kinds of problem, each with location, evidence, confidence and a hint. See
+[section 8](#8-findings--the-eight-things-it-looks-for).
+
+### Stage 6 — Documentation records and the completeness gate
+Every element gets a record: what it is, where it sits in the cascade, what it reads and
+writes, its data role, its change history. **If any element lacks a complete record, the
+run fails the gate and exits 3** — the artifacts are still written so you can see exactly
+what is missing.
+
+*Why:* a map with holes in it that reports success is the failure mode that matters. Every
+fact in a record comes from the parsed code or the trace, never from a language model;
+optional model-written prose is stored in a separate, clearly labelled field.
+
+### Stage 7 — Write and verify
+Writes every artifact, records a SHA-256 of each in `manifest.json`, and prints the
+summary.
+
+---
+
+## 6. Every output file, explained
+
+Everything is **JSON Lines** (one JSON object per line, keys sorted) except the two
+`.json` files. That format was chosen so you can `grep` it, feed it to `jq`, load it in
+pandas, or diff it with git.
+
+| File | One line is | Why you'd open it |
+|---|---|---|
+| `elements.jsonl` | one element: id, kind, name, span, docstring, signature, decorators, hashes | the inventory of everything that exists |
+| `edges.jsonl` | one relationship: source, target, kind, call site, method, confidence | the wiring — who calls, imports, registers, configures whom |
+| `order.jsonl` | one node of the execution order tree | the cascade, from entry point onward |
+| `reachability.jsonl` | one element's verdict + the path ids that prove it | **which code can reach a final decision** |
+| `decisions.jsonl` | one decision point: condition source text, outcomes, what it reads | every branch that steers the cascade |
+| `cfg_blocks.jsonl` / `cfg_edges.jsonl` | control-flow blocks and the jumps between them | the fine detail behind order and decisions |
+| `lineage.jsonl` | one value-flow edge | how data moves |
+| `slices.jsonl` | one backward/forward slice with its members, edges and barriers | "what produces X" / "what does changing X affect" |
+| `barriers.jsonl` | one place lineage stops, with the reason | the honest edge of the lineage answer |
+| `findings.jsonl` | one problem, with evidence and a hint | **start here** |
+| `unresolved.jsonl` | one thing it couldn't work out, with location and reason | the honest edge of the whole map |
+| `candidates.jsonl` | one auto-detected entry point or sink, with its evidence | things to confirm with `--entry` / `--sink` |
+| `records.jsonl` | one complete documentation record per element | the drill-down detail |
+| `manifest.json` | SHA-256 of every artifact | proof the set is intact and unedited |
+| `run_meta.json` | timestamps, Python version, target root, tool version | the only file with wall-clock time in it |
+
+`diff` writes two more:
+
+| File | One line is |
+|---|---|
+| `changes.jsonl` | one classified change between the two versions |
+| `impacts.jsonl` | that change's blast radius, ranked |
+
+`trace` writes into `DIR/runtime/<run_id>/`:
+
+| File | One line is |
+|---|---|
+| `events.jsonl` | one observed event (`CALL`, `RETURN`, `BRANCH`, `EXCEPTION`, `FEATURE_WRITE`, `DECISION`, `UNMAPPED`) with captured values |
+| `narrative.jsonl` | one plain-English step of what the run did, tied to element and event ids |
+| `contradictions.jsonl` | one place the run disagreed with the static map |
+| `nondeterminism.jsonl` | one way this target will not repeat itself |
+| `mapping.json` | how many observed events landed on known elements |
+| `run.json` | the run record: what was blocked, which controls were active, what could not be guaranteed |
+
+---
+
+## 7. Reading the numbers it prints
+
+Illustrative — the shape of the summary, with numbers from a small run:
+
+```
+Wrote out\amun
+
+  elements           426
+  call edges         108
+  lineage edges      260
+  decisions           16
+  findings             3
+  unresolved          52   <- reported, never dropped
+  barriers            12   <- value flow stops being traceable
+
+Confidence of the edges the map is built from:
+  CERTAIN          18    4%
+  RESOLVED        268   62%
+  PROBABLE        111   26%
+  HEURISTIC        18    4%
+  UNKNOWN          11    2%
+
+Detected, NOT confirmed — these are proposals for you:
+  decision_sink  amun.execute::final_decision  (HEURISTIC)
+  Set them in docs/design/TARGET_PROFILE.md to make them facts.
+```
+
+**The confidence census is the most important thing on this screen.** It tells you how
+much of the map is fact and how much is inference. A high `RESOLVED` share means the
+engine is wired explicitly and the map is reliable. A large `HEURISTIC` or `UNKNOWN`
+share means a lot of your wiring is dynamic and the map is a good hypothesis rather than
+a description — go read `unresolved.jsonl` and consider passing `--config`.
+
+**`unresolved` is not an error count.** 52 unresolved items in a 116,000-line engine
+with dynamic wiring is normal and healthy; it means 52 things were reported rather than
+guessed at.
+
+**The "Detected, NOT confirmed" block is a to-do list.** Re-run with
+`--sink amun.execute::final_decision` (and `--entry` if needed) and those become facts.
+The message mentions `docs/design/TARGET_PROFILE.md`, which belongs to the development
+repository — with the single file, use the command-line flags instead.
+
+---
+
+## 8. Findings — the eight things it looks for
+
+| Finding | What it means | Why it was built in |
+|---|---|---|
+| `UNREACHABLE_ELEMENT` | nothing reaches this code | dead code in a decision engine is either a bug or a maintenance cost; either way you want to know |
+| `UNCONSUMED_FEATURE` | you compute this feature and nothing reads it | wasted compute, and often a signal that was silently disconnected in a refactor |
+| `DANGLING_CONFIG_REFERENCE` | a config file names something that doesn't exist | the classic silent failure: the config looks right, the component never loads |
+| `ORPHANED_CONFIG_ELEMENT` | a config key nothing in code reads | stale knobs that look live |
+| `DEAD_BRANCH` | a branch that can never be taken | usually a condition that changed meaning |
+| `SHADOWED_DEFINITION` | two definitions of the same name, one hiding the other | the one you're editing may not be the one that runs |
+| `DUPLICATED_LOGIC` | the same body defined more than once | you will fix the bug in one copy |
+| `DECISION_IRRELEVANT` | real, reachable code that cannot influence any decision | the thing you most want before optimising: effort spent on code that cannot move the outcome |
+
+Every finding carries a confidence and a hint. `HEURISTIC` findings are suggestions to
+check, not accusations.
+
+---
+
+## 9. Version control and change impact
+
+This is the workflow you described, and it is what the `diff` command was built for.
+
+### The three-step loop
+
+```
+:: 1. map the version you have now
+python3 metatron_engine.py analyze C:\code\amun_v1 --out out\amun_v1 --sink amun.execute::final_decision
+
+:: 2. map the new version
+python3 metatron_engine.py analyze C:\code\amun_v2 --out out\amun_v2 --sink amun.execute::final_decision
+
+:: 3. compare the two maps
+python3 metatron_engine.py diff out\amun_v1 out\amun_v2 --out out\amun_changes
+```
+
+Use the **same `--entry` and `--sink` flags on both sides.** Comparing a map built with a
+declared sink against one built with a guessed sink produces differences that are about
+your flags, not your code.
+
+### What the comparison gives you
+
+It matches elements across the two versions **structurally, with rename detection**, so
+moving a function to another file or renaming it is reported as `MOVED` or `RENAMED`
+rather than as a deletion plus an unrelated addition. Each change is classified:
+
+`ADDED` · `REMOVED` · `RENAMED` · `MOVED` · `SIGNATURE_CHANGED` · `BODY_CHANGED` ·
+`DECORATORS_CHANGED` · `UNCHANGED` · `AMBIGUOUS`
+
+`AMBIGUOUS` is real and deliberate: where two candidate matches are equally good, it says
+so and lists both rather than picking one and being confidently wrong.
+
+Then, for each change, the impact:
+
+```
+  changes 638
+  impacts 638
+  14 of them change a path to a decision
+```
+
+That last line is the one you care about. Each impact record carries:
+
+- `affected_ids` — what downstream is touched
+- `decision_paths_changed` — **did this change alter a route to a final decision?**
+- `reachability_flipped` — code that became reachable, or stopped being reachable
+- `features_changed` — which engineered features are affected
+- `findings_added` / `findings_removed` — problems this change introduced or fixed
+- `rank` — ordering, most consequential first
+
+So "what changed and how did it impact the rest of the code" is answered directly:
+sort by rank, read the ones where `decision_paths_changed` is true, ignore the rest.
+
+### Recommended discipline
+
+- **Keep the map directories, not just the code.** `out\amun_v1` is a permanent, exact
+  record of what that version's structure was. It is deterministic, so it diffs cleanly
+  in git and never produces spurious changes.
+- **Commit the map alongside the tag.** When you tag `amun-v2.3`, commit
+  `out\amun_v2.3\` next to it. Six months later you can answer "what did v2.3 actually
+  look like" without checking out and re-analysing.
+- **Name output directories after versions, never `latest`.** `out\latest` is a default
+  for experiments; for version control it destroys the thing you need.
+- **Use `--cache` on a large engine.** `--cache .metatron-cache` makes re-analysis skip
+  unchanged files by content hash. Without the flag there is no cache and every run is a
+  full re-analysis. The cache is never a source of truth — it is keyed on content hash
+  and regenerated on demand — so never commit it.
+- **Run it on every meaningful change, not just releases.** The impact answer is most
+  useful when the change set is small enough to read.
+
+If you want this to run automatically on every commit, it is a short git hook — say the
+word and I'll write it for your setup.
+
+---
+
+## 10. Mode A — watching it run
+
+`analyze` reads your code. `trace` **runs** it, inside a containment harness, and records
+what actually happened. It exists because static analysis genuinely cannot answer some
+questions — what value was in that variable, which branch actually got taken, what the
+real execution order was when the wiring is dynamic.
+
+### It always builds on a completed map
+
+`trace` takes the `analyze` output directory as its first argument and refuses to start
+without it. Runtime events are keyed to the element IDs that map already minted, which is
+what makes them an overlay rather than a second opinion.
+
+### The scenarios file
+
+Write a small JSON file describing what to run:
+
+```json
+{
+  "target_root": "C:\\code\\amun_engine",
+  "scenarios": {
+    "baseline": {
+      "module": "run_m5",
+      "function": "main",
+      "args": []
+    }
+  },
+  "declared_process_names": [],
+  "env_passthrough": []
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `target_root` | the same folder you analysed; it goes on the import path |
+| `scenarios` | named entry points. An undeclared name is a refusal, never a guess |
+| `module` | the module to import, addressed the same way element IDs are |
+| `function` | called after import. Leave it empty to make the import itself the scenario (like `python -m`) |
+| `args` | string arguments passed to that function |
+| `declared_process_names` | executables this run is allowed to spawn. **Empty means none** |
+| `env_passthrough` | environment variable names the scenario may see. **Empty means none, including secrets** |
+
+Then:
+
+```
+python3 metatron_engine.py trace out\amun --scenarios scenarios.json --scenario baseline --out out\amun_run
+```
+
+**Every one of those collections defaults to empty, and that is the mechanism, not a
+convenience.** The harness denies by omission: you do not lock it down, you open exactly
+what you name.
+
+### What it guarantees
+
+- **Outbound network blocked**, including DNS.
+- **File writes redirected** into a sandbox directory, or blocked.
+- **Process spawning blocked** unless you named the executable.
+- **Environment hidden** unless you named the variable.
+- **Undeclared external clients are a hard stop**, by construction.
+- If any control cannot be verified, **the run refuses to start and says which guarantee
+  it could not make**. There is no force flag, no warn-and-continue, no partial mode. A
+  refusal is a correct outcome, exit code 4.
+
+### What it cannot guarantee — read this
+
+Printed on every single run, and recorded in `run.json`:
+
+1. A process launched by calling the interpreter's low-level process-spawn primitive
+   directly — bypassing Python's `subprocess` module — is invisible to every control the
+   harness has. It can run, unblocked and unrecorded.
+2. A process you explicitly declared and permitted is not supervised once it is running.
+   It is a separate program with none of these controls attached.
+
+Neither can be closed from inside the harness; closing them needs isolation *underneath*
+it. **Standing recommendation: run Mode A inside a container or a throwaway VM.** These
+limits are disclosed rather than hidden because a containment claim you cannot verify is
+worse than no claim.
+
+### What you get back
+
+An ordered, readable narrative of the run; every event tied to an element ID and an event
+ID; captured values (bounded in size, with sensitive-looking values redacted); a mapping
+report saying what fraction of observed events landed on known elements — **unmapped
+events are exactly where the static map was wrong**; contradictions where the run
+disagreed with the static analysis; and a list of the ways this target will not repeat
+itself (hash ordering, clock, randomness).
+
+---
+
+## 11. Safety: what it will and will not do
+
+| | `analyze` / `view` / `diff` | `trace` |
+|---|---|---|
+| Imports your code | never | yes, inside the harness |
+| Executes your code | never | yes, inside the harness |
+| `eval` / `exec` / unpickle | never | never |
+| Network | never | blocked, including DNS |
+| Writes outside `--out` | never | sandbox only |
+| Modifies your engine | never | never |
+
+The static commands read your files as **text** and parse them. There is no code path in
+them that could execute what they read. `trace` is the one sanctioned execution path and
+it announces itself loudly.
+
+Your engine never leaves your machine. This tool makes no network calls of any kind. (The
+development repository contains an optional feature that can call a language model to
+write *prose descriptions only* — never facts — and it is fully disabled unless an API key
+is set. It is not reachable from the shipped file's commands at all.)
+
+---
+
+## 12. Known gaps — read this before you rely on something
+
+Stated plainly, because a doc that only lists strengths is a sales brochure.
+
+1. **One engine at a time.** Amun and RA are analysed independently. If they call into
+   each other, that link is not shown. This is what you asked for; say so if it changes.
+2. **Intent alignment is not reachable from the command line.** The ability to declare
+   "this function is *meant* to do X" and get a verdict (`ALIGNED`, `MISALIGNED`,
+   `UNVERIFIABLE`, `NOT_EXERCISED`, `NO_INTENT`) is fully built and tested as a library,
+   and the viewer knows how to display it — but no command produces `intents.jsonl` or
+   `verdicts.jsonl` yet. It is roughly an hour of work to wire up; ask when you want it.
+3. **External client stubbing is not reachable from the scenarios file.** The harness can
+   replace a declared external client (broker API, database, queue) with a stub or a
+   replay, but that is configured in Python, not JSON. Through the CLI an undeclared
+   client is simply blocked — safe, but it means a scenario that needs a live broker will
+   stop rather than be faked. Ask if you need it.
+4. **Optional model-written prose is not reachable from the CLI.** Facts never came from
+   a model anyway; this only affects descriptive text.
+5. **The two Mode A sandbox limits in section 10.** Not closable from inside; use a
+   container.
+6. **`TARGET_PROFILE.md` is mentioned in one message** but belongs to the development
+   repository. With the single file, use `--entry` and `--sink`.
+
+---
+
+## 13. Troubleshooting
+
+**"no entry point declared and none detected"** — the tool could not find your launcher.
+Pass `--entry <module>::<function>`, e.g. `--entry run_m5::main`. The IDs are listed in
+`elements.jsonl`.
+
+**Everything says `NO_SINK_PATH` / reachability looks wrong** — you almost certainly have
+no sink declared, or the wrong one. Check `candidates.jsonl`, then pass `--sink`.
+
+**"GATE FAILED: N elements have an incomplete documentation record"** — exit code 3, and
+the artifacts were still written so you can inspect them. This is a defect in the tool,
+not in your engine; send me the number and I'll chase it. `--no-gate` gets you moving in
+the meantime.
+
+**Lots of `UNKNOWN` confidence and a big `unresolved.jsonl`** — your engine wires itself
+dynamically. Pass your wiring config files with `--config` (repeatable) so config strings
+can be matched to real elements.
+
+**A `trace` run refused (exit 4)** — read the reason it printed. A refusal means a
+containment guarantee could not be made. It is the correct outcome; do not look for a way
+around it.
+
+**"YOUR SCENARIO DID NOT RUN"** — the tool distinguishes three cases and tells you which:
+the module could not be imported (check `target_root`), the named function does not exist
+(check `function`), or your engine itself raised (that is your exception, not a tool
+failure). This distinction exists because a crashed scenario otherwise produces a report
+that reads exactly like a run whose analysis was wrong, and you would hunt the wrong bug.
+
+**Slow on a very large engine** — add `--cache .metatron-cache`.
+
+---
+
+## 14. How the file itself is built and maintained
+
+`metatron_engine.py` is ~24,000 lines and is **generated**, not hand-written. The source
+lives as 35 modules in a repository; a build tool concatenates them into one file in
+dependency order, renaming the handful of names that collide between modules.
+
+That approach was chosen over writing one file by hand because the modules carry fourteen
+rounds of independent verification and six integration fixes, and rewriting them by hand
+would throw all of that away. Comments and docstrings survive, because the file is
+assembled from source text rather than regenerated from the parse tree.
+
+It is verified, not assumed: an automated test builds the single file and requires its
+`analyze`, `view` and `trace` output to match the 35-module version **byte for byte** over
+the whole fixture corpus. Two differences are allowed and named explicitly — the output
+directory path you chose, and a count of frames belonging to the tool's own import
+machinery rather than your engine.
+
+Confirmed at build time: identical results on Python 3.11, 3.12 and 3.13. Full test
+suite: 1162 passed, 0 failed.
+
+To regenerate it from source: `python3.12 tools/amalgamate.py --out dist/cascade_map.py`.
+The builder needs 3.12 or newer; the file it writes runs on 3.11+.
+
+**Do not edit `metatron_engine.py` by hand.** Edits are lost on the next regeneration, and
+the byte-identical guarantee no longer holds. Tell me what needs changing instead.
+
+---
+
+## 15. Glossary
+
+| Term | Meaning |
+|---|---|
+| **Element** | anything nameable in the code: module, class, function, parameter, config key, data file, feature… |
+| **Stable ID** | an element's address, derived from structure (`module::qualname`), never from line numbers |
+| **Edge** | a relationship between two elements: calls, imports, inherits, decorates, registers, instantiates, references, configures |
+| **Sink** | where the final decision comes out. You declare it with `--sink` |
+| **Entry point** | where the cascade starts — your launcher. You declare it with `--entry` |
+| **Cascade order** | the derived execution order from entry point onward |
+| **Reachability** | whether an element can reach a sink: `REACHES_SINK`, `NO_SINK_PATH`, `UNKNOWN` |
+| **Lineage** | how a value flows from ingestion to decision input |
+| **Slice** | backward = what produces this; forward = what does changing this affect |
+| **Barrier** | where lineage stops being traceable, and why |
+| **Finding** | a located problem with evidence, confidence and a hint |
+| **Unresolved** | something the tool could not work out, reported with location and reason |
+| **Provenance** | the method and confidence attached to every fact |
+| **Confidence** | `CERTAIN` > `RESOLVED` > `PROBABLE` > `HEURISTIC` > `UNKNOWN`; composes by weakest link |
+| **Mode B** | static analysis. Never executes your code |
+| **Mode A** | runtime tracing inside the harness. Only on explicit command |
+| **Harness** | the containment that Mode A runs inside: no network, sandboxed writes, no spawning |
+| **Contradiction** | a place the run disagreed with the static map |
+| **Overlay** | runtime evidence layered on the static graph by shared IDs — never a second graph |
