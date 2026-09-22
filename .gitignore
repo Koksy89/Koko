@@ -25,3 +25,8 @@ dist/
 # rather than at the root so it cannot shadow the `cascade_map` package for
 # anything run from here.
 !dist/cascade_map.py
+
+# Packaged deploy kits. Regenerable from the tracked kit/<sport>/ tree with
+# `tar -czf kit_<sport>.tar.gz -C kit <sport>`; committing the archive would
+# duplicate tracked files as an opaque binary.
+AmunEV/kit_*.tar.gz
