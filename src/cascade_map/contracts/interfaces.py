@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any, Iterable, Protocol, Sequence
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -58,6 +58,10 @@ __all__ = [
     "VersionChange",
     "Impact",
     "DocRecord",
+    "PackageRequirement",
+    "InstalledPackage",
+    "PackageUsage",
+    "InterpreterRequirement",
     "RunRecord",
     "BlockedAttempt",
     "ScenarioFailure",
@@ -91,6 +95,7 @@ __all__ = [
     "FindingsCard",
     "DiffCard",
     "DocsCard",
+    "DependencyCard",
     "RunObserver",
     "HarnessCard",
     "TracerCard",
@@ -714,6 +719,29 @@ class FindingKind(StrEnum):
     DUPLICATED_LOGIC = "DUPLICATED_LOGIC"
     DECISION_IRRELEVANT = "DECISION_IRRELEVANT"
 
+    # Card 17 — dependency and version applicability.
+    UNDECLARED_DEPENDENCY = "UNDECLARED_DEPENDENCY"
+    """The target imports a distribution no manifest declares. It works on the
+    machine that happens to have it and fails on the one that does not."""
+
+    MISSING_DEPENDENCY = "MISSING_DEPENDENCY"
+    """The target imports a distribution the target environment does not have
+    installed. An ImportError waiting for the code path that reaches it."""
+
+    VERSION_CONFLICT = "VERSION_CONFLICT"
+    """The installed version falls outside the declared constraint. The single
+    most common cause of "it worked yesterday": the code is written against one
+    API and the machine is running another."""
+
+    UNUSED_DEPENDENCY = "UNUSED_DEPENDENCY"
+    """Declared and installed, and nothing imports it. Not an error — reported
+    because a dependency nobody uses is usually a leftover, and pinning it
+    constrains upgrades for no reason."""
+
+    INTERPRETER_TOO_OLD = "INTERPRETER_TOO_OLD"
+    """An element's own syntax requires a newer Python than the environment
+    provides or the project declares."""
+
 
 @dataclass(frozen=True, slots=True)
 class Finding:
@@ -784,6 +812,137 @@ class Impact:
 
 
 # ---------------------------------------------------------------------------
+# Card 17 — dependency and version applicability
+# ---------------------------------------------------------------------------
+#
+# The question this answers: "which package versions is this element actually
+# applicable to, and does this machine have them?"
+#
+# Three facts are gathered separately and then joined, and keeping them
+# separate is the whole design. What the project DECLARES it needs, what is
+# INSTALLED where the target runs, and what the code actually USES are three
+# different things, and every interesting failure is a disagreement between
+# two of them. A single merged "dependency" record would hide exactly the
+# disagreement the owner is looking for.
+#
+# Constraint 1 applies to the environment as strictly as to the code: an
+# installed distribution is read from its `*.dist-info/METADATA` or
+# `*.egg-info/PKG-INFO` **as text**. Nothing is imported, and `pip` is never
+# invoked. Reading a package's metadata must not run its `__init__`.
+
+
+@dataclass(frozen=True, slots=True)
+class PackageRequirement:
+    """One declared dependency constraint, as written, and where it was written.
+
+    `specifier` is stored exactly as the manifest spells it, never normalised
+    into a parsed range. An owner debugging a version problem needs to see the
+    string they typed, at the line they typed it, and a re-spelling of it is a
+    second thing to distrust.
+    """
+
+    id: str
+    distribution: str
+    """PEP 503 normalised name: lowercase, runs of `-_.` collapsed to `-`.
+    `Scikit_Learn` and `scikit-learn` are one distribution, and joining on the
+    raw spelling silently reports one as undeclared."""
+
+    raw: str
+    """The requirement line exactly as written, for the owner to recognise."""
+
+    specifier: str
+    """The version constraint as written (`>=1.3,<2.0`). Empty means the
+    manifest declared no constraint at all — which is itself worth seeing."""
+
+    extras: tuple[str, ...]
+    marker: str
+    """PEP 508 environment marker as written (`python_version < "3.11"`), or
+    empty. Never evaluated here: a marker decides applicability per machine,
+    and this card reports rather than resolves."""
+
+    optional_group: str
+    """The extra or group this came from (`dev`, `test`), or empty for a base
+    requirement. A conflict in a dev-only group is not the same finding as one
+    in the runtime set."""
+
+    span: SourceSpan
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class InstalledPackage:
+    """One distribution present in the environment the target runs under.
+
+    Read from installed metadata **as text**. Never imported.
+    """
+
+    id: str
+    distribution: str
+    version: str
+    """The exact installed version string. Never a range, never inferred."""
+
+    location: str
+    import_names: tuple[str, ...]
+    """The top-level module names this distribution provides, so `cv2` can be
+    joined to `opencv-python` and `sklearn` to `scikit-learn`. An import name
+    that maps to no installed distribution, or to more than one, is an
+    `Unresolved`, never a guess."""
+
+    requires: tuple[str, ...]
+    """`Requires-Dist` lines as written: the transitive constraints that a
+    direct upgrade has to satisfy too."""
+
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class PackageUsage:
+    """Which elements depend on one distribution, and whether that reaches a
+    decision.
+
+    This is the join that makes the card worth having. "pandas is pinned wrong"
+    is a note; "pandas is pinned wrong and 37 elements use it, 9 of which are on
+    a path to your final decision, and here are their ids" is a work order.
+    """
+
+    id: str
+    distribution: str
+    import_names: tuple[str, ...]
+    element_ids: tuple[str, ...]
+    attribute_paths: tuple[str, ...]
+    """The API surface actually touched: `pandas.DataFrame.append`,
+    `numpy.float_`. Reported as evidence, never checked against a built-in list
+    of removals — this tool does not carry a database of other projects'
+    release notes, and pretending to would be a heuristic dressed as a fact.
+    The owner reads the surface against the installed version."""
+
+    reaches_sink: bool
+    reaches_sink_element_ids: tuple[str, ...]
+    declared_ids: tuple[str, ...]
+    installed_id: str
+    """Empty when nothing installed provides these import names."""
+
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class InterpreterRequirement:
+    """The minimum Python an element's own syntax requires.
+
+    Read off the grammar, not inferred: a `match` statement is 3.10+, an
+    `except*` group is 3.11+, a walrus is 3.8+. CERTAIN confidence, because the
+    code either contains the construct or it does not.
+    """
+
+    id: str
+    element_id: str
+    minimum_python: str
+    feature: str
+    span: SourceSpan
+    provenance: Provenance
+
+
+# ---------------------------------------------------------------------------
 # Card 16 — documentation records
 # ---------------------------------------------------------------------------
 
@@ -803,6 +962,15 @@ class DocRecord:
     change_ids: tuple[str, ...]
     provenance: Provenance
     runtime: dict[str, Any] = field(default_factory=dict)
+    dependencies: dict[str, Any] = field(default_factory=dict)
+    """Card 17: the distributions this element imports, their declared
+    constraints, the installed versions, and the minimum Python its syntax
+    needs. Optional in the same way `runtime` is optional — an analysis with no
+    manifests and no reachable environment leaves it empty, and the
+    completeness gate must not fail a run for that. An EMPTY dict and a dict
+    saying "no dependencies" are different claims; emit the latter when the
+    element genuinely imports nothing."""
+
     model_prose: str = ""
     """Model-written text, structurally separate from every field above and
     never fed back into the graph. Empty unless enrichment ran."""
@@ -892,6 +1060,17 @@ class RunRecord:
     sandbox_dir: str = ""
     """Where writes were redirected. Card 12 needs it to locate a recording,
     and the owner needs it to find what the run produced."""
+
+    observed_versions: dict[str, str] = field(default_factory=dict)
+    """Card 17, Mode A: distribution -> version as actually loaded in the
+    traced process, tagged RUNTIME_OBSERVED.
+
+    The static answer reads metadata off disk; this reads what the interpreter
+    really imported. They disagree more often than anyone expects -- a stale
+    entry earlier on `sys.path`, a second virtualenv, an editable install
+    shadowing a pinned one, a `.pth` file. When the static and observed answers
+    differ, THAT is the finding, and it is the one a version bug hides behind.
+    Empty when no run has happened."""
 
     scenario_failure: ScenarioFailure | None = None
     """Set when the scenario raised. `None` means it completed."""
@@ -1172,6 +1351,40 @@ class DocsCard(Protocol):
         A non-empty result fails the run. There is no flag to downgrade it.
         """
         ...
+
+
+class DependencyCard(Protocol):
+    """Card 17 — dependency and version applicability.
+
+    Four separate answers, never merged: what the project declares, what the
+    environment has installed, what the code actually uses, and what Python
+    version the syntax needs. The findings come from the disagreements between
+    them.
+
+    `environment_root` is the interpreter tree whose installed metadata is
+    read -- `.venv-target` in production. It is read as text. Nothing under it
+    is imported or executed, and no package manager is invoked: constraint 1
+    covers the target's environment exactly as it covers the target's code.
+    An environment that cannot be located is an `Unresolved` with its reason,
+    not an empty list that reads as "nothing installed".
+    """
+
+    def requirements(self) -> Sequence[PackageRequirement]: ...
+
+    def installed(self, environment_root: str) -> Sequence[InstalledPackage]: ...
+
+    def usage(
+        self,
+        elements: Sequence[Element],
+        edges: Sequence[Edge],
+        reachability: Sequence[Reachability],
+    ) -> Sequence[PackageUsage]: ...
+
+    def interpreter_requirements(
+        self, elements: Sequence[Element]
+    ) -> Sequence[InterpreterRequirement]: ...
+
+    def findings(self) -> Sequence[Finding]: ...
 
 
 class RunObserver(Protocol):

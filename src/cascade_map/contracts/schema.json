@@ -393,6 +393,10 @@
           "additionalProperties": {},
           "type": "object"
         },
+        "dependencies": {
+          "additionalProperties": {},
+          "type": "object"
+        },
         "element_id": {
           "type": "string"
         },
@@ -639,7 +643,12 @@
             "DEAD_BRANCH",
             "SHADOWED_DEFINITION",
             "DUPLICATED_LOGIC",
-            "DECISION_IRRELEVANT"
+            "DECISION_IRRELEVANT",
+            "UNDECLARED_DEPENDENCY",
+            "MISSING_DEPENDENCY",
+            "VERSION_CONFLICT",
+            "UNUSED_DEPENDENCY",
+            "INTERPRETER_TOO_OLD"
           ],
           "type": "string"
         },
@@ -675,7 +684,12 @@
         "DEAD_BRANCH",
         "SHADOWED_DEFINITION",
         "DUPLICATED_LOGIC",
-        "DECISION_IRRELEVANT"
+        "DECISION_IRRELEVANT",
+        "UNDECLARED_DEPENDENCY",
+        "MISSING_DEPENDENCY",
+        "VERSION_CONFLICT",
+        "UNUSED_DEPENDENCY",
+        "INTERPRETER_TOO_OLD"
       ],
       "type": "string"
     },
@@ -736,6 +750,49 @@
         "id",
         "rank",
         "reachability_flipped"
+      ],
+      "type": "object"
+    },
+    "InstalledPackage": {
+      "additionalProperties": false,
+      "description": "One distribution present in the environment the target runs under. Read from installed metadata **as text**. Never imported.",
+      "properties": {
+        "distribution": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "import_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "location": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "requires": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "distribution",
+        "id",
+        "import_names",
+        "location",
+        "provenance",
+        "requires",
+        "version"
       ],
       "type": "object"
     },
@@ -803,6 +860,39 @@
         "PROPOSED"
       ],
       "type": "string"
+    },
+    "InterpreterRequirement": {
+      "additionalProperties": false,
+      "description": "The minimum Python an element's own syntax requires. Read off the grammar, not inferred: a `match` statement is 3.10+, an `except*` group is 3.11+, a walrus is 3.8+. CERTAIN confidence, because the code either contains the construct or it does not.",
+      "properties": {
+        "element_id": {
+          "type": "string"
+        },
+        "feature": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "minimum_python": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "span": {
+          "$ref": "#/$defs/SourceSpan"
+        }
+      },
+      "required": [
+        "element_id",
+        "feature",
+        "id",
+        "minimum_python",
+        "provenance",
+        "span"
+      ],
+      "type": "object"
     },
     "LineageEdge": {
       "additionalProperties": false,
@@ -1069,6 +1159,118 @@
       ],
       "type": "object"
     },
+    "PackageRequirement": {
+      "additionalProperties": false,
+      "description": "One declared dependency constraint, as written, and where it was written. `specifier` is stored exactly as the manifest spells it, never normalised into a parsed range. An owner debugging a version problem needs to see the string they typed, at the line they typed it, and a re-spelling of it is a second thing to distrust.",
+      "properties": {
+        "distribution": {
+          "type": "string"
+        },
+        "extras": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "marker": {
+          "type": "string"
+        },
+        "optional_group": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "raw": {
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/SourceSpan"
+        },
+        "specifier": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "distribution",
+        "extras",
+        "id",
+        "marker",
+        "optional_group",
+        "provenance",
+        "raw",
+        "span",
+        "specifier"
+      ],
+      "type": "object"
+    },
+    "PackageUsage": {
+      "additionalProperties": false,
+      "description": "Which elements depend on one distribution, and whether that reaches a decision. This is the join that makes the card worth having. \"pandas is pinned wrong\" is a note; \"pandas is pinned wrong and 37 elements use it, 9 of which are on a path to your final decision, and here are their ids\" is a work order.",
+      "properties": {
+        "attribute_paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "declared_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "distribution": {
+          "type": "string"
+        },
+        "element_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "import_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "installed_id": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "reaches_sink": {
+          "type": "boolean"
+        },
+        "reaches_sink_element_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "attribute_paths",
+        "declared_ids",
+        "distribution",
+        "element_ids",
+        "id",
+        "import_names",
+        "installed_id",
+        "provenance",
+        "reaches_sink",
+        "reaches_sink_element_ids"
+      ],
+      "type": "object"
+    },
     "Provenance": {
       "additionalProperties": false,
       "description": "Attached to every fact, edge and verdict. Constraint 2.",
@@ -1196,7 +1398,7 @@
     },
     "RunRecord": {
       "additionalProperties": false,
-      "description": "RunRecord(run_id: 'str', target_hashes: 'dict[str, str]', graph_hash: 'str', scenario: 'str', interpreter: 'str', controls_active: 'dict[str, bool]', blocked: 'tuple[BlockedAttempt, ...]', unguaranteed: 'tuple[str, ...]' = (), sandbox_dir: 'str' = '', scenario_failure: 'ScenarioFailure | None' = None, observer_failure: 'ScenarioFailure | None' = None, refused: 'bool' = False, refusal_reason: 'str' = '')",
+      "description": "RunRecord(run_id: 'str', target_hashes: 'dict[str, str]', graph_hash: 'str', scenario: 'str', interpreter: 'str', controls_active: 'dict[str, bool]', blocked: 'tuple[BlockedAttempt, ...]', unguaranteed: 'tuple[str, ...]' = (), sandbox_dir: 'str' = '', observed_versions: 'dict[str, str]' = <factory>, scenario_failure: 'ScenarioFailure | None' = None, observer_failure: 'ScenarioFailure | None' = None, refused: 'bool' = False, refusal_reason: 'str' = '')",
       "properties": {
         "blocked": {
           "items": {
@@ -1215,6 +1417,12 @@
         },
         "interpreter": {
           "type": "string"
+        },
+        "observed_versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
         },
         "observer_failure": {
           "anyOf": [
@@ -1701,9 +1909,19 @@
       "record": "Impact",
       "sortKey": "id"
     },
+    "installed.jsonl": {
+      "format": "jsonl",
+      "record": "InstalledPackage",
+      "sortKey": "id"
+    },
     "intents.jsonl": {
       "format": "jsonl",
       "record": "Intent",
+      "sortKey": "id"
+    },
+    "interpreter.jsonl": {
+      "format": "jsonl",
+      "record": "InterpreterRequirement",
       "sortKey": "id"
     },
     "lineage.jsonl": {
@@ -1721,6 +1939,11 @@
       "record": "OrderNode",
       "sortKey": "id"
     },
+    "package_usage.jsonl": {
+      "format": "jsonl",
+      "record": "PackageUsage",
+      "sortKey": "id"
+    },
     "reachability.jsonl": {
       "format": "jsonl",
       "record": "Reachability",
@@ -1729,6 +1952,11 @@
     "records.jsonl": {
       "format": "jsonl",
       "record": "DocRecord",
+      "sortKey": "id"
+    },
+    "requirements.jsonl": {
+      "format": "jsonl",
+      "record": "PackageRequirement",
       "sortKey": "id"
     },
     "runtime/contradictions.jsonl": {
@@ -1773,6 +2001,6 @@
     }
   },
   "description": "Generated from cascade_map.contracts.interfaces. Do not edit by hand: run python -m cascade_map.contracts._generate_schema.",
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "title": "CASCADE-MAP artifacts"
 }
