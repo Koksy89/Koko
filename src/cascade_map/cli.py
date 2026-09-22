@@ -411,6 +411,7 @@ def trace(
         recordings=json.dumps(str(recordings)),
         record_out=json.dumps(str(record_out)),
         src=json.dumps(str(Path(__file__).resolve().parents[1])),
+        self_file=json.dumps(str(Path(__file__).resolve())),
     )
     completed = subprocess.run(
         [sys.executable, "-c", child], capture_output=True, text=True, timeout=1800
@@ -495,9 +496,12 @@ def trace(
     return EXIT_OK, "\n".join(lines)
 
 
-#: Runs in a child interpreter. Writes its record inside the sandbox, which is
-#: the only place it is allowed to write once the harness has taken the process.
-_CHILD_SOURCE = """
+#: How the child gets this tool's own code into scope. A named seam, not an
+#: inlined block: `tools/amalgamate.py` replaces this one assignment, because
+#: the single-file build has no `cascade_map` package for the child to import —
+#: only the one file, which it loads by path. Anything that needs the two
+#: shapes to differ belongs here and nowhere else.
+_CHILD_PROLOGUE = """
 import json, sys
 sys.path.insert(0, {src})
 from pathlib import Path
@@ -505,7 +509,12 @@ from cascade_map.contracts.interfaces import canonical_dumps
 from cascade_map.harness import Harness, HarnessRefusal, RunConfig, ScenarioSpec
 from cascade_map.harness.hashing import compute_graph_hash, compute_target_hashes
 from cascade_map.tracer import StaticIndex, Tracer
+from cascade_map.cli import build_index
+"""
 
+#: Runs in a child interpreter. Writes its record inside the sandbox, which is
+#: the only place it is allowed to write once the harness has taken the process.
+_CHILD_SOURCE = _CHILD_PROLOGUE + """
 spec_doc = json.loads({spec!r}) if isinstance({spec!r}, str) else {spec}
 target_root = Path(spec_doc["target_root"]).resolve()
 config = RunConfig(
@@ -521,7 +530,6 @@ config = RunConfig(
     declared_process_names=frozenset(spec_doc.get("declared_process_names", ())),
     env_passthrough=frozenset(spec_doc.get("env_passthrough", ())),
 )
-from cascade_map.cli import build_index
 index = build_index(Path({graph_dir}), target_root)
 tracer = Tracer(index, recordings_dir=Path({recordings}))
 graph_hash = compute_graph_hash(compute_target_hashes(target_root))
@@ -657,10 +665,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
 
     if args.command == "view":
-        from cascade_map import viewer
+        # Imported by name, not as a module object: `viewer.render_to_file`
+        # needs a `viewer` namespace to exist, and in the single-file build
+        # there are no module namespaces -- only globals.
+        from cascade_map.viewer import render_to_file
 
         target = args.html or (args.out_dir / "index.html")
-        viewer.render_to_file(args.out_dir, target)
+        render_to_file(args.out_dir, target)
         print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
         return EXIT_OK
 

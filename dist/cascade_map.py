@@ -1,0 +1,24002 @@
+"""CASCADE-MAP — a static and runtime map of a Python decision engine.
+
+Single file. Generated from the package by `tools/amalgamate.py`; every line
+came from a module that passed independent verification. Regenerate rather than
+editing this file by hand:
+
+    python3.12 tools/amalgamate.py --out cascade_map.py
+
+Usage:
+
+    python3 cascade_map.py analyze <target> --out out/first
+    python3 cascade_map.py view out/first
+    python3 cascade_map.py trace out/first --scenarios s.json --scenario name
+
+The static commands never execute the target. `trace` runs it inside the
+harness; read the disclosed limits it prints before pointing it at anything
+that matters.
+"""
+
+from __future__ import annotations
+
+__version__ = "0.0.0"
+
+from collections import defaultdict
+from collections import defaultdict, deque
+from collections import deque
+from collections.abc import Sequence
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
+from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from dataclasses import replace
+from enum import StrEnum
+from html import escape
+from pathlib import Path
+from types import CodeType, FrameType
+from types import ModuleType
+from typing import Any
+from typing import Any, Callable, Sequence
+from typing import Any, Iterable
+from typing import Any, Iterable, Mapping, Protocol, Sequence
+from typing import Any, Iterable, Protocol, Sequence
+from typing import Any, Iterable, Sequence
+from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
+from typing import Any, Sequence
+from typing import Callable
+from typing import Callable, Mapping
+from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Pattern, Sequence
+from typing import Iterable, Sequence
+from typing import Iterator
+from typing import Mapping, Sequence
+from typing import Sequence
+import argparse
+import ast
+import builtins
+import builtins as _builtins
+import configparser
+import dataclasses
+import hashlib
+import importlib
+import io
+import json
+import linecache
+import os
+import platform
+import posixpath
+import re
+import sys
+import tempfile
+import textwrap
+import threading
+import time
+import tokenize
+import tomllib
+import traceback as traceback_module
+
+# A module-object import (`from . import views`) has no module to point
+# at in one file. Everything is in this namespace, so the namespace is
+# the answer: `views.browser_view` finds the global `browser_view`.
+views = sys.modules[__name__]
+
+
+# ==========================================================================
+# contracts/interfaces.py
+# ==========================================================================
+
+"""Binding interfaces between CASCADE-MAP cards.
+
+Every card reads and writes these types and nothing else. A card that needs a
+field this module does not have reports the gap; it does not invent one.
+
+Three decisions are encoded here, settled as Q5, Q6 and Q7 in OPEN_QUESTIONS.md:
+
+* **Identity** (`make_id`) is structural, never positional. An element keeps its
+  ID across reformatting, comment changes and edits elsewhere in the file, which
+  is what lets card 6 diff two versions and card 12 key runtime events onto the
+  static graph.
+* **Confidence** is an ordered enum, not a number, and derived facts take the
+  *minimum* of their inputs (`combine`). Thirteen builders applying one of five
+  named levels stay consistent; thirteen builders inventing floats do not.
+* **Serialization** (`canonical_dumps`) is one function every card must use, so
+  that "two runs produce identical output" is a property of the contract rather
+  than of each builder's diligence.
+"""
+
+
+
+SCHEMA_VERSION = "1.0.0"
+
+__all__ = [
+    "SCHEMA_VERSION",
+    "Confidence",
+    "Method",
+    "Provenance",
+    "SourceSpan",
+    "ElementKind",
+    "Element",
+    "EdgeKind",
+    "Edge",
+    "UnresolvedReason",
+    "Unresolved",
+    "BlockKind",
+    "CFGBlock",
+    "CFGEdge",
+    "OrderKind",
+    "OrderNode",
+    "ReachabilityState",
+    "Reachability",
+    "DetectedCandidate",
+    "DecisionPoint",
+    "LineageKind",
+    "LineageEdge",
+    "Barrier",
+    "Slice",
+    "FindingKind",
+    "Finding",
+    "ChangeKind",
+    "VersionChange",
+    "Impact",
+    "DocRecord",
+    "RunRecord",
+    "BlockedAttempt",
+    "ScenarioFailure",
+    "CaptureStatus",
+    "ValueCapture",
+    "EventKind",
+    "TraceEvent",
+    "Contradiction",
+    "NondeterminismObservation",
+    "MappingReport",
+    "IntentStatus",
+    "Intent",
+    "Verdict",
+    "AlignmentVerdict",
+    "NarrativeStep",
+    "make_id",
+    "local_id",
+    "param_id",
+    "key_id",
+    "attr_id",
+    "feature_id",
+    "file_id",
+    "config_key_id",
+    "combine",
+    "canonical_dumps",
+    "canonical_jsonl",
+    "IngestionCard",
+    "ResolutionCard",
+    "CascadeCard",
+    "LineageCard",
+    "FindingsCard",
+    "DiffCard",
+    "DocsCard",
+    "RunObserver",
+    "HarnessCard",
+    "TracerCard",
+    "AlignmentCard",
+    "NarrativeCard",
+]
+
+
+# ---------------------------------------------------------------------------
+# Provenance — Q6
+# ---------------------------------------------------------------------------
+
+
+class Confidence(StrEnum):
+    """How much weight a fact carries. Ordered; see :func:`combine`."""
+
+    CERTAIN = "CERTAIN"
+    """Read directly off the AST. No inference. A `def` exists at this path."""
+
+    RESOLVED = "RESOLVED"
+    """Deterministic resolution with exactly one outcome. An absolute import
+    that names one module; a call to a module-level function in scope."""
+
+    PROBABLE = "PROBABLE"
+    """Resolution required an assumption that holds outside pathological cases.
+    MRO dispatch on a known class; `getattr` with a literal name."""
+
+    HEURISTIC = "HEURISTIC"
+    """Pattern, name or config-string match. Plausible and possibly wrong."""
+
+    UNKNOWN = "UNKNOWN"
+    """Not resolved. Candidates may be listed, but none is being claimed."""
+
+
+_CONFIDENCE_ORDER: dict[str, int] = {
+    Confidence.CERTAIN: 4,
+    Confidence.RESOLVED: 3,
+    Confidence.PROBABLE: 2,
+    Confidence.HEURISTIC: 1,
+    Confidence.UNKNOWN: 0,
+}
+
+
+def combine(*confidences: Confidence) -> Confidence:
+    """Confidence of a fact derived from others: the weakest link.
+
+    A cascade order built on a HEURISTIC call edge is a HEURISTIC ordering, no
+    matter how certain every other step was. Composing by minimum is the only
+    rule that cannot quietly launder a guess into a fact.
+
+    With no arguments this is UNKNOWN -- a fact resting on nothing claims
+    nothing.
+    """
+    if not confidences:
+        return Confidence.UNKNOWN
+    return min(confidences, key=lambda c: _CONFIDENCE_ORDER[c])
+
+
+class Method(StrEnum):
+    """How a fact was established. Always recorded next to its confidence."""
+
+    AST_DIRECT = "AST_DIRECT"
+    IMPORT_ABSOLUTE = "IMPORT_ABSOLUTE"
+    IMPORT_RELATIVE = "IMPORT_RELATIVE"
+    IMPORT_STAR = "IMPORT_STAR"
+    REEXPORT = "REEXPORT"
+    SCOPE_LOOKUP = "SCOPE_LOOKUP"
+    MRO_DISPATCH = "MRO_DISPATCH"
+    DECORATOR_UNWRAP = "DECORATOR_UNWRAP"
+    GETATTR_LITERAL = "GETATTR_LITERAL"
+    GETATTR_TRACED = "GETATTR_TRACED"
+    IMPORTLIB_LITERAL = "IMPORTLIB_LITERAL"
+    REGISTRY_MEMBERSHIP = "REGISTRY_MEMBERSHIP"
+    DECORATOR_REGISTRATION = "DECORATOR_REGISTRATION"
+    CONFIG_STRING_MATCH = "CONFIG_STRING_MATCH"
+    NAME_HEURISTIC = "NAME_HEURISTIC"
+    DATAFLOW = "DATAFLOW"
+    CFG_REACHABILITY = "CFG_REACHABILITY"
+    STRUCTURAL_MATCH = "STRUCTURAL_MATCH"
+    RUNTIME_OBSERVED = "RUNTIME_OBSERVED"
+    MODEL_PROPOSED = "MODEL_PROPOSED"
+    """A language model suggested this. Never a fact -- label only, and it must
+    carry evidence a human can check. See constraint 8."""
+
+
+@dataclass(frozen=True, slots=True)
+class SourceSpan:
+    """Where a fact lives. Paths are POSIX and relative to the target root."""
+
+    path: str
+    line: int
+    end_line: int | None = None
+    col: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Provenance:
+    """Attached to every fact, edge and verdict. Constraint 2."""
+
+    method: Method
+    confidence: Confidence
+    span: SourceSpan | None = None
+    note: str = ""
+    model_id: str = ""
+    """Set only when method is MODEL_PROPOSED. Names the model that wrote it."""
+
+    run_id: str = ""
+    """Set only for RUNTIME_OBSERVED facts. Constraint 2."""
+
+    event_ids: tuple[str, ...] = ()
+    """Set only for RUNTIME_OBSERVED facts. Constraint 2."""
+
+
+# ---------------------------------------------------------------------------
+# Identity — Q5
+# ---------------------------------------------------------------------------
+
+_ORDINAL = re.compile(r"#(\d+)$")
+
+
+def make_id(module: str, qualname: str = "", ordinal: int = 1) -> str:
+    """Build a stable element ID.
+
+    ``module::qualname`` for anything inside a module, ``module`` for the module
+    itself, and a ``#n`` suffix only when an earlier element already claimed the
+    same name -- a conditional redefinition, a name reassigned in two branches.
+    The first occurrence in source order carries no suffix, so adding a second
+    definition later never renames the first.
+
+    Deliberately positional information is absent. Line numbers would make every
+    element a different element after a reformat, which would defeat card 6 and
+    strand every runtime event card 12 tries to key onto the graph.
+    """
+    base = f"{module}::{qualname}" if qualname else module
+    return base if ordinal <= 1 else f"{base}#{ordinal}"
+
+
+def local_id(element_id: str, name: str, ordinal: int = 1) -> str:
+    """ID for a local binding inside a function.
+
+    Card 4 needs a node per *binding*, not per name: `y` before and after
+    `y += 1` are different values and must not share a slice. The `#n` suffix
+    carries that, the same way it separates redefinitions in `make_id`.
+
+    The `<locals>` segment mirrors Python's own `__qualname__` convention and
+    keeps a local from colliding with an attribute of the same name, which
+    `attr_id` would otherwise produce.
+
+    **The ordinal is required, not optional.** Modelling every rebinding of a
+    name as one node with a self-edge merges `x = a` and `x = b`, so a backward
+    slice of the final `x` returns `a` -- a value that cannot reach the point
+    being queried. That is a false positive in the exact question card 4 exists
+    to answer, and precision is this card's stated priority. Reassignment is
+    common in data pipelines, so the cost is not hypothetical.
+    """
+    base = f"{element_id}.<locals>.{name}"
+    return base if ordinal <= 1 else f"{base}#{ordinal}"
+
+
+def param_id(element_id: str, name: str) -> str:
+    """ID for a parameter of a function, method or lambda.
+
+    Card 4 reported it had no helper and was using card 1's convention
+    informally. A parameter is a binding like any other, so it needs an ID in
+    the same space -- a slice that reaches a parameter must be able to name it.
+    """
+    return f"{element_id}.<param>.{name}"
+
+
+def key_id(node_id: str, key: str) -> str:
+    """ID for one key inside a container node.
+
+    `d["price"]` is its own lineage node so that a slice of one key never drags
+    in its siblings -- the distinction the owner actually reasons in.
+    """
+    return f"{node_id}[{key}]"
+
+
+def attr_id(node_id: str, attr: str) -> str:
+    """ID for an attribute of an object node, e.g. `self.threshold`."""
+    return f"{node_id}.{attr}"
+
+
+def feature_id(name: str) -> str:
+    """ID for a named feature -- a dict key or dataframe column card 4 tracks.
+
+    Features get their own namespace because the owner reasons in them. A column
+    named in a config file and a column written by a function are the same
+    feature and must land on the same node.
+    """
+    return f"@feature:{name}"
+
+
+def file_id(path: str) -> str:
+    """ID for a non-Python file: config, data, fixture."""
+    return f"@file:{path}"
+
+
+def config_key_id(path: str, pointer: str) -> str:
+    """ID for one key inside a config file, addressed by JSON Pointer.
+
+    ``config_key_id("config/wiring.json", "/components/0/class")`` is the node a
+    CONFIG_STRING_MATCH edge starts from, so a dangling reference points at the
+    exact key rather than the whole file.
+    """
+    return f"@file:{path}::{pointer}"
+
+
+# ---------------------------------------------------------------------------
+# Serialization — Q7
+# ---------------------------------------------------------------------------
+
+
+def canonical_dumps(payload: Any) -> str:
+    """The one serializer every card uses. Constraint 4.
+
+    Sorted keys, no insignificant whitespace, ASCII-escaped, and no trailing
+    newline. Determinism is a property of this function, not of each builder
+    remembering to sort things.
+
+    Floats are rejected rather than formatted. Their repr varies across
+    platforms and a byte-identical guarantee cannot survive that -- emit an int,
+    or a string you formatted yourself and can explain.
+    """
+
+    def _check(node: Any) -> Any:
+        if isinstance(node, float):
+            raise TypeError(
+                "floats are not permitted in emitted artifacts: they break the "
+                "byte-identical guarantee across platforms. Emit an int or a "
+                "string you formatted explicitly."
+            )
+        if isinstance(node, dict):
+            return {key: _check(value) for key, value in node.items()}
+        if isinstance(node, (list, tuple)):
+            return [_check(value) for value in node]
+        return node
+
+    return json.dumps(
+        _check(payload),
+        sort_keys=True,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        default=_default,
+    )
+
+
+def _default(node: Any) -> Any:
+    if isinstance(node, StrEnum):
+        return str(node)
+    if hasattr(node, "__dataclass_fields__"):
+        return asdict(node)
+    if isinstance(node, (set, frozenset)):
+        return sorted(node)
+    raise TypeError(f"not serializable: {type(node).__name__}")
+
+
+def canonical_jsonl(records: Iterable[Any], sort_key: str = "id") -> str:
+    """Render records as sorted JSON Lines, the on-disk artifact format.
+
+    One record per line, sorted by *sort_key*, so that a byte comparison of two
+    runs is a meaningful test and `git diff` of two versions is readable. Ends
+    with a single trailing newline, or is empty when there are no records.
+    """
+    rows = [canonical_dumps(record) for record in records]
+    keyed = sorted(rows, key=lambda row: (json.loads(row).get(sort_key, ""), row))
+    return "".join(f"{row}\n" for row in keyed)
+
+
+# ---------------------------------------------------------------------------
+# Card 1 — inventory
+# ---------------------------------------------------------------------------
+
+
+class ElementKind(StrEnum):
+    PACKAGE = "PACKAGE"
+    MODULE = "MODULE"
+    CLASS = "CLASS"
+    FUNCTION = "FUNCTION"
+    METHOD = "METHOD"
+    PROPERTY = "PROPERTY"
+    ASSIGNMENT = "ASSIGNMENT"
+    PARAMETER = "PARAMETER"
+    IMPORT = "IMPORT"
+    DATA_FILE = "DATA_FILE"
+    CONFIG_KEY = "CONFIG_KEY"
+    BLOB = "BLOB"
+    """An embedded string or bytes literal held as opaque data. Never decoded,
+    decompressed or unpickled -- constraint 1. ~3.9 MB of the target is this."""
+
+    FEATURE = "FEATURE"
+
+
+@dataclass(frozen=True, slots=True)
+class Element:
+    id: str
+    kind: ElementKind
+    name: str
+    qualname: str
+    module: str
+    span: SourceSpan
+    provenance: Provenance
+    content_hash: str
+    """Hash of the element's own source text. Drives incrementality (constraint
+    5) and card 6's UNCHANGED classification."""
+
+    decorators: tuple[str, ...] = ()
+    signature: str = ""
+    docstring: str = ""
+    parent_id: str = ""
+    byte_size: int = 0
+    """Set for BLOB elements, so the owner can see where the 3.9 MB lives."""
+
+    normalized_body_hash: str = ""
+    """Hash of the body with comments, docstrings and whitespace normalized away.
+
+    `content_hash` covers the source text exactly, which is what incrementality
+    needs but not what "is this the same logic" needs: a reformat changes it.
+    Card 5 needs this to report DUPLICATED_LOGIC and card 6 to classify a
+    reformat as UNCHANGED. Card 6 already derives it with `tokenize`, so
+    without a field the same fact is computed twice, differently, in two
+    cards — and the two will drift.
+
+    Empty for elements with no body."""
+
+    literal_value: str = ""
+    """The repr of an assignment's value when it is a literal constant.
+
+    Card 5 needs it for DEAD_BRANCH: a branch guarded by a name bound to a
+    constant is decidable, and without the value the analysis cannot tell a
+    dead branch from a live one. A string rather than the object, so
+    `canonical_dumps` stays float-free and the artifact stays comparable.
+
+    Empty when the value is not a literal — which is the common case, and must
+    never be read as "the literal was empty"."""
+
+
+# ---------------------------------------------------------------------------
+# Card 2 — resolution and the call graph
+# ---------------------------------------------------------------------------
+
+
+class EdgeKind(StrEnum):
+    CALLS = "CALLS"
+    IMPORTS = "IMPORTS"
+    INHERITS = "INHERITS"
+    DECORATES = "DECORATES"
+    REGISTERS = "REGISTERS"
+    INSTANTIATES = "INSTANTIATES"
+    REFERENCES = "REFERENCES"
+    CONFIGURES = "CONFIGURES"
+    """A config key naming an element. Source is a CONFIG_KEY id."""
+
+
+@dataclass(frozen=True, slots=True)
+class Edge:
+    id: str
+    kind: EdgeKind
+    source_id: str
+    target_id: str
+    provenance: Provenance
+    call_site: SourceSpan | None = None
+
+
+class UnresolvedReason(StrEnum):
+    DYNAMIC_NAME = "DYNAMIC_NAME"
+    MISSING_TARGET = "MISSING_TARGET"
+    SYNTAX_ERROR = "SYNTAX_ERROR"
+    DECODE_ERROR = "DECODE_ERROR"
+    TOO_LARGE = "TOO_LARGE"
+    AMBIGUOUS = "AMBIGUOUS"
+    ID_COLLISION = "ID_COLLISION"
+    THIRD_PARTY = "THIRD_PARTY"
+    NOT_EXERCISED = "NOT_EXERCISED"
+
+
+@dataclass(frozen=True, slots=True)
+class Unresolved:
+    """Constraint 3: nothing is silently dropped.
+
+    An unresolved record is a first-class output, not an absence. Over-linking
+    is the failure mode to fear in card 2: an honest UNKNOWN with a candidate
+    set is worth more to the owner than a confident wrong edge.
+    """
+
+    id: str
+    reason: UnresolvedReason
+    span: SourceSpan
+    description: str
+    attempted: tuple[Method, ...] = ()
+    candidate_ids: tuple[str, ...] = ()
+    candidate_confidence: Confidence = Confidence.UNKNOWN
+    """How sure we are that the true target is **somewhere in this set** — not
+    that any particular candidate is right.
+
+    * `UNKNOWN` — the set may not contain the target at all. A name computed at
+      runtime could resolve to anything, so an enumeration of plausible
+      matches is a starting point, not a bound.
+    * `HEURISTIC` — the set was enumerated from something real and probably
+      contains the target, but which member is a guess. A star import
+      resolved through a module's `__all__` is this.
+    * `PROBABLE` — the set definitely contains the target and only runtime
+      type decides which. MRO candidates for an overridden method are this.
+
+    Card 2 reported the rule was unstated and that it had matched each fixture
+    case individually; it was right that the contract was silent."""
+
+
+# ---------------------------------------------------------------------------
+# Card 3 — control flow, ordering, decisions
+# ---------------------------------------------------------------------------
+
+
+class BlockKind(StrEnum):
+    ENTRY = "ENTRY"
+    NORMAL = "NORMAL"
+    BRANCH = "BRANCH"
+    LOOP_HEAD = "LOOP_HEAD"
+    HANDLER = "HANDLER"
+    FINALLY = "FINALLY"
+    RETURN = "RETURN"
+    RAISE = "RAISE"
+    EXIT = "EXIT"
+
+
+@dataclass(frozen=True, slots=True)
+class CFGBlock:
+    id: str
+    element_id: str
+    kind: BlockKind
+    span: SourceSpan
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class CFGEdge:
+    id: str
+    source_id: str
+    target_id: str
+    condition: str = ""
+    taken_when: bool | None = None
+    provenance: Provenance | None = None
+
+
+class OrderKind(StrEnum):
+    SEQUENCE = "SEQUENCE"
+    BRANCH = "BRANCH"
+    MERGE = "MERGE"
+    LOOP = "LOOP"
+    UNORDERED = "UNORDERED"
+    """Elements that run, in no order the analysis can fix. Never flatten these
+    into a SEQUENCE: the owner needs to see where order is genuinely open."""
+
+    CYCLE = "CYCLE"
+
+
+@dataclass(frozen=True, slots=True)
+class OrderNode:
+    id: str
+    kind: OrderKind
+    element_ids: tuple[str, ...]
+    children: tuple[str, ...] = ()
+    provenance: Provenance | None = None
+
+
+class ReachabilityState(StrEnum):
+    REACHES_SINK = "REACHES_SINK"
+    NO_SINK_PATH = "NO_SINK_PATH"
+    UNKNOWN = "UNKNOWN"
+    """An unresolved call site lies on the way, or no decision sink is known.
+    Distinct from NO_SINK_PATH, and the distinction is the point: "I could not
+    tell" must never render the same as "this reaches nothing"."""
+
+
+@dataclass(frozen=True, slots=True)
+class Reachability:
+    """Whether an element can reach a decision sink. Card 3 emits one per element.
+
+    This exists because "every element is marked for decision reachability" had
+    no canonical carrier. Card 5 and card 15 each needed the answer, found no
+    field holding it, and derived their own -- which is precisely the second
+    source of truth ARCHITECTURE.md exists to prevent.
+
+    It belongs to card 3, not to `Element`: card 1 mints elements before any
+    call graph exists and cannot know this.
+
+    WORKPLAN card 3 requires a bias toward REACHES_SINK when an edge is
+    uncertain, because a false "unreachable" sends the owner to delete live
+    code. `reason` records why, and `provenance.confidence` carries the
+    weakest edge the verdict rests on.
+    """
+
+    id: str
+    element_id: str
+    state: ReachabilityState
+    provenance: Provenance
+    sink_ids: tuple[str, ...] = ()
+    path_ids: tuple[str, ...] = ()
+    """One representative path to a sink. Not every path -- that is unbounded.
+    Callers that need all paths walk the order graph themselves."""
+
+    reason: str = ""
+    """Required when state is UNKNOWN, or when a bias toward REACHES_SINK was
+    applied. An unexplained UNKNOWN is a gate failure, not a verdict."""
+
+
+@dataclass(frozen=True, slots=True)
+class DetectedCandidate:
+    """An owner input the tool worked out for itself, reported with evidence.
+
+    TARGET_PROFILE leaves entry points and decision sinks blank until the owner
+    fills them in, and the standing rule is to auto-detect read-only and report
+    what was detected — never to pick one silently. Until now there was nowhere
+    to put the answer, so card 3 exposed it through a method the contract does
+    not name and card 10 would have had to know to call.
+
+    A wrong sink mislabels the entire map, so these are proposals for the owner
+    to confirm, never facts. `provenance.confidence` says how strong the signal
+    was and `evidence` says what it rested on.
+    """
+
+    id: str
+    role: str
+    """entry_point or decision_sink."""
+
+    element_id: str
+    evidence: tuple[str, ...]
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionPoint:
+    id: str
+    element_id: str
+    condition_source: str
+    reads_ids: tuple[str, ...]
+    outcomes: tuple[tuple[str, str], ...]
+    """(label, target order-node or element id) per outcome."""
+
+    is_sink: bool = False
+    provenance: Provenance | None = None
+
+
+# ---------------------------------------------------------------------------
+# Card 4 — lineage and slicing
+# ---------------------------------------------------------------------------
+
+
+class LineageKind(StrEnum):
+    ASSIGNS = "ASSIGNS"
+    PARAMETER_BINDING = "PARAMETER_BINDING"
+    RETURNS = "RETURNS"
+    CONTAINER_WRITE = "CONTAINER_WRITE"
+    COLUMN_WRITE = "COLUMN_WRITE"
+    ATTRIBUTE_WRITE = "ATTRIBUTE_WRITE"
+    READS = "READS"
+    MUTATES = "MUTATES"
+
+
+@dataclass(frozen=True, slots=True)
+class LineageEdge:
+    id: str
+    kind: LineageKind
+    source_id: str
+    target_id: str
+    provenance: Provenance
+    span: SourceSpan | None = None
+    """**The statement where the flow happens**, not where either endpoint was
+    defined.
+
+    For ``result = compute(x)`` the span is that assignment, even though ``x``
+    was defined earlier and ``compute`` elsewhere. Settled because the owner's
+    question of a lineage edge is "where does this value move", and the
+    definition sites are already reachable through the endpoint elements. A
+    span pointing at a definition would duplicate what the element already
+    says and answer the wrong question.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class Barrier:
+    """A point where value flow stops being traceable.
+
+    Recorded rather than stitched across. Reflection, `eval`-built calls and
+    opaque third-party functions end a slice here, and the slice says so.
+    """
+
+    id: str
+    element_id: str
+    span: SourceSpan
+    reason: UnresolvedReason
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
+class Slice:
+    id: str
+    root_id: str
+    direction: str
+    """"backward" -- what produces this. "forward" -- what a change affects."""
+
+    member_ids: tuple[str, ...]
+    edge_ids: tuple[str, ...]
+    barrier_ids: tuple[str, ...]
+    reaches_sink_ids: tuple[str, ...]
+    confidence: Confidence
+
+
+# ---------------------------------------------------------------------------
+# Card 5 — findings
+# ---------------------------------------------------------------------------
+
+
+class FindingKind(StrEnum):
+    UNREACHABLE_ELEMENT = "UNREACHABLE_ELEMENT"
+    UNCONSUMED_FEATURE = "UNCONSUMED_FEATURE"
+    DANGLING_CONFIG_REFERENCE = "DANGLING_CONFIG_REFERENCE"
+    ORPHANED_CONFIG_ELEMENT = "ORPHANED_CONFIG_ELEMENT"
+    DEAD_BRANCH = "DEAD_BRANCH"
+    SHADOWED_DEFINITION = "SHADOWED_DEFINITION"
+    DUPLICATED_LOGIC = "DUPLICATED_LOGIC"
+    DECISION_IRRELEVANT = "DECISION_IRRELEVANT"
+
+
+@dataclass(frozen=True, slots=True)
+class Finding:
+    id: str
+    kind: FindingKind
+    element_id: str
+    span: SourceSpan
+    summary: str
+    hint: str
+    evidence_ids: tuple[str, ...]
+    """Edges, slices and config keys that support this. A finding with an empty
+    evidence chain does not ship."""
+
+    provenance: Provenance
+
+
+# ---------------------------------------------------------------------------
+# Card 6 — diff and impact
+# ---------------------------------------------------------------------------
+
+
+class ChangeKind(StrEnum):
+    ADDED = "ADDED"
+    REMOVED = "REMOVED"
+    RENAMED = "RENAMED"
+    MOVED = "MOVED"
+    SIGNATURE_CHANGED = "SIGNATURE_CHANGED"
+    BODY_CHANGED = "BODY_CHANGED"
+    DECORATORS_CHANGED = "DECORATORS_CHANGED"
+    UNCHANGED = "UNCHANGED"
+    AMBIGUOUS = "AMBIGUOUS"
+    """Several candidates matched and none is being claimed.
+
+    WORKPLAN card 6 requires ambiguous matches to be *reported as ambiguous*.
+    Without this, verification found only one side of a tied rename carried the
+    doubt: the other side rendered as a plain CERTAIN ADDED with no
+    back-reference, so an owner scanning by `kind` alone saw half an ambiguity
+    and a confident answer where there was none."""
+
+
+@dataclass(frozen=True, slots=True)
+class VersionChange:
+    id: str
+    kind: ChangeKind
+    before_id: str
+    after_id: str
+    provenance: Provenance
+    candidate_ids: tuple[str, ...] = ()
+    """Set when kind is AMBIGUOUS: every element that matched equally well.
+
+    Both sides of an ambiguity carry the same candidate set, so the doubt is
+    visible from whichever end the owner is reading."""
+
+
+@dataclass(frozen=True, slots=True)
+class Impact:
+    id: str
+    change_id: str
+    affected_ids: tuple[str, ...]
+    decision_paths_changed: bool
+    features_changed: tuple[str, ...]
+    reachability_flipped: tuple[str, ...]
+    findings_added: tuple[str, ...]
+    findings_removed: tuple[str, ...]
+    rank: int
+    """Ordered by decision impact, not diff size. A one-line change inside a
+    decision condition outranks a 500-line refactor that reaches no sink."""
+
+
+# ---------------------------------------------------------------------------
+# Card 16 — documentation records
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class DocRecord:
+    """One per element. The completeness gate fails the run if any is missing
+    or has an unfilled required field. Constraint 8."""
+
+    id: str
+    element_id: str
+    identity: dict[str, Any]
+    cascade_position: dict[str, Any]
+    data_role: dict[str, Any]
+    decision_relevance: dict[str, Any]
+    finding_ids: tuple[str, ...]
+    change_ids: tuple[str, ...]
+    provenance: Provenance
+    runtime: dict[str, Any] = field(default_factory=dict)
+    model_prose: str = ""
+    """Model-written text, structurally separate from every field above and
+    never fed back into the graph. Empty unless enrichment ran."""
+
+    model_id: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Cards 11-12 — harness and tracer
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class BlockedAttempt:
+    """A side effect the harness refused. A finding the owner wants, not noise."""
+
+    id: str
+    kind: str
+    detail: str
+    element_id: str = ""
+    event_id: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ScenarioFailure:
+    """The scenario raised. The run happened; it did not do what was asked.
+
+    Swallowing this silently was the most misleading behaviour in the tool. A
+    scenario pointed at the wrong root reported 524 events, 0 mapped, 0
+    blocked and exit 0 -- every event being the failed import's own machinery.
+    An owner reads that as "my engine ran and the static map was entirely
+    wrong" and goes hunting a bug in their analysis, when not one line of their
+    code executed.
+
+    `stage` separates the two cases because they are different problems.
+    `import` means the module could not be loaded at all. `call` means the
+    module imported and the named function was missing or raised -- and a clean
+    `AttributeError` there is a scenario-declaration error, not a fact about
+    the target.
+
+    An `import` failure stays a completed run rather than a refusal, on card
+    11's reasoning: a target whose own nested imports are broken is a genuine
+    finding about the target, and it cannot be reliably told apart from a
+    mis-declared root. Refusing would hide the more interesting of the two.
+    """
+
+    stage: str
+    exception_type: str
+    message: str
+    traceback: str = ""
+    """Bounded. Capped explicitly rather than silently truncated -- the same
+    rule `ValueCapture` follows, for the same reason."""
+
+
+@dataclass(frozen=True, slots=True)
+class RunRecord:
+    run_id: str
+    target_hashes: dict[str, str]
+    graph_hash: str
+    """Hash of the Mode B graph this run overlays. A stale graph is a refusal."""
+
+    scenario: str
+    interpreter: str
+    controls_active: dict[str, bool]
+    blocked: tuple[BlockedAttempt, ...]
+    unguaranteed: tuple[str, ...] = ()
+    """Escape paths this harness knows it cannot close, named in every run.
+
+    Constraint 7 requires Mode A to be incapable of real-world side effects and
+    a run to refuse when that cannot be guaranteed. A pure `sys.audit` design
+    cannot make the guarantee absolute: card 11 constructed a direct
+    `_posixsubprocess.fork_exec` call that fires no audit event at all, and a
+    child process permitted by `declared_process_names` is unaudited once it is
+    running. Both are demonstrated, not theoretical.
+
+    Refusing every run over a limit that no run can avoid would make Mode A
+    unusable, so the honest form of constraint 7 here is disclosure: each entry
+    names a path the controls do not cover, and it travels with the run record
+    the owner reads. An empty tuple is a claim of complete coverage and must
+    never be the default for a limit that is merely unmeasured.
+
+    Closing these needs OS-level isolation -- seccomp, namespaces, a container
+    -- underneath the harness. That is outside this card, and stating so beats
+    implying a guarantee the code does not make.
+    """
+
+    sandbox_dir: str = ""
+    """Where writes were redirected. Card 12 needs it to locate a recording,
+    and the owner needs it to find what the run produced."""
+
+    scenario_failure: ScenarioFailure | None = None
+    """Set when the scenario raised. `None` means it completed."""
+
+    observer_failure: ScenarioFailure | None = None
+    """Set when the **observer** raised -- a bug in the tool, not the target.
+
+    Kept separate from `scenario_failure` because they are opposite findings.
+    One says the target misbehaved; this says the target may have run perfectly
+    and nobody was watching. Conflating them would send an owner to look at
+    their own code for a fault that is ours.
+
+    An observer that fails at `start` means the run was not observed at all,
+    and a report of zero events would otherwise read as "my engine did
+    nothing". `stage` is `start` or `stop`.
+    """
+
+    refused: bool = False
+    refusal_reason: str = ""
+    """Set when the run refused to start. Constraint 7: a refusal is a correct
+    outcome, never a warning to proceed past."""
+
+
+class CaptureStatus(StrEnum):
+    FULL = "FULL"
+    SUMMARIZED = "SUMMARIZED"
+    REDACTED = "REDACTED"
+    DROPPED = "DROPPED"
+
+
+@dataclass(frozen=True, slots=True)
+class ValueCapture:
+    """A captured value, or an explicit account of why it is not the whole one.
+
+    The target moves multi-megabyte frames. A truncation that reads like a
+    complete value is worse than no capture, so status is mandatory and
+    original_size is recorded whenever the value was not kept whole.
+    """
+
+    status: CaptureStatus
+    repr_text: str
+    type_name: str = ""
+    shape: str = ""
+    original_size: int = 0
+    reason: str = ""
+
+
+class EventKind(StrEnum):
+    CALL = "CALL"
+    RETURN = "RETURN"
+    BRANCH = "BRANCH"
+    EXCEPTION = "EXCEPTION"
+    FEATURE_WRITE = "FEATURE_WRITE"
+    DECISION = "DECISION"
+    UNMAPPED = "UNMAPPED"
+    """An event that maps to no static element. Never dropped: these are exactly
+    where the static analysis was wrong, which is worth reporting."""
+
+
+@dataclass(frozen=True, slots=True)
+class _interfaces_Contradiction:
+    """An observation that disagrees with a static claim.
+
+    Card 12 needs these and `Unresolved` cannot carry them: it has no
+    `Provenance`, so it cannot hold the run and event IDs constraint 2 requires
+    of every runtime fact. A contradiction recorded without its evidence is not
+    checkable, which defeats the point of recording it.
+
+    These are among the most valuable records the tool produces. An edge the
+    static graph predicted that never fires, a call it did not predict, an
+    order that differs -- each marks a place the static analysis was wrong, and
+    the owner wants to know exactly where. The static graph is never edited to
+    match; the disagreement is the finding.
+    """
+
+    id: str
+    element_id: str
+    claim: str
+    """What the static graph asserts, as a checkable sentence."""
+
+    observation: str
+    """What the run actually did."""
+
+    provenance: Provenance
+    """Method RUNTIME_OBSERVED, carrying run_id and event_ids."""
+
+    static_evidence_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _interfaces_NondeterminismObservation:
+    """Target behaviour that will not reproduce. Recorded, never hidden.
+
+    WORKPLAN card 12 requires nondeterminism in the *target* to be reported as
+    an observed property rather than smoothed over, because an engine whose
+    decisions depend on wall-clock time or dict ordering is something the owner
+    needs told. The tracer's own output stays deterministic regardless.
+    """
+
+    id: str
+    element_id: str
+    kind: str
+    """clock, randomness, hash_ordering, thread_interleaving, external_io."""
+
+    detail: str
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class _interfaces_MappingReport:
+    """How much of the run the static graph accounted for.
+
+    WORKPLAN card 12 requires the mapping rate to be reported. A trace with a
+    low rate is not a bad trace -- it is a precise measurement of where Mode B
+    fell short, and it belongs in the output rather than in a builder's report.
+    """
+
+    run_id: str
+    total_events: int
+    mapped_events: int
+    unmapped_events: int
+    unmapped_by_reason: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class TraceEvent:
+    event_id: str
+    """Format ``evt_`` plus a zero-padded 8-digit ordinal: ``evt_00000001``.
+
+    Zero-padded because `events.jsonl` sorts by this field and an unpadded
+    ``evt_10`` sorts before ``evt_2``, which would make the artifact's order
+    disagree with the run's order. Settled in favour of card 12's minting;
+    fixtures writing ``evt_1`` are wrong.
+    """
+
+    run_id: str
+    kind: EventKind
+    element_id: str
+    sequence: int
+    depth: int
+    caller_event_id: str = ""
+    values: dict[str, ValueCapture] = field(default_factory=dict)
+    branch_taken: str = ""
+    provenance: Provenance | None = None
+
+
+# ---------------------------------------------------------------------------
+# Cards 13-14 — alignment and narrative
+# ---------------------------------------------------------------------------
+
+
+class IntentStatus(StrEnum):
+    CONFIRMED = "CONFIRMED"
+    """Owner-confirmed. Only these may ground an ALIGNED or MISALIGNED verdict."""
+
+    PROPOSED = "PROPOSED"
+    """Derived from a docstring or a name. Never authoritative."""
+
+
+@dataclass(frozen=True, slots=True)
+class Intent:
+    id: str
+    element_id: str
+    status: IntentStatus
+    statement: str
+    invariants: tuple[str, ...] = ()
+    expected_reads: tuple[str, ...] = ()
+    expected_writes: tuple[str, ...] = ()
+    provenance: Provenance | None = None
+
+
+class Verdict(StrEnum):
+    ALIGNED = "ALIGNED"
+    MISALIGNED = "MISALIGNED"
+    UNVERIFIABLE = "UNVERIFIABLE"
+    NOT_EXERCISED = "NOT_EXERCISED"
+    """No scenario ran this. Unverified -- distinct from ALIGNED, and saying so
+    is the honest answer."""
+
+    NO_INTENT = "NO_INTENT"
+
+
+@dataclass(frozen=True, slots=True)
+class AlignmentVerdict:
+    id: str
+    element_id: str
+    intent_id: str
+    verdict: Verdict
+    expectation: str
+    observation: str
+    evidence_ids: tuple[str, ...]
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class NarrativeStep:
+    """One step of the execution narrative. Anchored or it does not ship."""
+
+    id: str
+    run_id: str
+    sequence: int
+    phase: str
+    text: str
+    element_ids: tuple[str, ...]
+    event_ids: tuple[str, ...]
+    children: tuple[str, ...] = ()
+    model_prose: str = ""
+    model_id: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Card entry points
+# ---------------------------------------------------------------------------
+
+
+class IngestionCard(Protocol):
+    def inventory(self, root: str) -> tuple[Sequence[Element], Sequence[Unresolved]]: ...
+
+
+class ResolutionCard(Protocol):
+    def resolve(
+        self, elements: Sequence[Element]
+    ) -> tuple[Sequence[Edge], Sequence[Unresolved]]: ...
+
+
+class CascadeCard(Protocol):
+    def order(
+        self, elements: Sequence[Element], edges: Sequence[Edge], entry_ids: Sequence[str]
+    ) -> tuple[
+        Sequence[CFGBlock],
+        Sequence[CFGEdge],
+        Sequence[OrderNode],
+        Sequence[DecisionPoint],
+        Sequence[Reachability],
+        Sequence[DetectedCandidate],
+        Sequence[Unresolved],
+    ]:
+        """Blocks, edges, ordering, decision points, one Reachability per
+        element, any auto-detected entry/sink candidates, and unresolved records.
+
+        `Reachability` is what cards 5 and 15 read to answer "does this drive
+        the final decision" -- neither may derive its own.
+
+        The last two were added after card 3 reported it had nowhere to put
+        them: constraint 3 requires unresolved cases to be emitted, and the
+        auto-detection rule requires detected candidates to be reported. Both
+        were reachable only through methods the contract does not name, so card
+        10 would have had to know to call them, and a card 10 that forgot would
+        have silently dropped both.
+        """
+        ...
+
+
+class LineageCard(Protocol):
+    def trace_values(
+        self, elements: Sequence[Element], edges: Sequence[Edge]
+    ) -> tuple[Sequence[LineageEdge], Sequence[Barrier]]: ...
+
+    def slice(self, root_id: str, direction: str) -> Slice: ...
+
+
+class FindingsCard(Protocol):
+    def find(self) -> Sequence[Finding]: ...
+
+
+class DiffCard(Protocol):
+    def diff(
+        self, before_root: str, after_root: str
+    ) -> tuple[Sequence[VersionChange], Sequence[Impact]]: ...
+
+
+class DocsCard(Protocol):
+    def records(self) -> Sequence[DocRecord]: ...
+
+    def completeness_gate(self, records: Sequence[DocRecord]) -> Sequence[str]:
+        """Return the IDs of elements with missing or incomplete records.
+
+        A non-empty result fails the run. There is no flag to downgrade it.
+        """
+        ...
+
+
+class RunObserver(Protocol):
+    """Something the harness starts and stops around the target call.
+
+    Card 12 built `Tracer.collector()` documented as "the hook the harness
+    installs around the target call". Card 11 had nowhere to install it. Both
+    were built to the contract, the contract did not describe the handoff, and
+    the gap was invisible until card 10 tried to make them meet.
+
+    The observer has to be started **inside** the sandbox window and stopped
+    before it closes, and only the harness controls that window -- so the
+    harness owns the installation and this is the seam. Keeping it a protocol
+    rather than a concrete type means card 11 never imports card 12: the
+    harness must work with no observer at all, and a tracing run is the same
+    run with something watching.
+    """
+
+    def start(self, run: RunRecord) -> None:
+        """Begin observing. Receives the record the harness has just built.
+
+        The record is passed in rather than handed over at construction
+        because it is only complete once the harness has verified its
+        controls: it carries `controls_active`, `unguaranteed` and the
+        deterministic `run_id`. Card 12 refuses to trace a run whose controls
+        are not active, and that refusal is only meaningful against the record
+        the harness actually produced -- an observer built beforehand would be
+        checking values nobody had verified yet.
+        """
+        ...
+
+    def stop(self) -> None: ...
+
+
+class HarnessCard(Protocol):
+    def start(
+        self,
+        scenario: str,
+        graph_hash: str,
+        observer: RunObserver | None = None,
+    ) -> RunRecord:
+        """Verify every control, then run -- or refuse and say which guarantee
+        could not be made. Constraint 7. There is no force option.
+
+        *observer* is started immediately before the target call and stopped
+        immediately after, inside the sandbox window and inside the `finally`
+        that tears it down -- so an observer is stopped even when the target
+        raises. A refused run never starts one: there was nothing to observe.
+        """
+        ...
+
+
+class TracerCard(Protocol):
+    def trace(self, run: RunRecord) -> Sequence[TraceEvent]: ...
+
+
+class AlignmentCard(Protocol):
+    def judge(
+        self, intents: Sequence[Intent], events: Sequence[TraceEvent]
+    ) -> Sequence[AlignmentVerdict]: ...
+
+
+class NarrativeCard(Protocol):
+    def narrate(
+        self,
+        events: Sequence[TraceEvent],
+        order_nodes: Sequence[OrderNode],
+        decisions: Sequence[DecisionPoint],
+        run: RunRecord,
+    ) -> Sequence[NarrativeStep]:
+        """Render a trace as an ordered, anchored account of the run.
+
+        The static structures are parameters rather than fields copied onto
+        each event, because WORKPLAN card 14 requires things a trace alone
+        cannot supply:
+
+        * **Cascade phase.** `EventKind` distinguishes a feature write from a
+          decision, but nothing in it separates ingestion from data
+          engineering. That grouping lives in card 3's `OrderNode`s.
+        * **Branches not taken.** A trace records the branch that ran.
+          `DecisionPoint.outcomes` is the only record of the ones that did not,
+          and reporting them is explicitly part of this card.
+        * **Blocked side-effect attempts.** These are card 11 findings and live
+          on `RunRecord`, not on any event.
+
+        Passing them in keeps one source of truth. Denormalising a `phase`
+        field onto every `TraceEvent` would duplicate card 3's answer into
+        card 12's output, where it would drift -- the same reason
+        ARCHITECTURE.md makes runtime evidence an overlay rather than a second
+        graph.
+        """
+        ...
+
+
+# ==========================================================================
+# ingest/constants.py
+# ==========================================================================
+
+"""Tunable constants for card 1 ingestion.
+
+Every threshold here is an approximation the builder chose in the absence of a
+contract field for it. Reported in the card 1 build report; not binding.
+"""
+
+
+# A string/bytes literal at or above this size (in bytes) is recorded as an
+# opaque BLOB element instead of being inlined into a docstring/signature or
+# left invisible. Calibrated well below the ~1 MB blobs the target embeds, and
+# comfortably above ordinary docstrings.
+BLOB_THRESHOLD_BYTES = 1024
+
+# literal_value (Element) is capped at the same boundary as BLOB_THRESHOLD_BYTES:
+# a str/bytes literal at or above that size is already absorbed into a BLOB
+# element instead of an ASSIGNMENT one (see python_module._is_big_constant),
+# so this is a defensive, explicit second cap rather than a reachable path --
+# literal_value must never become a way to smuggle blob content into the
+# artifact under a different field name.
+LITERAL_VALUE_CAP_BYTES = BLOB_THRESHOLD_BYTES
+
+# A docstring longer than this is not copied into Element.docstring verbatim
+# (avoids duplicating multi-megabyte text into every consumer of elements.jsonl).
+# The underlying literal is still visited by blob detection and, if it clears
+# BLOB_THRESHOLD_BYTES, recorded as its own BLOB element.
+DOCSTRING_INLINE_CAP = 2000
+
+# A source file at or above this size is not parsed: emitted as a TOO_LARGE
+# Unresolved record instead. Chosen well above any single file observed in the
+# target profile (~14 MB across the whole tree, ~3.9 MB of that in blobs).
+MAX_FILE_BYTES = 16 * 1024 * 1024
+
+# Directory names never descended into.
+EXCLUDED_DIR_NAMES = frozenset(
+    {
+        "__pycache__",
+        ".git",
+        ".hg",
+        ".svn",
+        ".venv",
+        ".venv-target",
+        "venv",
+        "node_modules",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".cascade_map",
+    }
+)
+
+# Never target content: the fixture corpus's own sidecar files (FIXTURES.md),
+# sitting beside source files inside mode_b/mode_a case directories --
+# `expected.json` (the hand-written expectation) and `spans.json` (auxiliary
+# span/byte-size metadata some cases carry alongside it). A real target tree
+# has no reason to contain either exact name; excluding them keeps fixture
+# metadata out of the inventory it is grading. Fixture *source* config files
+# used by a case under test (e.g. `wiring.json`, `config.json`) are not on
+# this list and are ingested normally.
+EXCLUDED_FILE_NAMES = frozenset({"expected.json", "spans.json"})
+
+# Non-Python config/data file extensions ingested as DATA_FILE (+ CONFIG_KEY
+# for the structured formats: JSON, YAML, INI).
+CONFIG_EXTENSIONS = {
+    ".json": "json",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".ini": "ini",
+    ".cfg": "ini",
+    ".csv": "csv",
+}
+
+
+# ==========================================================================
+# ingest/hashing.py
+# ==========================================================================
+
+"""Content hashing. One function, used everywhere identity or the incremental
+cache needs a stable fingerprint of bytes."""
+
+
+
+
+def sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_text(text: str) -> str:
+    return sha256_hex(text.encode("utf-8", errors="surrogateescape"))
+
+
+def locate_byte_offset(raw: bytes, offset: int) -> tuple[int, int]:
+    """1-indexed line, 0-indexed column for a byte offset into `raw`. Used to
+    point a DECODE_ERROR at the actual invalid byte rather than always
+    line 1 -- `UnicodeDecodeError.start` only gives a byte offset."""
+    prefix = raw[:offset]
+    line = prefix.count(b"\n") + 1
+    last_newline = prefix.rfind(b"\n")
+    col = offset - last_newline - 1 if last_newline != -1 else offset
+    return line, col
+
+
+# ==========================================================================
+# ingest/walker.py
+# ==========================================================================
+
+"""Walks a target tree and classifies files.
+
+Never opens an interpreter, never imports anything under the walked root --
+this module only touches `pathlib` and `os.scandir`.
+"""
+
+
+
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveredFile:
+    path: Path
+    """As constructed from the walk -- carries whatever prefix `root` had.
+    Never used verbatim as `SourceSpan.path`: the caller (inventory.py)
+    normalizes it relative to the resolved target root first, so the emitted
+    path is invariant to whether `root` was given relative or absolute."""
+
+    kind: str
+    """"python" | "json" | "yaml" | "ini" | "csv" """
+
+
+def module_dotted_name(root: Path, file_path: Path) -> str:
+    """Dotted module name for a `.py` file under `root`.
+
+    Computed relative to `root`'s *parent*, so `root`'s own basename becomes
+    the top-level package/module component -- pointing the tool at
+    `target_engine/` makes `target_engine` the root of every dotted name,
+    exactly like pointing it at a single-file case makes that directory's
+    name the module name.
+    """
+    base = root.parent if root.parent != root else root
+    rel = file_path.relative_to(base)
+    parts = list(rel.parts)
+    if parts[-1] == "__init__.py":
+        parts = parts[:-1]
+    elif parts[-1].endswith(".py"):
+        parts[-1] = parts[-1][: -len(".py")]
+    return ".".join(parts)
+
+
+def walk(root: str) -> Iterator[DiscoveredFile]:
+    """Yield every relevant file under `root`, sorted for determinism.
+
+    Sorting matters: ordinal disambiguation and ID-collision detection must
+    see files in the same order on every run.
+    """
+    root_path = Path(root)
+    found: list[Path] = []
+    _walk_dir(root_path, found)
+    found.sort(key=lambda p: p.as_posix())
+    for path in found:
+        if path.name in EXCLUDED_FILE_NAMES:
+            continue
+        suffix = path.suffix.lower()
+        if suffix == ".py":
+            yield DiscoveredFile(path=path, kind="python")
+        elif suffix in CONFIG_EXTENSIONS:
+            yield DiscoveredFile(path=path, kind=CONFIG_EXTENSIONS[suffix])
+
+
+def _walk_dir(directory: Path, out: list[Path]) -> None:
+    try:
+        entries = list(directory.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        if entry.is_dir():
+            if entry.name in EXCLUDED_DIR_NAMES or entry.name.startswith("."):
+                continue
+            _walk_dir(entry, out)
+        elif entry.is_file():
+            out.append(entry)
+
+
+# ==========================================================================
+# ingest/python_module.py
+# ==========================================================================
+
+"""Parses one already-decoded Python source file with `ast` and mints Elements.
+
+Never imports, execs or evaluates the target. AST only.
+"""
+
+
+
+
+
+# Token kinds that are pure formatting -- comments and whitespace -- and are
+# stripped when building normalized_body_hash. Docstrings are stripped
+# separately (see _normalized_body_hash): tokenize has no notion of "this
+# string is a docstring", so that part is done with the AST first.
+_FORMATTING_TOKENS = frozenset(
+    {
+        tokenize.COMMENT,
+        tokenize.NL,
+        tokenize.NEWLINE,
+        tokenize.INDENT,
+        tokenize.DEDENT,
+        tokenize.ENCODING,
+        tokenize.ENDMARKER,
+    }
+)
+
+_PROPERTY_DECORATOR_SUFFIXES = (".setter", ".getter", ".deleter")
+
+
+@dataclass
+class _python_module__Scope:
+    qualname: str
+    element_id: str
+    kind: str  # "module" | "class" | "function"
+
+
+@dataclass
+class _Ctx:
+    module: str
+    path: str
+    source: str
+    counts: dict[str, int] = field(default_factory=dict)
+    blob_count: int = 0
+    elements: list[Element] = field(default_factory=list)
+    unresolved: list[Unresolved] = field(default_factory=list)
+    pending_blob_spans: dict[int, ast.AST] = field(default_factory=dict)
+
+    def next_ordinal(self, qualname: str) -> int:
+        n = self.counts.get(qualname, 0) + 1
+        self.counts[qualname] = n
+        return n
+
+    def mint_id(self, qualname: str) -> str:
+        return make_id(self.module, qualname, self.next_ordinal(qualname))
+
+
+def parse_python_file(
+    module: str,
+    path_str: str,
+    source: str,
+    raw_bytes: bytes,
+    tree: ast.Module,
+    local_top_names: frozenset[str],
+) -> tuple[list[Element], list[Unresolved]]:
+    ctx = _Ctx(module=module, path=path_str, source=source)
+
+    module_docstring, module_docstring_note = _capped_docstring(tree)
+    module_el = Element(
+        id=module,
+        kind=ElementKind.MODULE,
+        name=module.rsplit(".", 1)[-1] if module else module,
+        qualname="",
+        module=module,
+        span=SourceSpan(path=path_str, line=1),
+        provenance=_certain_prov(ctx, 1, note=module_docstring_note),
+        content_hash=sha256_hex(raw_bytes),
+        docstring=module_docstring,
+        normalized_body_hash=_normalized_body_hash(ctx, tree),
+    )
+    ctx.elements.append(module_el)
+
+    root_scope = _python_module__Scope(qualname="", element_id="", kind="module")
+    _visit_body(tree.body, root_scope, ctx, local_top_names)
+
+    _emit_blobs(ctx, tree)
+
+    return ctx.elements, ctx.unresolved
+
+
+# ---------------------------------------------------------------------------
+# small helpers
+# ---------------------------------------------------------------------------
+
+
+def _python_module__span(ctx: _Ctx, node: ast.AST | int) -> SourceSpan:
+    if isinstance(node, int):
+        return SourceSpan(path=ctx.path, line=node)
+    return SourceSpan(
+        path=ctx.path,
+        line=getattr(node, "lineno", 1),
+        end_line=getattr(node, "end_lineno", None),
+        col=getattr(node, "col_offset", None),
+    )
+
+
+def _certain_prov(ctx: _Ctx, node: ast.AST | int, note: str = "") -> Provenance:
+    return Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN, span=_python_module__span(ctx, node), note=note)
+
+
+def _content_hash(ctx: _Ctx, node: ast.AST) -> str:
+    segment = ast.get_source_segment(ctx.source, node)
+    if segment is None:
+        try:
+            segment = ast.unparse(node)
+        except Exception:
+            segment = f"<unavailable:{getattr(node, 'lineno', '?')}>"
+    return sha256_text(segment)
+
+
+def _normalized_body_hash(ctx: _Ctx, node: ast.AST) -> str:
+    """Hash of `node`'s body with comments, docstrings and whitespace
+    normalized away -- "is this the same logic", distinct from
+    `content_hash`'s "is this the same bytes". Uses `tokenize` only, never
+    `ast.parse`/`compile` on target source (constraint 1 applies to every
+    reparse, not just the first one).
+
+    Deliberately excludes the `def name(...):`/`class Name(...):` header:
+    two identically-bodied functions with different names or signatures are
+    exactly the DUPLICATED_LOGIC case card 5 needs this for, and a header
+    difference must not hide that. Built from each body statement's own
+    source segment (skipping a leading docstring statement), not the node's
+    whole segment.
+
+    Empty string for elements with no body (anything but MODULE/CLASS/
+    FUNCTION/METHOD/PROPERTY), or an empty body."""
+    body = getattr(node, "body", None)
+    if not body:
+        return ""
+
+    statements = body
+    first = statements[0]
+    if (
+        isinstance(first, ast.Expr)
+        and isinstance(first.value, ast.Constant)
+        and isinstance(first.value.value, str)
+    ):
+        statements = statements[1:]
+    if not statements:
+        return ""
+
+    segments = [ast.get_source_segment(ctx.source, s) for s in statements]
+    segments = [s for s in segments if s is not None]
+    if not segments:
+        return ""
+    segment = textwrap.dedent("\n".join(segments))
+
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(segment).readline)
+        normalized = [
+            (tok.type, tok.string) for tok in tokens if tok.type not in _FORMATTING_TOKENS
+        ]
+    except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
+        # Tokenizing an extracted segment in isolation can occasionally fail
+        # on code that only parses in its original context (e.g. a `match`
+        # soft keyword edge case). Fall back to the docstring-stripped
+        # segment itself rather than losing the fact entirely.
+        return sha256_text(segment)
+    return sha256_text(repr(normalized))
+
+
+def _literal_value_and_note(value_node: ast.AST | None) -> tuple[str, str]:
+    """`repr()` of an assignment's value when it is a literal constant --
+    empty when it is not, which is the common case and must never read as
+    "the literal was empty": `repr()` of any real literal (including `""`,
+    `0`, `False`, `None`) is always a non-empty string, so the empty default
+    is unambiguous on its own. A note is still attached when a str/bytes
+    literal is capped, the same way docstring capping is surfaced.
+
+    Never a path for blob content: str/bytes literals at or above
+    BLOB_THRESHOLD_BYTES are already absorbed into a BLOB element before this
+    runs (see `_handle_assign`/`_handle_annassign`), so this function's own
+    LITERAL_VALUE_CAP_BYTES check is a defensive second gate, not the
+    primary one.
+    """
+    node = value_node
+    sign = ""
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        if isinstance(node.operand, ast.Constant) and isinstance(node.operand.value, (int, float, complex)):
+            sign = "-" if isinstance(node.op, ast.USub) else "+"
+            node = node.operand
+    if not isinstance(node, ast.Constant):
+        return "", ""
+    value = node.value
+    if isinstance(value, (str, bytes)):
+        size = len(value.encode("utf-8", errors="surrogateescape")) if isinstance(value, str) else len(value)
+        if size >= LITERAL_VALUE_CAP_BYTES:
+            return "", (
+                f"literal_value omitted: {size} bytes >= LITERAL_VALUE_CAP_BYTES="
+                f"{LITERAL_VALUE_CAP_BYTES} (never a path for blob content)"
+            )
+    text = repr(value)
+    return (f"-{text}" if sign == "-" else text), ""
+
+
+def _capped_docstring(node: ast.AST) -> tuple[str, str]:
+    """The docstring, capped, plus a note to attach to the element's own
+    Provenance whenever the cap actually did something -- a threshold that
+    silently shapes an emitted record is invisible to whoever has to trust
+    it, so the omission itself becomes part of the record."""
+    try:
+        ds = ast.get_docstring(node, clean=True)
+    except TypeError:
+        ds = None
+    if not ds:
+        return "", ""
+    size = len(ds.encode("utf-8", errors="surrogateescape"))
+    if size > DOCSTRING_INLINE_CAP:
+        return "", (
+            f"docstring omitted: {size} bytes exceeds DOCSTRING_INLINE_CAP="
+            f"{DOCSTRING_INLINE_CAP}; the underlying literal is still visited "
+            "by blob detection separately"
+        )
+    return ds, ""
+
+
+def _blob_threshold_note(value_node: ast.AST | None) -> str:
+    """A note for elements whose value is a string/bytes literal that was
+    evaluated against BLOB_THRESHOLD_BYTES but did *not* clear it -- so the
+    threshold's effect (or non-effect) is visible on the record either way,
+    not only when it fires."""
+    if not isinstance(value_node, ast.Constant):
+        return ""
+    value = value_node.value
+    if isinstance(value, str):
+        size = len(value.encode("utf-8", errors="surrogateescape"))
+    elif isinstance(value, bytes):
+        size = len(value)
+    else:
+        return ""
+    if size >= BLOB_THRESHOLD_BYTES:
+        return ""  # absorbed into a BLOB element instead -- see _emit_blobs
+    return (
+        f"literal value is {size} bytes (< BLOB_THRESHOLD_BYTES="
+        f"{BLOB_THRESHOLD_BYTES}; not recorded as an opaque BLOB)"
+    )
+
+
+def _child_qualname(scope: _python_module__Scope, name: str) -> str:
+    if scope.kind == "module":
+        return name
+    if scope.kind == "class":
+        return f"{scope.qualname}.{name}"
+    return f"{scope.qualname}.<locals>.{name}"
+
+
+def _is_big_constant(node: ast.AST | None) -> bool:
+    if not isinstance(node, ast.Constant):
+        return False
+    value = node.value
+    if isinstance(value, str):
+        return len(value.encode("utf-8", errors="surrogateescape")) >= BLOB_THRESHOLD_BYTES
+    if isinstance(value, bytes):
+        return len(value) >= BLOB_THRESHOLD_BYTES
+    return False
+
+
+def _blob_bytes(node: ast.Constant) -> bytes:
+    value = node.value
+    return value.encode("utf-8", errors="surrogateescape") if isinstance(value, str) else value
+
+
+# ---------------------------------------------------------------------------
+# traversal
+# ---------------------------------------------------------------------------
+
+_CONTROL_FLOW_NO_SCOPE = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith)
+
+
+def _visit_body(stmts: list[ast.stmt], scope: _python_module__Scope, ctx: _Ctx, local_top_names: frozenset[str]) -> None:
+    for stmt in stmts:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            _handle_def(stmt, scope, ctx, local_top_names)
+        elif isinstance(stmt, ast.ClassDef):
+            _handle_class(stmt, scope, ctx, local_top_names)
+        elif isinstance(stmt, ast.Assign):
+            _handle_assign(stmt, scope, ctx)
+        elif isinstance(stmt, ast.AnnAssign):
+            _handle_annassign(stmt, scope, ctx)
+        elif isinstance(stmt, ast.AugAssign):
+            _handle_augassign(stmt, scope, ctx)
+        elif isinstance(stmt, ast.Import):
+            _handle_import(stmt, scope, ctx, local_top_names)
+        elif isinstance(stmt, ast.ImportFrom):
+            _handle_import_from(stmt, scope, ctx, local_top_names)
+        elif isinstance(stmt, _CONTROL_FLOW_NO_SCOPE):
+            _visit_body(stmt.body, scope, ctx, local_top_names)
+            orelse = getattr(stmt, "orelse", None)
+            if orelse:
+                _visit_body(orelse, scope, ctx, local_top_names)
+        elif isinstance(stmt, ast.Try):
+            _visit_body(stmt.body, scope, ctx, local_top_names)
+            for handler in stmt.handlers:
+                _visit_body(handler.body, scope, ctx, local_top_names)
+            if stmt.orelse:
+                _visit_body(stmt.orelse, scope, ctx, local_top_names)
+            if stmt.finalbody:
+                _visit_body(stmt.finalbody, scope, ctx, local_top_names)
+        elif hasattr(ast, "Match") and isinstance(stmt, getattr(ast, "Match")):
+            for case in stmt.cases:
+                _visit_body(case.body, scope, ctx, local_top_names)
+        # everything else (Expr, Return, Pass, Raise, ...) carries no element
+
+
+def _classify_function_kind(stmt: ast.AST, scope: _python_module__Scope) -> ElementKind:
+    if scope.kind != "class":
+        return ElementKind.FUNCTION
+    for dec in stmt.decorator_list:
+        try:
+            text = ast.unparse(dec)
+        except Exception:
+            continue
+        if text == "property":
+            return ElementKind.PROPERTY
+        if any(text.endswith(suffix) for suffix in _PROPERTY_DECORATOR_SUFFIXES):
+            return ElementKind.PROPERTY
+    return ElementKind.METHOD
+
+
+def _signature_text(stmt: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    try:
+        args_text = ast.unparse(stmt.args)
+    except Exception:
+        args_text = ""
+    ret = ""
+    if stmt.returns is not None:
+        try:
+            ret = f" -> {ast.unparse(stmt.returns)}"
+        except Exception:
+            ret = ""
+    return f"({args_text}){ret}"
+
+
+def _iter_params(args: ast.arguments) -> list[ast.arg]:
+    result: list[ast.arg] = []
+    result.extend(args.posonlyargs)
+    result.extend(args.args)
+    if args.vararg is not None:
+        result.append(args.vararg)
+    result.extend(args.kwonlyargs)
+    if args.kwarg is not None:
+        result.append(args.kwarg)
+    return result
+
+
+def _handle_def(stmt, scope: _python_module__Scope, ctx: _Ctx, local_top_names: frozenset[str]) -> None:
+    name = stmt.name
+    qualname = _child_qualname(scope, name)
+    kind = _classify_function_kind(stmt, scope)
+    decorators = tuple(_safe_unparse(d) for d in stmt.decorator_list)
+    eid = ctx.mint_id(qualname)
+    docstring, docstring_note = _capped_docstring(stmt)
+    element = Element(
+        id=eid,
+        kind=kind,
+        name=name,
+        qualname=qualname,
+        module=ctx.module,
+        span=_python_module__span(ctx, stmt),
+        provenance=_certain_prov(ctx, stmt, note=docstring_note),
+        content_hash=_content_hash(ctx, stmt),
+        decorators=decorators,
+        signature=_signature_text(stmt),
+        docstring=docstring,
+        parent_id=scope.element_id,
+        normalized_body_hash=_normalized_body_hash(ctx, stmt),
+    )
+    ctx.elements.append(element)
+
+    for arg in _iter_params(stmt.args):
+        pqual = f"{qualname}.<param>.{arg.arg}"
+        peid = ctx.mint_id(pqual)
+        ctx.elements.append(
+            Element(
+                id=peid,
+                kind=ElementKind.PARAMETER,
+                name=arg.arg,
+                qualname=pqual,
+                module=ctx.module,
+                span=_python_module__span(ctx, arg),
+                provenance=_certain_prov(ctx, arg),
+                content_hash=_content_hash(ctx, arg),
+                signature=_safe_unparse(arg.annotation) if arg.annotation is not None else "",
+                parent_id=eid,
+            )
+        )
+
+    new_scope = _python_module__Scope(qualname=qualname, element_id=eid, kind="function")
+    _visit_body(stmt.body, new_scope, ctx, local_top_names)
+
+
+def _handle_class(stmt: ast.ClassDef, scope: _python_module__Scope, ctx: _Ctx, local_top_names: frozenset[str]) -> None:
+    name = stmt.name
+    qualname = _child_qualname(scope, name)
+    eid = ctx.mint_id(qualname)
+    bases = [_safe_unparse(b) for b in stmt.bases]
+    kwargs = [f"{kw.arg}={_safe_unparse(kw.value)}" for kw in stmt.keywords]
+    signature = f"({', '.join(bases + kwargs)})" if (bases or kwargs) else ""
+    decorators = tuple(_safe_unparse(d) for d in stmt.decorator_list)
+    docstring, docstring_note = _capped_docstring(stmt)
+    element = Element(
+        id=eid,
+        kind=ElementKind.CLASS,
+        name=name,
+        qualname=qualname,
+        module=ctx.module,
+        span=_python_module__span(ctx, stmt),
+        provenance=_certain_prov(ctx, stmt, note=docstring_note),
+        content_hash=_content_hash(ctx, stmt),
+        decorators=decorators,
+        signature=signature,
+        docstring=docstring,
+        parent_id=scope.element_id,
+        normalized_body_hash=_normalized_body_hash(ctx, stmt),
+    )
+    ctx.elements.append(element)
+    new_scope = _python_module__Scope(qualname=qualname, element_id=eid, kind="class")
+    _visit_body(stmt.body, new_scope, ctx, local_top_names)
+
+
+def _safe_unparse(node: ast.AST | None) -> str:
+    if node is None:
+        return ""
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return ""
+
+
+def _collect_target_names(target: ast.AST) -> list[str]:
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, ast.Starred):
+        return _collect_target_names(target.value)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        names: list[str] = []
+        for elt in target.elts:
+            names.extend(_collect_target_names(elt))
+        return names
+    return []
+
+
+def _emit_assignment(
+    ctx: _Ctx,
+    scope: _python_module__Scope,
+    name: str,
+    stmt: ast.AST,
+    annotation: ast.AST | None = None,
+    value_node: ast.AST | None = None,
+) -> None:
+    """`value_node` is the expression `name` is *directly* bound to -- only
+    set by the caller when that binding is unambiguous (a plain `Name`
+    target, not one element of a tuple-unpacking target), since
+    `literal_value` must never guess which side of an unpacking a literal
+    belongs to."""
+    if scope.kind not in ("module", "class"):
+        return
+    qualname = _child_qualname(scope, name)
+    eid = ctx.mint_id(qualname)
+    blob_note = _blob_threshold_note(getattr(stmt, "value", None))
+    literal_value, literal_note = _literal_value_and_note(value_node)
+    note = "; ".join(part for part in (blob_note, literal_note) if part)
+    ctx.elements.append(
+        Element(
+            id=eid,
+            kind=ElementKind.ASSIGNMENT,
+            name=name,
+            qualname=qualname,
+            module=ctx.module,
+            span=_python_module__span(ctx, stmt),
+            provenance=_certain_prov(ctx, stmt, note=note),
+            content_hash=_content_hash(ctx, stmt),
+            signature=_safe_unparse(annotation) if annotation is not None else "",
+            parent_id=scope.element_id,
+            literal_value=literal_value,
+        )
+    )
+
+
+def _handle_assign(stmt: ast.Assign, scope: _python_module__Scope, ctx: _Ctx) -> None:
+    if scope.kind not in ("module", "class"):
+        return
+    if len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name) and _is_big_constant(stmt.value):
+        ctx.pending_blob_spans[id(stmt.value)] = stmt
+        return
+    for target in stmt.targets:
+        if isinstance(target, ast.Name):
+            _emit_assignment(ctx, scope, target.id, stmt, value_node=stmt.value)
+        else:
+            for name in _collect_target_names(target):
+                _emit_assignment(ctx, scope, name, stmt)
+
+
+def _handle_annassign(stmt: ast.AnnAssign, scope: _python_module__Scope, ctx: _Ctx) -> None:
+    if scope.kind not in ("module", "class"):
+        return
+    if not isinstance(stmt.target, ast.Name):
+        return
+    if stmt.value is not None and _is_big_constant(stmt.value):
+        ctx.pending_blob_spans[id(stmt.value)] = stmt
+        return
+    _emit_assignment(ctx, scope, stmt.target.id, stmt, annotation=stmt.annotation, value_node=stmt.value)
+
+
+def _handle_augassign(stmt: ast.AugAssign, scope: _python_module__Scope, ctx: _Ctx) -> None:
+    if scope.kind not in ("module", "class"):
+        return
+    if not isinstance(stmt.target, ast.Name):
+        return
+    _emit_assignment(ctx, scope, stmt.target.id, stmt)
+
+
+def _handle_import(stmt: ast.Import, scope: _python_module__Scope, ctx: _Ctx, local_top_names: frozenset[str]) -> None:
+    for alias in stmt.names:
+        dotted = alias.name
+        bound = alias.asname or dotted.split(".")[0]
+        qualname = _child_qualname(scope, bound)
+        eid = ctx.mint_id(qualname)
+        signature = f"import {dotted}" + (f" as {alias.asname}" if alias.asname else "")
+        ctx.elements.append(
+            Element(
+                id=eid,
+                kind=ElementKind.IMPORT,
+                name=bound,
+                qualname=qualname,
+                module=ctx.module,
+                span=_python_module__span(ctx, stmt),
+                provenance=_certain_prov(ctx, stmt),
+                content_hash=_content_hash(ctx, stmt),
+                signature=signature,
+                parent_id=scope.element_id,
+            )
+        )
+        top = dotted.split(".")[0]
+        if top not in local_top_names:
+            unresolved_id = make_id(ctx.module, bound)
+            ctx.unresolved.append(
+                Unresolved(
+                    id=unresolved_id,
+                    reason=UnresolvedReason.MISSING_TARGET,
+                    span=_python_module__span(ctx, stmt),
+                    description=f"Import '{dotted}' not found",
+                    attempted=(Method.IMPORT_ABSOLUTE,),
+                )
+            )
+
+
+def _handle_import_from(stmt: ast.ImportFrom, scope: _python_module__Scope, ctx: _Ctx, local_top_names: frozenset[str]) -> None:
+    module_name = stmt.module or ""
+    level = stmt.level
+    for alias in stmt.names:
+        if alias.name == "*":
+            continue
+        bound = alias.asname or alias.name
+        qualname = _child_qualname(scope, bound)
+        eid = ctx.mint_id(qualname)
+        prefix = "." * level
+        signature = f"from {prefix}{module_name} import {alias.name}" + (
+            f" as {alias.asname}" if alias.asname else ""
+        )
+        ctx.elements.append(
+            Element(
+                id=eid,
+                kind=ElementKind.IMPORT,
+                name=bound,
+                qualname=qualname,
+                module=ctx.module,
+                span=_python_module__span(ctx, stmt),
+                provenance=_certain_prov(ctx, stmt),
+                content_hash=_content_hash(ctx, stmt),
+                signature=signature,
+                parent_id=scope.element_id,
+            )
+        )
+        if level == 0 and module_name:
+            top = module_name.split(".")[0]
+            if top not in local_top_names:
+                unresolved_id = make_id(ctx.module, bound)
+                ctx.unresolved.append(
+                    Unresolved(
+                        id=unresolved_id,
+                        reason=UnresolvedReason.MISSING_TARGET,
+                        span=_python_module__span(ctx, stmt),
+                        description=f"Import '{alias.name}' not found (from {module_name})",
+                        attempted=(Method.IMPORT_ABSOLUTE,),
+                    )
+                )
+
+
+def _emit_blobs(ctx: _Ctx, tree: ast.Module) -> None:
+    candidates = [node for node in ast.walk(tree) if _is_big_constant(node)]
+    candidates.sort(key=lambda n: (n.lineno, n.col_offset))
+    for node in candidates:
+        ctx.blob_count += 1
+        qualname = f"@blob#{ctx.blob_count}"
+        eid = make_id(ctx.module, qualname, 1)
+        span_node = ctx.pending_blob_spans.get(id(node), node)
+        raw = _blob_bytes(node)
+        literal_kind = "bytes" if isinstance(node.value, bytes) else "str"
+        ctx.elements.append(
+            Element(
+                id=eid,
+                kind=ElementKind.BLOB,
+                name=qualname,
+                qualname=qualname,
+                module=ctx.module,
+                span=_python_module__span(ctx, span_node),
+                provenance=Provenance(
+                    method=Method.AST_DIRECT,
+                    confidence=Confidence.CERTAIN,
+                    span=_python_module__span(ctx, span_node),
+                    note=(
+                        f"opaque {literal_kind} literal, never decoded; "
+                        f"{len(raw)} bytes >= BLOB_THRESHOLD_BYTES={BLOB_THRESHOLD_BYTES}"
+                    ),
+                ),
+                content_hash=sha256_hex(raw),
+                byte_size=len(raw),
+            )
+        )
+
+
+# ==========================================================================
+# ingest/data_files.py
+# ==========================================================================
+
+"""Inventories non-Python config/data files: DATA_FILE, and CONFIG_KEY leaves
+for the structured formats (JSON, YAML, INI). CSV is DATA_FILE only -- its
+cells are rows of data, not addressable wiring keys.
+
+Never executes anything. `json`/`configparser`/`csv` are stdlib and safe to
+use on arbitrary text; PyYAML is an optional adapter, tried and skipped
+cleanly if absent (core deps are stdlib + networkx only).
+"""
+
+
+
+
+
+try:
+    import yaml  # type: ignore[import-untyped]
+
+    _HAVE_YAML = True
+except ImportError:  # pragma: no cover - exercised when PyYAML is absent
+    yaml = None  # type: ignore[assignment]
+    _HAVE_YAML = False
+
+
+def _pointer_escape(token: str) -> str:
+    return token.replace("~", "~0").replace("/", "~1")
+
+
+def _scalar_text(value: object) -> str:
+    """A canonical_dumps-safe text form of a leaf value. Floats are formatted
+    explicitly here, never passed through as raw floats (contracts constraint 4)."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float):
+        return repr(value)
+    if value is None:
+        return "null"
+    return str(value)
+
+
+def parse_data_file(
+    kind: str, path_str: str, source_bytes: bytes
+) -> tuple[list[Element], list[Unresolved]]:
+    file_element = Element(
+        id=file_id(path_str),
+        kind=ElementKind.DATA_FILE,
+        name=path_str.rsplit("/", 1)[-1],
+        qualname="",
+        module="",
+        span=SourceSpan(path=path_str, line=1),
+        provenance=Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN),
+        content_hash=sha256_hex(source_bytes),
+        byte_size=len(source_bytes),
+    )
+    elements = [file_element]
+    unresolved: list[Unresolved] = []
+
+    try:
+        text = source_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        line, col = locate_byte_offset(source_bytes, exc.start)
+        unresolved.append(
+            Unresolved(
+                id=file_id(path_str),
+                reason=UnresolvedReason.DECODE_ERROR,
+                span=SourceSpan(path=path_str, line=line, col=col),
+                description=f"{path_str} is not valid UTF-8: {exc}",
+            )
+        )
+        return elements, unresolved
+
+    if kind == "json":
+        _parse_json(text, path_str, file_element.id, elements, unresolved)
+    elif kind == "yaml":
+        _parse_yaml(text, path_str, file_element.id, elements, unresolved)
+    elif kind == "ini":
+        _parse_ini(text, path_str, file_element.id, elements, unresolved)
+    # csv: DATA_FILE only, no leaf keys.
+
+    return elements, unresolved
+
+
+def _emit_leaf(
+    path_str: str,
+    parent_id: str,
+    pointer: str,
+    value: object,
+    elements: list[Element],
+) -> None:
+    text = _scalar_text(value)
+    elements.append(
+        Element(
+            id=config_key_id(path_str, pointer),
+            kind=ElementKind.CONFIG_KEY,
+            name=pointer.rsplit("/", 1)[-1] or pointer,
+            qualname=pointer,
+            module="",
+            span=SourceSpan(path=path_str, line=1),
+            provenance=Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN),
+            content_hash=sha256_text(text),
+            signature=text,
+            parent_id=parent_id,
+        )
+    )
+
+
+def _walk_json_value(value: object, pointer: str, path_str: str, parent_id: str, elements: list[Element]) -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            _walk_json_value(child, f"{pointer}/{_pointer_escape(str(key))}", path_str, parent_id, elements)
+    elif isinstance(value, list):
+        for idx, child in enumerate(value):
+            _walk_json_value(child, f"{pointer}/{idx}", path_str, parent_id, elements)
+    else:
+        _emit_leaf(path_str, parent_id, pointer, value, elements)
+
+
+def _parse_json(
+    text: str, path_str: str, parent_id: str, elements: list[Element], unresolved: list[Unresolved]
+) -> None:
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        unresolved.append(
+            Unresolved(
+                id=parent_id,
+                reason=UnresolvedReason.SYNTAX_ERROR,
+                span=SourceSpan(path=path_str, line=exc.lineno, col=exc.colno),
+                description=f"invalid JSON: {exc.msg}",
+            )
+        )
+        return
+    _walk_json_value(data, "", path_str, parent_id, elements)
+
+
+def _parse_yaml(
+    text: str, path_str: str, parent_id: str, elements: list[Element], unresolved: list[Unresolved]
+) -> None:
+    if not _HAVE_YAML:
+        # Degrades cleanly: DATA_FILE element already emitted, no CONFIG_KEY
+        # children without the optional adapter. Not an error.
+        return
+    try:
+        data = yaml.safe_load(text)
+    except Exception as exc:  # yaml.YAMLError and subclasses
+        unresolved.append(
+            Unresolved(
+                id=parent_id,
+                reason=UnresolvedReason.SYNTAX_ERROR,
+                span=SourceSpan(path=path_str, line=1),
+                description=f"invalid YAML: {exc}",
+            )
+        )
+        return
+    if data is not None:
+        _walk_json_value(data, "", path_str, parent_id, elements)
+
+
+def _parse_ini(
+    text: str, path_str: str, parent_id: str, elements: list[Element], unresolved: list[Unresolved]
+) -> None:
+    parser = configparser.ConfigParser()
+    try:
+        parser.read_string(text)
+    except configparser.Error as exc:
+        unresolved.append(
+            Unresolved(
+                id=parent_id,
+                reason=UnresolvedReason.SYNTAX_ERROR,
+                span=SourceSpan(path=path_str, line=1),
+                description=f"invalid INI: {exc}",
+            )
+        )
+        return
+    for section in parser.sections():
+        for key, value in parser.items(section):
+            pointer = f"/{_pointer_escape(section)}/{_pointer_escape(key)}"
+            _emit_leaf(path_str, parent_id, pointer, value, elements)
+
+
+# ==========================================================================
+# ingest/cache.py
+# ==========================================================================
+
+"""Incremental cache, keyed on file content hash.
+
+Rebuilt fresh from the files present on this run: an entry only survives via
+`reuse()`/`put()`, both driven by files the walker actually found this time.
+A file removed from the target simply has nothing call `reuse`/`put` for it,
+so its stale record cannot survive into the new cache -- the key *is* the
+content, not the path (ARCHITECTURE.md, Incrementality).
+"""
+
+
+
+
+
+def _cache__prov_from_dict(d: dict) -> Provenance:
+    d = dict(d)
+    d["method"] = Method(d["method"])
+    d["confidence"] = Confidence(d["confidence"])
+    if d.get("span"):
+        d["span"] = SourceSpan(**d["span"])
+    d["event_ids"] = tuple(d.get("event_ids", ()))
+    return Provenance(**d)
+
+
+def element_to_dict(el: Element) -> dict:
+    return dataclasses.asdict(el)
+
+
+def element_from_dict(d: dict) -> Element:
+    d = dict(d)
+    d["kind"] = ElementKind(d["kind"])
+    d["span"] = SourceSpan(**d["span"])
+    d["provenance"] = _cache__prov_from_dict(d["provenance"])
+    d["decorators"] = tuple(d.get("decorators", ()))
+    return Element(**d)
+
+
+def unresolved_to_dict(u: Unresolved) -> dict:
+    return dataclasses.asdict(u)
+
+
+def unresolved_from_dict(d: dict) -> Unresolved:
+    d = dict(d)
+    d["reason"] = UnresolvedReason(d["reason"])
+    d["span"] = SourceSpan(**d["span"])
+    d["attempted"] = tuple(Method(m) for m in d.get("attempted", ()))
+    d["candidate_ids"] = tuple(d.get("candidate_ids", ()))
+    d["candidate_confidence"] = Confidence(d.get("candidate_confidence", "UNKNOWN"))
+    return Unresolved(**d)
+
+
+class Cache:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._data: dict[str, dict] = {}
+        if path.exists():
+            try:
+                self._data = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                self._data = {}
+        self._next: dict[str, dict] = {}
+
+    def get(self, relkey: str, content_hash: str) -> tuple[list[Element], list[Unresolved]] | None:
+        entry = self._data.get(relkey)
+        if entry is None or entry.get("hash") != content_hash:
+            return None
+        elements = [element_from_dict(e) for e in entry.get("elements", [])]
+        unresolved = [unresolved_from_dict(u) for u in entry.get("unresolved", [])]
+        return elements, unresolved
+
+    def put(
+        self, relkey: str, content_hash: str, elements: list[Element], unresolved: list[Unresolved]
+    ) -> None:
+        self._next[relkey] = {
+            "hash": content_hash,
+            "elements": [element_to_dict(e) for e in elements],
+            "unresolved": [unresolved_to_dict(u) for u in unresolved],
+        }
+
+    def reuse(self, relkey: str) -> None:
+        """Carry forward an entry already validated via `get()` this run."""
+        if relkey in self._data:
+            self._next[relkey] = self._data[relkey]
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(self._next, sort_keys=True), encoding="utf-8")
+
+
+# ==========================================================================
+# ingest/inventory.py
+# ==========================================================================
+
+"""Card 1 orchestrator: walk, hash, parse, mint IDs, emit the inventory.
+
+Implements `cascade_map.contracts.interfaces.IngestionCard`. Never imports,
+execs, evals or unpickles anything under the walked root -- `ast` and
+`pathlib` only.
+"""
+
+
+
+
+
+
+def _default_cache_dir() -> Path:
+    return Path.cwd() / ".cascade_map" / "cache"
+
+
+def _relative_to_root(path: Path, root_resolved: Path) -> str | None:
+    """`SourceSpan.path` is contractually POSIX and relative to the target
+    root (interfaces.py), not "whatever prefix the caller's `root` string
+    happened to have". Resolving both sides makes this invariant to relative
+    vs. absolute `root`, and to `.`/`..` in either -- the property
+    `test_span_path_is_identical_for_relative_and_absolute_root` checks
+    directly.
+
+    Returns None when `path` resolves outside `root_resolved` (a symlink
+    escaping the tree, or the root itself being a symlink to somewhere the
+    file is not under) -- that is a real case, not a silent absolute-path
+    fallback; the caller turns it into an Unresolved record."""
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        resolved = path.resolve()
+    try:
+        return resolved.relative_to(root_resolved).as_posix()
+    except ValueError:
+        return None
+
+
+
+
+class Ingestor:
+    """`IngestionCard`. `cache_dir` defaults to a location outside any
+    scanned tree, so the default never risks writing into a read-only
+    target -- `inventory(root)` itself takes no extra arguments, matching the
+    contract's `IngestionCard` protocol exactly."""
+
+    def __init__(self, cache_dir: str | Path | None = None) -> None:
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else _default_cache_dir()
+
+    def inventory(self, root: str) -> tuple[list[Element], list[Unresolved]]:
+        root_path = Path(root)
+        root_resolved = root_path.resolve()
+        files = list(walk(root))
+        py_files = [f for f in files if f.kind == "python"]
+        local_top_names = frozenset(
+            module_dotted_name(root_path, f.path).split(".")[0] for f in py_files
+        )
+
+        cache = Cache(self.cache_dir / f"{sha256_text(str(root_resolved))}.json")
+
+        elements: list[Element] = []
+        unresolved: list[Unresolved] = []
+        module_names_seen: set[str] = set()
+
+        for f in files:
+            relkey = _relative_to_root(f.path, root_resolved)
+            if relkey is None:
+                unresolved.append(
+                    Unresolved(
+                        id=file_id(f.path.as_posix()),
+                        reason=UnresolvedReason.AMBIGUOUS,
+                        span=SourceSpan(path=f.path.name, line=1),
+                        description=(
+                            f"{f.path} resolves outside the target root {root_resolved} "
+                            "(a symlink escaping the tree, or the root itself is a symlink "
+                            "elsewhere) -- no root-relative path can be emitted for it"
+                        ),
+                    )
+                )
+                continue
+            try:
+                raw = f.path.read_bytes()
+            except OSError as exc:
+                unresolved.append(
+                    Unresolved(
+                        id=file_id(relkey),
+                        reason=UnresolvedReason.DECODE_ERROR,
+                        span=SourceSpan(path=relkey, line=1),
+                        description=f"could not read {relkey}: {exc}",
+                    )
+                )
+                continue
+
+            content_hash = sha256_hex(raw)
+
+            if f.kind == "python":
+                module = module_dotted_name(root_path, f.path)
+                module_names_seen.add(module)
+
+                if len(raw) > MAX_FILE_BYTES:
+                    unresolved.append(
+                        Unresolved(
+                            id=module,
+                            reason=UnresolvedReason.TOO_LARGE,
+                            span=SourceSpan(path=relkey, line=1),
+                            description=(
+                                f"{relkey} is {len(raw)} bytes, exceeds the "
+                                f"{MAX_FILE_BYTES}-byte parse limit"
+                            ),
+                        )
+                    )
+                    continue
+
+                cached = cache.get(relkey, content_hash)
+                if cached is not None:
+                    els, unr = cached
+                    cache.reuse(relkey)
+                else:
+                    els, unr = self._parse_python(module, relkey, raw, local_top_names)
+                    cache.put(relkey, content_hash, els, unr)
+                elements.extend(els)
+                unresolved.extend(unr)
+            else:
+                cached = cache.get(relkey, content_hash)
+                if cached is not None:
+                    els, unr = cached
+                    cache.reuse(relkey)
+                else:
+                    els, unr = parse_data_file(f.kind, relkey, raw)
+                    cache.put(relkey, content_hash, els, unr)
+                elements.extend(els)
+                unresolved.extend(unr)
+
+        cache.save()
+
+        elements.extend(_synthesize_packages(module_names_seen, root_path, root_resolved))
+
+        elements, collision_unresolved = _resolve_id_collisions(elements)
+        unresolved.extend(collision_unresolved)
+
+        return elements, unresolved
+
+    @staticmethod
+    def _parse_python(
+        module: str, relkey: str, raw: bytes, local_top_names: frozenset[str]
+    ) -> tuple[list[Element], list[Unresolved]]:
+        try:
+            source = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            line, col = locate_byte_offset(raw, exc.start)
+            return [], [
+                Unresolved(
+                    id=module,
+                    reason=UnresolvedReason.DECODE_ERROR,
+                    span=SourceSpan(path=relkey, line=line, col=col),
+                    description=f"{relkey} is not valid UTF-8: {exc}",
+                    attempted=(Method.AST_DIRECT,),
+                )
+            ]
+        try:
+            tree = ast.parse(source, filename=relkey)
+        except SyntaxError as exc:
+            return [], [
+                Unresolved(
+                    id=module,
+                    reason=UnresolvedReason.SYNTAX_ERROR,
+                    span=SourceSpan(path=relkey, line=exc.lineno or 1, col=exc.offset),
+                    description=str(exc),
+                    attempted=(Method.AST_DIRECT,),
+                )
+            ]
+        return parse_python_file(module, relkey, source, raw, tree, local_top_names)
+
+
+def _synthesize_packages(
+    module_names: set[str], root_path: Path, root_resolved: Path
+) -> list[Element]:
+    """A PACKAGE element for every directory prefix that organizes submodules
+    but has no `__init__.py` of its own (PEP 420 namespace packages). A
+    directory *with* `__init__.py` is already represented -- its MODULE
+    element carries the package's dotted name."""
+    prefixes: set[str] = set()
+    for name in module_names:
+        parts = name.split(".")
+        for i in range(1, len(parts)):
+            prefixes.add(".".join(parts[:i]))
+
+    base = root_path.parent if root_path.parent != root_path else root_path
+    out: list[Element] = []
+    for prefix in sorted(prefixes - module_names):
+        dir_path = base.joinpath(*prefix.split("."))
+        try:
+            listing = sorted(p.name for p in dir_path.iterdir())
+        except OSError:
+            listing = []
+        span_path = _relative_to_root(dir_path, root_resolved)
+        if span_path is None:
+            # Every prefix here was derived from a file actually found under
+            # root, so this directory should always resolve inside it; this
+            # branch only guards against a pathological symlink underneath.
+            span_path = dir_path.name
+        out.append(
+            Element(
+                id=prefix,
+                kind=ElementKind.PACKAGE,
+                name=prefix.rsplit(".", 1)[-1],
+                qualname="",
+                module=prefix,
+                span=SourceSpan(path=span_path or ".", line=1),
+                provenance=Provenance(
+                    method=Method.AST_DIRECT,
+                    confidence=Confidence.CERTAIN,
+                    note="namespace package: directory has no __init__.py",
+                ),
+                content_hash=sha256_text("\n".join(listing)),
+            )
+        )
+    return out
+
+
+def _resolve_id_collisions(elements: list[Element]) -> tuple[list[Element], list[Unresolved]]:
+    """Constraint: an inseparable ID collision is an ID_COLLISION record,
+    never a silent overwrite. The `#n` ordinal scheme already separates
+    every legitimate redefinition before elements reach here; what remains
+    is a genuine defect (e.g. a directory and a `.py` file both claiming the
+    same dotted name)."""
+    seen: dict[str, Element] = {}
+    kept: list[Element] = []
+    unresolved: list[Unresolved] = []
+    for el in elements:
+        prior = seen.get(el.id)
+        if prior is None:
+            seen[el.id] = el
+            kept.append(el)
+            continue
+        if prior.content_hash == el.content_hash and prior.span == el.span:
+            continue  # the same fact reached twice (e.g. reused cache entry); not a collision
+        unresolved.append(
+            Unresolved(
+                id=el.id,
+                reason=UnresolvedReason.ID_COLLISION,
+                span=el.span,
+                description=(
+                    f"id '{el.id}' claimed by both {prior.span.path}:{prior.span.line} "
+                    f"and {el.span.path}:{el.span.line}"
+                ),
+                candidate_ids=(prior.id, el.id),
+            )
+        )
+    return kept, unresolved
+
+
+def inventory(root: str, cache_dir: str | Path | None = None) -> tuple[list[Element], list[Unresolved]]:
+    """Functional convenience wrapper around `Ingestor`."""
+    return Ingestor(cache_dir=cache_dir).inventory(root)
+
+
+# ==========================================================================
+# resolve.py
+# ==========================================================================
+
+"""Card 2 -- resolution and the call graph.
+
+Turns card 1's inventory into a resolved name environment and a graph of
+``Edge`` records over the same IDs, plus an ``Unresolved`` record for every
+call site the analysis could not pin down.
+
+The design rule here is precision over recall. An edge is emitted only when a
+target can be named; everything else becomes an ``Unresolved`` record carrying
+the methods that were attempted and a candidate set with one shared
+confidence. A confident wrong edge costs the owner more than an honest
+``UNKNOWN``, so the resolver never promotes a guess to a fact.
+
+**Nothing in this module executes, imports, ``exec``s, ``eval``s or unpickles
+target code.** Sources are read as text and parsed with :mod:`ast`. Config
+files are parsed with :mod:`json`, :mod:`tomllib` and :mod:`configparser`,
+none of which execute their input. YAML is an optional adapter: without
+``PyYAML`` a ``.yaml`` file becomes an ``Unresolved`` record rather than a
+crash or a silent skip.
+
+Approximations, stated once, here:
+
+* ``Element`` carries no body, so this card re-parses each module twice --
+  once to summarise definitions, imports and registries, once to resolve call
+  sites. Summaries hold unparsed *source text* for base classes, annotations
+  and registry members rather than AST nodes, so only one tree is live at a
+  time.
+* Instance dispatch is resolved through the statically declared MRO and
+  reported ``PROBABLE``: a subclass may override. When an override exists in
+  the inventory the edge is still emitted *and* an ``AMBIGUOUS`` record lists
+  every candidate, so the ambiguity is visible rather than hidden.
+* Calls to builtins are resolved but not emitted by default (they are noise at
+  116k lines, and they are resolved, not unresolved). The count is reported by
+  :meth:`Resolver.statistics`, so the omission is never silent. Pass
+  ``include_builtin_calls=True`` to emit them.
+"""
+
+
+
+
+__all__ = [
+    "Resolver",
+    "resolve",
+    "build_graph",
+    "import_cycles",
+    "CONFIG_SUFFIXES",
+    "WIRING_KEY_WORDS",
+]
+
+# ---------------------------------------------------------------------------
+# constants
+# ---------------------------------------------------------------------------
+
+_resolve_BUILTIN_NAMES: frozenset[str] = frozenset(dir(builtins))
+
+#: Builtins whose *arguments* are the wiring. Handled specially; never emitted
+#: as a plain call edge, because the interesting edge is the one they compute.
+_WIRING_BUILTINS: frozenset[str] = frozenset(
+    {"getattr", "setattr", "hasattr", "delattr", "__import__"}
+)
+
+#: Builtins that build code at runtime. Always an unresolved record: this is
+#: where card 4 puts a barrier.
+_CODE_BUILTINS: frozenset[str] = frozenset({"eval", "exec", "compile"})
+
+CONFIG_SUFFIXES: tuple[str, ...] = (".json", ".yaml", ".yml", ".ini", ".cfg", ".toml")
+
+#: Keys whose *name* suggests the value wires a component. Used only to decide
+#: whether a string that matches nothing is worth reporting as dangling; never
+#: to raise the confidence of a match.
+WIRING_KEY_WORDS: frozenset[str] = frozenset(
+    {
+        "callable",
+        "class",
+        "class_name",
+        "cls",
+        "component",
+        "components",
+        "entry_point",
+        "entrypoint",
+        "factory",
+        "func",
+        "function",
+        "handler",
+        "handlers",
+        "impl",
+        "implementation",
+        "loader",
+        "module",
+        "pipeline",
+        "plugin",
+        "plugins",
+        "processor",
+        "rule",
+        "rules",
+        "stage",
+        "stages",
+        "step",
+        "steps",
+        "strategy",
+        "target",
+        "transform",
+        "type",
+    }
+)
+
+_PROPERTY_DECORATORS: frozenset[str] = frozenset({"property", "cached_property", "functools.cached_property"})
+_STATIC_DECORATORS: frozenset[str] = frozenset({"staticmethod", "classmethod"})
+
+_CONTAINER_WRITE_METHODS: frozenset[str] = frozenset(
+    {"append", "add", "extend", "update", "setdefault", "insert", "register"}
+)
+
+
+# ---------------------------------------------------------------------------
+# internal value model
+# ---------------------------------------------------------------------------
+
+
+class _BKind(StrEnum):
+    """What a name is bound to. Internal; never emitted."""
+
+    MODULE = "MODULE"
+    CLASS = "CLASS"
+    CALLABLE = "CALLABLE"
+    INSTANCE = "INSTANCE"
+    CONST = "CONST"
+    REGISTRY = "REGISTRY"
+    CANDIDATES = "CANDIDATES"
+    BUILTIN = "BUILTIN"
+    UNKNOWN = "UNKNOWN"
+
+
+#: Builtin types a literal can be recognised as. ``dir()`` here inspects the
+#: *tool's* interpreter, never the target: no target code is imported.
+_BUILTIN_TYPES: dict[str, type] = {
+    "bytes": bytes,
+    "dict": dict,
+    "frozenset": frozenset,
+    "int": int,
+    "list": list,
+    "set": set,
+    "str": str,
+    "tuple": tuple,
+}
+_BUILTIN_METHODS: dict[str, frozenset[str]] = {
+    name: frozenset(m for m in dir(kind) if not m.startswith("_"))
+    for name, kind in _BUILTIN_TYPES.items()
+}
+
+
+@dataclass(frozen=True, slots=True)
+class _Binding:
+    kind: _BKind = _BKind.UNKNOWN
+    target_id: str = ""
+    module_name: str = ""
+    class_key: tuple[str, str] | None = None
+    registry_key: tuple[str, str] | None = None
+    const: "_StrVal | None" = None
+    candidates: tuple[str, ...] = ()
+    method: Method = Method.SCOPE_LOOKUP
+    confidence: Confidence = Confidence.UNKNOWN
+    note: str = ""
+    external: bool = False
+    is_property: bool = False
+    builtin_type: str = ""
+    """Set when the value is plainly a builtin container or scalar, so that a
+    method call on it resolves to a builtin rather than joining the unresolved
+    stream as a name the analysis failed on."""
+
+
+_UNKNOWN_BINDING = _Binding()
+
+
+@dataclass(frozen=True, slots=True)
+class _StrVal:
+    """Abstract value of a string expression.
+
+    ``literals`` are exact possible values. ``prefixes``/``suffixes`` are the
+    known fixed ends of a value whose middle is not traceable. ``open`` means
+    at least one possible value is not pinned down, which is what separates
+    "resolve it" from "emit a candidate set".
+    """
+
+    literals: tuple[str, ...] = ()
+    prefixes: tuple[str, ...] = ()
+    suffixes: tuple[str, ...] = ()
+    open: bool = True
+
+    @property
+    def closed(self) -> bool:
+        return not self.open and bool(self.literals)
+
+    def matches(self, name: str) -> bool:
+        if name in self.literals:
+            return True
+        if any(name.startswith(p) for p in self.prefixes if p):
+            return True
+        if any(name.endswith(s) for s in self.suffixes if s):
+            return True
+        return False
+
+    @property
+    def constrained(self) -> bool:
+        return bool(self.literals or any(self.prefixes) or any(self.suffixes))
+
+
+_OPEN_STR = _StrVal()
+
+
+def _merge_str(left: _StrVal, right: _StrVal) -> _StrVal:
+    return _StrVal(
+        literals=tuple(sorted(set(left.literals) | set(right.literals))),
+        prefixes=tuple(sorted(set(left.prefixes) | set(right.prefixes))),
+        suffixes=tuple(sorted(set(left.suffixes) | set(right.suffixes))),
+        open=left.open or right.open,
+    )
+
+
+# ---------------------------------------------------------------------------
+# pass-A summaries
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class _ImportSpec:
+    """One syntactic import binding, resolved later and lazily."""
+
+    bound_name: str
+    module: str
+    level: int
+    orig_name: str
+    is_module_alias: bool
+    line: int
+    col: int
+    conditional: bool
+    type_checking: bool
+    scope_qualname: str
+
+
+@dataclass
+class _ClassSum:
+    module: str
+    qualname: str
+    element_id: str
+    bases: tuple[str, ...] = ()
+    metaclass: str = ""
+    decorators: tuple[str, ...] = ()
+    methods: dict[str, str] = field(default_factory=dict)
+    method_ordinal: dict[str, int] = field(default_factory=dict)
+    properties: set[str] = field(default_factory=set)
+    nested_classes: dict[str, str] = field(default_factory=dict)
+    class_attrs: dict[str, str] = field(default_factory=dict)
+    self_attrs: dict[str, list[str]] = field(default_factory=dict)
+    defines_init_subclass: bool = False
+    line: int = 1
+
+
+@dataclass
+class _FuncSum:
+    module: str
+    qualname: str
+    element_id: str
+    decorators: tuple[str, ...] = ()
+    returns: str = ""
+    return_exprs: tuple[str, ...] = ()
+    params: tuple[str, ...] = ()
+    line: int = 1
+    #: set when the body writes one of its (or a nested function's) parameters
+    #: into a container -- i.e. this function is a registration decorator.
+    registrar_container: str = ""
+    registrar_container_is_self: bool = False
+    registrar_key: str = ""
+
+
+@dataclass
+class _RegistrySum:
+    name: str
+    module: str
+    element_id: str
+    container: str = "dict"
+    entries: dict[str, str] = field(default_factory=dict)
+    members: list[str] = field(default_factory=list)
+    dynamic_keys: bool = False
+
+
+@dataclass
+class _ModuleSum:
+    name: str
+    path: str
+    is_package: bool
+    element_id: str
+    dunder_all: tuple[str, ...] | None = None
+    imports: dict[str, _ImportSpec] = field(default_factory=dict)
+    local_imports: list[_ImportSpec] = field(default_factory=list)
+    stars: list[_ImportSpec] = field(default_factory=list)
+    dotted_imports: set[str] = field(default_factory=set)
+    classes: dict[str, _ClassSum] = field(default_factory=dict)
+    funcs: dict[str, _FuncSum] = field(default_factory=dict)
+    top_defs: dict[str, str] = field(default_factory=dict)
+    assigns: dict[str, str] = field(default_factory=dict)
+    registries: dict[str, _RegistrySum] = field(default_factory=dict)
+    ordinals: dict[str, int] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+
+def _resolve__text(node: ast.AST | None) -> str:
+    if node is None:
+        return ""
+    try:
+        return ast.unparse(node)
+    except Exception:  # pragma: no cover - unparse is total on valid trees
+        return ""
+
+
+def _resolve__dotted(node: ast.expr) -> str:
+    """The dotted name of a Name/Attribute chain, or ``""``."""
+    parts: list[str] = []
+    cur: ast.expr = node
+    while isinstance(cur, ast.Attribute):
+        parts.append(cur.attr)
+        cur = cur.value
+    if not isinstance(cur, ast.Name):
+        return ""
+    parts.append(cur.id)
+    return ".".join(reversed(parts))
+
+
+def _json_pointer(parts: Sequence[str]) -> str:
+    return "".join("/" + p.replace("~", "~0").replace("/", "~1") for p in parts)
+
+
+def _resolve__span(path: str, node: ast.AST) -> SourceSpan:
+    line = int(getattr(node, "lineno", 1) or 1)
+    end = getattr(node, "end_lineno", None)
+    col = getattr(node, "col_offset", None)
+    return SourceSpan(
+        path=path,
+        line=line,
+        end_line=int(end) if end is not None else None,
+        col=int(col) if col is not None else None,
+    )
+
+
+def _is_type_checking(test: ast.expr) -> bool:
+    name = _resolve__dotted(test)
+    return name in {"TYPE_CHECKING", "typing.TYPE_CHECKING", "t.TYPE_CHECKING"}
+
+
+def _strip_subscript(text: str) -> str:
+    """``Optional[Foo]`` / ``list[Foo]`` -> the interesting inner name."""
+    if "[" not in text:
+        return text.strip()
+    head, _, rest = text.partition("[")
+    head = head.strip()
+    inner = rest.rsplit("]", 1)[0]
+    if head.split(".")[-1] in {"Optional", "List", "list", "Sequence", "Iterable", "Set", "set", "FrozenSet", "Type", "type"}:
+        first = inner.split(",")[0].strip()
+        return _strip_subscript(first)
+    return head
+
+
+def _relative_module(current: str, is_package: bool, level: int, mod: str) -> str:
+    parts = current.split(".") if current else []
+    base = list(parts) if is_package else list(parts[:-1])
+    up = max(level - 1, 0)
+    if up:
+        base = base[:-up] if up <= len(base) else []
+    pkg = ".".join(base)
+    if mod:
+        return f"{pkg}.{mod}" if pkg else mod
+    return pkg
+
+
+# ---------------------------------------------------------------------------
+# pass A -- summarise one module
+# ---------------------------------------------------------------------------
+
+
+class _Summariser(ast.NodeVisitor):
+    """Collects definitions, imports and registries from a single module.
+
+    Holds no AST nodes past the walk: everything crossing the pass boundary is
+    either a string, an int or a source-text fragment.
+    """
+
+    def __init__(self, summary: _ModuleSum, id_for: Any) -> None:
+        self.s = summary
+        self._id_for = id_for
+        self._prefix = ""
+        self._class_stack: list[_ClassSum] = []
+        self._func_stack: list[_FuncSum] = []
+        self._cond_depth = 0
+        self._tc_depth = 0
+
+    # -- naming ---------------------------------------------------------
+    def _qualname(self, name: str) -> str:
+        return f"{self._prefix}{name}"
+
+
+    def _ordinal(self, qualname: str) -> int:
+        n = self.s.ordinals.get(qualname, 0) + 1
+        self.s.ordinals[qualname] = n
+        return n
+
+    # -- imports --------------------------------------------------------
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            self.s.dotted_imports.add(alias.name)
+            bound = alias.asname or alias.name.split(".")[0]
+            target = alias.name if alias.asname else alias.name.split(".")[0]
+            spec = _ImportSpec(
+                bound_name=bound,
+                module=target,
+                level=0,
+                orig_name="",
+                is_module_alias=True,
+                line=node.lineno,
+                col=node.col_offset,
+                conditional=self._cond_depth > 0,
+                type_checking=self._tc_depth > 0,
+                scope_qualname=self._prefix,
+            )
+            self._record_import(spec, full_module=alias.name)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        mod = node.module or ""
+        for alias in node.names:
+            if alias.name == "*":
+                spec = _ImportSpec(
+                    bound_name="*",
+                    module=mod,
+                    level=node.level,
+                    orig_name="*",
+                    is_module_alias=False,
+                    line=node.lineno,
+                    col=node.col_offset,
+                    conditional=self._cond_depth > 0,
+                    type_checking=self._tc_depth > 0,
+                    scope_qualname=self._prefix,
+                )
+                self.s.stars.append(spec)
+                continue
+            spec = _ImportSpec(
+                bound_name=alias.asname or alias.name,
+                module=mod,
+                level=node.level,
+                orig_name=alias.name,
+                is_module_alias=False,
+                line=node.lineno,
+                col=node.col_offset,
+                conditional=self._cond_depth > 0,
+                type_checking=self._tc_depth > 0,
+                scope_qualname=self._prefix,
+            )
+            self._record_import(spec)
+
+    def _record_import(self, spec: _ImportSpec, full_module: str = "") -> None:
+        if full_module:
+            self.s.dotted_imports.add(full_module)
+        if self._func_stack:
+            self.s.local_imports.append(spec)
+        else:
+            self.s.imports.setdefault(spec.bound_name, spec)
+            self.s.local_imports.append(spec)
+
+    # -- conditionals ---------------------------------------------------
+    def visit_If(self, node: ast.If) -> None:
+        tc = _is_type_checking(node.test)
+        self._cond_depth += 1
+        if tc:
+            self._tc_depth += 1
+        for child in node.body:
+            self.visit(child)
+        if tc:
+            self._tc_depth -= 1
+        for child in node.orelse:
+            self.visit(child)
+        self._cond_depth -= 1
+
+    def visit_Try(self, node: ast.Try) -> None:
+        self._cond_depth += 1
+        self.generic_visit(node)
+        self._cond_depth -= 1
+
+    # -- definitions ----------------------------------------------------
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        qualname = self._qualname(node.name)
+        ordinal = self._ordinal(qualname)
+        metaclass = ""
+        for kw in node.keywords:
+            if kw.arg == "metaclass":
+                metaclass = _resolve__text(kw.value)
+        info = _ClassSum(
+            module=self.s.name,
+            qualname=qualname,
+            element_id=self._id_for(self.s.name, qualname, ordinal),
+            bases=tuple(_resolve__text(b) for b in node.bases),
+            metaclass=metaclass,
+            decorators=tuple(_resolve__text(d) for d in node.decorator_list),
+            line=node.lineno,
+        )
+        self.s.classes[qualname] = info
+        if not self._class_stack and not self._func_stack:
+            self.s.top_defs[node.name] = qualname
+        elif self._class_stack:
+            self._class_stack[-1].nested_classes[node.name] = qualname
+        self._class_stack.append(info)
+        outer = self._prefix
+        self._prefix = f"{qualname}."
+        for child in node.body:
+            self.visit(child)
+        self._prefix = outer
+        self._class_stack.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._function(node)
+
+    def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        qualname = self._qualname(node.name)
+        ordinal = self._ordinal(qualname)
+        decorators = tuple(_resolve__text(d) for d in node.decorator_list)
+        args = node.args
+        params = tuple(
+            a.arg
+            for a in [*args.posonlyargs, *args.args, *args.kwonlyargs]
+        )
+        info = _FuncSum(
+            module=self.s.name,
+            qualname=qualname,
+            element_id=self._id_for(self.s.name, qualname, ordinal),
+            decorators=decorators,
+            returns=_resolve__text(node.returns),
+            params=params,
+            line=node.lineno,
+        )
+        self.s.funcs[qualname] = info
+        if self._class_stack:
+            cls = self._class_stack[-1]
+            cls.methods.setdefault(node.name, qualname)
+            cls.method_ordinal.setdefault(node.name, ordinal)
+            if any(d.split("(")[0] in _PROPERTY_DECORATORS for d in decorators):
+                cls.properties.add(node.name)
+            if node.name == "__init_subclass__":
+                cls.defines_init_subclass = True
+        elif not self._func_stack:
+            self.s.top_defs[node.name] = qualname
+
+        self._func_stack.append(info)
+        outer = self._prefix
+        self._prefix = f"{qualname}.<locals>."
+        info.return_exprs = tuple(_own_returns(node))
+        for child in node.body:
+            self.visit(child)
+        self._prefix = outer
+        self._func_stack.pop()
+
+    # -- assignments ----------------------------------------------------
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self._assign(node.targets, node.value)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None:
+            self._assign([node.target], node.value)
+        elif isinstance(node.target, ast.Name) and not self._func_stack and not self._class_stack:
+            ann = _resolve__text(node.annotation)
+            if ann.split("[")[0].split(".")[-1] in {"dict", "Dict", "list", "List", "Mapping", "MutableMapping"}:
+                self._new_registry(node.target.id, "dict" if "ict" in ann or "apping" in ann else "list")
+        self.generic_visit(node)
+
+    def _new_registry(self, name: str, container: str) -> _RegistrySum:
+        reg = self.s.registries.get(name)
+        if reg is None:
+            reg = _RegistrySum(
+                name=name,
+                module=self.s.name,
+                element_id=self._id_for(self.s.name, name, 1),
+                container=container,
+            )
+            self.s.registries[name] = reg
+        return reg
+
+    def _assign(self, targets: Sequence[ast.expr], value: ast.expr) -> None:
+        at_module = not self._func_stack and not self._class_stack
+        for target in targets:
+            if isinstance(target, ast.Name):
+                if at_module:
+                    self.s.assigns.setdefault(target.id, _resolve__text(value))
+                    if target.id == "__all__":
+                        self.s.dunder_all = _literal_str_seq(value)
+                    self._maybe_registry_literal(target.id, value)
+            elif isinstance(target, ast.Attribute):
+                if self._class_stack and isinstance(target.value, ast.Name) and target.value.id in {"self", "cls"}:
+                    cls = self._class_stack[-1]
+                    cls.self_attrs.setdefault(target.attr, []).append(_resolve__text(value))
+            elif isinstance(target, ast.Subscript):
+                self._container_write(target.value, _resolve__text(value), key_node=target.slice)
+        if self._class_stack and not self._func_stack:
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    self._class_stack[-1].class_attrs.setdefault(target.id, _resolve__text(value))
+
+    def _maybe_registry_literal(self, name: str, value: ast.expr) -> None:
+        if isinstance(value, ast.Dict):
+            reg = self._new_registry(name, "dict")
+            for key, val in zip(value.keys, value.values):
+                text = _resolve__text(val)
+                if key is not None and isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    reg.entries[key.value] = text
+                else:
+                    reg.dynamic_keys = True
+                reg.members.append(text)
+        elif isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+            container = "list" if isinstance(value, (ast.List, ast.Tuple)) else "set"
+            reg = self._new_registry(name, container)
+            for item in value.elts:
+                reg.members.append(_resolve__text(item))
+
+    def _container_write(self, container: ast.expr, value_text: str, key_node: ast.AST | None) -> None:
+        """Record ``NAME[key] = value`` / ``self.attr[key] = value``."""
+        key = ""
+        if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
+            key = key_node.value
+        if isinstance(container, ast.Name):
+            reg = self.s.registries.get(container.id)
+            if reg is None and container.id in self.s.assigns:
+                reg = self._new_registry(container.id, "dict")
+            if reg is None and not self._func_stack and not self._class_stack:
+                reg = self._new_registry(container.id, "dict")
+            if reg is not None:
+                if key:
+                    reg.entries.setdefault(key, value_text)
+                else:
+                    reg.dynamic_keys = True
+                if value_text not in reg.members:
+                    reg.members.append(value_text)
+                self._maybe_registrar(container.id, value_text, key_node, is_self=False)
+        elif isinstance(container, ast.Attribute) and isinstance(container.value, ast.Name):
+            if container.value.id in {"self", "cls"}:
+                self._maybe_registrar(container.attr, value_text, key_node, is_self=True)
+
+    def _maybe_registrar(
+        self, container_name: str, value_text: str, key_node: ast.AST | None, *, is_self: bool
+    ) -> None:
+        """Mark the enclosing function as a registration decorator.
+
+        A function that writes one of its own (or its closure's) parameters
+        into a module-level container *is* a registrar; that is what
+        ``@register`` and ``@register("name")`` look like from the outside.
+        """
+        if not self._func_stack:
+            return
+        params: set[str] = set()
+        for fn in self._func_stack:
+            params.update(fn.params)
+        if value_text not in params:
+            return
+        key_text = ""
+        if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
+            key_text = key_node.value
+        elif key_node is not None:
+            key_text = _resolve__text(key_node)
+        outer = self._func_stack[0]
+        outer.registrar_container = container_name
+        outer.registrar_container_is_self = is_self
+        outer.registrar_key = key_text
+
+    def visit_Call(self, node: ast.Call) -> None:
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr in _CONTAINER_WRITE_METHODS:
+            if node.args:
+                arg = node.args[0]
+                if isinstance(arg, ast.Dict):
+                    for key, val in zip(arg.keys, arg.values):
+                        self._container_write(func.value, _resolve__text(val), key)
+                elif isinstance(arg, (ast.List, ast.Tuple, ast.Set)):
+                    for item in arg.elts:
+                        self._container_write(func.value, _resolve__text(item), None)
+                elif func.attr == "setdefault" and len(node.args) > 1:
+                    self._container_write(func.value, _resolve__text(node.args[1]), arg)
+                else:
+                    self._container_write(func.value, _resolve__text(arg), None)
+        self.generic_visit(node)
+
+
+def _own_returns(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+    """Return expressions of *this* function, not of the ones nested in it.
+
+    ``ast.walk`` would fold a wrapper's own `return` into its decorator's, and
+    the decorator would then look as if it returned two different things.
+    """
+    out: list[str] = []
+
+    def walk(body: Sequence[ast.stmt]) -> None:
+        for stmt in body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                continue
+            if isinstance(stmt, ast.Return):
+                if stmt.value is not None:
+                    out.append(_resolve__text(stmt.value))
+                continue
+            for field in ("body", "orelse", "finalbody"):
+                inner = getattr(stmt, field, None)
+                if isinstance(inner, list):
+                    walk([n for n in inner if isinstance(n, ast.stmt)])
+            for handler in getattr(stmt, "handlers", []) or []:
+                walk(handler.body)
+
+    walk(node.body)
+    return out
+
+
+def _string_constants(node: ast.AST) -> list[str]:
+    """Every string literal in a subtree, in source order."""
+    out: list[str] = []
+    for child in ast.walk(node):
+        if isinstance(child, ast.Constant) and isinstance(child.value, str):
+            out.append(child.value)
+    return out
+
+
+def _decorator_key_literal(text: str) -> str:
+    """The literal string argument of ``@register("scale")``, if there is one."""
+    try:
+        expr = ast.parse(text, mode="eval").body
+    except SyntaxError:
+        return ""
+    if not isinstance(expr, ast.Call):
+        return ""
+    for arg in [*expr.args, *[kw.value for kw in expr.keywords]]:
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            return arg.value
+    return ""
+
+
+def _element_name(resolver: "Resolver", element_id: str) -> str:
+    element = resolver._elements.get(element_id)
+    if element is not None:
+        return element.name
+    return element_id.rsplit("::", 1)[-1].rsplit(".", 1)[-1]
+
+
+def _literal_builtin_type(node: ast.expr) -> str:
+    """The builtin type a literal expression plainly has, or ``""``."""
+    if isinstance(node, (ast.List, ast.ListComp)):
+        return "list"
+    if isinstance(node, (ast.Dict, ast.DictComp)):
+        return "dict"
+    if isinstance(node, (ast.Set, ast.SetComp)):
+        return "set"
+    if isinstance(node, ast.Tuple):
+        return "tuple"
+    if isinstance(node, ast.JoinedStr):
+        return "str"
+    if isinstance(node, ast.Constant):
+        for name, kind in _BUILTIN_TYPES.items():
+            if type(node.value) is kind:
+                return name
+    return ""
+
+
+def _literal_str_seq(value: ast.expr) -> tuple[str, ...] | None:
+    if not isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+        return None
+    out: list[str] = []
+    for item in value.elts:
+        if isinstance(item, ast.Constant) and isinstance(item.value, str):
+            out.append(item.value)
+        else:
+            return None
+    return tuple(out)
+
+
+# ---------------------------------------------------------------------------
+# the resolver
+# ---------------------------------------------------------------------------
+
+
+class Resolver:
+    """Card 2's entry point. Implements ``ResolutionCard``.
+
+    ``root`` is the directory ``Element.span.path`` values are relative to.
+    ``config_paths`` are the owner-declared wiring files (``TARGET_PROFILE``
+    Q3); a declared file's string matches are ``PROBABLE``, an auto-detected
+    one's are ``HEURISTIC``.
+    """
+
+    def __init__(
+        self,
+        root: str | Path = ".",
+        *,
+        config_paths: Sequence[str] = (),
+        include_builtin_calls: bool = False,
+        max_traced_targets: int = 4,
+        max_candidates: int = 32,
+    ) -> None:
+        self.root = Path(root)
+        self.declared_configs = frozenset(str(p) for p in config_paths)
+        self.include_builtin_calls = include_builtin_calls
+        self.max_traced_targets = max_traced_targets
+        self.max_candidates = max_candidates
+
+        self._elements: dict[str, Element] = {}
+        self._by_qual: dict[tuple[str, str, int], Element] = {}
+        self._by_name: dict[str, list[str]] = defaultdict(list)
+        self._modules: dict[str, _ModuleSum] = {}
+        self._module_paths: dict[str, str] = {}
+        self._edges: list[Edge] = []
+        self._unresolved: list[Unresolved] = []
+        self._edge_ordinals: dict[str, int] = {}
+        self._unres_ordinals: dict[str, int] = {}
+        self._export_cache: dict[tuple[str, str], _Binding] = {}
+        self._mro_cache: dict[tuple[str, str], tuple[tuple[tuple[str, str], ...], bool]] = {}
+        self._scope_cache: dict[str, dict[str, _Binding]] = {}
+        self._star_cache: dict[tuple[str, _ImportSpec], dict[str, _Binding]] = {}
+        self._subclasses: dict[tuple[str, str], list[tuple[str, str]]] = defaultdict(list)
+        self._registry_keys: dict[str, list[str]] = defaultdict(list)
+        self._decorated_by: dict[str, list[str]] = defaultdict(list)
+        self._registry_members: dict[str, list[tuple[str, Method]]] = defaultdict(list)
+        self._wrapper_cache: dict[str, str] = {}
+        self._stats: dict[str, int] = defaultdict(int)
+        self._config_files: list[str] = []
+
+    # -- public ---------------------------------------------------------
+
+    def resolve(
+        self, elements: Sequence[Element]
+    ) -> tuple[Sequence[Edge], Sequence[Unresolved]]:
+        """Resolve *elements* into edges and unresolved records."""
+        self._reset()
+        self._index(elements)
+        self._summarise()
+        self._link_subclasses()
+        for module in sorted(self._modules):
+            self._resolve_module(self._modules[module])
+        self._resolve_configs()
+        edges = sorted(self._edges, key=lambda e: e.id)
+        unresolved = sorted(self._unresolved, key=lambda u: u.id)
+        self._stats["edges"] = len(edges)
+        self._stats["unresolved"] = len(unresolved)
+        return edges, unresolved
+
+    def statistics(self) -> dict[str, int]:
+        """Counts, all integers. Includes the edges deliberately not emitted,
+        so the omission of builtin calls is never silent."""
+        return {key: int(self._stats[key]) for key in sorted(self._stats)}
+
+    # -- setup ----------------------------------------------------------
+
+    def _reset(self) -> None:
+        self._elements.clear()
+        self._by_qual.clear()
+        self._by_name.clear()
+        self._modules.clear()
+        self._module_paths.clear()
+        self._edges.clear()
+        self._unresolved.clear()
+        self._edge_ordinals.clear()
+        self._unres_ordinals.clear()
+        self._export_cache.clear()
+        self._mro_cache.clear()
+        self._scope_cache.clear()
+        self._star_cache.clear()
+        self._subclasses.clear()
+        self._registry_keys.clear()
+        self._decorated_by.clear()
+        self._registry_members.clear()
+        self._wrapper_cache.clear()
+        self._stats.clear()
+        self._config_files.clear()
+
+    def _index(self, elements: Sequence[Element]) -> None:
+        counts: dict[tuple[str, str], int] = defaultdict(int)
+        module_elements: dict[str, Element] = {}
+        for element in elements:
+            self._elements[element.id] = element
+            key = (element.module, element.qualname)
+            counts[key] += 1
+            self._by_qual[(element.module, element.qualname, counts[key])] = element
+            if element.qualname:
+                self._by_name[element.name].append(element.id)
+            if element.kind in (ElementKind.MODULE, ElementKind.PACKAGE):
+                module_elements.setdefault(element.module, element)
+            if element.kind in (ElementKind.DATA_FILE, ElementKind.CONFIG_KEY):
+                path = element.span.path
+                if path.endswith(CONFIG_SUFFIXES) and path not in self._config_files:
+                    self._config_files.append(path)
+        for path in sorted(self.declared_configs):
+            if path not in self._config_files:
+                self._config_files.append(path)
+        self._config_files.sort()
+
+        for name, element in module_elements.items():
+            path = element.span.path
+            self._module_paths[name] = path
+            self._modules[name] = _ModuleSum(
+                name=name,
+                path=path,
+                is_package=element.kind is ElementKind.PACKAGE
+                or Path(path).name == "__init__.py",
+                element_id=element.id,
+            )
+        # Robustness: an element whose module card 1 did not emit as a MODULE
+        # element still needs a module entry, or its call sites vanish.
+        for element in elements:
+            if element.kind in (ElementKind.DATA_FILE, ElementKind.CONFIG_KEY, ElementKind.FEATURE):
+                continue
+            if element.module and element.module not in self._modules:
+                path = element.span.path
+                if not path.endswith(".py"):
+                    continue
+                self._module_paths[element.module] = path
+                self._modules[element.module] = _ModuleSum(
+                    name=element.module,
+                    path=path,
+                    is_package=Path(path).name == "__init__.py",
+                    element_id=make_id(element.module),
+                )
+
+    def _id_for(self, module: str, qualname: str, ordinal: int = 1) -> str:
+        element = self._by_qual.get((module, qualname, ordinal))
+        if element is not None:
+            return element.id
+        return make_id(module, qualname, ordinal)
+
+    # -- source access --------------------------------------------------
+
+    def _read(self, path: str) -> str | None:
+        full = Path(path) if Path(path).is_absolute() else self.root / path
+        try:
+            return full.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            self._record_unresolved(
+                owner=make_id(path),
+                reason=UnresolvedReason.MISSING_TARGET,
+                span=SourceSpan(path=path, line=1),
+                description=f"source file not found under root {self.root}",
+                attempted=(Method.AST_DIRECT,),
+            )
+            return None
+        except UnicodeDecodeError:
+            self._record_unresolved(
+                owner=make_id(path),
+                reason=UnresolvedReason.DECODE_ERROR,
+                span=SourceSpan(path=path, line=1),
+                description="file is not valid UTF-8; cannot resolve names in it",
+                attempted=(Method.AST_DIRECT,),
+            )
+            return None
+        except OSError as exc:
+            self._record_unresolved(
+                owner=make_id(path),
+                reason=UnresolvedReason.MISSING_TARGET,
+                span=SourceSpan(path=path, line=1),
+                description=f"could not read source: {type(exc).__name__}",
+                attempted=(Method.AST_DIRECT,),
+            )
+            return None
+
+    def _parse(self, summary: _ModuleSum) -> ast.Module | None:
+        """Parse a module to a tree. Never executes it -- ``ast.parse`` only."""
+        source = self._read(summary.path)
+        if source is None:
+            return None
+        try:
+            return ast.parse(source, filename=summary.path)
+        except SyntaxError as exc:
+            self._record_unresolved(
+                owner=summary.element_id,
+                reason=UnresolvedReason.SYNTAX_ERROR,
+                span=SourceSpan(path=summary.path, line=int(exc.lineno or 1)),
+                description=f"cannot parse module: {exc.msg}",
+                attempted=(Method.AST_DIRECT,),
+            )
+            return None
+        except (ValueError, RecursionError) as exc:
+            self._record_unresolved(
+                owner=summary.element_id,
+                reason=UnresolvedReason.TOO_LARGE,
+                span=SourceSpan(path=summary.path, line=1),
+                description=f"cannot parse module: {type(exc).__name__}",
+                attempted=(Method.AST_DIRECT,),
+            )
+            return None
+
+    def _summarise(self) -> None:
+        for name in sorted(self._modules):
+            summary = self._modules[name]
+            tree = self._parse(summary)
+            if tree is None:
+                continue
+            _Summariser(summary, self._id_for).visit(tree)
+            self._stats["modules_parsed"] += 1
+            del tree
+
+    def _link_subclasses(self) -> None:
+        """Cross-element structure both passes need: subclasses, what each
+        decorator decorates, and what each registry holds.
+
+        Computed before any body is resolved, so a dispatcher defined above
+        the code that fills its registry still sees the whole registry."""
+        for module in sorted(self._modules):
+            summary = self._modules[module]
+            for qualname in sorted(summary.classes):
+                info = summary.classes[qualname]
+                for base in info.bases:
+                    key = self._class_key_from_text(base, module)
+                    if key is not None:
+                        self._subclasses[key].append((module, qualname))
+        for key in self._subclasses:
+            self._subclasses[key].sort()
+
+        for module in sorted(self._modules):
+            summary = self._modules[module]
+            decorated: list[tuple[tuple[str, ...], str]] = [
+                (info.decorators, info.element_id) for _, info in sorted(summary.classes.items())
+            ]
+            decorated += [
+                (info.decorators, info.element_id) for _, info in sorted(summary.funcs.items())
+            ]
+            for decorators, element_id in decorated:
+                for text in decorators:
+                    head = text.split("(", 1)[0]
+                    if head in _PROPERTY_DECORATORS or head in _STATIC_DECORATORS:
+                        continue
+                    binding = self._binding_for_dotted(head, module)
+                    if not binding.target_id:
+                        continue
+                    # `@trace` applies `trace` itself; `@register("x")` applies
+                    # whatever `register` returns. Binding the decorated
+                    # element to the wrong one of those two would put the key
+                    # argument where the decorated function belongs.
+                    applied = binding.target_id
+                    if text.strip() != head:
+                        applied = self.wrapper_of(binding.target_id) or binding.target_id
+                    self._decorated_by[applied].append(element_id)
+                    key_literal = _decorator_key_literal(text)
+                    registrar = self._registrar_for(binding.target_id)
+                    if registrar is None:
+                        continue
+                    container = self._registrar_container(registrar, head, module)
+                    if not container:
+                        continue
+                    self._registry_members[container].append(
+                        (element_id, Method.DECORATOR_REGISTRATION)
+                    )
+                    self.register_key(key_literal or _element_name(self, element_id), element_id)
+
+        for module in sorted(self._modules):
+            summary = self._modules[module]
+            for name in sorted(summary.registries):
+                reg = summary.registries[name]
+                for text in reg.members:
+                    binding = self._binding_for_dotted(text, module) if text else _UNKNOWN_BINDING
+                    if binding.target_id and binding.kind in (_BKind.CALLABLE, _BKind.CLASS):
+                        self._registry_members[reg.element_id].append(
+                            (binding.target_id, Method.REGISTRY_MEMBERSHIP)
+                        )
+                for key in sorted(reg.entries):
+                    binding = self._binding_for_dotted(reg.entries[key], module)
+                    if binding.target_id:
+                        self.register_key(key, binding.target_id)
+        for container in self._registry_members:
+            self._registry_members[container] = sorted(
+                dict.fromkeys(self._registry_members[container])
+            )
+        for key in self._decorated_by:
+            self._decorated_by[key] = sorted(dict.fromkeys(self._decorated_by[key]))
+
+    def _registrar_for(self, element_id: str) -> _FuncSum | None:
+        for module in sorted(self._modules):
+            for _, func in sorted(self._modules[module].funcs.items()):
+                if func.element_id == element_id and func.registrar_container:
+                    return func
+        return None
+
+    def _registrar_container(self, registrar: _FuncSum, dotted: str, module: str) -> str:
+        if registrar.registrar_container_is_self:
+            receiver = dotted.rsplit(".", 1)[0] if "." in dotted else ""
+            return self._binding_for_dotted(receiver, module).target_id if receiver else ""
+        owner = registrar.module
+        reg = self._modules[owner].registries.get(registrar.registrar_container)
+        return reg.element_id if reg else make_id(owner, registrar.registrar_container)
+
+    def wrapper_of(self, decorator_id: str) -> str:
+        """The function a decorator returns, when it plainly returns one.
+
+        ``@trace`` rebinds the decorated name to ``trace``'s inner function, so
+        a call to the decorated name reaches that wrapper. A decorator that
+        returns its own argument rebinds nothing and yields ``""``.
+        """
+        cached = self._wrapper_cache.get(decorator_id)
+        if cached is not None:
+            return cached
+        self._wrapper_cache[decorator_id] = ""
+        result = ""
+        for module in sorted(self._modules):
+            summary = self._modules[module]
+            for qualname in sorted(summary.funcs):
+                func = summary.funcs[qualname]
+                if func.element_id != decorator_id:
+                    continue
+                returns = [r for r in func.return_exprs if r]
+                if len(set(returns)) != 1:
+                    break
+                returned = returns[0]
+                if returned in func.params:
+                    break  # identity decorator: the name keeps its own target
+                nested = f"{qualname}.<locals>.{returned}"
+                if nested in summary.funcs:
+                    result = summary.funcs[nested].element_id
+                break
+            if result:
+                break
+        self._wrapper_cache[decorator_id] = result
+        return result
+
+    def decorated_by(self, decorator_id: str) -> tuple[str, ...]:
+        return tuple(self._decorated_by.get(decorator_id, ()))
+
+    def decorators_of(self, element_id: str) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                decorator
+                for decorator, targets in self._decorated_by.items()
+                if element_id in targets
+            )
+        )
+
+    def registry_members(self, container_id: str) -> tuple[tuple[str, Method], ...]:
+        return tuple(self._registry_members.get(container_id, ()))
+
+    def registry_binding(self, module: str, name: str) -> _Binding | None:
+        """A REGISTRY binding for *name*, or ``None`` if it holds no callables.
+
+        A module-level dict that holds data is a dict, not a registry. Calling
+        it one would turn every ``x.get(k)`` in the engine into a dispatch.
+        """
+        summary = self._modules.get(module)
+        reg = summary.registries.get(name) if summary else None
+        if reg is None or not self._registry_members.get(reg.element_id):
+            return None
+        return _Binding(
+            kind=_BKind.REGISTRY,
+            target_id=reg.element_id,
+            registry_key=(module, name),
+            method=Method.REGISTRY_MEMBERSHIP,
+            confidence=Confidence.RESOLVED,
+            builtin_type=reg.container if reg.container in _BUILTIN_TYPES else "",
+        )
+
+    # -- emission -------------------------------------------------------
+
+    def _emit(
+        self,
+        kind: EdgeKind,
+        source_id: str,
+        target_id: str,
+        method: Method,
+        confidence: Confidence,
+        *,
+        call_site: SourceSpan | None = None,
+        note: str = "",
+    ) -> Edge:
+        base = f"edge:{kind.value}:{source_id}=>{target_id}"
+        ordinal = self._edge_ordinals.get(base, 0) + 1
+        self._edge_ordinals[base] = ordinal
+        edge_id = base if ordinal == 1 else f"{base}#{ordinal}"
+        edge = Edge(
+            id=edge_id,
+            kind=kind,
+            source_id=source_id,
+            target_id=target_id,
+            provenance=Provenance(
+                method=method, confidence=confidence, span=call_site, note=note
+            ),
+            call_site=call_site,
+        )
+        self._edges.append(edge)
+        self._stats[f"edge_{kind.value}"] += 1
+        self._stats[f"conf_{confidence.value}"] += 1
+        return edge
+
+    def _record_unresolved(
+        self,
+        *,
+        owner: str,
+        reason: UnresolvedReason,
+        span: SourceSpan,
+        description: str,
+        attempted: tuple[Method, ...] = (),
+        candidates: Sequence[str] = (),
+        candidate_confidence: Confidence = Confidence.UNKNOWN,
+    ) -> Unresolved:
+        """*owner* is the record's ID: the element or key the gap belongs to.
+
+        A ``#n`` suffix appears only when the same site produces a second
+        record, mirroring :func:`make_id`, so a record keeps its ID across
+        reformatting.
+        """
+        ordinal = self._unres_ordinals.get(owner, 0) + 1
+        self._unres_ordinals[owner] = ordinal
+        ids = tuple(sorted(dict.fromkeys(candidates)))
+        truncated = ""
+        if len(ids) > self.max_candidates:
+            truncated = f" (candidate set truncated from {len(ids)} to {self.max_candidates})"
+            ids = ids[: self.max_candidates]
+        record = Unresolved(
+            id=owner if ordinal == 1 else f"{owner}#{ordinal}",
+            reason=reason,
+            span=span,
+            description=description + truncated,
+            attempted=attempted,
+            candidate_ids=ids,
+            candidate_confidence=candidate_confidence if ids else Confidence.UNKNOWN,
+        )
+        self._unresolved.append(record)
+        self._stats[f"unresolved_{reason.value}"] += 1
+        return record
+
+    # -- module / export resolution -------------------------------------
+
+    def _module_scope(self, module: str) -> dict[str, _Binding]:
+        """Module-level bindings: definitions, imports, constants, registries."""
+        cached = self._scope_cache.get(module)
+        if cached is not None:
+            return cached
+        scope: dict[str, _Binding] = {}
+        self._scope_cache[module] = scope  # placed early: import cycles terminate here
+        summary = self._modules.get(module)
+        if summary is None:
+            return scope
+        for name in sorted(summary.top_defs):
+            qualname = summary.top_defs[name]
+            scope[name] = self._binding_for_def(module, qualname)
+        for name in sorted(summary.imports):
+            scope[name] = self._binding_for_import(summary, summary.imports[name])
+        for spec in summary.stars:
+            for exported, binding in self._star_bindings(summary, spec).items():
+                scope.setdefault(exported, binding)
+        for name in sorted(summary.registries):
+            if name in scope:
+                continue
+            binding = self.registry_binding(module, name)
+            if binding is not None:
+                scope[name] = binding
+        for name in sorted(summary.assigns):
+            if name in scope:
+                continue
+            binding = self._binding_from_assign_text(module, summary.assigns[name])
+            if binding.kind is not _BKind.UNKNOWN:
+                scope[name] = binding
+        return scope
+
+    def _binding_for_def(self, module: str, qualname: str) -> _Binding:
+        summary = self._modules[module]
+        if qualname in summary.classes:
+            info = summary.classes[qualname]
+            return _Binding(
+                kind=_BKind.CLASS,
+                target_id=info.element_id,
+                class_key=(module, qualname),
+                method=Method.AST_DIRECT,
+                confidence=Confidence.CERTAIN,
+            )
+        if qualname in summary.funcs:
+            info = summary.funcs[qualname]
+            return _Binding(
+                kind=_BKind.CALLABLE,
+                target_id=info.element_id,
+                method=Method.AST_DIRECT,
+                confidence=Confidence.CERTAIN,
+            )
+        return _UNKNOWN_BINDING
+
+    def _binding_from_assign_text(self, module: str, text: str) -> _Binding:
+        if not text:
+            return _UNKNOWN_BINDING
+        try:
+            expr = ast.parse(text, mode="eval").body
+        except SyntaxError:
+            return _UNKNOWN_BINDING
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            return _Binding(
+                kind=_BKind.CONST,
+                const=_StrVal(literals=(expr.value,), open=False),
+                method=Method.DATAFLOW,
+                confidence=Confidence.RESOLVED,
+            )
+        if isinstance(expr, ast.Call):
+            key = self._class_key_from_text(_resolve__dotted(expr.func), module)
+            if key is not None:
+                return _Binding(
+                    kind=_BKind.INSTANCE,
+                    class_key=key,
+                    target_id=self._class_element(key),
+                    method=Method.DATAFLOW,
+                    confidence=Confidence.PROBABLE,
+                )
+        if isinstance(expr, (ast.Name, ast.Attribute)):
+            dotted = _resolve__dotted(expr)
+            if dotted:
+                key = self._class_key_from_text(dotted, module)
+                if key is not None:
+                    return _Binding(
+                        kind=_BKind.CLASS,
+                        class_key=key,
+                        target_id=self._class_element(key),
+                        method=Method.SCOPE_LOOKUP,
+                        confidence=Confidence.RESOLVED,
+                    )
+        return _UNKNOWN_BINDING
+
+    def _binding_for_import(self, summary: _ModuleSum, spec: _ImportSpec) -> _Binding:
+        note_bits: list[str] = []
+        if spec.type_checking:
+            note_bits.append("under TYPE_CHECKING; not imported at runtime")
+        elif spec.conditional:
+            note_bits.append("conditional import")
+        note = "; ".join(note_bits)
+        # A guarded import still names exactly one module: the guard changes
+        # *whether* it runs, not *what* it names. The note records the guard;
+        # downgrading the confidence would understate a certain resolution.
+        ceiling = Confidence.RESOLVED
+
+        if spec.is_module_alias:
+            target_module = spec.module
+            known = target_module in self._modules
+            return _Binding(
+                kind=_BKind.MODULE,
+                module_name=target_module,
+                target_id=self._modules[target_module].element_id if known else "",
+                method=Method.IMPORT_ABSOLUTE,
+                confidence=ceiling if known else Confidence.UNKNOWN,
+                note=note,
+                external=not known,
+            )
+
+        target_module = (
+            _relative_module(summary.name, summary.is_package, spec.level, spec.module)
+            if spec.level
+            else spec.module
+        )
+        method = Method.IMPORT_RELATIVE if spec.level else Method.IMPORT_ABSOLUTE
+        submodule = f"{target_module}.{spec.orig_name}" if target_module else spec.orig_name
+        if submodule in self._modules:
+            return _Binding(
+                kind=_BKind.MODULE,
+                module_name=submodule,
+                target_id=self._modules[submodule].element_id,
+                method=method,
+                confidence=ceiling,
+                note=note,
+            )
+        if target_module in self._modules:
+            exported = self._lookup_export(target_module, spec.orig_name, frozenset())
+            if exported.kind is not _BKind.UNKNOWN:
+                return _Binding(
+                    kind=exported.kind,
+                    target_id=exported.target_id,
+                    module_name=exported.module_name,
+                    class_key=exported.class_key,
+                    registry_key=exported.registry_key,
+                    const=exported.const,
+                    method=exported.method if exported.method is Method.REEXPORT else method,
+                    confidence=combine(ceiling, exported.confidence),
+                    note="; ".join(b for b in [note, exported.note] if b),
+                )
+            return _Binding(
+                kind=_BKind.UNKNOWN,
+                module_name=target_module,
+                method=method,
+                confidence=Confidence.UNKNOWN,
+                note="; ".join(b for b in [note, "name not found in target module"] if b),
+            )
+        if spec.level:
+            # A relative import always names something inside the tree. If the
+            # tree has no such module the reference is dangling, and claiming
+            # an edge to an invented absolute module would be an over-link.
+            return _Binding(
+                kind=_BKind.UNKNOWN,
+                module_name=target_module,
+                method=method,
+                confidence=Confidence.UNKNOWN,
+                note="; ".join(
+                    b
+                    for b in [
+                        note,
+                        f"relative import resolves to {target_module!r}, which is not "
+                        "in the inventory",
+                    ]
+                    if b
+                ),
+            )
+        # Outside the tree. There is no element to point at, so there is no
+        # edge: an edge to a bare dotted name would fabricate a node. The call
+        # site records it as THIRD_PARTY instead.
+        return _Binding(
+            kind=_BKind.CALLABLE,
+            target_id="",
+            module_name=target_module,
+            method=method,
+            confidence=Confidence.UNKNOWN,
+            note="; ".join(b for b in [note, "target outside the inventory"] if b),
+            external=True,
+        )
+
+    def _star_bindings(self, summary: _ModuleSum, spec: _ImportSpec) -> dict[str, _Binding]:
+        """Names a ``from x import *`` binds. Memoised, so the residue record
+        is written once however many times the scope is rebuilt."""
+        cache_key = (summary.name, spec)
+        cached = self._star_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        result = self._star_bindings_uncached(summary, spec)
+        self._star_cache[cache_key] = result
+        return result
+
+    def _star_bindings_uncached(
+        self, summary: _ModuleSum, spec: _ImportSpec
+    ) -> dict[str, _Binding]:
+        target_module = (
+            _relative_module(summary.name, summary.is_package, spec.level, spec.module)
+            if spec.level
+            else spec.module
+        )
+        out: dict[str, _Binding] = {}
+        source = self._modules.get(target_module)
+        if source is None:
+            self._record_unresolved(
+                owner=summary.element_id,
+                reason=UnresolvedReason.THIRD_PARTY,
+                span=SourceSpan(path=summary.path, line=spec.line, col=spec.col),
+                description=(
+                    f"star import from {target_module!r}, which is outside the "
+                    "inventory: the names it binds cannot be enumerated"
+                ),
+                attempted=(Method.IMPORT_STAR,),
+            )
+            return out
+        names = source.dunder_all
+        residue: list[str] = []
+        if names is None:
+            names = tuple(sorted(n for n in source.top_defs if not n.startswith("_")))
+            residue = sorted(
+                n
+                for n in {**source.imports}.keys()
+                if not n.startswith("_") and n not in source.top_defs
+            )
+        for name in names:
+            binding = self._lookup_export(target_module, name, frozenset())
+            if binding.kind is _BKind.UNKNOWN:
+                residue.append(name)
+                continue
+            out[name] = _Binding(
+                kind=binding.kind,
+                target_id=binding.target_id,
+                module_name=binding.module_name,
+                class_key=binding.class_key,
+                registry_key=binding.registry_key,
+                const=binding.const,
+                method=Method.IMPORT_STAR,
+                confidence=combine(binding.confidence, Confidence.RESOLVED),
+            )
+        if residue:
+            self._record_unresolved(
+                owner=summary.element_id,
+                reason=UnresolvedReason.AMBIGUOUS,
+                span=SourceSpan(path=summary.path, line=spec.line, col=spec.col),
+                description=(
+                    f"star import from {target_module!r} also rebinds names this "
+                    "analysis could not attach to a definition: "
+                    + ", ".join(sorted(set(residue)))
+                ),
+                attempted=(Method.IMPORT_STAR,),
+            )
+        return out
+
+    def _lookup_export(self, module: str, name: str, seen: frozenset[tuple[str, str]]) -> _Binding:
+        key = (module, name)
+        if key in seen:
+            return _Binding(
+                kind=_BKind.UNKNOWN,
+                method=Method.REEXPORT,
+                note="import cycle: export chain returns to itself",
+            )
+        cached = self._export_cache.get(key)
+        if cached is not None:
+            return cached
+        summary = self._modules.get(module)
+        if summary is None:
+            return _UNKNOWN_BINDING
+        seen = seen | {key}
+        result = _UNKNOWN_BINDING
+        if name in summary.top_defs:
+            result = self._binding_for_def(module, summary.top_defs[name])
+        elif f"{module}.{name}" in self._modules:
+            sub = self._modules[f"{module}.{name}"]
+            result = _Binding(
+                kind=_BKind.MODULE,
+                module_name=sub.name,
+                target_id=sub.element_id,
+                method=Method.IMPORT_ABSOLUTE,
+                confidence=Confidence.RESOLVED,
+            )
+        elif name in summary.imports:
+            spec = summary.imports[name]
+            inner = self._binding_for_import_seen(summary, spec, seen)
+            if inner.kind is not _BKind.UNKNOWN:
+                result = _Binding(
+                    kind=inner.kind,
+                    target_id=inner.target_id,
+                    module_name=inner.module_name,
+                    class_key=inner.class_key,
+                    registry_key=inner.registry_key,
+                    const=inner.const,
+                    method=Method.REEXPORT,
+                    confidence=combine(inner.confidence, Confidence.RESOLVED),
+                    external=inner.external,
+                    note="re-exported",
+                )
+        elif self.registry_binding(module, name) is not None:
+            found = self.registry_binding(module, name)
+            assert found is not None
+            result = found
+        elif name in summary.assigns:
+            result = self._binding_from_assign_text(module, summary.assigns[name])
+        else:
+            for spec in summary.stars:
+                target_module = (
+                    _relative_module(summary.name, summary.is_package, spec.level, spec.module)
+                    if spec.level
+                    else spec.module
+                )
+                if target_module in self._modules:
+                    inner = self._lookup_export(target_module, name, seen)
+                    if inner.kind is not _BKind.UNKNOWN:
+                        result = _Binding(
+                            kind=inner.kind,
+                            target_id=inner.target_id,
+                            module_name=inner.module_name,
+                            class_key=inner.class_key,
+                            registry_key=inner.registry_key,
+                            method=Method.IMPORT_STAR,
+                            confidence=combine(inner.confidence, Confidence.RESOLVED),
+                        )
+                        break
+        if not seen - {key}:
+            self._export_cache[key] = result
+        return result
+
+    def _binding_for_import_seen(
+        self, summary: _ModuleSum, spec: _ImportSpec, seen: frozenset[tuple[str, str]]
+    ) -> _Binding:
+        if spec.is_module_alias or spec.level == 0 and spec.module not in self._modules:
+            return self._binding_for_import(summary, spec)
+        target_module = (
+            _relative_module(summary.name, summary.is_package, spec.level, spec.module)
+            if spec.level
+            else spec.module
+        )
+        submodule = f"{target_module}.{spec.orig_name}" if target_module else spec.orig_name
+        if submodule in self._modules:
+            return _Binding(
+                kind=_BKind.MODULE,
+                module_name=submodule,
+                target_id=self._modules[submodule].element_id,
+                method=Method.IMPORT_RELATIVE if spec.level else Method.IMPORT_ABSOLUTE,
+                confidence=Confidence.RESOLVED,
+            )
+        if target_module in self._modules:
+            return self._lookup_export(target_module, spec.orig_name, seen)
+        return self._binding_for_import(summary, spec)
+
+    # -- classes and MRO ------------------------------------------------
+
+    def _class_key_from_text(self, text: str, module: str) -> tuple[str, str] | None:
+        """Resolve a base-class / annotation source fragment to a class key."""
+        text = _strip_subscript(text).strip()
+        if not text:
+            return None
+        binding = self._binding_for_dotted(text, module)
+        if binding.kind is _BKind.CLASS and binding.class_key is not None:
+            return binding.class_key
+        return None
+
+    def _binding_for_dotted(self, dotted: str, module: str) -> _Binding:
+        parts = dotted.split(".")
+        scope = self._module_scope(module)
+        summary = self._modules.get(module)
+        binding = scope.get(parts[0], _UNKNOWN_BINDING)
+        if binding.kind is _BKind.UNKNOWN and summary is not None and len(parts) == 1:
+            if parts[0] in summary.classes:
+                return _Binding(
+                    kind=_BKind.CLASS,
+                    class_key=(module, parts[0]),
+                    target_id=summary.classes[parts[0]].element_id,
+                    method=Method.SCOPE_LOOKUP,
+                    confidence=Confidence.RESOLVED,
+                )
+            return _UNKNOWN_BINDING
+        for part in parts[1:]:
+            binding = self._attr_binding(binding, part, module)
+        return binding
+
+    def _class_element(self, key: tuple[str, str]) -> str:
+        summary = self._modules.get(key[0])
+        if summary is None:
+            return make_id(key[0], key[1])
+        info = summary.classes.get(key[1])
+        return info.element_id if info else make_id(key[0], key[1])
+
+    def _mro(self, key: tuple[str, str]) -> tuple[tuple[tuple[str, str], ...], bool]:
+        """(linearisation, complete). Incomplete means an unknown base exists."""
+        cached = self._mro_cache.get(key)
+        if cached is not None:
+            return cached
+        self._mro_cache[key] = ((key,), False)  # cycle guard
+        summary = self._modules.get(key[0])
+        info = summary.classes.get(key[1]) if summary else None
+        if info is None:
+            result: tuple[tuple[tuple[str, str], ...], bool] = ((key,), False)
+            self._mro_cache[key] = result
+            return result
+        order: list[tuple[str, str]] = [key]
+        complete = True
+        for base in info.bases:
+            stripped = _strip_subscript(base).strip()
+            if stripped in {"object", "abc.ABC", "ABC", "Protocol", "typing.Protocol"}:
+                continue
+            base_key = self._class_key_from_text(base, key[0])
+            if base_key is None:
+                complete = False
+                continue
+            sub_order, sub_complete = self._mro(base_key)
+            complete = complete and sub_complete
+            for item in sub_order:
+                if item not in order:
+                    order.append(item)
+        result = (tuple(order), complete)
+        self._mro_cache[key] = result
+        return result
+
+    def _members(self, key: tuple[str, str]) -> dict[str, tuple[str, tuple[str, str], bool]]:
+        """attribute name -> (element id, owning class key, is_property)."""
+        out: dict[str, tuple[str, tuple[str, str], bool]] = {}
+        order, _ = self._mro(key)
+        for cls_key in order:
+            summary = self._modules.get(cls_key[0])
+            info = summary.classes.get(cls_key[1]) if summary else None
+            if info is None:
+                continue
+            for name in sorted(info.methods):
+                if name in out:
+                    continue
+                qualname = info.methods[name]
+                ordinal = info.method_ordinal.get(name, 1)
+                out[name] = (
+                    self._id_for(cls_key[0], qualname, ordinal),
+                    cls_key,
+                    name in info.properties,
+                )
+            for name in sorted(info.nested_classes):
+                out.setdefault(
+                    name,
+                    (self._id_for(cls_key[0], info.nested_classes[name]), cls_key, False),
+                )
+        return out
+
+    def _lookup_member(
+        self, key: tuple[str, str], attr: str
+    ) -> tuple[str, tuple[str, str], bool] | None:
+        return self._members(key).get(attr)
+
+    def _overriding_subclasses(self, key: tuple[str, str], attr: str) -> list[str]:
+        out: list[str] = []
+        stack = list(self._subclasses.get(key, ()))
+        seen: set[tuple[str, str]] = set()
+        while stack:
+            sub = stack.pop()
+            if sub in seen:
+                continue
+            seen.add(sub)
+            summary = self._modules.get(sub[0])
+            info = summary.classes.get(sub[1]) if summary else None
+            if info is not None and attr in info.methods:
+                out.append(
+                    self._id_for(sub[0], info.methods[attr], info.method_ordinal.get(attr, 1))
+                )
+            stack.extend(self._subclasses.get(sub, ()))
+        return sorted(set(out))
+
+    def _attr_binding(self, base: _Binding, attr: str, module: str) -> _Binding:
+        """Resolve ``<base>.<attr>`` to a binding."""
+        if base.kind is _BKind.MODULE:
+            target_module = base.module_name
+            sub = f"{target_module}.{attr}"
+            if sub in self._modules:
+                return _Binding(
+                    kind=_BKind.MODULE,
+                    module_name=sub,
+                    target_id=self._modules[sub].element_id,
+                    method=Method.IMPORT_ABSOLUTE,
+                    confidence=Confidence.RESOLVED,
+                )
+            if target_module in self._modules:
+                found = self._lookup_export(target_module, attr, frozenset())
+                if found.kind is not _BKind.UNKNOWN:
+                    return found
+                return _Binding(
+                    kind=_BKind.UNKNOWN,
+                    module_name=target_module,
+                    note=f"{target_module!r} defines no attribute {attr!r}",
+                )
+            summary = self._modules.get(module)
+            if summary is not None and sub in summary.dotted_imports:
+                return _Binding(
+                    kind=_BKind.MODULE,
+                    module_name=sub,
+                    target_id=make_id(sub),
+                    method=Method.IMPORT_ABSOLUTE,
+                    confidence=Confidence.RESOLVED,
+                    external=True,
+                )
+            return _Binding(
+                kind=_BKind.CALLABLE,
+                target_id=make_id(target_module, attr),
+                module_name=target_module,
+                method=Method.IMPORT_ABSOLUTE,
+                confidence=Confidence.RESOLVED,
+                external=True,
+                note="target outside the inventory",
+            )
+        if base.kind in (_BKind.CLASS, _BKind.INSTANCE) and base.class_key is not None:
+            found = self._lookup_member(base.class_key, attr)
+            if found is not None:
+                target_id, owner, is_prop = found
+                summary = self._modules.get(owner[0])
+                info = summary.classes.get(owner[1]) if summary else None
+                if info is not None and attr in info.nested_classes:
+                    return _Binding(
+                        kind=_BKind.CLASS,
+                        class_key=(owner[0], info.nested_classes[attr]),
+                        target_id=target_id,
+                        method=Method.MRO_DISPATCH,
+                        confidence=Confidence.RESOLVED,
+                    )
+                if base.kind is _BKind.CLASS:
+                    conf = Confidence.RESOLVED if owner == base.class_key else Confidence.PROBABLE
+                else:
+                    conf = Confidence.PROBABLE
+                return _Binding(
+                    kind=_BKind.CALLABLE,
+                    target_id=target_id,
+                    class_key=base.class_key,
+                    method=Method.MRO_DISPATCH,
+                    confidence=conf,
+                    is_property=is_prop,
+                    note="" if owner == base.class_key else f"inherited from {owner[1]}",
+                )
+            # attribute assigned on the instance in a method body
+            attrs = self._self_attr_bindings(base.class_key, attr)
+            if len(attrs) == 1:
+                return attrs[0]
+            if len(attrs) > 1:
+                return _Binding(
+                    kind=_BKind.CANDIDATES,
+                    candidates=tuple(sorted(b.target_id for b in attrs)),
+                    method=Method.DATAFLOW,
+                    confidence=Confidence.UNKNOWN,
+                    note=f"self.{attr} is bound to more than one callable",
+                )
+        if base.kind is _BKind.REGISTRY and attr in _CONTAINER_WRITE_METHODS | {
+            "get",
+            "values",
+            "keys",
+            "items",
+            "pop",
+        }:
+            return _Binding(
+                kind=_BKind.REGISTRY,
+                registry_key=base.registry_key,
+                target_id=base.target_id,
+                method=Method.REGISTRY_MEMBERSHIP,
+                confidence=base.confidence,
+                note=f"registry.{attr}",
+            )
+        return _UNKNOWN_BINDING
+
+    def _self_attr_bindings(self, key: tuple[str, str], attr: str) -> list[_Binding]:
+        out: list[_Binding] = []
+        order, _ = self._mro(key)
+        for cls_key in order:
+            summary = self._modules.get(cls_key[0])
+            info = summary.classes.get(cls_key[1]) if summary else None
+            if info is None or attr not in info.self_attrs:
+                continue
+            for text in info.self_attrs[attr]:
+                binding = self._binding_from_assign_text(cls_key[0], text)
+                if binding.kind in (_BKind.CALLABLE, _BKind.CLASS) and binding.target_id:
+                    out.append(
+                        _Binding(
+                            kind=binding.kind,
+                            target_id=binding.target_id,
+                            class_key=binding.class_key,
+                            method=Method.DATAFLOW,
+                            confidence=Confidence.PROBABLE,
+                            note=f"self.{attr} assigned in {cls_key[1]}",
+                        )
+                    )
+            if out:
+                break
+        return out
+
+    # -- per-module resolution ------------------------------------------
+
+    def _resolve_module(self, summary: _ModuleSum) -> None:
+        tree = self._parse(summary)
+        if tree is None:
+            return
+        walker = _CallResolver(self, summary)
+        walker.run(tree)
+        del tree
+
+    # -- config wiring ---------------------------------------------------
+
+    def _resolve_configs(self) -> None:
+        for path in self._config_files:
+            declared = path in self.declared_configs
+            strings = self._config_strings(path)
+            lines = self._config_lines(path)
+            for pointer, value, key_name in strings:
+                self._match_config_string(
+                    path, pointer, value, key_name, declared, self._value_span(path, lines, value)
+                )
+
+    def _config_lines(self, path: str) -> list[str]:
+        full = Path(path) if Path(path).is_absolute() else self.root / path
+        try:
+            return full.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            return []
+
+    def _value_span(self, path: str, lines: Sequence[str], value: str) -> SourceSpan:
+        """Point at the line and column the string actually occupies.
+
+        A config finding that names the file but not the line sends the owner
+        hunting through it; the exact key is the whole point of
+        ``config_key_id``.
+        """
+        needle = f'"{value}"'
+        for index, line in enumerate(lines):
+            col = line.find(needle)
+            if col < 0:
+                col = line.find(f"'{value}'")
+            if col < 0 and value in line:
+                col = line.find(value)
+            if col >= 0:
+                return SourceSpan(path=path, line=index + 1, col=col)
+        return SourceSpan(path=path, line=1)
+
+    def _config_strings(self, path: str) -> list[tuple[str, str, str]]:
+        full = Path(path) if Path(path).is_absolute() else self.root / path
+        suffix = Path(path).suffix.lower()
+        data: Any = None
+        try:
+            if suffix == ".json":
+                data = json.loads(full.read_text(encoding="utf-8"))
+            elif suffix == ".toml":
+                data = tomllib.loads(full.read_text(encoding="utf-8"))
+            elif suffix in (".ini", ".cfg"):
+                parser = configparser.ConfigParser()
+                parser.read_string(full.read_text(encoding="utf-8"))
+                data = {
+                    section: dict(parser.items(section)) for section in parser.sections()
+                }
+            elif suffix in (".yaml", ".yml"):
+                try:
+                    import yaml  # type: ignore[import-untyped]
+                except ImportError:
+                    self._record_unresolved(
+                        owner=make_id(path),
+                        reason=UnresolvedReason.THIRD_PARTY,
+                        span=SourceSpan(path=path, line=1),
+                        description=(
+                            "YAML config not read: the optional PyYAML adapter is not "
+                            "installed, so component names in this file are unresolved"
+                        ),
+                        attempted=(Method.CONFIG_STRING_MATCH,),
+                    )
+                    return []
+                data = yaml.safe_load(full.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            self._record_unresolved(
+                owner=make_id(path),
+                reason=UnresolvedReason.MISSING_TARGET,
+                span=SourceSpan(path=path, line=1),
+                description="config file listed in the inventory was not found",
+                attempted=(Method.CONFIG_STRING_MATCH,),
+            )
+            return []
+        except (UnicodeDecodeError, ValueError, configparser.Error) as exc:
+            self._record_unresolved(
+                owner=make_id(path),
+                reason=UnresolvedReason.DECODE_ERROR,
+                span=SourceSpan(path=path, line=1),
+                description=f"config file could not be parsed: {type(exc).__name__}",
+                attempted=(Method.CONFIG_STRING_MATCH,),
+            )
+            return []
+        out: list[tuple[str, str, str]] = []
+        _walk_config(data, [], "", out)
+        return out
+
+    def _match_config_string(
+        self,
+        path: str,
+        pointer: str,
+        value: str,
+        key_name: str,
+        declared: bool,
+        span: SourceSpan,
+    ) -> None:
+        text = value.strip()
+        if not text or len(text) > 200 or " " in text:
+            return
+        source_id = config_key_id(path, pointer)
+        candidates = self._candidates_for_config(text)
+        dotted_shape = all(part.isidentifier() for part in text.split(".")) and "." in text
+        colon_shape = ":" in text and all(
+            part.isidentifier() for part in text.replace(":", ".").split(".") if part
+        )
+        looks_like_wiring = (
+            dotted_shape or colon_shape or key_name.lower() in WIRING_KEY_WORDS
+        )
+        if len(candidates) == 1:
+            target, how = candidates[0]
+            confidence = Confidence.PROBABLE if (declared and how != "name") else Confidence.HEURISTIC
+            self._emit(
+                EdgeKind.CONFIGURES,
+                source_id,
+                target,
+                Method.CONFIG_STRING_MATCH,
+                confidence,
+                call_site=span,
+                note=(
+                    f"config key {pointer} = {text!r} matched by {how}; "
+                    + ("owner-declared wiring file" if declared else "auto-detected config file")
+                ),
+            )
+            return
+        if len(candidates) > 1:
+            self._record_unresolved(
+                owner=source_id,
+                reason=UnresolvedReason.AMBIGUOUS,
+                span=span,
+                description=(
+                    f"config key {pointer} = {text!r} matches more than one element; "
+                    "no edge claimed"
+                ),
+                attempted=(Method.CONFIG_STRING_MATCH,),
+                candidates=[c[0] for c in candidates],
+                candidate_confidence=Confidence.HEURISTIC,
+            )
+            return
+        if looks_like_wiring:
+            near = self._near_name_candidates(text)
+            self._record_unresolved(
+                owner=source_id,
+                reason=UnresolvedReason.MISSING_TARGET,
+                span=span,
+                description=(
+                    f"config key {pointer} holds {text!r}; no element in the "
+                    "target has that name"
+                ),
+                attempted=(Method.CONFIG_STRING_MATCH, Method.NAME_HEURISTIC),
+                candidates=near,
+                candidate_confidence=Confidence.HEURISTIC if near else Confidence.UNKNOWN,
+            )
+
+    def _candidates_for_config(self, text: str) -> list[tuple[str, str]]:
+        out: list[tuple[str, str]] = []
+        normalised = text.replace(":", ".")
+        if "." in normalised:
+            parts = normalised.split(".")
+            for split in range(len(parts) - 1, 0, -1):
+                module = ".".join(parts[:split])
+                qualname = ".".join(parts[split:])
+                if module in self._modules:
+                    element = self._by_qual.get((module, qualname, 1))
+                    if element is not None:
+                        out.append((element.id, "dotted path"))
+                        return out
+                    summary = self._modules[module]
+                    if qualname in summary.classes:
+                        out.append((summary.classes[qualname].element_id, "dotted path"))
+                        return out
+                    if qualname in summary.funcs:
+                        out.append((summary.funcs[qualname].element_id, "dotted path"))
+                        return out
+            if normalised in self._modules:
+                return [(self._modules[normalised].element_id, "module path")]
+            return []
+        keyed = sorted(set(self._registry_keys.get(text, ())))
+        if len(keyed) == 1:
+            return [(keyed[0], "registry key")]
+        if len(keyed) > 1:
+            return [(k, "registry key") for k in keyed]
+        named = [
+            element_id
+            for element_id in sorted(set(self._by_name.get(text, ())))
+            if self._elements[element_id].kind
+            in (ElementKind.CLASS, ElementKind.FUNCTION, ElementKind.METHOD)
+        ]
+        return [(element_id, "name") for element_id in named]
+
+    def _near_name_candidates(self, text: str) -> list[str]:
+        bare = text.replace(":", ".").split(".")[-1]
+        lowered = bare.lower()
+        out: list[str] = []
+        for name, ids in self._by_name.items():
+            if name.lower() == lowered or name.lower().replace("_", "") == lowered.replace("_", ""):
+                out.extend(ids)
+        return sorted(set(out))[: self.max_candidates]
+
+    def register_key(self, key: str, element_id: str) -> None:
+        """Record that *element_id* is registered under the string *key*."""
+        if key and element_id not in self._registry_keys[key]:
+            self._registry_keys[key].append(element_id)
+
+
+def _walk_config(node: Any, parts: list[str], key_name: str, out: list[tuple[str, str, str]]) -> None:
+    if isinstance(node, dict):
+        for key in sorted(node, key=str):
+            _walk_config(node[key], [*parts, str(key)], str(key), out)
+    elif isinstance(node, (list, tuple)):
+        for index, item in enumerate(node):
+            _walk_config(item, [*parts, str(index)], key_name, out)
+    elif isinstance(node, str):
+        out.append((_json_pointer(parts), node, key_name))
+
+
+# ---------------------------------------------------------------------------
+# pass B -- resolve call sites in one module
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _resolve__Scope:
+    kind: str
+    names: dict[str, _Binding]
+    parent: "_Scope | None" = None
+    class_key: tuple[str, str] | None = None
+
+
+class _CallResolver(ast.NodeVisitor):
+    """Walks one module and emits edges and unresolved records."""
+
+    def __init__(self, resolver: Resolver, summary: _ModuleSum) -> None:
+        self.r = resolver
+        self.s = summary
+        self.path = summary.path
+        self.module = summary.name
+        self.scope = _resolve__Scope(kind="module", names=dict(resolver._module_scope(summary.name)))
+        self.owner_stack: list[str] = [summary.element_id]
+        self.class_stack: list[tuple[str, str]] = []
+        self.prefix = ""
+        self.ordinals: dict[str, int] = {}
+        self.cond_depth = 0
+        self.tc_depth = 0
+        #: results of dynamic-wiring calls, keyed by node identity, so a node
+        #: evaluated both as a statement and as a value emits its edge once.
+        self._dynamic_cache: dict[int, _Binding] = {}
+        #: nodes whose value is consumed by an enclosing call, so the reference
+        #: edge would duplicate that call's edge.
+        self._suppress_reference: set[int] = set()
+        #: the element a module- or class-level assignment is binding, so a
+        #: dynamic value gets the ID of the name that holds it.
+        self._assign_name: str = ""
+
+    # -- plumbing -------------------------------------------------------
+
+    @property
+    def owner(self) -> str:
+        return self.owner_stack[-1]
+
+    def run(self, tree: ast.Module) -> None:
+        for node in tree.body:
+            self.visit(node)
+
+    def _ordinal(self, qualname: str) -> int:
+        n = self.ordinals.get(qualname, 0) + 1
+        self.ordinals[qualname] = n
+        return n
+
+    def _lookup(self, name: str) -> _Binding:
+        scope: _resolve__Scope | None = self.scope
+        first = True
+        while scope is not None:
+            if scope.kind != "class" or first:
+                binding = scope.names.get(name)
+                if binding is not None:
+                    return binding
+            first = False
+            scope = scope.parent
+        return _UNKNOWN_BINDING
+
+    def _bind(self, name: str, binding: _Binding) -> None:
+        self.scope.names[name] = binding
+
+    def _push(self, kind: str, class_key: tuple[str, str] | None = None) -> None:
+        self.scope = _resolve__Scope(kind=kind, names={}, parent=self.scope, class_key=class_key)
+
+    def _pop(self) -> None:
+        assert self.scope.parent is not None
+        self.scope = self.scope.parent
+
+    def _emit(
+        self,
+        kind: EdgeKind,
+        target_id: str,
+        method: Method,
+        confidence: Confidence,
+        node: ast.AST,
+        note: str = "",
+        source_id: str | None = None,
+    ) -> None:
+        self.r._emit(
+            kind,
+            source_id if source_id is not None else self.owner,
+            target_id,
+            method,
+            confidence,
+            call_site=_resolve__span(self.path, node),
+            note=note,
+        )
+
+    def _unresolved(
+        self,
+        node: ast.AST,
+        reason: UnresolvedReason,
+        description: str,
+        attempted: tuple[Method, ...],
+        candidates: Sequence[str] = (),
+        candidate_confidence: Confidence = Confidence.UNKNOWN,
+        site: str = "",
+    ) -> None:
+        """*site* names the gap inside the enclosing element, so the record ID
+        is readable and survives reformatting: ``m::run::getattr@name``."""
+        self.r._record_unresolved(
+            owner=f"{self.owner}::{site}" if site else self.owner,
+            reason=reason,
+            span=_resolve__span(self.path, node),
+            description=description,
+            attempted=attempted,
+            candidates=candidates,
+            candidate_confidence=candidate_confidence,
+        )
+
+    # -- definitions ----------------------------------------------------
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        qualname = f"{self.prefix}{node.name}"
+        ordinal = self._ordinal(qualname)
+        element_id = self.r._id_for(self.module, qualname, ordinal)
+        key = (self.module, qualname)
+
+        for base in node.bases:
+            self._inherit_edge(element_id, base)
+        for kw in node.keywords:
+            if kw.arg == "metaclass":
+                self._inherit_edge(element_id, kw.value, note="metaclass")
+        self._decorator_edges(node.decorator_list, element_id, node, is_class=True)
+
+        self._bind(
+            node.name,
+            _Binding(
+                kind=_BKind.CLASS,
+                target_id=element_id,
+                class_key=key,
+                method=Method.AST_DIRECT,
+                confidence=Confidence.CERTAIN,
+            ),
+        )
+        self._register_subclass_hook(key, element_id, node)
+
+        self.owner_stack.append(element_id)
+        self.class_stack.append(key)
+        outer = self.prefix
+        self.prefix = f"{qualname}."
+        self._push("class", class_key=key)
+        for child in node.body:
+            self.visit(child)
+        self._pop()
+        self.prefix = outer
+        self.class_stack.pop()
+        self.owner_stack.pop()
+
+    def _inherit_edge(self, element_id: str, base: ast.expr, note: str = "") -> None:
+        dotted = _resolve__dotted(base)
+        if not dotted:
+            self._visit_receiver(base)
+            self._unresolved(
+                base,
+                UnresolvedReason.DYNAMIC_NAME,
+                f"base class expression {_resolve__text(base)!r} is computed; no inheritance edge claimed",
+                (Method.SCOPE_LOOKUP,),
+                site="base@computed",
+            )
+            return
+        binding = self._resolve_dotted(dotted)
+        if binding.kind is _BKind.CLASS and binding.target_id:
+            self._emit(
+                EdgeKind.INHERITS,
+                binding.target_id,
+                Method.AST_DIRECT,
+                Confidence.CERTAIN,
+                base,
+                note=note or "the base class list is read straight off the AST",
+                source_id=element_id,
+            )
+        elif dotted in {"object", "ABC", "abc.ABC", "Protocol", "typing.Protocol"}:
+            return
+        else:
+            self._unresolved(
+                base,
+                UnresolvedReason.MISSING_TARGET,
+                f"base class {dotted!r} could not be resolved to an element",
+                (Method.SCOPE_LOOKUP, Method.IMPORT_ABSOLUTE),
+                candidates=self._name_candidates(dotted.split(".")[-1], (ElementKind.CLASS,)),
+                candidate_confidence=Confidence.HEURISTIC,
+                site=f"base@{dotted}",
+            )
+
+    def _register_subclass_hook(
+        self, key: tuple[str, str], element_id: str, node: ast.ClassDef
+    ) -> None:
+        """``__init_subclass__``/metaclass registration: the base collects its
+        subclasses. Emitted from the base, once per known subclass."""
+        summary = self.r._modules.get(key[0])
+        info = summary.classes.get(key[1]) if summary else None
+        if info is None:
+            return
+        parents: list[tuple[str, str]] = []
+        order, _ = self.r._mro(key)
+        for ancestor in order[1:]:
+            a_summary = self.r._modules.get(ancestor[0])
+            a_info = a_summary.classes.get(ancestor[1]) if a_summary else None
+            if a_info is not None and (a_info.defines_init_subclass or a_info.metaclass):
+                parents.append(ancestor)
+        if info.metaclass:
+            meta_key = self.r._class_key_from_text(info.metaclass, key[0])
+            if meta_key is not None:
+                parents.append(meta_key)
+        for parent in parents:
+            container = self.r._class_element(parent)
+            self._emit(
+                EdgeKind.REGISTERS,
+                element_id,
+                Method.REGISTRY_MEMBERSHIP,
+                Confidence.PROBABLE,
+                node,
+                note="subclass registration via __init_subclass__ or metaclass",
+                source_id=container,
+            )
+            self.r.register_key(node.name, element_id)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._function(node)
+
+    def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        qualname = f"{self.prefix}{node.name}"
+        ordinal = self._ordinal(qualname)
+        element_id = self.r._id_for(self.module, qualname, ordinal)
+
+        self._decorator_edges(node.decorator_list, element_id, node, is_class=False)
+        binding = _Binding(
+            kind=_BKind.CALLABLE,
+            target_id=element_id,
+            method=Method.AST_DIRECT,
+            confidence=Confidence.CERTAIN,
+        )
+        if not self.class_stack:
+            self._bind(node.name, binding)
+
+        for default in [*node.args.defaults, *[d for d in node.args.kw_defaults if d]]:
+            self.visit(default)
+
+        self.owner_stack.append(element_id)
+        outer = self.prefix
+        self.prefix = f"{qualname}.<locals>."
+        self._push("function")
+        self._bind_parameters(node, element_id)
+        for child in node.body:
+            self.visit(child)
+        self._pop()
+        self.prefix = outer
+        self.owner_stack.pop()
+
+    def _bind_parameters(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef, element_id: str = ""
+    ) -> None:
+        self._bind_decorated_parameter(node, element_id)
+        args = node.args
+        all_args = [*args.posonlyargs, *args.args, *args.kwonlyargs]
+        decorators = {_resolve__text(d).split("(")[0] for d in node.decorator_list}
+        if self.class_stack and all_args:
+            key = self.class_stack[-1]
+            first = all_args[0].arg
+            if "staticmethod" not in decorators:
+                kind = _BKind.CLASS if "classmethod" in decorators else _BKind.INSTANCE
+                self._bind(
+                    first,
+                    _Binding(
+                        kind=kind,
+                        class_key=key,
+                        target_id=self.r._class_element(key),
+                        method=Method.MRO_DISPATCH,
+                        confidence=Confidence.RESOLVED,
+                        note="bound receiver",
+                    ),
+                )
+                all_args = all_args[1:]
+        for arg in all_args:
+            if arg.annotation is None:
+                continue
+            key = self.r._class_key_from_text(_resolve__text(arg.annotation), self.module)
+            if key is not None:
+                self._bind(
+                    arg.arg,
+                    _Binding(
+                        kind=_BKind.INSTANCE,
+                        class_key=key,
+                        target_id=self.r._class_element(key),
+                        method=Method.MRO_DISPATCH,
+                        confidence=Confidence.PROBABLE,
+                        note="from parameter annotation",
+                    ),
+                )
+
+    def _bind_decorated_parameter(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef, element_id: str
+    ) -> None:
+        """Inside ``def trace(func)``, ``func`` *is* the decorated function.
+
+        The parameter is not a free variable: the decorator syntax binds it.
+        Resolving it turns the body of every wrapper from an unresolved call
+        site into the edge the cascade actually needs. PROBABLE, because the
+        binding is read off the decorator application rather than a call.
+        """
+        if not element_id:
+            return
+        targets = self.r.decorated_by(element_id)
+        if not targets:
+            return
+        args = [*node.args.posonlyargs, *node.args.args]
+        if not args:
+            return
+        first = args[0].arg
+        if len(targets) == 1:
+            self.scope.names[first] = _Binding(
+                kind=_BKind.CALLABLE,
+                target_id=targets[0],
+                method=Method.DECORATOR_UNWRAP,
+                confidence=Confidence.PROBABLE,
+                note="`" + first + "` inside the decorator is the decorated function",
+            )
+        else:
+            self.scope.names[first] = _Binding(
+                kind=_BKind.CANDIDATES,
+                candidates=targets,
+                method=Method.DECORATOR_UNWRAP,
+                confidence=Confidence.UNKNOWN,
+                note="this decorator is applied to more than one element",
+            )
+
+    def _decorator_edges(
+        self,
+        decorators: Sequence[ast.expr],
+        element_id: str,
+        node: ast.AST,
+        *,
+        is_class: bool,
+    ) -> None:
+        for decorator in decorators:
+            target = decorator.func if isinstance(decorator, ast.Call) else decorator
+            dotted = _resolve__dotted(target)
+            if not dotted:
+                continue
+            binding = self._resolve_dotted(dotted)
+            if binding.target_id and binding.kind in (
+                _BKind.CALLABLE,
+                _BKind.CLASS,
+                _BKind.REGISTRY,
+            ):
+                if dotted in _PROPERTY_DECORATORS or dotted in _STATIC_DECORATORS:
+                    continue
+                self._emit(
+                    EdgeKind.DECORATES,
+                    element_id,
+                    Method.AST_DIRECT,
+                    Confidence.CERTAIN,
+                    decorator,
+                    note="the decorator list is read straight off the AST",
+                    source_id=binding.target_id,
+                )
+                self._registration_edge(decorator, dotted, binding, element_id, node)
+            elif dotted not in _PROPERTY_DECORATORS and dotted not in _STATIC_DECORATORS:
+                self._unresolved(
+                    decorator,
+                    UnresolvedReason.MISSING_TARGET,
+                    f"decorator {dotted!r} could not be resolved; the wrapper is unknown",
+                    (Method.SCOPE_LOOKUP, Method.DECORATOR_UNWRAP),
+                    candidates=self._name_candidates(
+                        dotted.split(".")[-1], (ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.CLASS)
+                    ),
+                    candidate_confidence=Confidence.HEURISTIC,
+                    site=f"decorator@{dotted}",
+                )
+            if isinstance(decorator, ast.Call):
+                for arg in [*decorator.args, *[k.value for k in decorator.keywords]]:
+                    self.visit(arg)
+
+    def _registration_edge(
+        self,
+        decorator: ast.expr,
+        dotted: str,
+        binding: _Binding,
+        element_id: str,
+        node: ast.AST,
+    ) -> None:
+        """If the decorator is a registrar, link its container to the element."""
+        container_id = ""
+        registrar: _FuncSum | None = None
+        owner_module = self.module
+        for module_name, summary in self.r._modules.items():
+            for qualname, func in summary.funcs.items():
+                if func.element_id == binding.target_id and func.registrar_container:
+                    registrar = func
+                    owner_module = module_name
+                    break
+            if registrar is not None:
+                break
+        if registrar is None:
+            return
+        if registrar.registrar_container_is_self:
+            receiver = dotted.rsplit(".", 1)[0] if "." in dotted else ""
+            if receiver:
+                recv_binding = self._resolve_dotted(receiver)
+                container_id = recv_binding.target_id
+        else:
+            reg = self.r._modules[owner_module].registries.get(registrar.registrar_container)
+            container_id = (
+                reg.element_id
+                if reg is not None
+                else make_id(owner_module, registrar.registrar_container)
+            )
+        if not container_id:
+            container_id = binding.target_id
+        key_literal = ""
+        if isinstance(decorator, ast.Call):
+            for arg in decorator.args:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    key_literal = arg.value
+                    break
+            if not key_literal:
+                for kw in decorator.keywords:
+                    if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                        key_literal = kw.value.value
+                        break
+        if not key_literal:
+            element = self.r._elements.get(element_id)
+            key_literal = element.name if element is not None else ""
+        self._emit(
+            EdgeKind.REGISTERS,
+            element_id,
+            Method.DECORATOR_REGISTRATION,
+            Confidence.PROBABLE,
+            decorator,
+            note=f"registered by {dotted} under key {key_literal!r}" if key_literal else f"registered by {dotted}",
+            source_id=container_id,
+        )
+        self.r.register_key(key_literal, element_id)
+
+    # -- statements -----------------------------------------------------
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            bound = alias.asname or alias.name.split(".")[0]
+            spec = _ImportSpec(
+                bound_name=bound,
+                module=alias.name if alias.asname else alias.name.split(".")[0],
+                level=0,
+                orig_name="",
+                is_module_alias=True,
+                line=node.lineno,
+                col=node.col_offset,
+                conditional=self.cond_depth > 0,
+                type_checking=self.tc_depth > 0,
+                scope_qualname="",
+            )
+            binding = self.r._binding_for_import(self.s, spec)
+            self._bind_import(bound, binding)
+            if binding.external or not binding.target_id:
+                self._third_party(node, bound, alias.name, Method.IMPORT_ABSOLUTE)
+                continue
+            self._emit(
+                EdgeKind.IMPORTS,
+                binding.target_id,
+                Method.IMPORT_ABSOLUTE,
+                binding.confidence,
+                node,
+                note=binding.note,
+            )
+
+    def _third_party(
+        self, node: ast.AST, bound: str, module: str, method: Method
+    ) -> None:
+        """A name imported from outside the tree.
+
+        No edge: there is no element to point at and inventing one would put a
+        node in the graph that no file backs. A THIRD_PARTY record instead, so
+        the dependency is visible and card 4 can put a barrier on it.
+        """
+        self.r._record_unresolved(
+            owner=make_id(self.module, bound),
+            reason=UnresolvedReason.THIRD_PARTY,
+            span=_resolve__span(self.path, node),
+            description=f"{module!r} is outside the target tree; no element to point at",
+            attempted=(method,),
+        )
+
+    def _bind_import(self, name: str, binding: _Binding) -> None:
+        """Bind an imported name.
+
+        A name imported twice under different conditions (the
+        ``try: from fast import x / except ImportError: from slow import x``
+        shape) becomes a candidate set rather than "whichever branch came
+        last". Picking the last branch would be a coin flip presented as a
+        fact.
+        """
+        existing = self.scope.names.get(name)
+        if (
+            self.cond_depth > 0
+            and existing is not None
+            and existing.target_id
+            and binding.target_id
+            and existing.target_id != binding.target_id
+        ):
+            merged = sorted({existing.target_id, binding.target_id} | set(existing.candidates))
+            self._bind(
+                name,
+                _Binding(
+                    kind=_BKind.CANDIDATES,
+                    candidates=tuple(merged),
+                    method=binding.method,
+                    confidence=Confidence.UNKNOWN,
+                    note="bound by more than one conditional import",
+                ),
+            )
+            return
+        self._bind(name, binding)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        target_module = (
+            _relative_module(self.module, self.s.is_package, node.level, node.module or "")
+            if node.level
+            else (node.module or "")
+        )
+        method = Method.IMPORT_RELATIVE if node.level else Method.IMPORT_ABSOLUTE
+        for alias in node.names:
+            if alias.name == "*":
+                self._star_import(node, target_module)
+                continue
+            spec = _ImportSpec(
+                bound_name=alias.asname or alias.name,
+                module=node.module or "",
+                level=node.level,
+                orig_name=alias.name,
+                is_module_alias=False,
+                line=node.lineno,
+                col=node.col_offset,
+                conditional=self.cond_depth > 0,
+                type_checking=self.tc_depth > 0,
+                scope_qualname="",
+            )
+            binding = self.r._binding_for_import(self.s, spec)
+            self._bind_import(spec.bound_name, binding)
+            if binding.external:
+                self._third_party(node, spec.bound_name, target_module, method)
+                continue
+            if binding.kind is _BKind.UNKNOWN or not binding.target_id:
+                self.r._record_unresolved(
+                    owner=make_id(self.module, spec.bound_name),
+                    reason=UnresolvedReason.MISSING_TARGET,
+                    span=_resolve__span(self.path, node),
+                    description=(
+                        f"`from {'.' * node.level}{node.module or ''} import "
+                        f"{alias.name}` does not resolve to an element"
+                        + (
+                            f"; {binding.note}"
+                            if binding.note
+                            else ""
+                        )
+                    ),
+                    attempted=(method,),
+                    candidates=self._name_candidates(alias.name, ()),
+                    candidate_confidence=Confidence.HEURISTIC,
+                )
+                continue
+            # An absolute `from a.b import c` names the module a.b explicitly,
+            # so a.b is imported too and gets its own edge. A relative import
+            # names no module the reader can see, so only the bound name does.
+            if not node.level and target_module in self.r._modules:
+                module_target = self.r._modules[target_module].element_id
+                if module_target != binding.target_id:
+                    self._emit(
+                        EdgeKind.IMPORTS,
+                        module_target,
+                        method,
+                        Confidence.RESOLVED,
+                        node,
+                        note="dotted name names exactly one module inside the target",
+                    )
+            self._emit(
+                EdgeKind.IMPORTS,
+                binding.target_id,
+                binding.method if binding.method is not Method.SCOPE_LOOKUP else method,
+                binding.confidence,
+                node,
+                note=binding.note or "the imported name binds to exactly one definition",
+            )
+
+    def _star_import(self, node: ast.ImportFrom, target_module: str) -> None:
+        spec = _ImportSpec(
+            bound_name="*",
+            module=node.module or "",
+            level=node.level,
+            orig_name="*",
+            is_module_alias=False,
+            line=node.lineno,
+            col=node.col_offset,
+            conditional=False,
+            type_checking=False,
+            scope_qualname="",
+        )
+        bindings = self.r._star_bindings(self.s, spec)
+        for name in sorted(bindings):
+            self.scope.names.setdefault(name, bindings[name])
+        if target_module in self.r._modules:
+            self._emit(
+                EdgeKind.IMPORTS,
+                self.r._modules[target_module].element_id,
+                Method.IMPORT_STAR,
+                Confidence.RESOLVED,
+                node,
+                note=f"star import binds {len(bindings)} name(s)",
+            )
+            for name in sorted(bindings):
+                binding = bindings[name]
+                if binding.target_id:
+                    self._emit(
+                        EdgeKind.IMPORTS,
+                        binding.target_id,
+                        Method.IMPORT_STAR,
+                        Confidence.RESOLVED,
+                        node,
+                        note=f"bound as {name!r} by `import *` via __all__",
+                    )
+        else:
+            self._third_party(node, f"*@{target_module}", target_module, Method.IMPORT_STAR)
+
+    def visit_If(self, node: ast.If) -> None:
+        self.visit(node.test)
+        type_checking = _is_type_checking(node.test) and not (
+            isinstance(node.test, ast.Name) and node.test.id in self.s.assigns
+        )
+        self.cond_depth += 1
+        if type_checking:
+            self.tc_depth += 1
+        for child in node.body:
+            self.visit(child)
+        if type_checking:
+            self.tc_depth -= 1
+        for child in node.orelse:
+            self.visit(child)
+        self.cond_depth -= 1
+
+    def visit_Try(self, node: ast.Try) -> None:
+        self.cond_depth += 1
+        self.generic_visit(node)
+        self.cond_depth -= 1
+
+    def _assign_owner(self, fallback: str = "dynamic") -> str:
+        """The ID a dynamic value belongs to: the name it is assigned to."""
+        if self._assign_name:
+            return self.r._id_for(self.module, f"{self.prefix}{self._assign_name}")
+        return f"{self.owner}::{fallback}"
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        outer_name = self._assign_name
+        self._assign_name = names[0] if names else ""
+        self.visit(node.value)
+        binding = self._eval(node.value)
+        self._assign_name = outer_name
+        for target in node.targets:
+            self._assign_target(target, binding, node)
+        if self.scope.kind == "module":
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self._registry_literal(target.id, node.value, node)
+
+    def _registry_literal(self, name: str, value: ast.expr, node: ast.AST) -> None:
+        """``HANDLERS = {"buy": handle_buy}`` -- membership is literal.
+
+        PROBABLE rather than RESOLVED: the dict is a registry only because it
+        holds callables, which is a reading of the code, not a declaration in
+        it, and the dict can be mutated later.
+        """
+        reg = self.s.registries.get(name)
+        if reg is None:
+            return
+        if not isinstance(value, (ast.Dict, ast.List, ast.Tuple, ast.Set)):
+            return
+        for member, method in self.r.registry_members(reg.element_id):
+            if method is not Method.REGISTRY_MEMBERSHIP:
+                continue
+            self._emit(
+                EdgeKind.REGISTERS,
+                member,
+                Method.REGISTRY_MEMBERSHIP,
+                Confidence.PROBABLE,
+                node,
+                note=f"literal member of {name}",
+                source_id=reg.element_id,
+            )
+
+    def _assign_target(self, target: ast.expr, binding: _Binding, node: ast.AST) -> None:
+        if isinstance(target, ast.Name):
+            if binding.kind in (_BKind.UNKNOWN, _BKind.BUILTIN) and self.scope.kind == "module":
+                # A container literal evaluates to nothing on its own, but the
+                # name still denotes the registry the summariser found. The
+                # builtin type rides along, so `HANDLERS.items()` is still a
+                # dict method while `HANDLERS[key]` is still a dispatch.
+                registry = self.r.registry_binding(self.module, target.id)
+                if registry is not None:
+                    binding = registry
+            self._bind(target.id, binding)
+            if self.scope.kind == "module" and binding.kind in (_BKind.CALLABLE, _BKind.CLASS):
+                alias_id = self.r._id_for(self.module, target.id, 1)
+                if binding.target_id and alias_id != binding.target_id:
+                    self.r._emit(
+                        EdgeKind.REFERENCES,
+                        alias_id,
+                        binding.target_id,
+                        Method.SCOPE_LOOKUP,
+                        Confidence.RESOLVED,
+                        call_site=_resolve__span(self.path, node),
+                        note="module-level alias",
+                    )
+        elif isinstance(target, ast.Subscript):
+            self._registry_write(target.value, target.slice, node)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                self._assign_target(item, _UNKNOWN_BINDING, node)
+
+    def _registry_write(self, container: ast.expr, key_node: ast.AST, node: ast.AST) -> None:
+        binding = self._eval(container)
+        if binding.kind is not _BKind.REGISTRY or binding.registry_key is None:
+            return
+        value = node.value if isinstance(node, ast.Assign) else None
+        if value is None:
+            return
+        member = self._eval(value)
+        if member.target_id and member.kind in (_BKind.CALLABLE, _BKind.CLASS):
+            self._emit(
+                EdgeKind.REGISTERS,
+                member.target_id,
+                Method.REGISTRY_MEMBERSHIP,
+                Confidence.PROBABLE,
+                node,
+                note="written into the registry",
+                source_id=binding.target_id,
+            )
+            if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
+                self.r.register_key(key_node.value, member.target_id)
+
+    # -- expressions ----------------------------------------------------
+
+    def visit_Call(self, node: ast.Call) -> None:
+        for arg in node.args:
+            self.visit(arg)
+        for kw in node.keywords:
+            self.visit(kw.value)
+        if isinstance(node.func, ast.Call):
+            # ``getattr(o, "x")()`` -- the inner call's result is invoked here,
+            # so the outer CALLS edge says everything; a REFERENCES edge for the
+            # same target at the same site would be a duplicate claim.
+            self._suppress_reference.add(id(node.func))
+        self._visit_receiver(node.func)
+        self._resolve_call(node)
+
+    def _visit_receiver(self, func: ast.expr) -> None:
+        cur = func
+        while isinstance(cur, ast.Attribute):
+            cur = cur.value
+        if isinstance(cur, (ast.Call, ast.Subscript)):
+            self.visit(cur)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if isinstance(node.ctx, ast.Load):
+            binding = self._eval(node)
+            if binding.is_property and binding.target_id:
+                self._emit(
+                    EdgeKind.CALLS,
+                    binding.target_id,
+                    Method.MRO_DISPATCH,
+                    binding.confidence,
+                    node,
+                    note="property access invokes the getter",
+                )
+            elif binding.kind in (_BKind.CALLABLE, _BKind.CLASS) and binding.target_id and not binding.external:
+                self._emit(
+                    EdgeKind.REFERENCES,
+                    binding.target_id,
+                    binding.method,
+                    binding.confidence,
+                    node,
+                    note="callable referenced without being called here",
+                )
+        self._visit_receiver(node)
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if not isinstance(node.ctx, ast.Load):
+            return
+        binding = self._lookup(node.id)
+        if binding.kind in (_BKind.CALLABLE, _BKind.CLASS) and binding.target_id and not binding.external:
+            self._emit(
+                EdgeKind.REFERENCES,
+                binding.target_id,
+                binding.method,
+                binding.confidence,
+                node,
+                note="callable referenced without being called here",
+            )
+
+    def visit_For(self, node: ast.For) -> None:
+        self.visit(node.iter)
+        binding = self._eval(node.iter)
+        if isinstance(node.target, ast.Name):
+            self._bind(node.target.id, binding)
+        for child in node.body:
+            self.visit(child)
+        for child in node.orelse:
+            self.visit(child)
+
+    # -- call resolution -------------------------------------------------
+
+    def _resolve_call(self, node: ast.Call) -> None:
+        func = node.func
+        dotted = _resolve__dotted(func)
+        tail = dotted.split(".")[-1] if dotted else ""
+
+        if dotted and self._is_builtin(dotted):
+            if tail in _CODE_BUILTINS:
+                self._unresolved(
+                    node,
+                    UnresolvedReason.DYNAMIC_NAME,
+                    f"{tail}() builds code at runtime; its target cannot be named statically",
+                    (Method.AST_DIRECT,),
+                    site=f"{tail}@runtime-code",
+                )
+                return
+            if tail == "getattr":
+                self._getattr_call(node)
+                return
+            if tail == "setattr":
+                self._setattr_call(node)
+                return
+            if tail in {"hasattr", "delattr"}:
+                return
+            if tail == "__import__":
+                self._import_module_call(node, arg_index=0)
+                return
+            self.r._stats["builtin_calls"] += 1
+            if self.r.include_builtin_calls:
+                self._emit(
+                    EdgeKind.CALLS,
+                    make_id("builtins", tail),
+                    Method.SCOPE_LOOKUP,
+                    Confidence.RESOLVED,
+                    node,
+                    note="builtin",
+                )
+            return
+
+        if dotted.endswith("importlib.import_module") or tail == "import_module":
+            binding = self._resolve_dotted(dotted) if dotted else _UNKNOWN_BINDING
+            if binding.module_name in {"importlib"} or dotted.startswith("importlib."):
+                self._import_module_call(node, arg_index=0)
+                return
+            if tail == "import_module" and binding.kind is _BKind.UNKNOWN:
+                self._import_module_call(node, arg_index=0)
+                return
+
+        if tail in {"iter_modules", "walk_packages"} and (
+            "pkgutil" in dotted or tail in {"iter_modules", "walk_packages"}
+        ):
+            self._pkgutil_call(node, dotted)
+            return
+        if tail in {"entry_points", "iter_entry_points", "load_entry_point"}:
+            self._entry_points_call(node, dotted)
+            return
+
+        accessor = self._registry_accessor(node)
+        if accessor is not None:
+            return
+
+        if isinstance(func, ast.Call):
+            inner = self._eval(func)
+            self._call_binding(inner, node, _resolve__text(func))
+            return
+        if isinstance(func, ast.Subscript):
+            self._subscript_call(node, func)
+            return
+
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Call):
+            base = func.value
+            if isinstance(base.func, ast.Name) and base.func.id == "super":
+                self._super_call(node, func.attr)
+                return
+
+        if not dotted:
+            self._unresolved(
+                node,
+                UnresolvedReason.DYNAMIC_NAME,
+                f"call target {_resolve__text(func)!r} is a computed expression",
+                (Method.SCOPE_LOOKUP,),
+                site=f"call@{_resolve__text(func)}",
+            )
+            return
+
+        if isinstance(func, ast.Attribute):
+            receiver = self._eval(func.value)
+            if receiver.builtin_type and func.attr in _BUILTIN_METHODS.get(
+                receiver.builtin_type, frozenset()
+            ):
+                # ``problems.append(...)`` on a local list is a builtin call,
+                # not a name this analysis failed on. Resolved, so it does not
+                # belong in the unresolved stream; counted, so it is not silent.
+                self.r._stats["builtin_calls"] += 1
+                if self.r.include_builtin_calls:
+                    self._emit(
+                        EdgeKind.CALLS,
+                        make_id("builtins", f"{receiver.builtin_type}.{func.attr}"),
+                        Method.SCOPE_LOOKUP,
+                        Confidence.RESOLVED,
+                        node,
+                        note=f"builtin {receiver.builtin_type} method",
+                    )
+                return
+
+        binding = self._resolve_dotted(dotted)
+        self._call_binding(binding, node, dotted)
+
+    def _is_builtin(self, dotted: str) -> bool:
+        if "." in dotted:
+            return False
+        return dotted in _resolve_BUILTIN_NAMES and self._lookup(dotted).kind is _BKind.UNKNOWN
+
+    #: Methods that describe a real inference step and so survive onto the
+    #: call edge. Anything else means the name was simply in scope, which is
+    #: SCOPE_LOOKUP however the binding got there.
+    _DISPATCH_METHODS = frozenset(
+        {
+            Method.MRO_DISPATCH,
+            Method.GETATTR_LITERAL,
+            Method.GETATTR_TRACED,
+            Method.REGISTRY_MEMBERSHIP,
+            Method.DECORATOR_REGISTRATION,
+            Method.DECORATOR_UNWRAP,
+            Method.IMPORTLIB_LITERAL,
+            Method.DATAFLOW,
+            Method.REEXPORT,
+        }
+    )
+
+    def _dispatch_method(self, binding: _Binding) -> Method:
+        return binding.method if binding.method in self._DISPATCH_METHODS else Method.SCOPE_LOOKUP
+
+    def _call_binding(self, binding: _Binding, node: ast.Call, label: str) -> None:
+        if binding.external:
+            # Resolved, but to something no file in the tree backs. The import
+            # statement already carries the THIRD_PARTY record; counting it
+            # here keeps the omission visible without duplicating that record.
+            self.r._stats["third_party_calls"] += 1
+            return
+        if binding.kind is _BKind.CLASS and binding.target_id:
+            self._emit(
+                EdgeKind.INSTANTIATES,
+                binding.target_id,
+                Method.REEXPORT if binding.method is Method.REEXPORT else Method.SCOPE_LOOKUP,
+                Confidence.RESOLVED,
+                node,
+                note=binding.note,
+            )
+            return
+        if binding.kind is _BKind.CALLABLE and binding.target_id:
+            confidence = binding.confidence
+            if confidence is Confidence.CERTAIN:
+                confidence = Confidence.RESOLVED
+            self._emit(
+                EdgeKind.CALLS,
+                binding.target_id,
+                self._dispatch_method(binding),
+                confidence,
+                node,
+                note=binding.note,
+            )
+            self._ambiguity_note(binding, node)
+            if binding.method is not Method.DECORATOR_UNWRAP:
+                # `fn(...)` inside a wrapper calls the *undecorated* function:
+                # the decorator has already been applied at that point, so
+                # adding the wrapper here would make the wrapper call itself.
+                self._wrapper_edges(binding.target_id, node)
+            return
+        if binding.kind is _BKind.CANDIDATES and binding.candidates:
+            self._unresolved(
+                node,
+                UnresolvedReason.AMBIGUOUS,
+                f"call target {label!r} has more than one possible binding; no edge claimed",
+                (Method.SCOPE_LOOKUP, Method.DATAFLOW),
+                candidates=binding.candidates,
+                candidate_confidence=Confidence.PROBABLE,
+                site=f"call@{label}",
+            )
+            return
+        if binding.kind is _BKind.REGISTRY and binding.registry_key is not None:
+            self._registry_call(binding, node, label)
+            return
+        if binding.kind is _BKind.MODULE:
+            self._unresolved(
+                node,
+                UnresolvedReason.DYNAMIC_NAME,
+                f"call target {label!r} resolves to a module, not a callable",
+                (Method.SCOPE_LOOKUP,),
+                site=f"call@{label}",
+            )
+            return
+        self._unresolved_call(node, label)
+
+    def _wrapper_edges(self, target_id: str, node: ast.Call) -> None:
+        """A call to a decorated name reaches the wrapper too.
+
+        After ``@trace``, the name ``compute`` is bound to ``trace``'s inner
+        function: the wrapper is what actually runs and the wrapped function
+        is the element the owner reasons about. Dropping either edge loses one
+        of those two truths, so both are emitted -- the wrapper at PROBABLE,
+        because whether the decorator really wraps is an inference.
+        """
+        for decorator_id in self.r.decorators_of(target_id):
+            wrapper = self.r.wrapper_of(decorator_id)
+            if wrapper and wrapper != target_id:
+                self._emit(
+                    EdgeKind.CALLS,
+                    wrapper,
+                    Method.DECORATOR_UNWRAP,
+                    Confidence.PROBABLE,
+                    node,
+                    note="the wrapper: what the name is actually bound to after decoration",
+                )
+
+    def _ambiguity_note(self, binding: _Binding, node: ast.Call) -> None:
+        """Record subclass overrides that could take this dispatch instead."""
+        if binding.method is not Method.MRO_DISPATCH or binding.class_key is None:
+            return
+        element = self.r._elements.get(binding.target_id)
+        attr = element.name if element is not None else ""
+        if not attr:
+            return
+        overrides = [
+            o for o in self.r._overriding_subclasses(binding.class_key, attr) if o != binding.target_id
+        ]
+        if overrides:
+            self._unresolved(
+                node,
+                UnresolvedReason.AMBIGUOUS,
+                (
+                    f"dispatch of {attr!r} was resolved through the declared MRO, but "
+                    "subclasses override it; the edge is PROBABLE and these are the "
+                    "other possible receivers"
+                ),
+                (Method.MRO_DISPATCH,),
+                candidates=[binding.target_id, *overrides],
+                candidate_confidence=Confidence.PROBABLE,
+                site=f"dispatch@{attr}",
+            )
+
+    def _unresolved_call(self, node: ast.Call, label: str) -> None:
+        bare = label.split(".")[-1]
+        kinds = (ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.CLASS)
+        candidates = self._name_candidates(bare, kinds)
+        attempted: tuple[Method, ...]
+        if not label.isidentifier():
+            # an attribute chain or a computed expression: not a plain name
+            record_id = f"{self.owner}::call@{label}"
+            description = f"call target {label!r} could not be bound to an element"
+            attempted = (Method.SCOPE_LOOKUP, Method.MRO_DISPATCH)
+        else:
+            # a bare name nothing in scope binds: the record belongs to the
+            # name itself, so a reader lands on the name rather than on a
+            # position inside a function.
+            record_id = make_id(self.module, bare)
+            attempted = (Method.SCOPE_LOOKUP, Method.IMPORT_ABSOLUTE)
+            description = f"`{bare}` is used but nothing binds it here"
+            if self.s.stars:
+                sources = ", ".join(
+                    sorted(
+                        {
+                            spec.module or "." * spec.level
+                            for spec in self.s.stars
+                        }
+                    )
+                )
+                attempted = (*attempted, Method.IMPORT_STAR)
+                description += f"; the star import from {sources} does not export it"
+        self.r._record_unresolved(
+            owner=record_id,
+            reason=UnresolvedReason.MISSING_TARGET if candidates else UnresolvedReason.DYNAMIC_NAME,
+            span=_resolve__span(self.path, node),
+            description=description,
+            attempted=attempted,
+            candidates=candidates,
+            candidate_confidence=Confidence.HEURISTIC if candidates else Confidence.UNKNOWN,
+        )
+
+    def _name_candidates(
+        self, name: str, kinds: tuple[ElementKind, ...]
+    ) -> list[str]:
+        ids = self.r._by_name.get(name, [])
+        if not kinds:
+            return sorted(set(ids))
+        return sorted(
+            {i for i in ids if self.r._elements[i].kind in kinds}
+        )
+
+    # -- dynamic wiring --------------------------------------------------
+
+    def _getattr_call(self, node: ast.Call) -> _Binding:
+        """Resolve ``getattr(obj, name)``.
+
+        Emits a REFERENCES edge for what the call *names*; if the result is
+        immediately invoked, the enclosing call emits the CALLS edge from the
+        binding returned here. Memoised on node identity, because a getattr is
+        walked once as a statement and once as the value of its assignment.
+        """
+        cached = self._dynamic_cache.get(id(node))
+        if cached is not None:
+            return cached
+        result = self._getattr_uncached(node)
+        self._dynamic_cache[id(node)] = result
+        return result
+
+    def _getattr_uncached(self, node: ast.Call) -> _Binding:
+        if len(node.args) < 2:
+            return _UNKNOWN_BINDING
+        emit = id(node) not in self._suppress_reference
+        receiver = self._eval(node.args[0])
+        name_val = self._eval_str(node.args[1])
+        traced = not (
+            isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)
+        )
+        method = Method.GETATTR_TRACED if traced else Method.GETATTR_LITERAL
+
+        if receiver.kind is _BKind.MODULE and name_val.closed and len(name_val.literals) == 1:
+            binding = self.r._attr_binding(receiver, name_val.literals[0], self.module)
+            if binding.target_id:
+                if emit:
+                    self._emit(
+                        EdgeKind.REFERENCES,
+                        binding.target_id,
+                        method,
+                        Confidence.PROBABLE,
+                        node,
+                        note=f"getattr({receiver.module_name}, {name_val.literals[0]!r})",
+                    )
+                return _Binding(
+                    kind=binding.kind,
+                    target_id=binding.target_id,
+                    class_key=binding.class_key,
+                    module_name=binding.module_name,
+                    method=method,
+                    confidence=Confidence.PROBABLE,
+                )
+        members: dict[str, tuple[str, tuple[str, str], bool]] = {}
+        if receiver.class_key is not None:
+            members = self.r._members(receiver.class_key)
+        elif receiver.kind is _BKind.MODULE and receiver.module_name in self.r._modules:
+            source = self.r._modules[receiver.module_name]
+            members = {
+                n: (self.r._id_for(receiver.module_name, q), (receiver.module_name, q), False)
+                for n, q in sorted(source.top_defs.items())
+            }
+
+        if name_val.closed and members:
+            targets = [members[n][0] for n in sorted(name_val.literals) if n in members]
+            missing = [n for n in sorted(name_val.literals) if n not in members]
+            if targets and not missing and len(targets) <= self.r.max_traced_targets:
+                for target in targets:
+                    if emit:
+                        self._emit(
+                            EdgeKind.REFERENCES,
+                            target,
+                            method,
+                            Confidence.PROBABLE,
+                            node,
+                            note=f"getattr name traced to {sorted(name_val.literals)}",
+                        )
+                if len(targets) == 1:
+                    return _Binding(
+                        kind=_BKind.CALLABLE,
+                        target_id=targets[0],
+                        method=method,
+                        confidence=Confidence.PROBABLE,
+                    )
+                return _Binding(
+                    kind=_BKind.CANDIDATES,
+                    candidates=tuple(sorted(targets)),
+                    method=method,
+                    confidence=Confidence.UNKNOWN,
+                )
+
+        candidates = [
+            members[n][0] for n in sorted(members) if name_val.matches(n) or not name_val.constrained
+        ]
+        candidates = [c for c in candidates if not self._is_dunder(c)]
+        self._unresolved(
+            node,
+            UnresolvedReason.DYNAMIC_NAME,
+            (
+                f"getattr attribute name is `{_resolve__text(node.args[1])}`, which this "
+                "analysis could not pin to one attribute"
+                + (
+                    "; the members matching what is known of the name are listed "
+                    "as candidates and none is claimed"
+                    if candidates
+                    else "; no candidate could be narrowed down"
+                )
+            ),
+            (Method.GETATTR_LITERAL, Method.GETATTR_TRACED),
+            candidates=candidates,
+            # UNKNOWN even with candidates: the set is right, the choice within
+            # it is not being made, and a confidence here would imply one.
+            candidate_confidence=Confidence.UNKNOWN,
+            site=f"getattr@{_resolve__text(node.args[1])}",
+        )
+        return _Binding(
+            kind=_BKind.CANDIDATES,
+            candidates=tuple(sorted(candidates)),
+            method=method,
+            confidence=Confidence.UNKNOWN,
+            note="unresolved getattr",
+        )
+
+    def _is_dunder(self, element_id: str) -> bool:
+        element = self.r._elements.get(element_id)
+        name = element.name if element is not None else element_id.rsplit("::", 1)[-1]
+        return name.startswith("__") and name.endswith("__")
+
+    def _setattr_call(self, node: ast.Call) -> None:
+        if len(node.args) < 3:
+            return
+        receiver = self._eval(node.args[0])
+        name_val = self._eval_str(node.args[1])
+        value = self._eval(node.args[2])
+        if not value.target_id or value.kind not in (_BKind.CALLABLE, _BKind.CLASS):
+            return
+        container = receiver.target_id
+        if not container:
+            self._unresolved(
+                node,
+                UnresolvedReason.DYNAMIC_NAME,
+                "setattr onto a receiver this analysis could not name",
+                (Method.GETATTR_LITERAL, Method.DATAFLOW),
+                candidates=[value.target_id],
+                candidate_confidence=Confidence.HEURISTIC,
+                site="setattr@unknown-receiver",
+            )
+            return
+        if name_val.closed and len(name_val.literals) == 1:
+            self._emit(
+                EdgeKind.REGISTERS,
+                value.target_id,
+                Method.GETATTR_LITERAL,
+                Confidence.PROBABLE,
+                node,
+                note=f"setattr binds it as {name_val.literals[0]!r}",
+                source_id=container,
+            )
+            self.r.register_key(name_val.literals[0], value.target_id)
+        else:
+            self._unresolved(
+                node,
+                UnresolvedReason.DYNAMIC_NAME,
+                "setattr with a computed attribute name; the binding name is unknown",
+                (Method.GETATTR_LITERAL, Method.GETATTR_TRACED),
+                candidates=[value.target_id],
+                candidate_confidence=Confidence.PROBABLE,
+                site="setattr@computed-name",
+            )
+
+    def _import_module_call(self, node: ast.Call, arg_index: int) -> _Binding:
+        cached = self._dynamic_cache.get(id(node))
+        if cached is not None:
+            return cached
+        result = self._import_module_uncached(node, arg_index)
+        self._dynamic_cache[id(node)] = result
+        return result
+
+    def _import_module_uncached(self, node: ast.Call, arg_index: int) -> _Binding:
+        if len(node.args) <= arg_index:
+            return _UNKNOWN_BINDING
+        name_val = self._eval_str(node.args[arg_index])
+        package = ""
+        if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+            value = node.args[1].value
+            if isinstance(value, str):
+                package = value
+        for kw in node.keywords:
+            if kw.arg == "package" and isinstance(kw.value, ast.Constant):
+                if isinstance(kw.value.value, str):
+                    package = kw.value.value
+        if name_val.closed and len(name_val.literals) == 1:
+            literal = name_val.literals[0]
+            method = Method.IMPORTLIB_LITERAL
+            if literal.startswith("."):
+                base = package or self.module
+                level = len(literal) - len(literal.lstrip("."))
+                target_module = _relative_module(
+                    base, True, level, literal.lstrip(".")
+                )
+                method = Method.IMPORT_RELATIVE
+            else:
+                target_module = literal
+            known = target_module in self.r._modules
+            target_id = (
+                self.r._modules[target_module].element_id if known else make_id(target_module)
+            )
+            if not known:
+                self.r._record_unresolved(
+                    owner=f"{self._assign_owner()}",
+                    reason=UnresolvedReason.THIRD_PARTY,
+                    span=_resolve__span(self.path, node),
+                    description=(
+                        f"import_module({literal!r}) names a module outside the "
+                        "target tree; no element to point at"
+                    ),
+                    attempted=(Method.IMPORTLIB_LITERAL,),
+                )
+                return _Binding(
+                    kind=_BKind.MODULE,
+                    module_name=target_module,
+                    method=method,
+                    confidence=Confidence.UNKNOWN,
+                    external=True,
+                )
+            self._emit(
+                EdgeKind.IMPORTS,
+                target_id,
+                method,
+                # PROBABLE, not RESOLVED: the string is a literal but the
+                # import happens at runtime and nothing static guarantees it
+                # is reached.
+                Confidence.PROBABLE,
+                node,
+                note="literal dynamic import",
+            )
+            return _Binding(
+                kind=_BKind.MODULE,
+                module_name=target_module,
+                target_id=target_id,
+                method=method,
+                confidence=Confidence.RESOLVED,
+                external=not known,
+            )
+        candidates = [
+            self.r._modules[m].element_id
+            for m in sorted(self.r._modules)
+            if name_val.matches(m) or name_val.matches(m.rsplit(".", 1)[-1])
+        ]
+        # A literal default buried in the expression -- os.environ.get("X",
+        # "pkg.plugin") -- names a real module; offer it, claim nothing.
+        for literal in _string_constants(node):
+            if literal in self.r._modules:
+                candidates.append(self.r._modules[literal].element_id)
+        self.r._record_unresolved(
+            owner=self._assign_owner("import_module"),
+            reason=UnresolvedReason.DYNAMIC_NAME,
+            span=_resolve__span(self.path, node),
+            description=(
+                "import_module's argument is not a traceable literal; any string "
+                "literal in the expression is offered as a candidate only"
+            ),
+            attempted=(Method.IMPORTLIB_LITERAL,),
+            candidates=candidates,
+            candidate_confidence=Confidence.HEURISTIC if candidates else Confidence.UNKNOWN,
+        )
+        return _Binding(
+            kind=_BKind.CANDIDATES,
+            candidates=tuple(sorted(candidates)),
+            method=Method.IMPORTLIB_LITERAL,
+            confidence=Confidence.UNKNOWN,
+        )
+
+    def _pkgutil_call(self, node: ast.Call, dotted: str) -> None:
+        package = ""
+        if node.args:
+            arg = node.args[0]
+            text = _resolve__text(arg)
+            if text.endswith(".__path__"):
+                package = text[: -len(".__path__")]
+                binding = self._resolve_dotted(package)
+                package = binding.module_name or package
+            else:
+                val = self._eval_str(arg)
+                if val.closed and len(val.literals) == 1:
+                    package = val.literals[0]
+        candidates = [
+            self.r._modules[m].element_id
+            for m in sorted(self.r._modules)
+            if package and m.startswith(f"{package}.")
+        ]
+        self._unresolved(
+            node,
+            UnresolvedReason.DYNAMIC_NAME,
+            (
+                f"{dotted}() discovers modules at runtime"
+                + (f" under package {package!r}" if package else "")
+                + "; the set actually imported cannot be fixed statically"
+            ),
+            (Method.IMPORTLIB_LITERAL, Method.NAME_HEURISTIC),
+            candidates=candidates,
+            candidate_confidence=Confidence.HEURISTIC if candidates else Confidence.UNKNOWN,
+            site=f"discovery@{dotted}",
+        )
+
+    def _entry_points_call(self, node: ast.Call, dotted: str) -> None:
+        group = ""
+        for kw in node.keywords:
+            if kw.arg == "group" and isinstance(kw.value, ast.Constant):
+                if isinstance(kw.value.value, str):
+                    group = kw.value.value
+        if not group and node.args:
+            val = self._eval_str(node.args[0])
+            if val.closed and len(val.literals) == 1:
+                group = val.literals[0]
+        self._unresolved(
+            node,
+            UnresolvedReason.DYNAMIC_NAME,
+            (
+                f"{dotted}() loads components from installed distribution metadata"
+                + (f" in group {group!r}" if group else "")
+                + "; the targets are outside the source tree"
+            ),
+            (Method.REGISTRY_MEMBERSHIP, Method.CONFIG_STRING_MATCH),
+            site=f"entry_points@{group or dotted}",
+        )
+
+    def _registry_accessor(self, node: ast.Call) -> _Binding | None:
+        """``REGISTRY.get("a")`` -- a lookup that *returns* a member.
+
+        Returns ``None`` when the call is not a registry lookup, so the caller
+        falls through to ordinary resolution. Memoised on node identity so the
+        REFERENCES edge is written once.
+        """
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr not in {"get", "pop", "setdefault"}:
+            return None
+        if not node.args:
+            return None
+        base = self._eval(func.value)
+        if base.kind is not _BKind.REGISTRY or base.registry_key is None:
+            return None
+        cached = self._dynamic_cache.get(id(node))
+        if cached is not None:
+            return cached
+        module, name = base.registry_key
+        reg = self.r._modules[module].registries.get(name)
+        key_val = self._eval_str(node.args[0])
+        result: _Binding = _UNKNOWN_BINDING
+        if reg is not None and key_val.closed and len(key_val.literals) == 1:
+            literal = key_val.literals[0]
+            text = reg.entries.get(literal, "")
+            member = self.r._binding_for_dotted(text, module) if text else _UNKNOWN_BINDING
+            if member.target_id and member.kind in (_BKind.CALLABLE, _BKind.CLASS):
+                if id(node) not in self._suppress_reference:
+                    self._emit(
+                        EdgeKind.REFERENCES,
+                        member.target_id,
+                        Method.REGISTRY_MEMBERSHIP,
+                        Confidence.PROBABLE,
+                        node,
+                        note=f"{name}.{func.attr}({literal!r})",
+                    )
+                result = _Binding(
+                    kind=member.kind,
+                    target_id=member.target_id,
+                    class_key=member.class_key,
+                    method=Method.REGISTRY_MEMBERSHIP,
+                    confidence=Confidence.PROBABLE,
+                )
+        if result.kind is _BKind.UNKNOWN:
+            members = self._registry_member_ids(base.target_id)
+            self._unresolved(
+                node,
+                UnresolvedReason.AMBIGUOUS,
+                (
+                    f"{name}.{func.attr}(...) with a key that is not a traceable "
+                    "literal; no edge claimed"
+                ),
+                (Method.REGISTRY_MEMBERSHIP, Method.DATAFLOW),
+                candidates=members,
+                candidate_confidence=Confidence.PROBABLE if members else Confidence.UNKNOWN,
+                site=f"registry@{name}.{func.attr}",
+            )
+            result = _Binding(
+                kind=_BKind.CANDIDATES,
+                candidates=tuple(members),
+                method=Method.REGISTRY_MEMBERSHIP,
+                confidence=Confidence.UNKNOWN,
+            )
+        self._dynamic_cache[id(node)] = result
+        return result
+
+    def _registry_call(self, binding: _Binding, node: ast.Call, label: str) -> None:
+        assert binding.registry_key is not None
+        self._registry_dispatch(binding.target_id, node, label)
+
+    def _registry_dispatch(self, container_id: str, node: ast.Call, label: str) -> None:
+        """A lookup whose key is decided at runtime reaches every member.
+
+        One edge per member at HEURISTIC, rather than one unresolved record:
+        the *set* of possible targets is known exactly, only the choice within
+        it is not, and a cascade that stops at the registry hides the whole
+        downstream half of the engine. HEURISTIC is the honesty: at most one
+        of these runs on any given call.
+        """
+        members = self.r.registry_members(container_id)
+        if not members:
+            self._unresolved(
+                node,
+                UnresolvedReason.AMBIGUOUS,
+                f"lookup through {label!r}, whose members this analysis could not read",
+                (Method.REGISTRY_MEMBERSHIP,),
+                site=f"registry@{label}",
+            )
+            return
+        for member, method in members:
+            self._emit(
+                EdgeKind.CALLS,
+                member,
+                method,
+                Confidence.HEURISTIC,
+                node,
+                note=f"one of {len(members)} members of the registry; the key is runtime data",
+            )
+
+    def _registry_member_ids(self, container_id: str) -> list[str]:
+        return [member for member, _ in self.r.registry_members(container_id)]
+
+    def _subscript_call(self, node: ast.Call, func: ast.Subscript) -> None:
+        binding = self._eval(func.value)
+        if binding.kind is not _BKind.REGISTRY or binding.registry_key is None:
+            self._unresolved_call(node, _resolve__text(func))
+            return
+        module, name = binding.registry_key
+        reg = self.r._modules[module].registries.get(name)
+        key_val = self._eval_str(func.slice) if isinstance(func.slice, ast.expr) else _OPEN_STR
+        if reg is not None and key_val.closed and len(key_val.literals) == 1:
+            literal = key_val.literals[0]
+            text = reg.entries.get(literal, "")
+            member = self.r._binding_for_dotted(text, module) if text else _UNKNOWN_BINDING
+            if member.target_id and member.kind in (_BKind.CALLABLE, _BKind.CLASS):
+                kind = EdgeKind.INSTANTIATES if member.kind is _BKind.CLASS else EdgeKind.CALLS
+                self._emit(
+                    kind,
+                    member.target_id,
+                    Method.REGISTRY_MEMBERSHIP,
+                    Confidence.PROBABLE,
+                    node,
+                    note=f"registry {name}[{literal!r}]",
+                )
+                return
+        self._registry_dispatch(binding.target_id, node, name)
+
+    def _super_call(self, node: ast.Call, attr: str) -> None:
+        if not self.class_stack:
+            self._unresolved(
+                node,
+                UnresolvedReason.DYNAMIC_NAME,
+                "super() outside a class body",
+                (Method.MRO_DISPATCH,),
+                site=f"super@{attr}",
+            )
+            return
+        key = self.class_stack[-1]
+        order, complete = self.r._mro(key)
+        target: str | None = None
+        owner: tuple[str, str] | None = None
+        for cls_key in order[1:]:
+            found = self.r._lookup_member(cls_key, attr)
+            if found is not None:
+                target, owner, _ = found
+                break
+        if target is None:
+            self._unresolved(
+                node,
+                UnresolvedReason.MISSING_TARGET if complete else UnresolvedReason.AMBIGUOUS,
+                (
+                    f"super().{attr}() -- no ancestor of {key[1]} in the inventory "
+                    "defines it" + ("" if complete else "; an unknown base is in the MRO")
+                ),
+                (Method.MRO_DISPATCH,),
+                candidates=self._name_candidates(attr, (ElementKind.METHOD,)),
+                candidate_confidence=Confidence.HEURISTIC,
+                site=f"super@{attr}",
+            )
+            return
+        single = complete and self._single_inheritance(key)
+        self._emit(
+            EdgeKind.CALLS,
+            target,
+            Method.MRO_DISPATCH,
+            # PROBABLE even with a complete, linear MRO: super() is resolved
+            # against type(self) at runtime, and a subclass loaded elsewhere
+            # can sit between these two classes.
+            Confidence.PROBABLE,
+            node,
+            note=f"super() from {key[1]} reaches {owner[1] if owner else '?'}",
+        )
+        if not single:
+            self._unresolved(
+                node,
+                UnresolvedReason.AMBIGUOUS,
+                (
+                    f"super().{attr}() was resolved through the declared MRO of "
+                    f"{key[1]}, but multiple inheritance or an unknown base can "
+                    "reorder it at runtime"
+                ),
+                (Method.MRO_DISPATCH,),
+                candidates=[target],
+                candidate_confidence=Confidence.PROBABLE,
+                site=f"super@{attr}",
+            )
+
+    def _single_inheritance(self, key: tuple[str, str]) -> bool:
+        order, complete = self.r._mro(key)
+        if not complete:
+            return False
+        for cls_key in order:
+            summary = self.r._modules.get(cls_key[0])
+            info = summary.classes.get(cls_key[1]) if summary else None
+            if info is None:
+                return False
+            real = [
+                b
+                for b in info.bases
+                if _strip_subscript(b).strip() not in {"object", "ABC", "abc.ABC", "Protocol", "typing.Protocol"}
+            ]
+            if len(real) > 1:
+                return False
+        for sub in self.r._subclasses.get(key, ()):
+            summary = self.r._modules.get(sub[0])
+            info = summary.classes.get(sub[1]) if summary else None
+            if info is not None and len(info.bases) > 1:
+                return False
+        return True
+
+    # -- expression evaluation -------------------------------------------
+
+    def _resolve_dotted(self, dotted: str) -> _Binding:
+        parts = dotted.split(".")
+        binding = self._lookup(parts[0])
+        if binding.kind is _BKind.UNKNOWN and len(parts) == 1:
+            return binding
+        for part in parts[1:]:
+            binding = self.r._attr_binding(binding, part, self.module)
+        return binding
+
+    def _eval(self, node: ast.expr) -> _Binding:
+        if isinstance(node, ast.Name):
+            return self._lookup(node.id)
+        if isinstance(node, ast.Attribute):
+            dotted = _resolve__dotted(node)
+            if dotted:
+                return self._resolve_dotted(dotted)
+            base = self._eval(node.value)
+            return self.r._attr_binding(base, node.attr, self.module)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return _Binding(
+                kind=_BKind.CONST,
+                const=_StrVal(literals=(node.value,), open=False),
+                method=Method.AST_DIRECT,
+                confidence=Confidence.CERTAIN,
+                builtin_type="str",
+            )
+        literal_type = _literal_builtin_type(node)
+        if literal_type:
+            return _Binding(
+                kind=_BKind.BUILTIN,
+                method=Method.AST_DIRECT,
+                confidence=Confidence.CERTAIN,
+                builtin_type=literal_type,
+                note=f"builtin {literal_type}",
+            )
+        if isinstance(node, ast.Call):
+            func = node.func
+            dotted = _resolve__dotted(func)
+            tail = dotted.split(".")[-1] if dotted else ""
+            if dotted in _BUILTIN_TYPES and self._is_builtin(dotted):
+                return _Binding(
+                    kind=_BKind.BUILTIN,
+                    method=Method.SCOPE_LOOKUP,
+                    confidence=Confidence.RESOLVED,
+                    builtin_type=dotted,
+                    note=f"builtin {dotted}",
+                )
+            if tail == "getattr" and self._is_builtin(dotted):
+                return self._getattr_call(node)
+            if tail in {"import_module", "__import__"}:
+                return self._import_module_call(node, arg_index=0)
+            accessor = self._registry_accessor(node)
+            if accessor is not None:
+                return accessor
+            inner = self._resolve_dotted(dotted) if dotted else self._eval(func)
+            if inner.kind is _BKind.CLASS and inner.class_key is not None:
+                return _Binding(
+                    kind=_BKind.INSTANCE,
+                    class_key=inner.class_key,
+                    target_id=inner.target_id,
+                    method=Method.DATAFLOW,
+                    confidence=Confidence.RESOLVED,
+                )
+            if inner.kind is _BKind.CALLABLE and inner.target_id:
+                return self._return_binding(inner)
+            return _UNKNOWN_BINDING
+        if isinstance(node, ast.IfExp):
+            left = self._eval(node.body)
+            right = self._eval(node.orelse)
+            merged = _merge_str(self._eval_str(node.body), self._eval_str(node.orelse))
+            if merged.constrained:
+                # One branch a literal and the other unknown means the value is
+                # *constrained*, never *known*. Collapsing to the literal branch
+                # would turn a coin flip into a fact.
+                return _Binding(
+                    kind=_BKind.CONST,
+                    const=merged,
+                    method=Method.DATAFLOW,
+                    confidence=Confidence.PROBABLE,
+                )
+            ids = sorted({b.target_id for b in (left, right) if b.target_id})
+            if len(ids) > 1:
+                return _Binding(
+                    kind=_BKind.CANDIDATES,
+                    candidates=tuple(ids),
+                    method=Method.DATAFLOW,
+                    confidence=Confidence.UNKNOWN,
+                )
+            return left if left.kind is not _BKind.UNKNOWN else right
+        if isinstance(node, (ast.BinOp, ast.JoinedStr)):
+            value = self._eval_str(node)
+            if value.constrained:
+                return _Binding(
+                    kind=_BKind.CONST,
+                    const=value,
+                    method=Method.DATAFLOW,
+                    confidence=Confidence.PROBABLE,
+                )
+        if isinstance(node, ast.Await):
+            return self._eval(node.value)
+        if isinstance(node, ast.Subscript):
+            base = self._eval(node.value)
+            if base.kind is _BKind.REGISTRY and base.registry_key is not None:
+                module, name = base.registry_key
+                reg = self.r._modules[module].registries.get(name)
+                key_val = self._eval_str(node.slice) if isinstance(node.slice, ast.expr) else _OPEN_STR
+                if reg is not None and key_val.closed and len(key_val.literals) == 1:
+                    text = reg.entries.get(key_val.literals[0], "")
+                    if text:
+                        return self.r._binding_for_dotted(text, module)
+        return _UNKNOWN_BINDING
+
+    def _return_binding(self, callee: _Binding) -> _Binding:
+        """Type of a factory function's result: annotation first, body second."""
+        for module in sorted(self.r._modules):
+            summary = self.r._modules[module]
+            for qualname in sorted(summary.funcs):
+                func = summary.funcs[qualname]
+                if func.element_id != callee.target_id:
+                    continue
+                if func.returns:
+                    key = self.r._class_key_from_text(func.returns, module)
+                    if key is not None:
+                        return _Binding(
+                            kind=_BKind.INSTANCE,
+                            class_key=key,
+                            target_id=self.r._class_element(key),
+                            method=Method.DATAFLOW,
+                            confidence=Confidence.PROBABLE,
+                            note="from return annotation",
+                        )
+                keys = set()
+                for text in func.return_exprs:
+                    binding = self.r._binding_from_assign_text(module, text)
+                    if binding.kind is _BKind.INSTANCE and binding.class_key is not None:
+                        keys.add(binding.class_key)
+                if len(keys) == 1:
+                    key = keys.pop()
+                    return _Binding(
+                        kind=_BKind.INSTANCE,
+                        class_key=key,
+                        target_id=self.r._class_element(key),
+                        method=Method.DATAFLOW,
+                        confidence=Confidence.PROBABLE,
+                        note="factory returns a single class",
+                    )
+                return _UNKNOWN_BINDING
+        return _UNKNOWN_BINDING
+
+    def _eval_str(self, node: ast.AST) -> _StrVal:
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, str):
+                return _StrVal(literals=(node.value,), open=False)
+            return _OPEN_STR
+        if isinstance(node, ast.Name):
+            binding = self._lookup(node.id)
+            if binding.kind is _BKind.CONST and binding.const is not None:
+                return binding.const
+            return _OPEN_STR
+        if isinstance(node, ast.IfExp):
+            return _merge_str(self._eval_str(node.body), self._eval_str(node.orelse))
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = self._eval_str(node.left)
+            right = self._eval_str(node.right)
+            if left.closed and right.closed:
+                return _StrVal(
+                    literals=tuple(sorted({a + b for a in left.literals for b in right.literals})),
+                    open=False,
+                )
+            if left.closed:
+                return _StrVal(prefixes=left.literals, open=True)
+            if right.closed:
+                return _StrVal(suffixes=right.literals, open=True)
+            return _OPEN_STR
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+            left = self._eval_str(node.left)
+            if left.closed:
+                prefix = left.literals[0].split("%")[0]
+                return _StrVal(prefixes=(prefix,), open=True)
+            return _OPEN_STR
+        if isinstance(node, ast.JoinedStr):
+            literal = ""
+            prefix = ""
+            suffix = ""
+            closed = True
+            seen_hole = False
+            for part in node.values:
+                if isinstance(part, ast.Constant) and isinstance(part.value, str):
+                    literal += part.value
+                    if seen_hole:
+                        suffix = part.value
+                    else:
+                        prefix += part.value
+                    continue
+                if isinstance(part, ast.FormattedValue):
+                    inner = self._eval_str(part.value)
+                    if inner.closed and len(inner.literals) == 1 and not seen_hole:
+                        literal += inner.literals[0]
+                        prefix += inner.literals[0]
+                        continue
+                    closed = False
+                    seen_hole = True
+                    suffix = ""
+            if closed:
+                return _StrVal(literals=(literal,), open=False)
+            return _StrVal(
+                prefixes=(prefix,) if prefix else (),
+                suffixes=(suffix,) if suffix else (),
+                open=True,
+            )
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Attribute) and func.attr in {"format", "join", "lower", "upper"}:
+                base = self._eval_str(func.value)
+                if func.attr == "format" and base.closed:
+                    template = base.literals[0]
+                    return _StrVal(prefixes=(template.split("{")[0],), open=True)
+                if func.attr in {"lower", "upper"} and base.closed:
+                    method = str.lower if func.attr == "lower" else str.upper
+                    return _StrVal(literals=tuple(sorted(method(v) for v in base.literals)), open=False)
+            return _OPEN_STR
+        return _OPEN_STR
+
+
+# ---------------------------------------------------------------------------
+# module-level convenience
+# ---------------------------------------------------------------------------
+
+
+def resolve(
+    elements: Sequence[Element],
+    root: str | Path = ".",
+    *,
+    config_paths: Sequence[str] = (),
+    include_builtin_calls: bool = False,
+) -> tuple[Sequence[Edge], Sequence[Unresolved]]:
+    """Resolve *elements* rooted at *root*. See :class:`Resolver`."""
+    return Resolver(
+        root,
+        config_paths=config_paths,
+        include_builtin_calls=include_builtin_calls,
+    ).resolve(elements)
+
+
+def build_graph(elements: Sequence[Element], edges: Sequence[Edge]) -> Any:
+    """A ``networkx.DiGraph`` over the same IDs, for cards 3-6.
+
+    ``networkx`` is a core dependency, but this helper is the only place that
+    needs it, so it is imported lazily: the resolver itself works without it.
+    """
+    try:
+        import networkx  # type: ignore[import-not-found]
+    except ImportError as exc:  # pragma: no cover - networkx is a core dep
+        raise RuntimeError(
+            "build_graph needs networkx; resolution itself does not"
+        ) from exc
+    graph = networkx.DiGraph()
+    for element in sorted(elements, key=lambda e: e.id):
+        graph.add_node(element.id, kind=str(element.kind), name=element.name)
+    for edge in sorted(edges, key=lambda e: e.id):
+        for node in (edge.source_id, edge.target_id):
+            if node not in graph:
+                graph.add_node(node, kind="EXTERNAL", name=node.rsplit("::", 1)[-1])
+        graph.add_edge(
+            edge.source_id,
+            edge.target_id,
+            key=edge.id,
+            kind=str(edge.kind),
+            method=str(edge.provenance.method),
+            confidence=str(edge.provenance.confidence),
+        )
+    return graph
+
+
+def import_cycles(edges: Sequence[Edge]) -> list[tuple[str, ...]]:
+    """Import cycles, reported as cycles rather than as an error.
+
+    Deterministic: each cycle is rotated to start at its smallest ID and the
+    list is sorted.
+    """
+    def module_of(node_id: str) -> str:
+        return node_id.split("::", 1)[0].split("#", 1)[0]
+
+    graph: dict[str, set[str]] = defaultdict(set)
+    for edge in edges:
+        if edge.kind is EdgeKind.IMPORTS:
+            source = module_of(edge.source_id)
+            target = module_of(edge.target_id)
+            if source != target:
+                graph[source].add(target)
+    cycles: set[tuple[str, ...]] = set()
+    colour: dict[str, int] = {}
+    stack: list[str] = []
+
+    def walk(node: str) -> None:
+        colour[node] = 1
+        stack.append(node)
+        for nxt in sorted(graph.get(node, ())):
+            if colour.get(nxt, 0) == 0:
+                walk(nxt)
+            elif colour.get(nxt) == 1:
+                index = stack.index(nxt)
+                cycle = tuple(stack[index:])
+                pivot = cycle.index(min(cycle))
+                cycles.add(cycle[pivot:] + cycle[:pivot])
+        stack.pop()
+        colour[node] = 2
+
+    for node in sorted(graph):
+        if colour.get(node, 0) == 0:
+            walk(node)
+    return sorted(cycles)
+
+
+# ==========================================================================
+# cascade.py
+# ==========================================================================
+
+"""Card 3 -- per-function control flow, cascade ordering and decision structure.
+
+What this module answers, in the owner's words: *what runs, in what order, and
+what drives the final decision*.
+
+Three artifacts' worth of facts come out of one pass over the target's AST:
+
+``cfg_blocks.jsonl`` / ``cfg_edges.jsonl``
+    A basic-block graph per module, class body, function, method and property.
+    Branches, loops, ``try``/``except``/``finally``, ``with``, comprehensions,
+    ``match``, ``assert``, early ``return``/``raise``/``break``/``continue`` and
+    short-circuit ``and``/``or`` all produce real edges. A short circuit is a
+    branch, not an expression: rule cascades lean on exactly that.
+
+``order.jsonl``
+    A canonical order tree per element (``@order::<element id>``), plus a
+    cascade root that names the entry points, the call cycles and the wiring
+    whose invocation order the source does not fix. ``SEQUENCE`` appears only
+    where control flow fixes an order; everywhere else the node says
+    ``BRANCH``, ``MERGE``, ``LOOP``, ``UNORDERED`` or ``CYCLE``. Flattening a
+    real branch into a sequence would be a defect, so it is never done -- the
+    total-order node is emitted only when the whole reachable cascade is
+    branch-free.
+
+``decisions.jsonl``
+    Every rule-cascade step, guard clause, short-circuit gate, ``match`` case,
+    ternary, assertion and tree-model call, with its condition source, the
+    elements the condition reads, and where each outcome leads.
+
+``candidates.jsonl`` / ``unresolved.jsonl``
+    What the owner left blank and this card worked out anyway -- entry points
+    and decision sinks, with the evidence each rests on -- and everything it
+    could not settle. Both ride in :meth:`CascadeAnalyzer.order`'s return
+    value, not behind an accessor a caller could forget to call.
+
+``reachability.jsonl``
+    One :class:`~.contracts.interfaces.Reachability` per inventoried element --
+    module, class, function, parameter, blob, all of them. The bias is
+    deliberate and one-directional: an element reachable only through a
+    ``HEURISTIC`` edge is *reachable, at HEURISTIC confidence*, never pruned,
+    and anything the analysis cannot settle is ``UNKNOWN`` with a reason rather
+    than ``NO_SINK_PATH``. A false "unreachable" sends the owner to delete live
+    code, and "I could not tell" must never render as "this reaches nothing".
+
+Constraint 1: nothing here imports, executes, ``exec``s, ``eval``s or unpickles
+target code. Files are read as text and parsed with :mod:`ast`. Constraint 4:
+every ordinal is derived from AST traversal order, never from a set, a hash or
+a clock, so two runs are byte-identical.
+"""
+
+
+
+
+__all__ = [
+    "ROLE_ENTRY_POINT",
+    "ROLE_DECISION_SINK",
+    "CascadeAnalyzer",
+    "CFG_ELEMENT_KINDS",
+    "WIRING_EDGE_KINDS",
+]
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+CFG_ELEMENT_KINDS: frozenset[ElementKind] = frozenset(
+    {
+        ElementKind.MODULE,
+        ElementKind.CLASS,
+        ElementKind.FUNCTION,
+        ElementKind.METHOD,
+        ElementKind.PROPERTY,
+    }
+)
+"""Element kinds that own a body and therefore a control-flow graph."""
+
+WIRING_EDGE_KINDS: frozenset[EdgeKind] = frozenset(
+    {
+        EdgeKind.CALLS,
+        EdgeKind.REGISTERS,
+        EdgeKind.INSTANTIATES,
+        EdgeKind.CONFIGURES,
+        EdgeKind.REFERENCES,
+        EdgeKind.DECORATES,
+    }
+)
+"""Edges along which control can travel towards a decision sink.
+
+``IMPORTS`` and ``INHERITS`` are excluded on purpose: importing a module does
+not run it, and an inherited method that actually runs arrives as an
+``MRO_DISPATCH`` call edge from card 2. Both exclusions are stated as
+approximations in this card's report.
+"""
+
+_RANK: dict[Confidence, int] = {
+    Confidence.CERTAIN: 4,
+    Confidence.RESOLVED: 3,
+    Confidence.PROBABLE: 2,
+    Confidence.HEURISTIC: 1,
+    Confidence.UNKNOWN: 0,
+}
+"""Mirrors the contract's own ordering. ``test_rank_agrees_with_combine`` fails
+if the two ever disagree, so this cannot drift from :func:`combine`."""
+
+_BUILTIN_NAMES: frozenset[str] = frozenset(dir(builtins)) | frozenset(
+    {"self", "cls", "__name__", "__file__", "__doc__", "None", "True", "False"}
+)
+
+_IMPURE_BUILTINS: frozenset[str] = frozenset(
+    {"print", "open", "setattr", "delattr", "exec", "eval", "input", "__import__"}
+)
+"""Builtins that reach outside the call. Named, not guessed: every other
+builtin is treated as pure for the side-effect test."""
+
+_SINK_NAME_HINTS: tuple[str, ...] = (
+    "final_decision",
+    "final_signal",
+    "make_decision",
+    "take_decision",
+    "decide",
+    "decision",
+    "emit_decision",
+    "emit_signal",
+    "generate_signal",
+    "get_signal",
+    "produce_signal",
+    "place_order",
+    "submit_order",
+    "send_order",
+    "execute_trade",
+)
+"""Names that *suggest* a decision sink. Only used when the owner left the sink
+blank in TARGET_PROFILE.md, always reported as a candidate with its evidence,
+never silently adopted as fact (ARCHITECTURE.md, "Auto-detection")."""
+
+_ENTRY_NAME_HINTS: tuple[str, ...] = ("main", "run", "cli", "entrypoint", "entry_point")
+
+_MODEL_CALL_NAMES: frozenset[str] = frozenset(
+    {
+        "predict",
+        "predict_proba",
+        "predict_log_proba",
+        "decision_function",
+        "classify",
+        "infer",
+    }
+)
+"""Tree/ensemble model entry points. A call to one of these is a decision point
+whose branching lives inside the model, not in the source."""
+
+_AST_DIRECT_CERTAIN = Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN)
+
+
+ROLE_ENTRY_POINT = "entry_point"
+ROLE_DECISION_SINK = "decision_sink"
+"""The two `DetectedCandidate.role` values this card emits."""
+
+
+# ---------------------------------------------------------------------------
+# Flow shapes -- the structure the order tree is built from
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _Shape:
+    """Base for the structural tree recorded while the CFG is built."""
+
+    node_id: str = field(default="", init=False)
+
+
+@dataclass
+class _SeqShape(_Shape):
+    children: list[_Shape] = field(default_factory=list)
+
+
+@dataclass
+class _CallShape(_Shape):
+    span: SourceSpan
+    source: str
+    in_loop: bool
+
+
+@dataclass
+class _BranchShape(_Shape):
+    span: SourceSpan
+    condition: str
+    kind: str
+    arms: list[tuple[str, _SeqShape]] = field(default_factory=list)
+    reads: tuple[str, ...] = ()
+    is_guard: bool = False
+    cascade_note: str = ""
+    block_id: str = ""
+    arm_node_ids: list[str] = field(default_factory=list)
+    is_decision: bool = True
+    rejoins: bool = True
+    """False when every arm returns or raises: control rejoins at the element's
+    exit, not after the branch. The MERGE node says which."""
+
+    condition_calls: tuple[tuple[int, int], ...] = ()
+    """Positions of calls inside the condition. A condition that *calls*
+    something reads what it called, and that is often the only element the
+    condition names -- `if rule(value)` reads the rule, not the local alias."""
+
+    order_key: int = 0
+    """Creation order of the branch's block, so decisions are numbered in
+    source order rather than innermost-first (an `elif` chain is built from the
+    inside out)."""
+
+
+@dataclass
+class _LoopShape(_Shape):
+    span: SourceSpan
+    condition: str
+    body: _SeqShape
+    orelse: _SeqShape | None = None
+    comprehension: bool = False
+    block_id: str = ""
+
+
+@dataclass
+class _ModelShape(_Shape):
+    """A tree-model call: the branching happens inside the model."""
+
+    span: SourceSpan
+    source: str
+    reads: tuple[str, ...]
+    call: _CallShape
+
+
+# ---------------------------------------------------------------------------
+# Small AST helpers
+# ---------------------------------------------------------------------------
+
+
+def _span_of(path: str, node: ast.AST) -> SourceSpan:
+    return SourceSpan(
+        path=path,
+        line=int(getattr(node, "lineno", 1)),
+        end_line=getattr(node, "end_lineno", None),
+        col=getattr(node, "col_offset", None),
+    )
+
+
+def _src(node: ast.AST | None) -> str:
+    if node is None:
+        return ""
+    try:
+        return ast.unparse(node)
+    except Exception:  # pragma: no cover - unparse is total for parsed trees
+        return type(node).__name__
+
+
+def _is_terminal(shape_stmt: ast.stmt) -> bool:
+    return isinstance(shape_stmt, (ast.Return, ast.Raise, ast.Break, ast.Continue))
+
+
+def _body_terminates(body: Sequence[ast.stmt]) -> bool:
+    return bool(body) and _is_terminal(body[-1])
+
+
+def _read_targets(node: ast.AST | None) -> tuple[str, ...]:
+    """Source-level names an expression reads, in deterministic order.
+
+    Attribute chains stay whole (``self.threshold``) and string-literal
+    subscripts become feature names (``row["price"]`` -> ``price``) because the
+    owner reasons in features and the contract gives them their own namespace.
+    """
+    if node is None:
+        return ()
+    found: list[str] = []
+
+    def add(name: str) -> None:
+        if name and name not in found:
+            found.append(name)
+
+    def walk(cur: ast.AST) -> None:
+        if isinstance(cur, ast.Attribute):
+            add(_src(cur))
+            walk(cur.value)
+            return
+        if isinstance(cur, ast.Subscript):
+            key = cur.slice
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                add(f"@key:{key.value}")
+            walk(cur.value)
+            if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
+                walk(key)
+            return
+        if isinstance(cur, ast.Name):
+            add(cur.id)
+            return
+        for child in ast.iter_child_nodes(cur):
+            walk(child)
+
+    walk(node)
+    return tuple(found)
+
+
+def _call_positions(node: ast.AST | None) -> tuple[tuple[int, int], ...]:
+    """(line, col) of every call inside an expression, in source order."""
+    if node is None:
+        return ()
+    found = [
+        (child.lineno, child.col_offset) for child in ast.walk(node) if isinstance(child, ast.Call)
+    ]
+    return tuple(sorted(set(found)))
+
+
+def _pattern_source(pattern: ast.pattern) -> str:
+    return _src(pattern)
+
+
+def _is_wildcard_case(case: ast.match_case) -> bool:
+    return (
+        isinstance(case.pattern, ast.MatchAs)
+        and case.pattern.pattern is None
+        and case.guard is None
+    )
+
+
+def _has_main_guard(module: ast.Module) -> bool:
+    for stmt in module.body:
+        if not isinstance(stmt, ast.If):
+            continue
+        test = stmt.test
+        if isinstance(test, ast.Compare) and isinstance(test.left, ast.Name):
+            if test.left.id == "__name__":
+                for comparator in test.comparators:
+                    if isinstance(comparator, ast.Constant) and comparator.value == "__main__":
+                        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# The per-element flow builder
+# ---------------------------------------------------------------------------
+
+
+class _FlowBuilder:
+    """Builds the CFG and the structural shape tree for one element body.
+
+    Nested ``def``/``class`` bodies are *not* descended into: they are separate
+    elements with their own graphs, joined by card 2's call edges. Their
+    decorator and base-class expressions do run here, and are walked here.
+    """
+
+    def __init__(self, element: Element, node: ast.AST, path: str) -> None:
+        self.element = element
+        self.node = node
+        self.path = path
+        self.blocks: list[CFGBlock] = []
+        self.edges: list[CFGEdge] = []
+        self.branches: list[_BranchShape] = []
+        self.models: list[_ModelShape] = []
+        self.deferred: list[_Shape] = []
+        self.unresolved: list[Unresolved] = []
+        self.shape: _SeqShape = _SeqShape()
+        self.entry_id = ""
+        self.exit_id = ""
+        self._n = 0
+        self._edge_seen: dict[str, int] = {}
+        self._loops: list[tuple[str, str]] = []
+        self._statement: ast.stmt | None = None
+        self._handlers: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
+        self._finally: list[str] = []
+        self._unres_n = 0
+
+    # -- primitives ---------------------------------------------------------
+
+    def _block(self, kind: BlockKind, node: ast.AST, note: str = "") -> str:
+        block_id = make_id(self.element.id, f"@block{self._n}")
+        self._n += 1
+        span = _span_of(self.path, node)
+        self.blocks.append(
+            CFGBlock(
+                id=block_id,
+                element_id=self.element.id,
+                kind=kind,
+                span=span,
+                provenance=Provenance(
+                    method=Method.AST_DIRECT,
+                    confidence=Confidence.CERTAIN,
+                    span=span,
+                    note=note,
+                ),
+            )
+        )
+        return block_id
+
+    def _edge(
+        self,
+        source_id: str,
+        target_id: str,
+        condition: str = "",
+        taken_when: bool | None = None,
+        confidence: Confidence = Confidence.CERTAIN,
+        note: str = "",
+    ) -> None:
+        base = f"{source_id}=>{target_id}"
+        seen = self._edge_seen.get(base, 0) + 1
+        self._edge_seen[base] = seen
+        self.edges.append(
+            CFGEdge(
+                id=make_id(base, "", seen),
+                source_id=source_id,
+                target_id=target_id,
+                condition=condition,
+                taken_when=taken_when,
+                provenance=Provenance(
+                    method=Method.AST_DIRECT, confidence=confidence, note=note
+                ),
+            )
+        )
+
+    def _expr_span(self, node: ast.AST) -> SourceSpan:
+        """The statement a decision-bearing expression belongs to."""
+        return _span_of(self.path, self._statement if self._statement is not None else node)
+
+    def _register_branch(self, shape: _BranchShape) -> None:
+        """Record a branch, numbered by when its block was created.
+
+        An ``elif`` chain is built from the inside out, so appending in call
+        order would number the last `elif` first and make the decision records
+        read backwards.
+        """
+        _, _, ordinal = shape.block_id.rpartition("@block")
+        shape.order_key = int(ordinal) if ordinal.isdigit() else len(self.branches)
+        self.branches.append(shape)
+
+    def _unresolved(self, node: ast.AST, reason: UnresolvedReason, description: str) -> None:
+        record_id = make_id(self.element.id, f"@cfg_unresolved{self._unres_n}")
+        self._unres_n += 1
+        self.unresolved.append(
+            Unresolved(
+                id=record_id,
+                reason=reason,
+                span=_span_of(self.path, node),
+                description=description,
+                attempted=(Method.AST_DIRECT,),
+            )
+        )
+
+    # -- driver -------------------------------------------------------------
+
+    def build(self) -> None:
+        body = list(getattr(self.node, "body", []))
+        self.entry_id = self._block(BlockKind.ENTRY, self.node, note=f"entry of {self.element.id}")
+        self.exit_id = self._block(BlockKind.EXIT, self.node, note=f"exit of {self.element.id}")
+        cur, shape = self._stmts(body, self.entry_id)
+        self.shape = shape
+        if cur is not None:
+            self._edge(cur, self.exit_id, condition="<fall through>")
+
+    # -- statements ---------------------------------------------------------
+
+    def _stmts(self, stmts: Sequence[ast.stmt], cur: str | None) -> tuple[str | None, _SeqShape]:
+        seq = _SeqShape()
+        for stmt in stmts:
+            if cur is None:
+                cur = self._block(
+                    BlockKind.NORMAL,
+                    stmt,
+                    note="unreachable: follows a terminating statement",
+                )
+            cur, shapes = self._stmt(stmt, cur)
+            seq.children.extend(shapes)
+        return cur, seq
+
+    def _stmt(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        # A decision written inside an expression -- a ternary, a short-circuit
+        # gate, a comprehension filter -- is reported at the statement that
+        # evaluates it, which is where the owner reads it.
+        self._statement = stmt
+        handler = getattr(self, f"_stmt_{type(stmt).__name__}", None)
+        if handler is not None:
+            return handler(stmt, cur)  # type: ignore[no-any-return]
+        # Default: every expression the statement evaluates, in order.
+        shapes: list[_Shape] = []
+        for child in ast.iter_child_nodes(stmt):
+            if isinstance(child, ast.expr):
+                cur, got = self._expr(child, cur)
+                shapes.extend(got)
+        return cur, shapes
+
+    # definitions bind a name here; their bodies are separate elements
+    def _stmt_FunctionDef(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        shapes: list[_Shape] = []
+        for dec in list(getattr(stmt, "decorator_list", [])):
+            cur, got = self._expr(dec, cur)
+            shapes.extend(got)
+        for default in self._defaults(stmt):
+            cur, got = self._expr(default, cur)
+            shapes.extend(got)
+        return cur, shapes
+
+    _stmt_AsyncFunctionDef = _stmt_FunctionDef
+
+    def _defaults(self, stmt: ast.stmt) -> list[ast.expr]:
+        args = getattr(stmt, "args", None)
+        if args is None:
+            return []
+        out = [d for d in list(args.defaults) if d is not None]
+        out.extend(d for d in list(args.kw_defaults) if d is not None)
+        return out
+
+    def _stmt_ClassDef(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        shapes: list[_Shape] = []
+        assert isinstance(stmt, ast.ClassDef)
+        for dec in stmt.decorator_list:
+            cur, got = self._expr(dec, cur)
+            shapes.extend(got)
+        for base in stmt.bases:
+            cur, got = self._expr(base, cur)
+            shapes.extend(got)
+        for keyword in stmt.keywords:
+            cur, got = self._expr(keyword.value, cur)
+            shapes.extend(got)
+        return cur, shapes
+
+    def _stmt_Return(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        assert isinstance(stmt, ast.Return)
+        shapes: list[_Shape] = []
+        cur, got = self._expr(stmt.value, cur)
+        shapes.extend(got)
+        block = self._block(BlockKind.RETURN, stmt, note=_src(stmt))
+        self._edge(cur, block, condition="<return>")
+        if self._finally:
+            self._edge(block, self._finally[-1], condition="<enter finally>")
+        else:
+            self._edge(block, self.exit_id)
+        return None, shapes
+
+    def _stmt_Raise(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        assert isinstance(stmt, ast.Raise)
+        shapes: list[_Shape] = []
+        cur, got = self._expr(stmt.exc, cur)
+        shapes.extend(got)
+        block = self._block(BlockKind.RAISE, stmt, note=_src(stmt))
+        self._edge(cur, block, condition="<raise>")
+        self._exceptional_exit(block, _src(stmt.exc) or "<re-raise>")
+        return None, shapes
+
+    def _exceptional_exit(self, block: str, what: str) -> None:
+        if self._handlers:
+            handler_ids, _ = self._handlers[-1]
+            for handler_id in handler_ids:
+                self._edge(
+                    block,
+                    handler_id,
+                    condition=what,
+                    confidence=Confidence.PROBABLE,
+                    note="exception path into an enclosing handler",
+                )
+            return
+        if self._finally:
+            self._edge(block, self._finally[-1], condition=what, note="exception path via finally")
+            return
+        self._edge(block, self.exit_id, condition=what, note="exception leaves this element")
+
+    def _stmt_Break(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        if not self._loops:
+            self._unresolved(stmt, UnresolvedReason.MISSING_TARGET, "`break` outside a loop")
+            return None, []
+        self._edge(cur, self._loops[-1][1], condition="<break>")
+        return None, []
+
+    def _stmt_Continue(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        if not self._loops:
+            self._unresolved(stmt, UnresolvedReason.MISSING_TARGET, "`continue` outside a loop")
+            return None, []
+        self._edge(cur, self._loops[-1][0], condition="<continue>")
+        return None, []
+
+    def _stmt_If(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        assert isinstance(stmt, ast.If)
+        shapes: list[_Shape] = []
+        cur, got = self._expr(stmt.test, cur)
+        shapes.extend(got)
+        condition = _src(stmt.test)
+        branch_block = self._block(BlockKind.BRANCH, stmt, note=f"if {condition}")
+        self._edge(cur, branch_block)
+
+        then_start = self._block(BlockKind.NORMAL, stmt.body[0] if stmt.body else stmt)
+        self._edge(branch_block, then_start, condition=condition, taken_when=True)
+        then_end, then_shape = self._stmts(stmt.body, then_start)
+
+        else_end: str | None = None
+        else_shape = _SeqShape()
+        if stmt.orelse:
+            else_start = self._block(BlockKind.NORMAL, stmt.orelse[0])
+            self._edge(branch_block, else_start, condition=condition, taken_when=False)
+            else_end, else_shape = self._stmts(stmt.orelse, else_start)
+
+        incoming = [b for b in (then_end, else_end) if b is not None]
+        merge: str | None = None
+        if incoming or not stmt.orelse:
+            merge = self._block(BlockKind.NORMAL, stmt, note="merge")
+            for block in incoming:
+                self._edge(block, merge)
+            if not stmt.orelse:
+                self._edge(branch_block, merge, condition=condition, taken_when=False)
+
+        is_guard = _body_terminates(stmt.body) and not stmt.orelse
+        shape = _BranchShape(
+            span=_span_of(self.path, stmt),
+            condition=condition,
+            kind="GUARD" if is_guard else "IF",
+            arms=[("True", then_shape), ("False", else_shape)],
+            reads=_read_targets(stmt.test),
+            condition_calls=_call_positions(stmt.test),
+            is_guard=is_guard,
+            block_id=branch_block,
+            rejoins=merge is not None,
+        )
+        self._register_branch(shape)
+        shapes.append(shape)
+        return merge, shapes
+
+    def _stmt_While(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        assert isinstance(stmt, ast.While)
+        condition = _src(stmt.test)
+        head = self._block(BlockKind.LOOP_HEAD, stmt, note=f"while {condition}")
+        self._edge(cur, head)
+        after = self._block(BlockKind.NORMAL, stmt, note="after loop")
+        test_end, test_shapes = self._expr(stmt.test, head)
+        body_start = self._block(BlockKind.NORMAL, stmt.body[0] if stmt.body else stmt)
+        self._edge(test_end, body_start, condition=condition, taken_when=True)
+        self._loops.append((head, after))
+        body_end, body_shape = self._stmts(stmt.body, body_start)
+        self._loops.pop()
+        if body_end is not None:
+            self._edge(body_end, head, condition="<loop back>")
+        orelse_shape: _SeqShape | None = None
+        if stmt.orelse:
+            else_start = self._block(BlockKind.NORMAL, stmt.orelse[0], note="loop else")
+            self._edge(test_end, else_start, condition=condition, taken_when=False)
+            else_end, orelse_shape = self._stmts(stmt.orelse, else_start)
+            if else_end is not None:
+                self._edge(else_end, after)
+        else:
+            self._edge(test_end, after, condition=condition, taken_when=False)
+        shape = _LoopShape(
+            span=_span_of(self.path, stmt),
+            condition=f"while {condition}",
+            body=body_shape,
+            orelse=orelse_shape,
+            block_id=head,
+        )
+        return after, [*test_shapes, shape]
+
+    def _stmt_For(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        assert isinstance(stmt, (ast.For, ast.AsyncFor))
+        shapes: list[_Shape] = []
+        cur, got = self._expr(stmt.iter, cur)
+        shapes.extend(got)
+        condition = f"for {_src(stmt.target)} in {_src(stmt.iter)}"
+        head = self._block(BlockKind.LOOP_HEAD, stmt, note=condition)
+        self._edge(cur, head)
+        after = self._block(BlockKind.NORMAL, stmt, note="after loop")
+        body_start = self._block(BlockKind.NORMAL, stmt.body[0] if stmt.body else stmt)
+        self._edge(head, body_start, condition="<next item>", taken_when=True)
+        self._loops.append((head, after))
+        body_end, body_shape = self._stmts(stmt.body, body_start)
+        self._loops.pop()
+        if body_end is not None:
+            self._edge(body_end, head, condition="<loop back>")
+        orelse_shape: _SeqShape | None = None
+        if stmt.orelse:
+            else_start = self._block(BlockKind.NORMAL, stmt.orelse[0], note="loop else")
+            self._edge(head, else_start, condition="<iteration complete>", taken_when=False)
+            else_end, orelse_shape = self._stmts(stmt.orelse, else_start)
+            if else_end is not None:
+                self._edge(else_end, after)
+        else:
+            self._edge(head, after, condition="<iteration complete>", taken_when=False)
+        shape = _LoopShape(
+            span=_span_of(self.path, stmt),
+            condition=condition,
+            body=body_shape,
+            orelse=orelse_shape,
+            block_id=head,
+        )
+        shapes.append(shape)
+        return after, shapes
+
+    _stmt_AsyncFor = _stmt_For
+
+    def _stmt_With(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        assert isinstance(stmt, (ast.With, ast.AsyncWith))
+        shapes: list[_Shape] = []
+        for item in stmt.items:
+            cur, got = self._expr(item.context_expr, cur)
+            shapes.extend(got)
+        header = self._block(
+            BlockKind.NORMAL,
+            stmt,
+            note="with " + ", ".join(_src(i.context_expr) for i in stmt.items),
+        )
+        self._edge(cur, header, condition="<enter context>")
+        body_end, body_shape = self._stmts(stmt.body, header)
+        shapes.extend(body_shape.children)
+        if body_end is None:
+            return None, shapes
+        exit_block = self._block(BlockKind.NORMAL, stmt, note="exit context")
+        self._edge(body_end, exit_block, condition="<exit context>")
+        return exit_block, shapes
+
+    _stmt_AsyncWith = _stmt_With
+
+    def _stmt_Try(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        handlers = list(getattr(stmt, "handlers", []))
+        finalbody = list(getattr(stmt, "finalbody", []))
+        orelse = list(getattr(stmt, "orelse", []))
+        body = list(getattr(stmt, "body", []))
+
+        handler_ids = tuple(
+            self._block(BlockKind.HANDLER, h, note=f"except {_src(h.type) or '*'}")
+            for h in handlers
+        )
+        finally_id = self._block(BlockKind.FINALLY, stmt, note="finally") if finalbody else ""
+
+        body_start = self._block(BlockKind.NORMAL, body[0] if body else stmt, note="try body")
+        self._edge(cur, body_start, condition="<enter try>")
+        for handler, handler_id in zip(handlers, handler_ids):
+            self._edge(
+                body_start,
+                handler_id,
+                condition=_src(handler.type) or "<any exception>",
+                confidence=Confidence.PROBABLE,
+                note="exception raised anywhere in the guarded region",
+            )
+
+        if finally_id:
+            self._finally.append(finally_id)
+        if handler_ids:
+            self._handlers.append((handler_ids, ()))
+        body_end, body_shape = self._stmts(body, body_start)
+        if handler_ids:
+            self._handlers.pop()
+
+        if orelse and body_end is not None:
+            else_start = self._block(BlockKind.NORMAL, orelse[0], note="try else")
+            self._edge(body_end, else_start, condition="<no exception>")
+            body_end, orelse_shape = self._stmts(orelse, else_start)
+            body_shape.children.extend(orelse_shape.children)
+
+        arms: list[tuple[str, _SeqShape]] = [("try", body_shape)]
+        ends: list[str] = [] if body_end is None else [body_end]
+        for handler, handler_id in zip(handlers, handler_ids):
+            handler_end, handler_shape = self._stmts(list(handler.body), handler_id)
+            arms.append((f"except {_src(handler.type) or '*'}", handler_shape))
+            if handler_end is not None:
+                ends.append(handler_end)
+
+        if finally_id:
+            self._finally.pop()
+            for end in ends:
+                self._edge(end, finally_id, condition="<enter finally>")
+            final_end, final_shape = self._stmts(finalbody, finally_id)
+            branch = _BranchShape(
+                span=_span_of(self.path, stmt),
+                condition="try",
+                kind="TRY",
+                arms=arms,
+                reads=(),
+                block_id=body_start,
+                is_decision=False,
+            )
+            self._register_branch(branch)
+            shapes: list[_Shape] = [branch]
+            shapes.extend(final_shape.children)
+            return final_end, shapes
+
+        branch = _BranchShape(
+            span=_span_of(self.path, stmt),
+            condition="try",
+            kind="TRY",
+            arms=arms,
+            reads=(),
+            block_id=body_start,
+            is_decision=False,
+        )
+        self._register_branch(branch)
+        if not ends:
+            return None, [branch]
+        merge = self._block(BlockKind.NORMAL, stmt, note="merge")
+        for end in ends:
+            self._edge(end, merge)
+        return merge, [branch]
+
+    _stmt_TryStar = _stmt_Try
+
+    def _stmt_Match(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        assert isinstance(stmt, ast.Match)
+        shapes: list[_Shape] = []
+        cur, got = self._expr(stmt.subject, cur)
+        shapes.extend(got)
+        subject = _src(stmt.subject)
+        ends: list[str] = []
+        arms: list[tuple[str, _SeqShape]] = []
+        fallthrough: str | None = cur
+        exhaustive = False
+        first_branch = ""
+        for case in stmt.cases:
+            assert fallthrough is not None
+            label = _pattern_source(case.pattern)
+            if case.guard is not None:
+                label = f"{label} if {_src(case.guard)}"
+            branch_block = self._block(BlockKind.BRANCH, case.pattern, note=f"case {label}")
+            first_branch = first_branch or branch_block
+            self._edge(fallthrough, branch_block)
+            case_start = self._block(BlockKind.NORMAL, case.body[0] if case.body else case.pattern)
+            self._edge(branch_block, case_start, condition=f"{subject} ~ {label}", taken_when=True)
+            case_end, case_shape = self._stmts(list(case.body), case_start)
+            arms.append((f"case {label}", case_shape))
+            if case_end is not None:
+                ends.append(case_end)
+            if _is_wildcard_case(case):
+                exhaustive = True
+                fallthrough = None
+                break
+            next_block = self._block(BlockKind.NORMAL, case.pattern, note="next case")
+            self._edge(branch_block, next_block, condition=f"{subject} ~ {label}", taken_when=False)
+            fallthrough = next_block
+        if fallthrough is not None and not exhaustive:
+            ends.append(fallthrough)
+            arms.append(("no case matched", _SeqShape()))
+        shape = _BranchShape(
+            span=_span_of(self.path, stmt),
+            condition=f"match {subject}",
+            kind="MATCH",
+            arms=arms,
+            reads=_read_targets(stmt.subject),
+            condition_calls=_call_positions(stmt.subject),
+            block_id=first_branch,
+            rejoins=bool(ends),
+        )
+        self._register_branch(shape)
+        shapes.append(shape)
+        if not ends:
+            return None, shapes
+        merge = self._block(BlockKind.NORMAL, stmt, note="merge")
+        for end in ends:
+            self._edge(end, merge)
+        return merge, shapes
+
+    def _stmt_Assert(self, stmt: ast.stmt, cur: str) -> tuple[str | None, list[_Shape]]:
+        assert isinstance(stmt, ast.Assert)
+        shapes: list[_Shape] = []
+        cur, got = self._expr(stmt.test, cur)
+        shapes.extend(got)
+        condition = _src(stmt.test)
+        branch_block = self._block(BlockKind.BRANCH, stmt, note=f"assert {condition}")
+        self._edge(cur, branch_block)
+        fail = self._block(BlockKind.RAISE, stmt, note="AssertionError")
+        self._edge(branch_block, fail, condition=condition, taken_when=False)
+        self._exceptional_exit(fail, "AssertionError")
+        ok = self._block(BlockKind.NORMAL, stmt, note="assertion held")
+        self._edge(branch_block, ok, condition=condition, taken_when=True)
+        shape = _BranchShape(
+            span=_span_of(self.path, stmt),
+            condition=condition,
+            kind="ASSERT",
+            arms=[("True", _SeqShape()), ("False", _SeqShape())],
+            reads=_read_targets(stmt.test),
+            condition_calls=_call_positions(stmt.test),
+            block_id=branch_block,
+        )
+        self._register_branch(shape)
+        shapes.append(shape)
+        return ok, shapes
+
+    # -- expressions --------------------------------------------------------
+
+    def _expr(self, node: ast.expr | None, cur: str) -> tuple[str, list[_Shape]]:
+        """Walk an expression in evaluation order.
+
+        Returns the block evaluation continues in. Short circuits, ternaries
+        and comprehensions create real blocks and edges here, which is the
+        whole point: a rule cascade written as ``a and b`` is a branch.
+        """
+        if node is None:
+            return cur, []
+        if isinstance(node, ast.BoolOp):
+            return self._expr_boolop(node, cur)
+        if isinstance(node, ast.IfExp):
+            return self._expr_ifexp(node, cur)
+        if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+            return self._expr_comprehension(node, cur)
+        if isinstance(node, ast.Lambda):
+            return self._expr_lambda(node, cur)
+        if isinstance(node, ast.Call):
+            return self._expr_call(node, cur)
+        shapes: list[_Shape] = []
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.expr):
+                cur, got = self._expr(child, cur)
+                shapes.extend(got)
+        return cur, shapes
+
+    def _expr_boolop(self, node: ast.BoolOp, cur: str) -> tuple[str, list[_Shape]]:
+        is_and = isinstance(node.op, ast.And)
+        keyword = "and" if is_and else "or"
+        cur, shapes = self._expr(node.values[0], cur)
+        for index in range(1, len(node.values)):
+            left = node.values[index - 1]
+            right = node.values[index]
+            condition = _src(left)
+            branch_block = self._block(
+                BlockKind.BRANCH, left, note=f"short-circuit `{keyword}` on {condition}"
+            )
+            self._edge(cur, branch_block)
+            rhs_start = self._block(BlockKind.NORMAL, right, note=f"evaluate {_src(right)}")
+            self._edge(branch_block, rhs_start, condition=condition, taken_when=is_and)
+            rhs_end, rhs_shapes = self._expr(right, rhs_start)
+            merge = self._block(BlockKind.NORMAL, node, note="merge")
+            self._edge(
+                branch_block,
+                merge,
+                condition=condition,
+                taken_when=not is_and,
+                note=f"short circuit: `{_src(right)}` is not evaluated",
+            )
+            self._edge(rhs_end, merge)
+            shape = _BranchShape(
+                span=self._expr_span(left),
+                condition=condition,
+                kind="SHORT_CIRCUIT",
+                arms=[
+                    ("True", _SeqShape(children=list(rhs_shapes)))
+                    if is_and
+                    else ("False", _SeqShape(children=list(rhs_shapes))),
+                    ("False", _SeqShape()) if is_and else ("True", _SeqShape()),
+                ],
+                reads=_read_targets(left),
+                condition_calls=_call_positions(left),
+                cascade_note=f"`{keyword}` gate",
+                block_id=branch_block,
+            )
+            self._register_branch(shape)
+            shapes.append(shape)
+            cur = merge
+        return cur, shapes
+
+    def _expr_ifexp(self, node: ast.IfExp, cur: str) -> tuple[str, list[_Shape]]:
+        cur, shapes = self._expr(node.test, cur)
+        condition = _src(node.test)
+        branch_block = self._block(BlockKind.BRANCH, node, note=f"ternary on {condition}")
+        self._edge(cur, branch_block)
+        true_start = self._block(BlockKind.NORMAL, node.body)
+        self._edge(branch_block, true_start, condition=condition, taken_when=True)
+        true_end, true_shapes = self._expr(node.body, true_start)
+        false_start = self._block(BlockKind.NORMAL, node.orelse)
+        self._edge(branch_block, false_start, condition=condition, taken_when=False)
+        false_end, false_shapes = self._expr(node.orelse, false_start)
+        merge = self._block(BlockKind.NORMAL, node, note="merge")
+        self._edge(true_end, merge)
+        self._edge(false_end, merge)
+        shape = _BranchShape(
+            span=self._expr_span(node),
+            condition=condition,
+            kind="TERNARY",
+            arms=[
+                ("True", _SeqShape(children=list(true_shapes))),
+                ("False", _SeqShape(children=list(false_shapes))),
+            ],
+            reads=_read_targets(node.test),
+            condition_calls=_call_positions(node.test),
+            block_id=branch_block,
+        )
+        self._register_branch(shape)
+        shapes.append(shape)
+        return merge, shapes
+
+    def _expr_comprehension(self, node: ast.expr, cur: str) -> tuple[str, list[_Shape]]:
+        generators = list(getattr(node, "generators", []))
+        elements: list[ast.expr] = []
+        if isinstance(node, ast.DictComp):
+            elements = [node.key, node.value]
+        else:
+            elements = [getattr(node, "elt")]
+        after = self._block(BlockKind.NORMAL, node, note="after comprehension")
+
+        def build(index: int, block: str) -> tuple[_SeqShape, str]:
+            """Returns the body shape and the block the innermost body ends in."""
+            if index >= len(generators):
+                seq = _SeqShape()
+                end = block
+                for element in elements:
+                    end, shapes = self._expr(element, end)
+                    seq.children.extend(shapes)
+                return seq, end
+            gen = generators[index]
+            outer_end, iter_shapes = self._expr(gen.iter, block)
+            head = self._block(
+                BlockKind.LOOP_HEAD,
+                node,
+                note=f"comprehension for {_src(gen.target)} in {_src(gen.iter)}",
+            )
+            self._edge(outer_end, head)
+            body_start = self._block(BlockKind.NORMAL, node, note="comprehension body")
+            self._edge(head, body_start, condition="<next item>", taken_when=True)
+            body_seq = _SeqShape(children=list(iter_shapes))
+            filtered = body_start
+            filter_shapes: list[_Shape] = []
+            for condition_node in gen.ifs:
+                filtered, got = self._expr(condition_node, filtered)
+                filter_shapes.extend(got)
+                condition = _src(condition_node)
+                branch_block = self._block(
+                    BlockKind.BRANCH, condition_node, note=f"comprehension filter {condition}"
+                )
+                self._edge(filtered, branch_block)
+                kept = self._block(BlockKind.NORMAL, condition_node, note="kept")
+                self._edge(branch_block, kept, condition=condition, taken_when=True)
+                self._edge(branch_block, head, condition=condition, taken_when=False)
+                branch_shape = _BranchShape(
+                    span=self._expr_span(condition_node),
+                    condition=condition,
+                    kind="COMPREHENSION_FILTER",
+                    arms=[("True", _SeqShape()), ("False", _SeqShape())],
+                    reads=_read_targets(condition_node),
+                    condition_calls=_call_positions(condition_node),
+                    block_id=branch_block,
+                )
+                self._register_branch(branch_shape)
+                filter_shapes.append(branch_shape)
+                filtered = kept
+            inner_seq, inner_end = build(index + 1, filtered)
+            self._edge(inner_end, head, condition="<loop back>")
+            self._edge(head, after, condition="<iteration complete>", taken_when=False)
+            loop = _LoopShape(
+                span=_span_of(self.path, node),
+                condition=f"for {_src(gen.target)} in {_src(gen.iter)}",
+                body=_SeqShape(children=[*filter_shapes, *inner_seq.children]),
+                comprehension=True,
+                block_id=head,
+            )
+            body_seq.children.append(loop)
+            return body_seq, after
+
+        seq, _ = build(0, cur)
+        return after, list(seq.children)
+
+    def _expr_lambda(self, node: ast.Lambda, cur: str) -> tuple[str, list[_Shape]]:
+        """A lambda binds here; its body runs wherever the lambda is called.
+
+        The body is not stitched into this element's control flow -- that would
+        invent an order. Calls inside it are collected as *deferred* shapes so
+        nothing is dropped and nothing downstream is falsely unreachable.
+        """
+        self._unresolved(
+            node,
+            UnresolvedReason.AMBIGUOUS,
+            f"lambda body `{_src(node)}` runs when the lambda is called; its execution "
+            "point is not fixed here. Calls inside it are reported as unordered.",
+        )
+        deferred_start = self._block(
+            BlockKind.NORMAL, node, note="lambda body (deferred; no order claimed)"
+        )
+        _, shapes = self._expr(node.body, deferred_start)
+        self.deferred.extend(shapes)
+        return cur, []
+
+    def _expr_call(self, node: ast.Call, cur: str) -> tuple[str, list[_Shape]]:
+        shapes: list[_Shape] = []
+        cur, got = self._expr(node.func, cur)
+        shapes.extend(got)
+        for arg in node.args:
+            cur, got = self._expr(arg, cur)
+            shapes.extend(got)
+        for keyword in node.keywords:
+            cur, got = self._expr(keyword.value, cur)
+            shapes.extend(got)
+        call = _CallShape(
+            span=_span_of(self.path, node),
+            source=_src(node),
+            in_loop=bool(self._loops),
+        )
+        shapes.append(call)
+        name = node.func.attr if isinstance(node.func, ast.Attribute) else (
+            node.func.id if isinstance(node.func, ast.Name) else ""
+        )
+        if name in _MODEL_CALL_NAMES:
+            reads: list[str] = []
+            for arg in [*node.args, *(k.value for k in node.keywords)]:
+                reads.extend(_read_targets(arg))
+            if isinstance(node.func, ast.Attribute):
+                reads.extend(_read_targets(node.func.value))
+            model = _ModelShape(
+                span=_span_of(self.path, node),
+                source=_src(node),
+                reads=tuple(dict.fromkeys(reads)),
+                call=call,
+            )
+            self.models.append(model)
+            shapes.append(model)
+        return cur, shapes
+
+
+# ---------------------------------------------------------------------------
+# The card
+# ---------------------------------------------------------------------------
+
+
+class CascadeAnalyzer:
+    """Card 3's implementation of :class:`~.contracts.interfaces.CascadeCard`.
+
+    ``root`` is the target root that every :class:`SourceSpan` path is relative
+    to. ``sink_ids`` and ``entry_ids`` come from ``TARGET_PROFILE.md``; both are
+    auto-detected and *reported* (never silently adopted) when left blank.
+    ``unresolved`` is card 2's residue: it is what tells this card that an
+    element sits behind a call site nobody could resolve, which is ``UNKNOWN``
+    reachability and emphatically not "unreachable".
+    """
+
+    def __init__(
+        self,
+        root: str | Path = ".",
+        *,
+        sink_ids: Sequence[str] = (),
+        unresolved: Sequence[Unresolved] = (),
+    ) -> None:
+        self.root = Path(root)
+        self._declared_sinks: tuple[str, ...] = tuple(sorted(set(sink_ids)))
+        self._input_unresolved: tuple[Unresolved, ...] = tuple(unresolved)
+        self._reset()
+
+    def _reset(self) -> None:
+        self._elements: dict[str, Element] = {}
+        self._edges: list[Edge] = []
+        self._blocks: list[CFGBlock] = []
+        self._cfg_edges: list[CFGEdge] = []
+        self._order: list[OrderNode] = []
+        self._decisions: list[DecisionPoint] = []
+        self._unresolved: list[Unresolved] = []
+        self._opaque: set[str] = set()
+        self._reachability: list[Reachability] = []
+        self._entry_candidates: list[DetectedCandidate] = []
+        self._sink_candidates: list[DetectedCandidate] = []
+        self._builders: dict[str, _FlowBuilder] = {}
+        self._source_cache: dict[str, ast.Module | None] = {}
+        self._entry_ids: tuple[str, ...] = ()
+        self._sink_ids: tuple[str, ...] = ()
+        self._call_index: dict[tuple[str, int], list[Edge]] = {}
+        self._edges_by_source: dict[str, list[Edge]] = {}
+        self._positioned_edge_ids: set[str] = set()
+        self._children: dict[str, list[str]] = {}
+        self._by_module: dict[str, list[str]] = {}
+        self._discarded_cache: dict[str, set[tuple[int, int]]] = {}
+        self._side_effect_cache: dict[str, bool] = {}
+
+    # -- the contract -------------------------------------------------------
+
+    def order(
+        self,
+        elements: Sequence[Element],
+        edges: Sequence[Edge],
+        entry_ids: Sequence[str],
+    ) -> tuple[
+        Sequence[CFGBlock],
+        Sequence[CFGEdge],
+        Sequence[OrderNode],
+        Sequence[DecisionPoint],
+        Sequence[Reachability],
+        Sequence[DetectedCandidate],
+        Sequence[Unresolved],
+    ]:
+        """Everything this card knows, in one return value.
+
+        The candidates and the unresolved records ride here rather than behind
+        an accessor: a caller that has to know to ask for them is a caller that
+        can forget, and forgetting drops constraint 3 and the auto-detection
+        rule without a sound.
+        """
+        self._reset()
+        self._elements = {element.id: element for element in elements}
+        self._edges = sorted(edges, key=lambda e: e.id)
+        for edge in self._edges:
+            self._edges_by_source.setdefault(edge.source_id, []).append(edge)
+            if edge.call_site is not None:
+                key = (edge.call_site.path, edge.call_site.line)
+                self._call_index.setdefault(key, []).append(edge)
+        for element in sorted(self._elements.values(), key=lambda e: e.id):
+            if element.parent_id:
+                self._children.setdefault(element.parent_id, []).append(element.id)
+            if element.kind is not ElementKind.MODULE:
+                self._by_module.setdefault(make_id(element.module), []).append(element.id)
+
+        self._build_cfgs()
+        self._entry_ids = self._resolve_entries(entry_ids)
+        self._sink_ids = self._resolve_sinks()
+        self._build_order()
+        self._build_decisions()
+        self._build_reachability()
+
+        self._blocks.sort(key=lambda b: b.id)
+        self._cfg_edges.sort(key=lambda e: e.id)
+        self._order.sort(key=lambda n: n.id)
+        self._decisions.sort(key=lambda d: d.id)
+        self._unresolved.sort(key=lambda u: u.id)
+        self._reachability.sort(key=lambda r: r.id)
+        return (
+            tuple(self._blocks),
+            tuple(self._cfg_edges),
+            tuple(self._order),
+            tuple(self._decisions),
+            tuple(self._reachability),
+            self.candidates(),
+            tuple(self._unresolved),
+        )
+
+    # -- accessors for facts the contract has no type for -------------------
+
+    def unresolved(self) -> Sequence[Unresolved]:
+        """Everything this card could not settle. Constraint 3.
+
+        The same sequence :meth:`order` returns last.
+        """
+        return tuple(self._unresolved)
+
+    def candidates(self) -> Sequence[DetectedCandidate]:
+        """Auto-detected entry points and decision sinks, sorted by id.
+
+        The same sequence :meth:`order` returns sixth. Proposals for the owner
+        to confirm, never facts: a wrong sink mislabels the whole map.
+        """
+        return tuple(
+            sorted(
+                [*self._entry_candidates, *self._sink_candidates],
+                key=lambda candidate: candidate.id,
+            )
+        )
+
+    def reachability(self) -> Sequence[Reachability]:
+        """One record per inventoried element, sorted by id.
+
+        The same sequence :meth:`order` returns fifth. Cards 5 and 15 read this
+        as the canonical answer to "does this drive the final decision"; neither
+        derives its own.
+        """
+        return tuple(self._reachability)
+
+    def entry_point_candidates(self) -> Sequence[DetectedCandidate]:
+        return tuple(self._entry_candidates)
+
+    def sink_candidates(self) -> Sequence[DetectedCandidate]:
+        return tuple(self._sink_candidates)
+
+    def entry_ids(self) -> Sequence[str]:
+        return self._entry_ids
+
+    def sink_ids(self) -> Sequence[str]:
+        return self._sink_ids
+
+    def artifacts(self) -> dict[str, str]:
+        """The seven contracted artifacts, rendered exactly once, sorted.
+
+        `unresolved.jsonl` is appended to by several cards, so card 10 merges
+        this card's share into the others' rather than overwriting.
+        """
+        return {
+            "cfg_blocks.jsonl": canonical_jsonl(self._blocks),
+            "cfg_edges.jsonl": canonical_jsonl(self._cfg_edges),
+            "order.jsonl": canonical_jsonl(self._order),
+            "decisions.jsonl": canonical_jsonl(self._decisions),
+            "reachability.jsonl": canonical_jsonl(self._reachability),
+            "candidates.jsonl": canonical_jsonl(self.candidates()),
+            "unresolved.jsonl": canonical_jsonl(self._unresolved),
+        }
+
+    # -- CFG ----------------------------------------------------------------
+
+    def _parse(self, path: str) -> ast.Module | None:
+        if path in self._source_cache:
+            return self._source_cache[path]
+        tree: ast.Module | None = None
+        full = self.root / path
+        try:
+            text = full.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            self._record_unresolved(
+                make_id("@cascade", f"missing:{path}"),
+                UnresolvedReason.MISSING_TARGET,
+                SourceSpan(path=path, line=1),
+                f"source file not found under {self.root}; no CFG built for it",
+            )
+        except UnicodeDecodeError as exc:
+            self._record_unresolved(
+                make_id("@cascade", f"decode:{path}"),
+                UnresolvedReason.DECODE_ERROR,
+                SourceSpan(path=path, line=1),
+                f"not UTF-8 ({exc.reason}); no CFG built for it",
+            )
+        except OSError as exc:
+            self._record_unresolved(
+                make_id("@cascade", f"unreadable:{path}"),
+                UnresolvedReason.MISSING_TARGET,
+                SourceSpan(path=path, line=1),
+                f"unreadable: {exc.__class__.__name__}",
+            )
+        else:
+            try:
+                tree = ast.parse(text, filename=path)
+            except SyntaxError as exc:
+                self._record_unresolved(
+                    make_id("@cascade", f"syntax:{path}"),
+                    UnresolvedReason.SYNTAX_ERROR,
+                    SourceSpan(path=path, line=int(exc.lineno or 1)),
+                    f"cannot parse: {exc.msg}; no CFG built for it",
+                )
+        self._source_cache[path] = tree
+        return tree
+
+    def _record_unresolved(
+        self,
+        record_id: str,
+        reason: UnresolvedReason,
+        span: SourceSpan,
+        description: str,
+        candidate_ids: tuple[str, ...] = (),
+        candidate_confidence: Confidence = Confidence.UNKNOWN,
+        opaque: bool = True,
+    ) -> None:
+        if opaque:
+            self._opaque.add(record_id)
+        self._unresolved.append(
+            Unresolved(
+                id=record_id,
+                reason=reason,
+                span=span,
+                description=description,
+                attempted=(Method.AST_DIRECT,),
+                candidate_ids=candidate_ids,
+                candidate_confidence=candidate_confidence,
+            )
+        )
+
+    def _index_bodies(self, tree: ast.Module, module: str) -> dict[str, ast.AST]:
+        """Map element ID -> defining AST node, using the contract's ID rule."""
+        index: dict[str, ast.AST] = {make_id(module): tree}
+        counts: dict[str, int] = {}
+
+        def walk(body: Iterable[ast.stmt], prefix: str) -> None:
+            for stmt in body:
+                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    qualname = f"{prefix}{stmt.name}"
+                    counts[qualname] = counts.get(qualname, 0) + 1
+                    index[make_id(module, qualname, counts[qualname])] = stmt
+                    walk(stmt.body, f"{qualname}.")
+                    continue
+                for name, value in ast.iter_fields(stmt):
+                    if name in {"body", "orelse", "finalbody"} and isinstance(value, list):
+                        walk([s for s in value if isinstance(s, ast.stmt)], prefix)
+                    elif name in {"handlers", "cases"} and isinstance(value, list):
+                        for sub in value:
+                            walk(list(getattr(sub, "body", [])), prefix)
+
+        walk(tree.body, "")
+        return index
+
+    def _locate(self, element: Element, tree: ast.Module) -> ast.AST | None:
+        index = self._index_bodies(tree, element.module)
+        node = index.get(element.id)
+        if node is not None:
+            return node
+        # Card 1's qualname convention may differ (``<locals>`` and friends).
+        # Fall back to the span, which is unambiguous within one file.
+        for candidate in index.values():
+            if int(getattr(candidate, "lineno", -1)) == element.span.line:
+                return candidate
+        return None
+
+    def _build_cfgs(self) -> None:
+        for element in sorted(self._elements.values(), key=lambda e: e.id):
+            if element.kind not in CFG_ELEMENT_KINDS:
+                continue
+            tree = self._parse(element.span.path)
+            if tree is None:
+                continue
+            node = self._locate(element, tree)
+            if node is None:
+                self._record_unresolved(
+                    make_id(element.id, "@cfg_not_located"),
+                    UnresolvedReason.MISSING_TARGET,
+                    element.span,
+                    "no AST node matches this element's id or span; no CFG built",
+                )
+                continue
+            builder = _FlowBuilder(element, node, element.span.path)
+            builder.build()
+            self._builders[element.id] = builder
+            self._blocks.extend(builder.blocks)
+            self._cfg_edges.extend(builder.edges)
+            self._unresolved.extend(builder.unresolved)
+            # A deferred lambda body hides a control path; `break` outside a
+            # loop does not. Only the former blinds reachability.
+            self._opaque.update(
+                record.id
+                for record in builder.unresolved
+                if record.reason is UnresolvedReason.AMBIGUOUS
+            )
+
+    # -- entries and sinks --------------------------------------------------
+
+    def _resolve_entries(self, entry_ids: Sequence[str]) -> tuple[str, ...]:
+        declared = [eid for eid in dict.fromkeys(entry_ids)]
+        for entry in declared:
+            if entry not in self._elements:
+                self._record_unresolved(
+                    make_id("@cascade", f"entry:{entry}"),
+                    UnresolvedReason.MISSING_TARGET,
+                    SourceSpan(path="TARGET_PROFILE.md", line=1),
+                    f"declared entry point {entry!r} is not in the inventory",
+                )
+        known = tuple(e for e in declared if e in self._elements)
+        if known:
+            for entry in known:
+                self._entry_candidates.append(
+                    DetectedCandidate(
+                        id=make_id("@entry", entry),
+                        element_id=entry,
+                        role=ROLE_ENTRY_POINT,
+                        evidence=("declared by the owner in TARGET_PROFILE.md",),
+                        provenance=Provenance(
+                            method=Method.AST_DIRECT,
+                            confidence=Confidence.CERTAIN,
+                            span=self._elements[entry].span,
+                            note="declared entry point",
+                        ),
+                    )
+                )
+            return known
+        return self._detect_entries()
+
+    def _detect_entries(self) -> tuple[str, ...]:
+        for element in sorted(self._elements.values(), key=lambda e: e.id):
+            evidence: tuple[str, ...] = ()
+            confidence = Confidence.HEURISTIC
+            if element.kind is ElementKind.MODULE:
+                tree = self._source_cache.get(element.span.path)
+                if tree is not None and _has_main_guard(tree):
+                    evidence = (
+                        f'{element.span.path} has an `if __name__ == "__main__"` guard',
+                    )
+                    confidence = Confidence.PROBABLE
+            elif element.kind is ElementKind.FUNCTION and element.name in _ENTRY_NAME_HINTS:
+                stem = Path(element.span.path).stem
+                tree = self._source_cache.get(element.span.path)
+                guarded = tree is not None and _has_main_guard(tree)
+                if guarded:
+                    evidence = (
+                        f"function named {element.name!r}, one of the entry-point name "
+                        f"hints {list(_ENTRY_NAME_HINTS)}",
+                        f'{element.span.path} has an `if __name__ == "__main__"` guard',
+                    )
+                    confidence = Confidence.PROBABLE
+                elif stem.startswith("run") or stem in {"main", "__main__"}:
+                    evidence = (
+                        f"function named {element.name!r}, one of the entry-point name "
+                        f"hints {list(_ENTRY_NAME_HINTS)}",
+                        f"in {element.span.path}, whose name looks like a launcher",
+                    )
+            if not evidence:
+                continue
+            self._entry_candidates.append(
+                DetectedCandidate(
+                    id=make_id("@entry", element.id),
+                    element_id=element.id,
+                    role=ROLE_ENTRY_POINT,
+                    evidence=evidence,
+                    provenance=Provenance(
+                        method=Method.NAME_HEURISTIC,
+                        confidence=confidence,
+                        span=element.span,
+                        note="auto-detected; TARGET_PROFILE.md left the entry point blank",
+                    ),
+                )
+            )
+        if not self._entry_candidates:
+            self._record_unresolved(
+                make_id("@cascade", "entry:none"),
+                UnresolvedReason.MISSING_TARGET,
+                SourceSpan(path="TARGET_PROFILE.md", line=1),
+                "no entry point declared and none detected; the cascade root lists no entries",
+            )
+        return tuple(c.element_id for c in self._entry_candidates)
+
+    def _resolve_sinks(self) -> tuple[str, ...]:
+        known = tuple(s for s in self._declared_sinks if s in self._elements)
+        for sink in self._declared_sinks:
+            if sink not in self._elements:
+                self._record_unresolved(
+                    make_id("@cascade", f"sink:{sink}"),
+                    UnresolvedReason.MISSING_TARGET,
+                    SourceSpan(path="TARGET_PROFILE.md", line=1),
+                    f"declared decision sink {sink!r} is not in the inventory",
+                )
+        if known:
+            for sink in known:
+                self._sink_candidates.append(
+                    DetectedCandidate(
+                        id=make_id("@sink", sink),
+                        element_id=sink,
+                        role=ROLE_DECISION_SINK,
+                        evidence=("declared by the owner in TARGET_PROFILE.md",),
+                        provenance=Provenance(
+                            method=Method.AST_DIRECT,
+                            confidence=Confidence.CERTAIN,
+                            span=self._elements[sink].span,
+                            note="declared decision sink",
+                        ),
+                    )
+                )
+            return known
+        return self._detect_sinks()
+
+    def _detect_sinks(self) -> tuple[str, ...]:
+        for element in sorted(self._elements.values(), key=lambda e: e.id):
+            if element.kind not in {
+                ElementKind.FUNCTION,
+                ElementKind.METHOD,
+                ElementKind.ASSIGNMENT,
+                ElementKind.PROPERTY,
+            }:
+                continue
+            lowered = element.name.lower()
+            hit = next((h for h in _SINK_NAME_HINTS if lowered == h), "")
+            if not hit:
+                hit = next((h for h in _SINK_NAME_HINTS if h in lowered), "")
+                if not hit:
+                    continue
+            self._sink_candidates.append(
+                DetectedCandidate(
+                    id=make_id("@sink", element.id),
+                    element_id=element.id,
+                    role=ROLE_DECISION_SINK,
+                    evidence=(
+                        f"{element.name!r} matches the decision-sink name hint {hit!r}",
+                        f"declared at {element.span.path}:{element.span.line}",
+                        "a name match only: TARGET_PROFILE.md left the sink blank, so this "
+                        "is a proposal for the owner to confirm",
+                    ),
+                    provenance=Provenance(
+                        method=Method.NAME_HEURISTIC,
+                        confidence=Confidence.HEURISTIC,
+                        span=element.span,
+                        note=(
+                            "auto-detected; TARGET_PROFILE.md left the decision sink blank. "
+                            "Reported as a candidate, not adopted as fact."
+                        ),
+                    ),
+                )
+            )
+        if not self._sink_candidates:
+            self._record_unresolved(
+                make_id("@cascade", "sink:none"),
+                UnresolvedReason.MISSING_TARGET,
+                SourceSpan(path="TARGET_PROFILE.md", line=1),
+                (
+                    "no decision sink declared and none detected by name; decision "
+                    "reachability is UNKNOWN for every element rather than false for every "
+                    "element (ARCHITECTURE.md, 'Auto-detection')"
+                ),
+            )
+            return ()
+        return tuple(c.element_id for c in self._sink_candidates)
+
+    # -- order --------------------------------------------------------------
+
+    def _order_id(self, element_id: str, path: str = "") -> str:
+        return make_id("@order", f"{element_id}{path}")
+
+    def _emit(
+        self,
+        node_id: str,
+        kind: OrderKind,
+        element_ids: Sequence[str],
+        children: Sequence[str],
+        method: Method,
+        confidence: Confidence,
+        note: str,
+        span: SourceSpan | None = None,
+    ) -> str:
+        self._order.append(
+            OrderNode(
+                id=node_id,
+                kind=kind,
+                element_ids=tuple(element_ids),
+                children=tuple(children),
+                provenance=Provenance(
+                    method=method, confidence=confidence, span=span, note=note
+                ),
+            )
+        )
+        return node_id
+
+    def _targets_at(self, span: SourceSpan, source_element: str) -> list[Edge]:
+        """Call edges card 2 placed at this call site."""
+        candidates = self._call_index.get((span.path, span.line), [])
+        matches = [e for e in candidates if e.source_id == source_element]
+        if not matches:
+            matches = list(candidates)
+        exact = [
+            e
+            for e in matches
+            if e.call_site is not None
+            and e.call_site.col is not None
+            and span.col is not None
+            and e.call_site.col == span.col
+        ]
+        chosen = exact or matches
+        for edge in chosen:
+            self._positioned_edge_ids.add(edge.id)
+        return sorted(chosen, key=lambda e: e.id)
+
+    def _build_order(self) -> None:
+        for element_id in sorted(self._builders):
+            self._order_for_element(element_id)
+        self._build_cascade_root()
+        self._aggregate_element_ids()
+
+    _UNAGGREGATED = frozenset({make_id("@order", "@cascade"), make_id("@order", "@total")})
+
+    def _aggregate_element_ids(self) -> None:
+        """Every node names the elements it schedules, in execution order.
+
+        A leaf call node names its callee. A node gathers from a child only
+        when the child runs unconditionally and in place -- another SEQUENCE,
+        or the MERGE that owns a branch's continuation. It never gathers
+        through a BRANCH, LOOP, UNORDERED or CYCLE child, because those say
+        something the parent does not: a SEQUENCE naming two exclusive
+        alternatives would assert that both run, one after the other, which is
+        the flattening the workplan calls a defect. Those nodes name their own
+        members and stay the place to read them.
+
+        A node that names elements rests on card 2's call edges, so its method
+        becomes CFG_REACHABILITY; a node that names none is pure structure read
+        off the AST.
+        """
+        index = {node.id: node for node in self._order}
+        memo: dict[str, tuple[str, ...]] = {}
+        transparent = {OrderKind.SEQUENCE, OrderKind.MERGE}
+
+        def gather(node_id: str, seen: frozenset[str]) -> tuple[str, ...]:
+            if node_id in memo:
+                return memo[node_id]
+            node = index.get(node_id)
+            if node is None or node_id in seen:
+                return ()
+            out: list[str] = list(node.element_ids)
+            for child_id in node.children:
+                child = index.get(child_id)
+                if child is None:
+                    continue
+                if child.kind not in transparent and node.kind not in {
+                    OrderKind.BRANCH,
+                    OrderKind.LOOP,
+                }:
+                    continue
+                for element_id in gather(child_id, seen | {node_id}):
+                    if element_id not in out:
+                        out.append(element_id)
+            memo[node_id] = tuple(out)
+            return memo[node_id]
+
+        rebuilt: list[OrderNode] = []
+        for node in self._order:
+            if node.id in self._UNAGGREGATED or node.kind is OrderKind.CYCLE:
+                rebuilt.append(node)
+                continue
+            element_ids = gather(node.id, frozenset())
+            provenance = node.provenance
+            if provenance is not None and element_ids:
+                provenance = Provenance(
+                    method=Method.CFG_REACHABILITY,
+                    confidence=provenance.confidence,
+                    span=provenance.span,
+                    note=provenance.note,
+                )
+            rebuilt.append(
+                OrderNode(
+                    id=node.id,
+                    kind=node.kind,
+                    element_ids=element_ids,
+                    children=node.children,
+                    provenance=provenance,
+                )
+            )
+        self._order = rebuilt
+
+    def _order_for_element(self, element_id: str) -> str:
+        builder = self._builders[element_id]
+        root_id = self._order_id(element_id)
+        children, confidence = self._emit_seq(builder.shape, element_id, "")
+        if builder.deferred:
+            deferred_children, deferred_conf = self._emit_seq(
+                _SeqShape(children=list(builder.deferred)), element_id, "/deferred"
+            )
+            node_id = self._emit(
+                self._order_id(element_id, "/deferred"),
+                OrderKind.UNORDERED,
+                (),
+                deferred_children,
+                Method.AST_DIRECT,
+                deferred_conf,
+                "lambda bodies: they run when the lambda is called, so no order is claimed",
+                self._elements[element_id].span,
+            )
+            children = [*children, node_id]
+            confidence = combine(confidence, deferred_conf)
+        unpositioned = self._unpositioned_children(element_id)
+        if unpositioned:
+            target_ids = sorted({e.target_id for e in unpositioned})
+            node_id = self._emit(
+                self._order_id(element_id, "/unpositioned"),
+                OrderKind.UNORDERED,
+                target_ids,
+                (),
+                Method.CFG_REACHABILITY,
+                combine(*[e.provenance.confidence for e in unpositioned]),
+                (
+                    "wiring with no call site in this element's body: it runs, but the "
+                    "source does not fix when. Never flattened into a SEQUENCE."
+                ),
+                self._elements[element_id].span,
+            )
+            children = [*children, node_id]
+            confidence = combine(confidence, combine(*[e.provenance.confidence for e in unpositioned]))
+        self._emit(
+            root_id,
+            OrderKind.SEQUENCE,
+            (),
+            children,
+            Method.AST_DIRECT,
+            confidence,
+            f"body of {element_id} in execution order",
+            self._elements[element_id].span,
+        )
+        return root_id
+
+    def _unpositioned_children(self, element_id: str) -> list[Edge]:
+        out = [
+            edge
+            for edge in self._edges_by_source.get(element_id, [])
+            if edge.kind in WIRING_EDGE_KINDS
+            and edge.id not in self._positioned_edge_ids
+            and (
+                edge.call_site is None
+                or not self._call_index.get((edge.call_site.path, edge.call_site.line))
+            )
+        ]
+        return sorted(out, key=lambda e: e.id)
+
+    def _emit_seq(
+        self, seq: _SeqShape, element_id: str, path: str
+    ) -> tuple[list[str], Confidence]:
+        """Emit one order node per shape, in execution order.
+
+        A branch is followed by a MERGE node that *owns the continuation*: what
+        runs after the arms rejoin hangs off the merge, because that is where
+        control actually resumes. The alternative -- listing the branch and the
+        continuation as flat siblings -- reads as though the arms and the
+        continuation were one sequence, which is the flattening the workplan
+        calls a defect.
+        """
+        children: list[str] = []
+        confidences: list[Confidence] = [Confidence.CERTAIN]
+        for index, shape in enumerate(seq.children):
+            child_path = f"{path}/{index}"
+            node_id, confidence = self._emit_shape(shape, element_id, child_path)
+            if node_id is None:
+                continue
+            children.append(node_id)
+            confidences.append(confidence)
+            if shape.node_id and isinstance(shape, _BranchShape):
+                rest = _SeqShape(children=list(seq.children[index + 1 :]))
+                rest_children, rest_confidence = self._emit_seq(
+                    rest, element_id, f"{child_path}/after"
+                )
+                merge_id = self._emit(
+                    self._order_id(element_id, f"{child_path}/merge"),
+                    OrderKind.MERGE,
+                    (),
+                    rest_children,
+                    Method.AST_DIRECT,
+                    rest_confidence,
+                    (
+                        f"control from every arm of {node_id} rejoins here, and what "
+                        "follows runs once, whichever arm ran"
+                        if shape.rejoins
+                        else f"every arm of {node_id} returns or raises; control rejoins "
+                        f"at the exit of {element_id}, not here"
+                    ),
+                    shape.span,
+                )
+                children.append(merge_id)
+                confidences.append(rest_confidence)
+                break
+        return children, combine(*confidences)
+
+    def _emit_shape(
+        self, shape: _Shape, element_id: str, path: str
+    ) -> tuple[str | None, Confidence]:
+        if isinstance(shape, _CallShape):
+            return self._emit_call(shape, element_id, path)
+        if isinstance(shape, _ModelShape):
+            shape.node_id = self._order_id(element_id, path)
+            return (
+                self._emit(
+                    shape.node_id,
+                    OrderKind.BRANCH,
+                    (),
+                    (),
+                    Method.NAME_HEURISTIC,
+                    Confidence.HEURISTIC,
+                    f"tree-model decision: `{shape.source}` branches inside the model",
+                    shape.span,
+                ),
+                Confidence.HEURISTIC,
+            )
+        if isinstance(shape, _BranchShape):
+            return self._emit_branch(shape, element_id, path)
+        if isinstance(shape, _LoopShape):
+            return self._emit_loop(shape, element_id, path)
+        if isinstance(shape, _SeqShape):
+            children, confidence = self._emit_seq(shape, element_id, path)
+            if not children:
+                return None, Confidence.CERTAIN
+            shape.node_id = self._order_id(element_id, path)
+            return (
+                self._emit(
+                    shape.node_id,
+                    OrderKind.SEQUENCE,
+                    (),
+                    children,
+                    Method.AST_DIRECT,
+                    confidence,
+                    "statements in source order",
+                ),
+                confidence,
+            )
+        return None, Confidence.CERTAIN
+
+    def _emit_call(
+        self, shape: _CallShape, element_id: str, path: str
+    ) -> tuple[str | None, Confidence]:
+        edges = [e for e in self._targets_at(shape.span, element_id) if e.kind in WIRING_EDGE_KINDS]
+        shape.node_id = self._order_id(element_id, path)
+        if not edges:
+            return (
+                self._emit(
+                    shape.node_id,
+                    OrderKind.SEQUENCE,
+                    (),
+                    (),
+                    Method.AST_DIRECT,
+                    Confidence.UNKNOWN,
+                    f"call `{shape.source}` -- no resolved target from card 2",
+                    shape.span,
+                ),
+                Confidence.UNKNOWN,
+            )
+        confidence = combine(*[e.provenance.confidence for e in edges])
+        targets = sorted({e.target_id for e in edges})
+        if len(targets) == 1:
+            return (
+                self._emit(
+                    shape.node_id,
+                    OrderKind.SEQUENCE,
+                    targets,
+                    (),
+                    Method.CFG_REACHABILITY,
+                    confidence,
+                    f"call `{shape.source}`; the callee's own order is {self._order_id(targets[0])}",
+                    shape.span,
+                ),
+                confidence,
+            )
+        if shape.in_loop:
+            return (
+                self._emit(
+                    shape.node_id,
+                    OrderKind.UNORDERED,
+                    targets,
+                    (),
+                    Method.CFG_REACHABILITY,
+                    confidence,
+                    (
+                        f"`{shape.source}` dispatches from inside a loop: every target may "
+                        "run and the source does not fix the order"
+                    ),
+                    shape.span,
+                ),
+                confidence,
+            )
+        return (
+            self._emit(
+                shape.node_id,
+                OrderKind.BRANCH,
+                targets,
+                (),
+                Method.CFG_REACHABILITY,
+                confidence,
+                (
+                    f"`{shape.source}` dispatches to one of {len(targets)} targets; which one "
+                    "is not fixed by the source"
+                ),
+                shape.span,
+            ),
+            confidence,
+        )
+
+    def _emit_branch(
+        self, shape: _BranchShape, element_id: str, path: str
+    ) -> tuple[str | None, Confidence]:
+        shape.node_id = self._order_id(element_id, path)
+        arm_ids: list[str] = []
+        confidences: list[Confidence] = [Confidence.CERTAIN]
+        for index, (label, arm) in enumerate(shape.arms):
+            arm_path = f"{path}/arm{index}"
+            children, confidence = self._emit_seq(arm, element_id, arm_path)
+            arm_id = self._emit(
+                self._order_id(element_id, arm_path),
+                OrderKind.SEQUENCE,
+                (),
+                children,
+                Method.AST_DIRECT,
+                confidence,
+                f"arm `{label}` of `{shape.condition}`",
+                shape.span,
+            )
+            arm_ids.append(arm_id)
+            shape.arm_node_ids.append(arm_id)
+            confidences.append(confidence)
+        confidence = combine(*confidences)
+        self._emit(
+            shape.node_id,
+            OrderKind.BRANCH,
+            (),
+            arm_ids,
+            Method.AST_DIRECT,
+            confidence,
+            f"{shape.kind.lower()} on `{shape.condition}`: exactly one arm runs",
+            shape.span,
+        )
+        return shape.node_id, confidence
+
+    def _emit_loop(
+        self, shape: _LoopShape, element_id: str, path: str
+    ) -> tuple[str | None, Confidence]:
+        shape.node_id = self._order_id(element_id, path)
+        body_children, confidence = self._emit_seq(
+            shape.body, element_id, f"{path}/body"
+        )
+        children = [
+            self._emit(
+                self._order_id(element_id, f"{path}/body"),
+                OrderKind.SEQUENCE,
+                (),
+                body_children,
+                Method.AST_DIRECT,
+                confidence,
+                f"body of `{shape.condition}`",
+                shape.span,
+            )
+        ]
+        if shape.orelse is not None:
+            else_children, else_conf = self._emit_seq(
+                shape.orelse, element_id, f"{path}/else"
+            )
+            children.append(
+                self._emit(
+                    self._order_id(element_id, f"{path}/else"),
+                    OrderKind.SEQUENCE,
+                    (),
+                    else_children,
+                    Method.AST_DIRECT,
+                    else_conf,
+                    f"`else` of `{shape.condition}`, run when the loop was not broken out of",
+                    shape.span,
+                )
+            )
+            confidence = combine(confidence, else_conf)
+        self._emit(
+            shape.node_id,
+            OrderKind.LOOP,
+            (),
+            children,
+            Method.AST_DIRECT,
+            confidence,
+            (
+                f"`{shape.condition}` repeats its body; the iteration count is not fixed "
+                "by the source"
+            ),
+            shape.span,
+        )
+        return shape.node_id, confidence
+
+    # -- cascade root, cycles, total order ----------------------------------
+
+    def _wiring_successors(self) -> dict[str, list[Edge]]:
+        out: dict[str, list[Edge]] = {}
+        for edge in self._edges:
+            if edge.kind in WIRING_EDGE_KINDS:
+                out.setdefault(edge.source_id, []).append(edge)
+        return out
+
+    def _build_cascade_root(self) -> None:
+        successors = self._wiring_successors()
+        reachable, pre_order = self._walk_from_entries(successors)
+        cycles = self._cycles(successors, reachable)
+        children: list[str] = []
+        confidences: list[Confidence] = [Confidence.CERTAIN]
+
+        entry_roots = [
+            self._order_id(entry) for entry in self._entry_ids if entry in self._builders
+        ]
+        for entry in self._entry_ids:
+            if entry not in self._builders:
+                self._record_unresolved(
+                    make_id("@cascade", f"entry_nobody:{entry}"),
+                    UnresolvedReason.MISSING_TARGET,
+                    self._elements[entry].span if entry in self._elements else SourceSpan("", 1),
+                    f"entry point {entry!r} has no control-flow graph; its order is not expanded",
+                )
+        by_id = {existing.id: existing for existing in self._order}
+        for cycle in cycles:
+            children.append(cycle)
+            cycle_node = by_id.get(cycle)
+            if cycle_node is not None and cycle_node.provenance is not None:
+                confidences.append(cycle_node.provenance.confidence)
+        if entry_roots:
+            children.extend(entry_roots)
+            for entry_root in entry_roots:
+                root_node = by_id.get(entry_root)
+                if root_node is not None and root_node.provenance is not None:
+                    confidences.append(root_node.provenance.confidence)
+        # The reachable cascade rests on every call edge walked to find it.
+        confidences.extend(reachable.values())
+
+        if len(entry_roots) > 1:
+            kind = OrderKind.UNORDERED
+            note = (
+                f"{len(entry_roots)} entry points; nothing in the source fixes an order "
+                "between separate launches"
+            )
+        else:
+            kind = OrderKind.SEQUENCE
+            note = "the cascade, from its entry point"
+
+        total = self._total_order(pre_order, reachable, successors, bool(cycles))
+        if total is not None:
+            children.append(total)
+
+        self._emit(
+            make_id("@order", "@cascade"),
+            kind,
+            tuple(self._entry_ids),
+            children,
+            Method.CFG_REACHABILITY,
+            combine(*confidences),
+            note,
+        )
+
+    def _walk_from_entries(
+        self, successors: Mapping[str, list[Edge]]
+    ) -> tuple[dict[str, Confidence], list[str]]:
+        """Pre-order walk of the call graph from the entry points.
+
+        Pre-order, because "the order elements execute in" is the order they
+        *begin* running: ingestion, then data engineering, then features, then
+        decision logic.
+        """
+        reachable: dict[str, Confidence] = {}
+        pre_order: list[str] = []
+        stack: list[tuple[str, Confidence]] = [
+            (entry, Confidence.CERTAIN) for entry in reversed(self._entry_ids)
+        ]
+        while stack:
+            current, confidence = stack.pop()
+            if current in reachable:
+                if _RANK[confidence] > _RANK[reachable[current]]:
+                    reachable[current] = confidence
+                continue
+            reachable[current] = confidence
+            pre_order.append(current)
+            for edge in reversed(sorted(successors.get(current, []), key=lambda e: e.id)):
+                stack.append((edge.target_id, combine(confidence, edge.provenance.confidence)))
+        return reachable, pre_order
+
+    def _cycles(
+        self, successors: Mapping[str, list[Edge]], reachable: Mapping[str, Confidence]
+    ) -> list[str]:
+        """Tarjan SCCs over the reachable call graph; iterative, so deep
+        recursion in the target cannot blow this card's stack."""
+        nodes = sorted(reachable) if reachable else sorted(self._elements)
+        index: dict[str, int] = {}
+        low: dict[str, int] = {}
+        on_stack: set[str] = set()
+        stack: list[str] = []
+        counter = 0
+        components: list[list[str]] = []
+
+        for root in nodes:
+            if root in index:
+                continue
+            work: list[tuple[str, int]] = [(root, 0)]
+            while work:
+                node, child_index = work[-1]
+                if child_index == 0:
+                    index[node] = low[node] = counter
+                    counter += 1
+                    stack.append(node)
+                    on_stack.add(node)
+                targets = sorted({e.target_id for e in successors.get(node, [])})
+                if child_index < len(targets):
+                    work[-1] = (node, child_index + 1)
+                    target = targets[child_index]
+                    if target not in self._elements and target not in index:
+                        continue
+                    if target not in index:
+                        work.append((target, 0))
+                    elif target in on_stack:
+                        low[node] = min(low[node], index[target])
+                    continue
+                work.pop()
+                if work:
+                    parent = work[-1][0]
+                    low[parent] = min(low[parent], low[node])
+                if low[node] == index[node]:
+                    component: list[str] = []
+                    while True:
+                        member = stack.pop()
+                        on_stack.discard(member)
+                        component.append(member)
+                        if member == node:
+                            break
+                    components.append(sorted(component))
+
+        out: list[str] = []
+        for component in sorted(components):
+            self_loop = len(component) == 1 and any(
+                e.target_id == component[0] for e in successors.get(component[0], [])
+            )
+            if len(component) == 1 and not self_loop:
+                continue
+            edges = [
+                e
+                for member in component
+                for e in successors.get(member, [])
+                if e.target_id in set(component)
+            ]
+            confidence = combine(*[e.provenance.confidence for e in edges])
+            out.append(
+                self._emit(
+                    make_id("@order", f"@cycle:{component[0]}"),
+                    OrderKind.CYCLE,
+                    tuple(component),
+                    (),
+                    Method.CFG_REACHABILITY,
+                    confidence,
+                    (
+                        "recursion: these elements call each other, so no finite order "
+                        f"exists. Members: {', '.join(component)}"
+                    ),
+                )
+            )
+        return out
+
+    def _total_order(
+        self,
+        pre_order: Sequence[str],
+        reachable: Mapping[str, Confidence],
+        successors: Mapping[str, list[Edge]],
+        has_cycles: bool,
+    ) -> str | None:
+        """A single SEQUENCE over the whole cascade -- only when one exists.
+
+        Emitted only if nothing in the reachable cascade branches, loops,
+        cycles or dispatches. Anything else would be a flattened branch, which
+        the workplan calls a defect rather than a simplification.
+        """
+        if not pre_order or has_cycles or len(set(pre_order)) != len(pre_order):
+            return None
+        for element_id in pre_order:
+            builder = self._builders.get(element_id)
+            if builder is None:
+                return None
+            if builder.branches or builder.deferred:
+                return None
+            if any(block.kind is BlockKind.LOOP_HEAD for block in builder.blocks):
+                return None
+            if self._unpositioned_children(element_id):
+                return None
+            targets: set[str] = set()
+            for edge in successors.get(element_id, []):
+                if edge.target_id in targets:
+                    return None
+                targets.add(edge.target_id)
+        confidence = combine(*[reachable[e] for e in pre_order])
+        return self._emit(
+            make_id("@order", "@total"),
+            OrderKind.SEQUENCE,
+            tuple(pre_order),
+            (),
+            Method.CFG_REACHABILITY,
+            confidence,
+            (
+                "total order: every element reachable from the entry point runs in this "
+                "order, listed from the moment each starts. Emitted only because nothing "
+                "in this cascade branches, loops or dispatches."
+            ),
+        )
+
+    # -- decisions ----------------------------------------------------------
+
+    def _build_decisions(self) -> None:
+        for element_id in sorted(self._builders):
+            builder = self._builders[element_id]
+            counter = 0
+            cascade_members = self._cascade_chain(builder)
+            for shape in sorted(builder.branches, key=lambda b: (b.order_key, b.block_id)):
+                if not shape.is_decision:
+                    continue
+                decision_id = make_id(element_id, f"@decision{counter}")
+                counter += 1
+                outcomes: list[tuple[str, str]] = []
+                for index, (label, _arm) in enumerate(shape.arms):
+                    target = (
+                        shape.arm_node_ids[index] if index < len(shape.arm_node_ids) else ""
+                    )
+                    outcomes.append((label, target))
+                note = shape.cascade_note
+                if shape.block_id in cascade_members:
+                    position, length = cascade_members[shape.block_id]
+                    note = f"rule cascade: step {position} of {length}"
+                if shape.is_guard:
+                    note = (note + "; " if note else "") + "guard clause: the true arm leaves"
+                called, call_confidences = self._condition_calls(
+                    element_id, shape.condition_calls, shape.span
+                )
+                reads = self._resolve_reads(element_id, shape.reads, shape.span, called)
+                self._decisions.append(
+                    DecisionPoint(
+                        id=decision_id,
+                        element_id=element_id,
+                        condition_source=shape.condition,
+                        reads_ids=reads,
+                        outcomes=tuple(outcomes),
+                        is_sink=element_id in self._sink_ids,
+                        provenance=Provenance(
+                            method=Method.AST_DIRECT,
+                            confidence=combine(Confidence.CERTAIN, *call_confidences),
+                            span=shape.span,
+                            note=f"{shape.kind}{'; ' + note if note else ''}",
+                        ),
+                    )
+                )
+            for model in builder.models:
+                decision_id = make_id(element_id, f"@decision{counter}")
+                counter += 1
+                self._decisions.append(
+                    DecisionPoint(
+                        id=decision_id,
+                        element_id=element_id,
+                        condition_source=model.source,
+                        reads_ids=self._resolve_reads(element_id, model.reads, model.span),
+                        outcomes=(("model output", model.call.node_id or model.node_id),),
+                        is_sink=element_id in self._sink_ids,
+                        provenance=Provenance(
+                            method=Method.NAME_HEURISTIC,
+                            confidence=Confidence.HEURISTIC,
+                            span=model.span,
+                            note=(
+                                "TREE_MODEL; the branching happens inside the model, not in "
+                                "the source. Detected from the called name."
+                            ),
+                        ),
+                    )
+                )
+
+    def _cascade_chain(self, builder: _FlowBuilder) -> dict[str, tuple[int, int]]:
+        """Number the steps of each ``if``/``elif`` chain, for the record."""
+        out: dict[str, tuple[int, int]] = {}
+        node = builder.node
+        for parent in ast.walk(node):
+            if not isinstance(parent, ast.If):
+                continue
+            chain: list[ast.If] = [parent]
+            current = parent
+            while len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
+                current = current.orelse[0]
+                chain.append(current)
+            if len(chain) < 2:
+                continue
+            spans = {(_span_of(builder.path, c).line, _span_of(builder.path, c).col) for c in chain}
+            ordered = sorted(spans)
+            for shape in builder.branches:
+                key = (shape.span.line, shape.span.col)
+                if key in spans and shape.block_id not in out:
+                    out[shape.block_id] = (ordered.index(key) + 1, len(ordered))
+        return out
+
+    def _condition_calls(
+        self, element_id: str, positions: Sequence[tuple[int, int]], span: SourceSpan
+    ) -> tuple[tuple[str, ...], tuple[Confidence, ...]]:
+        """Elements a condition calls, and how sure card 2 was of each.
+
+        `if rule(value)` reads the rule, and when the only edge to that rule is
+        HEURISTIC the decision is a HEURISTIC statement about the program. A
+        RESOLVED edge names exactly one element and adds no doubt, so only
+        weaker-than-RESOLVED resolutions lower the decision's confidence -- the
+        decision point itself is read straight off the AST.
+        """
+        targets: list[str] = []
+        confidences: list[Confidence] = []
+        for line, col in positions:
+            for edge in self._targets_at(SourceSpan(span.path, line, None, col), element_id):
+                if edge.kind not in WIRING_EDGE_KINDS:
+                    continue
+                if edge.target_id not in targets:
+                    targets.append(edge.target_id)
+                if _RANK[edge.provenance.confidence] < _RANK[Confidence.RESOLVED]:
+                    confidences.append(edge.provenance.confidence)
+        return tuple(targets), tuple(confidences)
+
+    def _resolve_reads(
+        self,
+        element_id: str,
+        reads: Sequence[str],
+        span: SourceSpan,
+        called: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        """Map the names a condition reads onto element and feature IDs."""
+        out: list[str] = list(called)
+        element = self._elements.get(element_id)
+        for name in reads:
+            if name.startswith("@key:"):
+                resolved = feature_id(name[len("@key:") :])
+            else:
+                resolved = self._lookup_name(element, name)
+            if not resolved:
+                if name.split(".")[0] in _BUILTIN_NAMES:
+                    continue
+                self._record_unresolved(
+                    make_id(element_id, f"@read:{name}"),
+                    UnresolvedReason.MISSING_TARGET,
+                    span,
+                    f"condition reads {name!r}, which resolves to no inventoried element",
+                    opaque=False,
+                )
+                continue
+            if resolved not in out:
+                out.append(resolved)
+        return tuple(sorted(out))
+
+    def _lookup_name(self, element: Element | None, name: str) -> str:
+        if element is None:
+            return ""
+        head, _, tail = name.partition(".")
+        scope: Element | None = element
+        while scope is not None:
+            for child_id in self._children.get(scope.id, []):
+                child = self._elements[child_id]
+                if child.name == head and not tail:
+                    return child_id
+                if tail and child.name == head:
+                    nested = f"{child.qualname}.{tail}"
+                    hit = make_id(scope.module, nested)
+                    if hit in self._elements:
+                        return hit
+                    return child_id
+            scope = self._elements.get(scope.parent_id) if scope.parent_id else None
+        if head in {"self", "cls"} and tail:
+            owner = element.qualname.split(".")[0] if "." in element.qualname else ""
+            for suffix in (f"{owner}.{tail}", f"{owner}.__init__.{tail}"):
+                hit = make_id(element.module, suffix)
+                if hit in self._elements:
+                    return hit
+            return ""
+        hit = make_id(element.module, name)
+        if hit in self._elements:
+            return hit
+        hit = make_id(element.module, head)
+        if hit in self._elements:
+            return hit
+        return ""
+
+    # -- reachability -------------------------------------------------------
+
+    def _discarded_call_sites(self, path: str) -> set[tuple[int, int]]:
+        """Positions of calls whose result is thrown away.
+
+        ``log_metrics(rows)`` as a bare statement hands nothing to anyone. That
+        is the only value-free call shape this card can recognise from the AST,
+        and it is what separates "runs before the decision" from "feeds the
+        decision".
+        """
+        if path in self._discarded_cache:
+            return self._discarded_cache[path]
+        found: set[tuple[int, int]] = set()
+        tree = self._parse(path)
+        if tree is not None:
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Expr):
+                    continue
+                value = node.value
+                if isinstance(value, ast.Await):
+                    value = value.value
+                if isinstance(value, ast.Call):
+                    found.add((value.lineno, value.col_offset))
+        self._discarded_cache[path] = found
+        return found
+
+    def _result_is_used(self, edge: Edge) -> bool:
+        if edge.call_site is None:
+            return True  # no position: assume the value is used, never the reverse
+        position = (edge.call_site.line, edge.call_site.col or 0)
+        return position not in self._discarded_call_sites(edge.call_site.path)
+
+    def _may_have_side_effects(self, element_id: str, stack: tuple[str, ...] = ()) -> bool:
+        """Could running this element change anything outside itself?
+
+        Used only to decide between NO_SINK_PATH and UNKNOWN for an element
+        whose result is discarded. Conservative in the safe direction: anything
+        it cannot see -- a body with no CFG, a method call, a call it cannot
+        resolve -- counts as a side effect, so the element comes back UNKNOWN
+        rather than being called dead.
+        """
+        if element_id in self._side_effect_cache:
+            return self._side_effect_cache[element_id]
+        if element_id in stack:
+            return True
+        builder = self._builders.get(element_id)
+        if builder is None:
+            return True
+        verdict = False
+        for node in ast.walk(builder.node):
+            if isinstance(node, (ast.Global, ast.Nonlocal, ast.Yield, ast.YieldFrom)):
+                verdict = True
+            elif isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(
+                node.ctx, (ast.Store, ast.Del)
+            ):
+                verdict = True
+            elif isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Attribute):
+                    verdict = True  # a method may mutate its receiver
+                elif isinstance(node.func, ast.Name):
+                    name = node.func.id
+                    if name in _IMPURE_BUILTINS:
+                        verdict = True
+                    elif name not in _BUILTIN_NAMES:
+                        target = self._lookup_name(self._elements.get(element_id), name)
+                        verdict = not target or self._may_have_side_effects(
+                            target, (*stack, element_id)
+                        )
+                else:
+                    verdict = True
+            if verdict:
+                break
+        self._side_effect_cache[element_id] = verdict
+        return verdict
+
+    def _sink_sites(self) -> dict[str, list[tuple[str, int]]]:
+        """Sinks that are values rather than callables, keyed by their holder.
+
+        ``FINAL_DECISION = decide(...)`` at module level is a sink nobody calls;
+        it is a position inside the element that holds it.
+        """
+        out: dict[str, list[tuple[str, int]]] = {}
+        for sink_id in self._sink_ids:
+            sink = self._elements.get(sink_id)
+            if sink is None or sink.kind in CFG_ELEMENT_KINDS:
+                continue
+            owner = sink.parent_id or make_id(sink.module)
+            out.setdefault(owner, []).append((sink_id, sink.span.end_line or sink.span.line))
+        for bucket in out.values():
+            bucket.sort()
+        return out
+
+    def _solve_reachability(
+        self,
+    ) -> tuple[dict[str, Confidence], dict[str, tuple[str, ...]], dict[str, str]]:
+        """Which elements drive the final decision?
+
+        Not "which elements run before it" -- that is a different question, and
+        it answers yes for a logger called between two cascade stages. An
+        element drives the decision when its *work* reaches the sink:
+
+        a. it calls something that reaches the sink;
+        b. its result is consumed by something that reaches the sink -- which
+           covers both a stage whose output the sink eventually reads, and a
+           helper the sink itself calls;
+        c. it holds, or contains, the sink.
+
+        (b) is the approximation in this card. Card 3 sees call edges, not
+        values, so "consumed by" means the call's result is not discarded. An
+        element called only for its side effects therefore has no (b)
+        justification -- and rather than call it dead, it comes back UNKNOWN
+        whenever it could have a side effect at all, because whether those
+        effects feed the decision is a lineage question card 4 owns.
+
+        Returns the confidence per element, a representative path, and the
+        reason any element was left UNKNOWN.
+        """
+        sites: dict[str, list[Edge]] = {}
+        callers: dict[str, list[Edge]] = {}
+        for edge in self._edges:
+            if edge.kind not in WIRING_EDGE_KINDS:
+                continue
+            sites.setdefault(edge.source_id, []).append(edge)
+            callers.setdefault(edge.target_id, []).append(edge)
+        for bucket in (*sites.values(), *callers.values()):
+            bucket.sort(key=lambda e: e.id)
+        sink_sites = self._sink_sites()
+
+        best: dict[str, Confidence] = {}
+        via: dict[str, tuple[str, ...]] = {}
+        for sink_id in self._sink_ids:
+            best[sink_id] = Confidence.CERTAIN
+            via[sink_id] = (sink_id,)
+        for owner, held in sink_sites.items():
+            if owner not in best:
+                best[owner] = Confidence.CERTAIN
+                via[owner] = (owner, held[0][0])
+
+        def join(head: str, rest: Sequence[str]) -> tuple[str, ...]:
+            """Prepend *head*, collapsing any loop back onto it: a
+            representative path is a simple path. Recursion is reported as a
+            CYCLE order node, not as a path that visits an element twice."""
+            rest = tuple(rest)
+            if head in rest:
+                return (head, *rest[rest.index(head) + 1 :])
+            return (head, *rest)
+
+        element_ids = sorted({*self._elements, *sites, *callers})
+        changed = True
+        while changed:
+            changed = False
+            for element_id in element_ids:
+                winner: tuple[Confidence, tuple[str, ...]] | None = None
+                for edge in sites.get(element_id, []):
+                    target = edge.target_id
+                    if target not in best:
+                        continue
+                    candidate = (
+                        combine(best[target], edge.provenance.confidence),
+                        join(element_id, via[target]),
+                    )
+                    if winner is None or _RANK[candidate[0]] > _RANK[winner[0]]:
+                        winner = candidate
+                for edge in callers.get(element_id, []):
+                    caller = edge.source_id
+                    if caller not in best or not self._result_is_used(edge):
+                        continue
+                    candidate = (
+                        combine(best[caller], edge.provenance.confidence),
+                        join(element_id, via[caller]),
+                    )
+                    if winner is None or _RANK[candidate[0]] > _RANK[winner[0]]:
+                        winner = candidate
+                if winner is None:
+                    continue
+                known = best.get(element_id)
+                if known is None or _RANK[winner[0]] > _RANK[known]:
+                    best[element_id] = winner[0]
+                    via[element_id] = winner[1]
+                    changed = True
+
+        # Side-effect-only callees: not dead, just not traceable from here.
+        unknown_reason: dict[str, str] = {}
+        for element_id in element_ids:
+            if element_id in best:
+                continue
+            for edge in callers.get(element_id, []):
+                if edge.source_id not in best or self._result_is_used(edge):
+                    continue
+                if self._may_have_side_effects(element_id):
+                    unknown_reason[element_id] = (
+                        f"called by {edge.source_id}, which reaches a decision sink, but its "
+                        "result is discarded. It can still affect the decision through a side "
+                        "effect, and whether it does is a lineage question card 4 answers -- "
+                        "so this is UNKNOWN, not NO_SINK_PATH."
+                    )
+                    break
+
+        # An element contained in something that reaches the sink reaches it too:
+        # a parameter of a live function is live. Applied once, downwards only,
+        # so a module can never launder reachability onto its whole contents.
+        direct = dict(best)
+        for element in sorted(self._elements.values(), key=lambda e: e.id):
+            if element.id in direct:
+                continue
+            ancestor: Element | None = self._elements.get(element.parent_id)
+            hops: list[str] = [element.id]
+            while ancestor is not None:
+                if ancestor.id in direct and ancestor.kind not in {
+                    ElementKind.MODULE,
+                    ElementKind.PACKAGE,
+                }:
+                    best[element.id] = direct[ancestor.id]
+                    via[element.id] = (*hops, *via[ancestor.id])
+                    break
+                hops.append(ancestor.id)
+                ancestor = self._elements.get(ancestor.parent_id) if ancestor.parent_id else None
+
+        # A container reaches the sink when anything it contains does.
+        for element in sorted(self._elements.values(), key=lambda e: e.id, reverse=True):
+            if element.kind not in {ElementKind.MODULE, ElementKind.PACKAGE, ElementKind.CLASS}:
+                continue
+            if element.id in best:
+                continue
+            # Card 1 leaves parent_id empty for a module's own top-level
+            # members, so a module's contents are found by module name too --
+            # otherwise the module holding the sink comes back NO_SINK_PATH,
+            # which is the false negative this card exists to avoid.
+            held = list(self._children.get(element.id, []))
+            if element.kind in {ElementKind.MODULE, ElementKind.PACKAGE}:
+                held.extend(self._by_module.get(element.id, []))
+            contained = [child for child in sorted(set(held)) if child in best]
+            if not contained:
+                continue
+            winner_id = max(contained, key=lambda c: (_RANK[best[c]], c))
+            best[element.id] = best[winner_id]
+            via[element.id] = (element.id, *via[winner_id])
+        return best, via, unknown_reason
+
+
+    def _build_reachability(self) -> None:
+        """One :class:`Reachability` per inventoried element. No exceptions:
+        cards 5 and 15 read this file as the canonical answer, so an element
+        missing from it is a hole in both."""
+        best, via, side_effect_unknown = self._solve_reachability()
+        behind_unknown = self._behind_unresolved()
+        sinks = tuple(self._sink_ids)
+        for element in sorted(self._elements.values(), key=lambda e: e.id):
+            record_id = make_id("@reach", element.id)
+            incident: list[Confidence] = []
+            if element.id in best:
+                confidence = best[element.id]
+                path = via[element.id]
+                if confidence is Confidence.CERTAIN:
+                    reason = "reaches a decision sink along a path of CERTAIN edges"
+                else:
+                    reason = (
+                        "reaches a decision sink along "
+                        f"{' -> '.join(path)}, whose weakest link is {confidence}"
+                        + ". Biased toward REACHES_SINK and kept at that link's confidence "
+                        "rather than pruned: a false 'unreachable' sends the owner to "
+                        "delete live code."
+                    )
+                self._reachability.append(
+                    Reachability(
+                        id=record_id,
+                        element_id=element.id,
+                        state=ReachabilityState.REACHES_SINK,
+                        provenance=Provenance(
+                            method=Method.CFG_REACHABILITY,
+                            confidence=confidence,
+                            span=element.span,
+                            note=reason,
+                        ),
+                        sink_ids=(path[-1],),
+                        path_ids=path,
+                        reason=reason,
+                    )
+                )
+                continue
+            if not sinks:
+                reason = (
+                    "no decision sink is declared in TARGET_PROFILE.md and none was detected, "
+                    "so nothing can be said about reaching one. UNKNOWN, not NO_SINK_PATH."
+                )
+                state = ReachabilityState.UNKNOWN
+            elif element.id in side_effect_unknown:
+                reason = side_effect_unknown[element.id]
+                state = ReachabilityState.UNKNOWN
+            elif element.id in behind_unknown:
+                reason = (
+                    "no resolved path to a sink, but an unresolved call site "
+                    f"({behind_unknown[element.id]}) lies on the way, so a path may exist. "
+                    "UNKNOWN, not NO_SINK_PATH."
+                )
+                state = ReachabilityState.UNKNOWN
+            else:
+                reason = (
+                    "no wiring edge, and no unresolved call site, connects this element to "
+                    "any decision sink"
+                )
+                state = ReachabilityState.NO_SINK_PATH
+                incident = [
+                    edge.provenance.confidence
+                    for edge in self._edges
+                    if edge.kind in WIRING_EDGE_KINDS
+                    and element.id in {edge.source_id, edge.target_id}
+                ]
+            self._reachability.append(
+                Reachability(
+                    id=record_id,
+                    element_id=element.id,
+                    state=state,
+                    provenance=Provenance(
+                        method=Method.CFG_REACHABILITY,
+                        # A NO_SINK_PATH verdict is a closed-world claim: it holds
+                        # unless card 2 missed an edge, and where card 2 said it
+                        # might have, the state above is UNKNOWN instead. It is
+                        # therefore only as good as the edges that touch the
+                        # element.
+                        confidence=Confidence.UNKNOWN
+                        if state is ReachabilityState.UNKNOWN
+                        else combine(Confidence.RESOLVED, *incident),
+                        span=element.span,
+                        note=reason,
+                    ),
+                    sink_ids=sinks,
+                    path_ids=(),
+                    reason=reason,
+                )
+            )
+
+    def _behind_unresolved(self) -> dict[str, str]:
+        """Elements an unresolved call site could plausibly be calling.
+
+        Only *opaque* residue counts: a call site card 2 could not resolve, a
+        file that would not parse, a deferred lambda body. A condition that
+        reads a name nobody inventoried opens no control path, so it does not
+        turn a NO_SINK_PATH into an UNKNOWN and does not blind card 5.
+        """
+        by_path: dict[str, list[Element]] = {}
+        for element in self._elements.values():
+            if element.kind in CFG_ELEMENT_KINDS and element.kind is not ElementKind.MODULE:
+                by_path.setdefault(element.span.path, []).append(element)
+        for elements in by_path.values():
+            elements.sort(key=lambda e: e.id)
+
+        out: dict[str, str] = {}
+        records = [
+            *self._input_unresolved,
+            *[record for record in self._unresolved if record.id in self._opaque],
+        ]
+        for record in sorted(records, key=lambda r: r.id):
+            for candidate in record.candidate_ids:
+                if candidate in self._elements:
+                    out.setdefault(candidate, record.id)
+            for element in by_path.get(record.span.path, []):
+                if (
+                    element.span.line <= record.span.line
+                    and (element.span.end_line or element.span.line) >= record.span.line
+                ):
+                    out.setdefault(element.id, record.id)
+        return out
+
+
+# ==========================================================================
+# lineage.py
+# ==========================================================================
+
+"""Card 4 -- data and feature lineage, and slicing.
+
+Follows values along the cascade (raw input -> engineered data -> features ->
+decision inputs) over the IDs cards 1 and 2 mint, and answers two queries:
+
+* **backward slice** of a feature or decision input -- everything that produces it
+* **forward slice** of any element -- everything a change to it can reach
+
+Node identity (all through the contract's helpers)
+
+===========================  =================================================
+module-level binding         ``make_id(module, name, ordinal)``
+class-level binding          ``make_id(module, "Class.name", ordinal)``
+function / method            ``make_id(module, qualname)``
+nested function              ``local_id(parent_element_id, name)``
+local variable               ``local_id(element_id, name, ordinal)``
+parameter (incl. lambda)     ``param_id(element_id, name)``
+dict key                     ``key_id(container_node, key)``
+attribute                    ``attr_id(object_node, attr)``
+instance attribute           ``attr_id(class_element_id, attr)``
+named feature / column       ``feature_id(name)``
+barrier                      ``local_id(element_id, "<barrier>", ordinal)``
+===========================  =================================================
+
+An attribute node carries no ordinal: ``attr_id`` takes none, so every write to
+``self.threshold`` is one node. That is the contract's shape, and it is the one
+place this card does not have a node per binding.
+
+The decisions that make a slice worth reading
+
+1. **A named feature is its own node.** A dataframe column, and a dict key whose
+   name a config file declares, become ``feature_id(name)`` -- so a column named
+   in ``features.json`` and one written in code are one node. Every other dict
+   key is ``key_id(container, key)``: still its own node, still never collapsed
+   into its container, but scoped to the container that holds it.
+2. **A value's return node is the function's own element ID.** ``m::f`` is where
+   ``f``'s returns arrive and where its callers read from; no synthetic node.
+3. **Flow direction is data direction.** ``source_id`` produces, ``target_id``
+   receives.
+4. **A barrier is an explicit node, not a missing edge.** ``eval``-built code,
+   reflection with a computed name and opaque third-party calls emit a
+   ``Barrier``; flow runs *through* it at ``UNKNOWN`` confidence. Nothing is
+   stitched across: a slice that crosses one lists it and drops to ``UNKNOWN``.
+5. **Reaching definitions, one node per binding.** Each *rebinding* of a name
+   is its own node (``#n`` in source order) and a read links to the definitions
+   that actually reach it. Merging them would put ``a`` in the backward slice of
+   ``x`` after ``x = a; x = b``, which is a false positive in the one question
+   this card answers. An augmented assignment is the exception the contract
+   intends: ``y += 1`` reads and writes the same value in place, so it is a
+   MUTATES edge from the node to itself and mints no new node.
+6. **An edge's span is the statement where the flow happens** -- not where either
+   endpoint was defined, which the endpoints already record.
+7. **A literal written into a structure originates at the enclosing element.**
+   ``self.mode = "off"`` is an ATTRIBUTE_WRITE from the method that wrote it, so
+   the write is never invisible. A literal into a plain local emits nothing: the
+   local's own element already says where it is.
+
+   The cost, stated: a function element is then both the origin of the literals
+   written inside it and the node its own returns arrive at. A slice that enters
+   such a node through a literal edge can continue backward into what the
+   function returns, which widens it. The direct edges stay exact; only
+   multi-hop reach through an element node is affected.
+
+Approximations are labelled in the edge provenance note: every edge whose note
+starts with ``over-approximate:`` prefers reach to precision, and
+:meth:`LineageTracer.over_approximate_edge_ids` lists them. Under-approximation
+is exactly the barrier set.
+
+Nothing here imports, executes or evaluates target code. Modules are read as
+text and parsed with :mod:`ast`.
+"""
+
+
+
+
+__all__ = [
+    "LineageTracer",
+    "BARRIER_BUILTINS",
+    "TRANSPARENT_BUILTINS",
+    "TRANSPARENT_MODULES",
+    "FRAME_METHODS",
+    "COLUMN_METHODS",
+    "MUTATING_METHODS",
+    "PANDAS_MODULES",
+]
+
+# --------------------------------------------------------------------------
+# Auditable classification tables.
+#
+# These are the only places where this card assumes anything about a name it
+# did not define. Each is deliberately small so the owner can read it.
+# --------------------------------------------------------------------------
+
+_lineage_BUILTIN_NAMES = frozenset(dir(_builtins))
+
+#: Builtins whose result is a function of their arguments. Flow passes through
+#: them; they are not barriers.
+TRANSPARENT_BUILTINS = frozenset(
+    {
+        "abs", "all", "any", "ascii", "bin", "bool", "bytearray", "bytes", "chr",
+        "dict", "divmod", "enumerate", "filter", "float", "format", "frozenset",
+        "hex", "int", "iter", "len", "list", "map", "max", "min", "next", "oct",
+        "open", "ord", "pow", "range", "repr", "reversed", "round", "set",
+        "sorted", "str", "sum", "tuple", "zip",
+    }
+)
+
+#: Builtins that construct or reach code at runtime. Flow into one ends in a
+#: Barrier -- never stitched across.
+BARRIER_BUILTINS = frozenset(
+    {"eval", "exec", "compile", "__import__", "globals", "locals", "vars"}
+)
+
+#: Modules whose functions are treated as value-transparent (result derives from
+#: arguments). Stdlib and pure only; anything else is an opaque call.
+TRANSPARENT_MODULES = frozenset(
+    {
+        "collections", "copy", "datetime", "decimal", "fractions", "functools",
+        "itertools", "json", "math", "operator", "os.path", "pathlib", "re",
+        "statistics", "string", "textwrap", "time", "typing", "uuid",
+    }
+)
+
+PANDAS_MODULES = frozenset({"pandas", "pd"})
+
+#: Frame-shaped operations: the result carries the receiver's columns forward.
+FRAME_METHODS = frozenset(
+    {
+        "abs", "agg", "aggregate", "astype", "clip", "copy", "cumsum", "diff",
+        "dropna", "ffill", "fillna", "head", "interpolate", "mask", "max",
+        "mean", "min", "pct_change", "pipe", "query", "reindex", "replace",
+        "reset_index", "rolling", "round", "sample", "set_index", "shift",
+        "sort_index", "sort_values", "std", "sum", "tail", "transform", "where",
+    }
+)
+
+#: Operations that name columns explicitly. Each named column becomes a node.
+COLUMN_METHODS = frozenset(
+    {"assign", "apply", "drop", "groupby", "join", "merge", "pivot_table", "rename"}
+)
+
+#: In-place container mutation.
+MUTATING_METHODS = frozenset(
+    {"add", "append", "extend", "insert", "setdefault", "update"}
+)
+
+_FRAME_NAME_SUFFIXES = ("_df", "_frame")
+_FRAME_NAMES = frozenset({"df", "frame", "dataframe", "data_frame"})
+
+_OVER = "over-approximate: "
+_INSTANCE = ".@instance"
+
+
+def _stronger(first: Confidence, second: Confidence) -> Confidence:
+    """The better-supported of two confidences, using only ``combine``."""
+    if first == second:
+        return first
+    return second if combine(first, second) == first else first
+
+
+def _short_hash(payload: object) -> str:
+    return hashlib.sha256(canonical_dumps(payload).encode("ascii")).hexdigest()[:16]
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class _Src:
+    """One value an expression derives from, with how well it is known.
+
+    ``kind`` is set only where the *source* fixes the edge kind regardless of the
+    target: a call result is a RETURNS, a column consumed by a frame operation is
+    a READS.
+    """
+
+    id: str
+    confidence: Confidence = Confidence.RESOLVED
+    note: str = ""
+    kind: LineageKind | None = None
+
+
+def _merge_srcs(*groups: Iterable[_Src]) -> tuple[_Src, ...]:
+    best: dict[str, _Src] = {}
+    for group in groups:
+        for src in group:
+            current = best.get(src.id)
+            if current is None:
+                best[src.id] = src
+            elif _stronger(current.confidence, src.confidence) == src.confidence:
+                if src.confidence != current.confidence:
+                    best[src.id] = src
+    return tuple(sorted(best.values()))
+
+
+def _retag(srcs: Iterable[_Src], confidence: Confidence, note: str) -> tuple[_Src, ...]:
+    return tuple(
+        sorted(
+            _Src(s.id, combine(s.confidence, confidence), s.note or note, s.kind)
+            for s in srcs
+        )
+    )
+
+
+# --------------------------------------------------------------------------
+# Pre-pass: scopes, binding ordinals, stable node IDs
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class _Def:
+    """One binding occurrence: the node a value flows into."""
+
+    id: str
+    name: str
+    scope_key: str
+    kind: str  # variable | parameter | function | class | import | attribute
+    line: int
+    external_module: str = ""
+    imported_name: str = ""
+
+
+@dataclass
+class _ScopeCtx:
+    key: str  # unique key for the scope's symbol table
+    kind: str  # module | function | class | lambda | comprehension
+    element_id: str  # the element a node in this scope hangs off
+    class_id: str = ""
+    parent: "_ScopeCtx | None" = None
+    global_names: frozenset[str] = frozenset()
+    nonlocal_names: frozenset[str] = frozenset()
+
+
+@dataclass
+class _ModuleInfo:
+    module: str
+    path: str
+    tree: ast.Module
+    id_of_node: dict[int, str] = field(default_factory=dict)
+    all_defs: dict[tuple[str, str], list[str]] = field(default_factory=dict)
+    def_meta: dict[str, _Def] = field(default_factory=dict)
+    scope_of_node: dict[int, tuple[str, str]] = field(default_factory=dict)
+    functions: dict[str, ast.AST] = field(default_factory=dict)
+    classes: dict[str, ast.ClassDef] = field(default_factory=dict)
+    counter: dict[tuple[str, str], int] = field(default_factory=dict)
+
+
+def _declared(body: Sequence[ast.stmt], kind: type) -> frozenset[str]:
+    """Names declared ``global``/``nonlocal`` anywhere in a scope body."""
+    names: set[str] = set()
+    stack: list[ast.AST] = list(body)
+    while stack:
+        node = stack.pop()
+        if isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+        ):
+            continue
+        if isinstance(node, kind):
+            names.update(node.names)  # type: ignore[attr-defined]
+        stack.extend(ast.iter_child_nodes(node))
+    return frozenset(names)
+
+
+class _PrePass:
+    """Mints a stable node ID for every binding, in source order."""
+
+    def __init__(self, info: _ModuleInfo) -> None:
+        self.info = info
+        self._lambda_n = 0
+        self._comp_n = 0
+
+    # -- binding -----------------------------------------------------------
+
+    def _owner(self, ctx: _ScopeCtx, name: str) -> _ScopeCtx:
+        if name in ctx.global_names:
+            scope: _ScopeCtx | None = ctx
+            while scope is not None and scope.parent is not None:
+                scope = scope.parent
+            return scope or ctx
+        if name in ctx.nonlocal_names:
+            scope = ctx.parent
+            while scope is not None:
+                if scope.kind in ("function", "lambda"):
+                    return scope
+                scope = scope.parent
+        return ctx
+
+    def _node_id(self, owner: _ScopeCtx, name: str, ordinal: int, kind: str) -> str:
+        if kind == "parameter":
+            return param_id(owner.element_id, name)
+        if owner.kind == "module":
+            return make_id(self.info.module, name, ordinal)
+        if owner.kind == "class":
+            return make_id(
+                self.info.module, f"{_qual_of(owner.element_id)}.{name}", ordinal
+            )
+        return local_id(owner.element_id, name, ordinal)
+
+    def bind(
+        self,
+        ctx: _ScopeCtx,
+        name: str,
+        node: ast.AST,
+        kind: str,
+        *,
+        owner: _ScopeCtx | None = None,
+        external_module: str = "",
+        imported_name: str = "",
+    ) -> str:
+        info = self.info
+        scope = owner if owner is not None else self._owner(ctx, name)
+        key = (scope.key, name)
+        # One node per *binding*, not per name: `x = expensive()` followed by
+        # `x = simple()` are different values, and merging them puts a value in
+        # a slice that provably cannot reach the query. Settled by the lead;
+        # see `local_id` in the contracts.
+        ordinal = info.counter.get(key, 0) + 1
+        info.counter[key] = ordinal
+        node_id = self._node_id(scope, name, ordinal, kind)
+        if node_id not in info.def_meta:
+            info.all_defs.setdefault(key, []).append(node_id)
+            info.def_meta[node_id] = _Def(
+                id=node_id,
+                name=name,
+                scope_key=scope.key,
+                kind=kind,
+                line=getattr(node, "lineno", 0),
+                external_module=external_module,
+                imported_name=imported_name,
+            )
+        info.id_of_node[id(node)] = node_id
+        return node_id
+
+    # -- scopes ------------------------------------------------------------
+
+    def run(self) -> None:
+        ctx = _ScopeCtx(key="", kind="module", element_id=self.info.module)
+        for stmt in self.info.tree.body:
+            self.stmt(stmt, ctx)
+
+    def _child(
+        self, ctx: _ScopeCtx, name: str, element_id: str, kind: str,
+        body: Sequence[ast.stmt],
+    ) -> _ScopeCtx:
+        return _ScopeCtx(
+            key=f"{ctx.key}.{name}" if ctx.key else name,
+            kind=kind,
+            element_id=element_id,
+            class_id=element_id if kind == "class" else ctx.class_id,
+            parent=ctx,
+            global_names=_declared(body, ast.Global),
+            nonlocal_names=_declared(body, ast.Nonlocal),
+        )
+
+    def _element_id_for(self, ctx: _ScopeCtx, name: str, ordinal: int) -> str:
+        if ctx.kind == "module":
+            return make_id(self.info.module, name, ordinal)
+        if ctx.kind == "class":
+            return make_id(
+                self.info.module, f"{_qual_of(ctx.element_id)}.{name}", ordinal
+            )
+        return local_id(ctx.element_id, name, ordinal)
+
+    def stmt(self, node: ast.stmt, ctx: _ScopeCtx) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            def_id = self.bind(ctx, node.name, node, "function")
+            for dec in node.decorator_list:
+                self.expr(dec, ctx)
+            args = node.args
+            for default in [*args.defaults, *[d for d in args.kw_defaults if d]]:
+                self.expr(default, ctx)
+            child = self._child(ctx, node.name, def_id, "function", node.body)
+            self._bind_args(args, child)
+            self.info.functions[def_id] = node
+            self.info.scope_of_node[id(node)] = (child.key, def_id)
+            for inner in node.body:
+                self.stmt(inner, child)
+            return
+        if isinstance(node, ast.ClassDef):
+            def_id = self.bind(ctx, node.name, node, "class")
+            for expr in [*node.bases, *node.decorator_list]:
+                self.expr(expr, ctx)
+            for kw in node.keywords:
+                self.expr(kw.value, ctx)
+            child = self._child(ctx, node.name, def_id, "class", node.body)
+            self.info.classes[def_id] = node
+            self.info.scope_of_node[id(node)] = (child.key, def_id)
+            for inner in node.body:
+                self.stmt(inner, child)
+            return
+        if isinstance(node, ast.Assign):
+            self.expr(node.value, ctx)
+            for target in node.targets:
+                self.target(target, ctx)
+            return
+        if isinstance(node, ast.AnnAssign):
+            if node.value is not None:
+                self.expr(node.value, ctx)
+                self.target(node.target, ctx)
+            return
+        if isinstance(node, ast.AugAssign):
+            # An augmented assignment mutates the binding it reads. No new node.
+            self.expr(node.value, ctx)
+            if isinstance(node.target, (ast.Attribute, ast.Subscript)):
+                self.expr(node.target.value, ctx)
+            return
+        if isinstance(node, (ast.For, ast.AsyncFor)):
+            self.expr(node.iter, ctx)
+            self.target(node.target, ctx)
+            for inner in [*node.body, *node.orelse]:
+                self.stmt(inner, ctx)
+            return
+        if isinstance(node, (ast.While, ast.If)):
+            self.expr(node.test, ctx)
+            for inner in [*node.body, *node.orelse]:
+                self.stmt(inner, ctx)
+            return
+        if isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                self.expr(item.context_expr, ctx)
+                if item.optional_vars is not None:
+                    self.target(item.optional_vars, ctx)
+            for inner in node.body:
+                self.stmt(inner, ctx)
+            return
+        if isinstance(node, ast.Try) or type(node).__name__ == "TryStar":
+            for inner in node.body:  # type: ignore[attr-defined]
+                self.stmt(inner, ctx)
+            for handler in node.handlers:  # type: ignore[attr-defined]
+                if handler.type is not None:
+                    self.expr(handler.type, ctx)
+                if handler.name:
+                    self.bind(ctx, handler.name, handler, "variable")
+                for inner in handler.body:
+                    self.stmt(inner, ctx)
+            for inner in [*node.orelse, *node.finalbody]:  # type: ignore[attr-defined]
+                self.stmt(inner, ctx)
+            return
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bound = alias.asname or alias.name.split(".")[0]
+                self.bind(ctx, bound, alias, "import", external_module=alias.name)
+            return
+        if isinstance(node, ast.ImportFrom):
+            source = ("." * (node.level or 0)) + (node.module or "")
+            for alias in node.names:
+                bound = alias.asname or alias.name
+                self.bind(
+                    ctx, bound, alias, "import",
+                    external_module=source, imported_name=alias.name,
+                )
+            return
+        if isinstance(node, ast.Match):
+            self.expr(node.subject, ctx)
+            for case in node.cases:
+                self._pattern(case.pattern, ctx)
+                if case.guard is not None:
+                    self.expr(case.guard, ctx)
+                for inner in case.body:
+                    self.stmt(inner, ctx)
+            return
+        if isinstance(
+            node, (ast.Global, ast.Nonlocal, ast.Pass, ast.Break, ast.Continue)
+        ):
+            return
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.expr):
+                self.expr(child, ctx)
+            elif isinstance(child, ast.stmt):
+                self.stmt(child, ctx)
+
+    def _pattern(self, pattern: ast.pattern, ctx: _ScopeCtx) -> None:
+        if isinstance(pattern, ast.MatchAs):
+            if pattern.pattern is not None:
+                self._pattern(pattern.pattern, ctx)
+            if pattern.name:
+                self.bind(ctx, pattern.name, pattern, "variable")
+            return
+        if isinstance(pattern, ast.MatchStar):
+            if pattern.name:
+                self.bind(ctx, pattern.name, pattern, "variable")
+            return
+        for child in ast.iter_child_nodes(pattern):
+            if isinstance(child, ast.pattern):
+                self._pattern(child, ctx)
+            elif isinstance(child, ast.expr):
+                self.expr(child, ctx)
+
+    def _bind_args(self, args: ast.arguments, ctx: _ScopeCtx) -> None:
+        for arg in _all_args(args):
+            self.bind(ctx, arg.arg, arg, "parameter", owner=ctx)
+
+    def target(self, node: ast.expr, ctx: _ScopeCtx) -> None:
+        if isinstance(node, ast.Name):
+            self.bind(ctx, node.id, node, "variable")
+            return
+        if isinstance(node, (ast.Tuple, ast.List)):
+            for element in node.elts:
+                self.target(element, ctx)
+            return
+        if isinstance(node, ast.Starred):
+            self.target(node.value, ctx)
+            return
+        if isinstance(node, ast.Attribute):
+            self.expr(node.value, ctx)
+            return
+        if isinstance(node, ast.Subscript):
+            self.expr(node.value, ctx)
+            self.expr(node.slice, ctx)
+            return
+        self.expr(node, ctx)
+
+    def expr(self, node: ast.expr, ctx: _ScopeCtx) -> None:
+        if isinstance(node, ast.NamedExpr):
+            self.expr(node.value, ctx)
+            owner = ctx.parent if ctx.kind == "comprehension" and ctx.parent else ctx
+            self.bind(owner, node.target.id, node.target, "variable")
+            return
+        if isinstance(node, ast.Lambda):
+            self._lambda_n += 1
+            name = f"<lambda{self._lambda_n}>"
+            element_id = self._element_id_for(ctx, name, 1)
+            for default in [
+                *node.args.defaults, *[d for d in node.args.kw_defaults if d]
+            ]:
+                self.expr(default, ctx)
+            child = self._child(ctx, name, element_id, "lambda", [])
+            self._bind_args(node.args, child)
+            self.info.scope_of_node[id(node)] = (child.key, element_id)
+            self.expr(node.body, child)
+            return
+        if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+            self._comp_n += 1
+            name = f"<comp{self._comp_n}>"
+            element_id = self._element_id_for(ctx, name, 1)
+            child = self._child(ctx, name, element_id, "comprehension", [])
+            self.info.scope_of_node[id(node)] = (child.key, element_id)
+            for index, gen in enumerate(node.generators):
+                self.expr(gen.iter, ctx if index == 0 else child)
+                self.target(gen.target, child)
+                for condition in gen.ifs:
+                    self.expr(condition, child)
+            if isinstance(node, ast.DictComp):
+                self.expr(node.key, child)
+                self.expr(node.value, child)
+            else:
+                self.expr(node.elt, child)  # type: ignore[attr-defined]
+            return
+        for child_node in ast.iter_child_nodes(node):
+            if isinstance(child_node, ast.expr):
+                self.expr(child_node, ctx)
+            elif isinstance(child_node, ast.keyword):
+                self.expr(child_node.value, ctx)
+            elif isinstance(child_node, ast.comprehension):
+                self.expr(child_node.iter, ctx)
+                self.target(child_node.target, ctx)
+
+
+def _qual_of(element_id: str) -> str:
+    return element_id.split("::", 1)[1] if "::" in element_id else ""
+
+
+# --------------------------------------------------------------------------
+# The tracer
+# --------------------------------------------------------------------------
+
+
+class LineageTracer:
+    """Implements :class:`~cascade_map.contracts.interfaces.LineageCard`.
+
+    ``root`` is the directory element spans are relative to. ``sink_ids`` are the
+    decision sinks a forward slice ends at; with none supplied (owner question
+    Q1 unanswered) ``reaches_sink_ids`` is empty everywhere rather than guessed.
+    """
+
+    def __init__(
+        self,
+        root: str | Path = ".",
+        sink_ids: Sequence[str] = (),
+        transparent_modules: Iterable[str] = TRANSPARENT_MODULES,
+    ) -> None:
+        self.root = Path(root)
+        self.sink_ids: tuple[str, ...] = tuple(sorted(set(sink_ids)))
+        self.transparent_modules = frozenset(transparent_modules)
+        self._reset()
+
+    # -- lifecycle ---------------------------------------------------------
+
+    def _reset(self) -> None:
+        self.lineage_edges: tuple[LineageEdge, ...] = ()
+        self.barriers: tuple[Barrier, ...] = ()
+        self.unresolved: list[Unresolved] = []
+        self._edges: dict[str, LineageEdge] = {}
+        self._barriers: dict[str, Barrier] = {}
+        self._modules: dict[str, _ModuleInfo] = {}
+        self._elements: dict[str, Element] = {}
+        self._param_elements: dict[tuple[str, str], str] = {}
+        self._config_keys: list[Element] = []
+        self._declared_features: set[str] = set()
+        self._call_targets: dict[tuple[str, int], list[tuple[str, Confidence]]] = {}
+        self._configures: list[Edge] = []
+        self._feature_names: set[str] = set()
+        self._frame_defs: set[str] = set()
+        self._key_nodes: set[str] = set()
+        self._established: set[str] = set()
+        self._alias_of: dict[str, tuple[str, ...]] = {}
+        self._instance_of: dict[str, str] = {}
+        self._container_keys: dict[str, set[str]] = {}
+        self._mutated_params: set[str] = set()
+        self._param_bindings: list[tuple[str, tuple[_Src, ...], SourceSpan, str]] = []
+        self._barrier_counts: dict[str, int] = {}
+        self._barrier_ordinals: dict[tuple[str, int, int | None, str], str] = {}
+        self._out: dict[str, tuple[tuple[str, str], ...]] = {}
+        self._in: dict[str, tuple[tuple[str, str], ...]] = {}
+        self._slice_cache: dict[str, Slice] = {}
+
+    # -- LineageCard -------------------------------------------------------
+
+    def trace_values(
+        self, elements: Sequence[Element], edges: Sequence[Edge]
+    ) -> tuple[Sequence[LineageEdge], Sequence[Barrier]]:
+        """Emit every lineage edge and barrier over card 1's and card 2's output."""
+        self._reset()
+        self._index_elements(elements)
+        self._index_edges(edges)
+        self._load_modules(elements)
+        for module in sorted(
+            self._modules, key=lambda name: (self._modules[name].path, name)
+        ):
+            _ModuleWalker(self, self._modules[module]).run()
+        self._emit_mutation_through_parameters()
+        self._link_config_keys()
+        self._freeze()
+        self._link_container_keys()
+        self._freeze()
+        return self.lineage_edges, self.barriers
+
+    def _freeze(self) -> None:
+        self.lineage_edges = tuple(
+            sorted(self._edges.values(), key=lambda e: (e.id, e.source_id, e.target_id))
+        )
+        self.barriers = tuple(sorted(self._barriers.values(), key=lambda b: b.id))
+        self._build_adjacency()
+
+    def slice(self, root_id: str, direction: str) -> Slice:
+        """Backward or forward slice of ``root_id`` as a reproducible ID set.
+
+        Every hop is evidenced: each ID in ``edge_ids`` resolves to a
+        :class:`LineageEdge` carrying its method, confidence and span. A slice
+        that crosses a barrier lists it and reports ``UNKNOWN``.
+
+        ``reaches_sink_ids`` answers the same question in both directions: which
+        decision sinks the *root* can reach. A backward slice of a feature is
+        worth reading precisely because it also says whether that feature
+        matters.
+        """
+        if direction not in ("backward", "forward"):
+            raise ValueError(
+                f"direction must be 'backward' or 'forward', not {direction!r}"
+            )
+        key = f"{direction}:{root_id}"
+        cached = self._slice_cache.get(key)
+        if cached is not None:
+            return cached
+        known = root_id in self._out or root_id in self._in or root_id in self._barriers
+        if not known:
+            self.unresolved.append(
+                Unresolved(
+                    id=f"@slice-root:{root_id}",
+                    reason=UnresolvedReason.MISSING_TARGET,
+                    span=SourceSpan(path="", line=0),
+                    description=(
+                        f"slice requested for {root_id!r}, which is not a lineage node"
+                    ),
+                )
+            )
+        members, edge_ids, confidences = self._walk(root_id, direction)
+        barrier_ids = {member for member in members if member in self._barriers}
+        confidence = combine(*confidences) if confidences else Confidence.UNKNOWN
+        if barrier_ids:
+            confidence = Confidence.UNKNOWN
+        result = Slice(
+            id=f"@slice:{direction}:{root_id}",
+            root_id=root_id,
+            direction=direction,
+            member_ids=tuple(sorted(members)),
+            edge_ids=tuple(sorted(edge_ids)),
+            barrier_ids=tuple(sorted(barrier_ids)),
+            reaches_sink_ids=self._reaches_sinks(root_id, members, direction),
+            confidence=confidence,
+        )
+        self._slice_cache[key] = result
+        return result
+
+    def _walk(
+        self, root_id: str, direction: str
+    ) -> tuple[set[str], set[str], list[Confidence]]:
+        adjacency = self._in if direction == "backward" else self._out
+        sinks = set(self.sink_ids)
+        members: set[str] = {root_id}
+        edge_ids: set[str] = set()
+        confidences: list[Confidence] = []
+        queue: deque[str] = deque([root_id])
+        seen: set[str] = {root_id}
+        while queue:
+            node = queue.popleft()
+            if direction == "forward" and node in sinks and node != root_id:
+                continue  # a forward slice ends at a decision sink
+            for neighbour, edge_id in adjacency.get(node, ()):  # already sorted
+                edge_ids.add(edge_id)
+                confidences.append(self._edges[edge_id].provenance.confidence)
+                members.add(neighbour)
+                if neighbour not in seen:
+                    seen.add(neighbour)
+                    queue.append(neighbour)
+        return members, edge_ids, confidences
+
+    def _reaches_sinks(
+        self, root_id: str, members: set[str], direction: str
+    ) -> tuple[str, ...]:
+        if not self.sink_ids:
+            return ()
+        if direction == "forward":
+            return tuple(sorted(members & set(self.sink_ids)))
+        downstream, _, _ = self._walk(root_id, "forward")
+        return tuple(sorted(downstream & set(self.sink_ids)))
+
+    # -- reporting helpers -------------------------------------------------
+
+    def hops(self, sliced: Slice) -> tuple[dict[str, object], ...]:
+        """Per-hop evidence for a slice: one record per edge, sorted, no prose."""
+        records = []
+        for edge_id in sliced.edge_ids:
+            edge = self._edges[edge_id]
+            records.append(
+                {
+                    "edge_id": edge.id,
+                    "kind": str(edge.kind),
+                    "source_id": edge.source_id,
+                    "target_id": edge.target_id,
+                    "method": str(edge.provenance.method),
+                    "confidence": str(edge.provenance.confidence),
+                    "note": edge.provenance.note,
+                    "path": edge.span.path if edge.span else "",
+                    "line": edge.span.line if edge.span else 0,
+                }
+            )
+        return tuple(sorted(records, key=lambda row: canonical_dumps(row)))
+
+    def feature_ids(self) -> tuple[str, ...]:
+        return tuple(sorted(feature_id(name) for name in self._feature_names))
+
+    def key_node_ids(self) -> tuple[str, ...]:
+        """Container-scoped key nodes: a key that no config declared a feature."""
+        return tuple(sorted(self._key_nodes))
+
+    def over_approximate_edge_ids(self) -> tuple[str, ...]:
+        """Edges where reach was preferred to precision. Stated, never hidden."""
+        return tuple(
+            sorted(
+                edge.id
+                for edge in self._edges.values()
+                if edge.provenance.note.startswith(_OVER)
+            )
+        )
+
+    def default_slices(self) -> tuple[Slice, ...]:
+        """A backward and a forward slice for every feature, key and sink."""
+        roots = [*self.feature_ids(), *self.key_node_ids(), *self.sink_ids]
+        out: list[Slice] = []
+        for root in sorted(set(roots)):
+            out.append(self.slice(root, "backward"))
+            out.append(self.slice(root, "forward"))
+        return tuple(sorted(out, key=lambda s: s.id))
+
+    def emit(self, slices: Sequence[Slice] | None = None) -> dict[str, str]:
+        """The card's three artifacts, byte-identical across runs."""
+        chosen = list(self.default_slices()) if slices is None else list(slices)
+        return {
+            "lineage.jsonl": canonical_jsonl(self.lineage_edges, "id"),
+            "barriers.jsonl": canonical_jsonl(self.barriers, "id"),
+            "slices.jsonl": canonical_jsonl(sorted(chosen, key=lambda s: s.id), "id"),
+        }
+
+    # -- indexing ----------------------------------------------------------
+
+    def _index_elements(self, elements: Sequence[Element]) -> None:
+        for element in elements:
+            self._elements[element.id] = element
+            if element.kind is ElementKind.PARAMETER and element.parent_id:
+                self._param_elements[(element.parent_id, element.name)] = element.id
+            elif element.kind is ElementKind.CONFIG_KEY:
+                self._config_keys.append(element)
+                self._declared_features.update(_config_names(element))
+            elif element.kind is ElementKind.FEATURE:
+                name = (
+                    element.id[len("@feature:") :]
+                    if element.id.startswith("@feature:")
+                    else element.name
+                )
+                self._declared_features.add(name)
+                self._feature_names.add(name)
+
+    def _index_edges(self, edges: Sequence[Edge]) -> None:
+        for edge in edges:
+            if (
+                edge.kind in (EdgeKind.CALLS, EdgeKind.INSTANTIATES)
+                and edge.call_site is not None
+            ):
+                key = (edge.source_id, edge.call_site.line)
+                self._call_targets.setdefault(key, []).append(
+                    (edge.target_id, edge.provenance.confidence)
+                )
+            elif edge.kind is EdgeKind.CONFIGURES:
+                self._configures.append(edge)
+                if edge.target_id.startswith("@feature:"):
+                    self._declared_features.add(edge.target_id[len("@feature:") :])
+        for targets in self._call_targets.values():
+            targets.sort()
+
+    def _load_modules(self, elements: Sequence[Element]) -> None:
+        seen: dict[str, str] = {}
+        for element in elements:
+            if element.kind is not ElementKind.MODULE:
+                continue
+            seen.setdefault(element.module or element.name, element.span.path)
+        for module, rel_path in sorted(seen.items()):
+            path = self.root / rel_path
+            try:
+                text = path.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                self._unresolved(
+                    module, rel_path, UnresolvedReason.MISSING_TARGET,
+                    "module file not found",
+                )
+                continue
+            except UnicodeDecodeError:
+                self._unresolved(
+                    module, rel_path, UnresolvedReason.DECODE_ERROR,
+                    "module is not valid UTF-8",
+                )
+                continue
+            except OSError as exc:  # pragma: no cover - environment dependent
+                self._unresolved(
+                    module, rel_path, UnresolvedReason.MISSING_TARGET,
+                    f"unreadable: {exc.strerror}",
+                )
+                continue
+            try:
+                tree = ast.parse(text, filename=str(rel_path))
+            except SyntaxError as exc:
+                self._unresolved(
+                    module, rel_path, UnresolvedReason.SYNTAX_ERROR,
+                    f"cannot parse for lineage: {exc.msg}", line=exc.lineno or 1,
+                )
+                continue
+            info = _ModuleInfo(module=module, path=rel_path, tree=tree)
+            _PrePass(info).run()
+            self._modules[module] = info
+
+    def _unresolved(
+        self, module: str, path: str, reason: UnresolvedReason, description: str,
+        line: int = 1,
+    ) -> None:
+        self.unresolved.append(
+            Unresolved(
+                id=f"@lineage-unresolved:{module}:{reason}",
+                reason=reason,
+                span=SourceSpan(path=path, line=line),
+                description=description,
+            )
+        )
+
+    # -- emission ----------------------------------------------------------
+
+    def add_edge(
+        self,
+        kind: LineageKind,
+        source_id: str,
+        target_id: str,
+        span: SourceSpan,
+        method: Method,
+        confidence: Confidence,
+        note: str = "",
+    ) -> str:
+        if not source_id or not target_id:
+            return ""
+        if source_id == target_id and kind is not LineageKind.MUTATES:
+            # A value assigned from an expression containing itself is one node
+            # here, so the edge would say only that it equals itself. An
+            # in-place change is different: MUTATES self is how `y += 1` is
+            # recorded, and dropping it would lose the write.
+            return ""
+        payload = {
+            "kind": str(kind),
+            "source": source_id,
+            "target": target_id,
+            "path": span.path,
+            "line": span.line,
+            "col": span.col,
+            "method": str(method),
+            "confidence": str(confidence),
+            "note": note,
+        }
+        edge_id = f"@lin:{kind}:{_short_hash(payload)}"
+        if edge_id not in self._edges:
+            self._edges[edge_id] = LineageEdge(
+                id=edge_id,
+                kind=kind,
+                source_id=source_id,
+                target_id=target_id,
+                provenance=Provenance(
+                    method=method, confidence=confidence, span=span, note=note
+                ),
+                span=span,
+            )
+        return edge_id
+
+    def add_barrier(
+        self, element_id: str, span: SourceSpan, reason: UnresolvedReason,
+        description: str,
+    ) -> str:
+        """Mint a barrier node inside the element it interrupts.
+
+        `local_id(element, "<barrier>", n)` keeps the ID in the same space as
+        every other node: a reader who meets it in a slice can resolve the
+        element it belongs to, which an out-of-space `@barrier:...` ID does not
+        allow. `n` numbers the barriers of one element in source order, so the
+        ID is structural rather than positional and survives a reformat.
+        """
+        key = (element_id, span.line, span.col, description)
+        known = self._barrier_ordinals.get(key)
+        if known is not None:
+            return known
+        ordinal = self._barrier_counts.get(element_id, 0) + 1
+        self._barrier_counts[element_id] = ordinal
+        barrier_id = local_id(element_id, "<barrier>", ordinal)
+        self._barrier_ordinals[key] = barrier_id
+        if barrier_id not in self._barriers:
+            self._barriers[barrier_id] = Barrier(
+                id=barrier_id,
+                element_id=element_id,
+                span=span,
+                reason=reason,
+                description=description,
+            )
+        return barrier_id
+
+    def note_feature(self, name: str) -> str:
+        self._feature_names.add(name)
+        return feature_id(name)
+
+    # -- post-passes -------------------------------------------------------
+
+    def _emit_mutation_through_parameters(self) -> None:
+        """A callee that mutates a parameter changes the caller's argument.
+
+        Recorded as MUTATES from the parameter node back onto each argument
+        node, PROBABLE: the mutation is certain, the aliasing is the assumption.
+        """
+        for param_id, arg_srcs, span, element_id in self._param_bindings:
+            if param_id not in self._mutated_params:
+                continue
+            for src in arg_srcs:
+                self.add_edge(
+                    LineageKind.MUTATES,
+                    param_id,
+                    src.id,
+                    span,
+                    Method.DATAFLOW,
+                    combine(src.confidence, Confidence.PROBABLE),
+                    note=f"mutation through parameter, observed in {element_id}",
+                )
+
+    def _link_config_keys(self) -> None:
+        """A feature named in config and one written in code are one node."""
+        for edge in sorted(self._configures, key=lambda e: e.id):
+            if edge.target_id.startswith("@feature:"):
+                self._feature_names.add(edge.target_id[len("@feature:") :])
+                self.add_edge(
+                    LineageKind.ASSIGNS,
+                    edge.source_id,
+                    edge.target_id,
+                    edge.provenance.span or SourceSpan(path="", line=0),
+                    Method.CONFIG_STRING_MATCH,
+                    combine(edge.provenance.confidence, Confidence.RESOLVED),
+                    note="config key names a feature (card 2 CONFIGURES edge)",
+                )
+        for element in sorted(self._config_keys, key=lambda e: e.id):
+            for candidate in sorted(_config_names(element)):
+                if candidate not in self._feature_names:
+                    continue
+                self.add_edge(
+                    LineageKind.ASSIGNS,
+                    element.id,
+                    feature_id(candidate),
+                    element.span,
+                    Method.CONFIG_STRING_MATCH,
+                    Confidence.RESOLVED,
+                    note=f"config key names the feature {candidate!r}",
+                )
+
+    def _link_container_keys(self) -> None:
+        """Join one container's key to the same key of a container it came from.
+
+        `engineer` writes `features["momentum"]` and `decide` reads it from the
+        parameter it was passed in. Those are two nodes -- correctly, they are
+        two containers -- but the value did travel between them, and a backward
+        slice that stops at the parameter answers nothing. The link is only
+        drawn where an actual dataflow path already connects the containers, so
+        it is never a match on the key's name alone.
+        """
+        carriers = {
+            LineageKind.ASSIGNS,
+            LineageKind.RETURNS,
+            LineageKind.PARAMETER_BINDING,
+            LineageKind.MUTATES,
+        }
+        keys_by_container: dict[str, dict[str, str]] = {}
+        for container, nodes in self._container_keys.items():
+            for node_id in nodes:
+                if not node_id.startswith(f"{container}["):
+                    continue
+                keys_by_container.setdefault(container, {})[
+                    node_id[len(container) + 1 : -1]
+                ] = node_id
+        fed = {edge.target_id for edge in self.lineage_edges}
+        for container in sorted(keys_by_container):
+            orphans = sorted(
+                (key, node_id)
+                for key, node_id in keys_by_container[container].items()
+                if node_id not in fed
+            )
+            if not orphans:
+                continue
+            for source in self._ancestor_containers(container, carriers):
+                for key, node_id in orphans:
+                    origin = keys_by_container.get(source, {}).get(key)
+                    if origin is None or origin == node_id:
+                        continue
+                    self.add_edge(
+                        LineageKind.CONTAINER_WRITE,
+                        origin,
+                        node_id,
+                        self._elements_span(container),
+                        Method.DATAFLOW,
+                        Confidence.PROBABLE,
+                        f"the container holding {key!r} reached this scope from "
+                        f"{source}",
+                    )
+
+    def _ancestor_containers(
+        self, container: str, carriers: set[LineageKind]
+    ) -> tuple[str, ...]:
+        """Containers whose value can reach *container*, nearest first."""
+        seen = {container}
+        found: list[str] = []
+        queue: deque[str] = deque([container])
+        while queue:
+            node = queue.popleft()
+            for source, edge_id in self._in.get(node, ()):
+                if self._edges[edge_id].kind not in carriers or source in seen:
+                    continue
+                seen.add(source)
+                queue.append(source)
+                if source in self._container_keys:
+                    found.append(source)
+        return tuple(found)
+
+    def _elements_span(self, node_id: str) -> SourceSpan:
+        for edge in self.lineage_edges:
+            if edge.target_id == node_id or edge.source_id == node_id:
+                if edge.span is not None:
+                    return edge.span
+        return SourceSpan(path="", line=0)
+
+    # -- cross-module lookups ---------------------------------------------
+
+    def _function_node(self, element_id: str) -> tuple[ast.AST, _ModuleInfo] | None:
+        """The parsed def for an element ID, or None if we never parsed it."""
+        if not element_id or "::" not in element_id:
+            return None
+        info = self._modules.get(element_id.split("::")[0])
+        if info is None:
+            return None
+        found = info.functions.get(element_id)
+        return None if found is None else (found, info)
+
+    def _is_class(self, element_id: str) -> bool:
+        if not element_id or "::" not in element_id:
+            return False
+        info = self._modules.get(element_id.split("::")[0])
+        return info is not None and element_id in info.classes
+
+    def _is_known_callee(self, element_id: str) -> bool:
+        return self._function_node(element_id) is not None or self._is_class(element_id)
+
+    def _build_adjacency(self) -> None:
+        out: dict[str, list[tuple[str, str]]] = {}
+        into: dict[str, list[tuple[str, str]]] = {}
+        for edge in self.lineage_edges:
+            out.setdefault(edge.source_id, []).append((edge.target_id, edge.id))
+            out.setdefault(edge.target_id, [])
+            into.setdefault(edge.target_id, []).append((edge.source_id, edge.id))
+            into.setdefault(edge.source_id, [])
+        self._out = {key: tuple(sorted(value)) for key, value in sorted(out.items())}
+        self._in = {key: tuple(sorted(value)) for key, value in sorted(into.items())}
+
+
+def _config_names(element: Element) -> set[str]:
+    """Strings a CONFIG_KEY element could be naming.
+
+    Card 1 may carry the value in ``name`` or ``signature``; the JSON pointer's
+    last segment is used too. Only names that also appear as a written key are
+    promoted, so a wrong candidate produces no node.
+    """
+    names = {element.name}
+    if element.signature:
+        names.add(element.signature.strip().strip("\"'"))
+    if "::" in element.id:
+        names.add(element.id.rsplit("/", 1)[-1])
+    return {name for name in names if name and name.isidentifier()}
+
+
+# --------------------------------------------------------------------------
+# Per-module dataflow walk
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class _WalkScope:
+    key: str
+    kind: str
+    element_id: str
+    class_id: str = ""
+
+
+class _ModuleWalker:
+    """Reaching-definition walk of one module, emitting lineage edges."""
+
+    def __init__(self, tracer: LineageTracer, info: _ModuleInfo) -> None:
+        self.t = tracer
+        self.mod = info
+        self.env: dict[tuple[str, str], tuple[str, ...]] = {}
+        self.scopes: list[_WalkScope] = [
+            _WalkScope(key="", kind="module", element_id=info.module)
+        ]
+        self.guards: list[tuple[_Src, ...]] = []
+        self._span: SourceSpan = SourceSpan(path=info.path, line=1)
+        self._pending: dict[int, list[tuple[str, tuple[_Src, ...]]]] = {}
+
+    # -- helpers -----------------------------------------------------------
+
+    @property
+    def scope(self) -> _WalkScope:
+        return self.scopes[-1]
+
+    @property
+    def element_id(self) -> str:
+        return self.scope.element_id
+
+    def node_span(self, node: ast.AST) -> SourceSpan:
+        return SourceSpan(
+            path=self.mod.path,
+            line=getattr(node, "lineno", 1),
+            end_line=getattr(node, "end_lineno", None),
+            col=getattr(node, "col_offset", None),
+        )
+
+    @property
+    def span(self) -> SourceSpan:
+        """The statement the flow happens in. Settled convention."""
+        return self._span
+
+    def node_id(self, node: ast.AST) -> str:
+        return self.mod.id_of_node.get(id(node), "")
+
+    def bind_env(self, node_id: str) -> None:
+        meta = self.mod.def_meta.get(node_id)
+        if meta is None:
+            return
+        self.env[(meta.scope_key, meta.name)] = (node_id,)
+
+    def emit(
+        self, kind: LineageKind, src: _Src, target_id: str, *,
+        method: Method = Method.DATAFLOW, extra: Confidence | None = None,
+        note: str = "",
+    ) -> None:
+        confidence = (
+            combine(src.confidence, extra) if extra is not None else src.confidence
+        )
+        self.t.add_edge(
+            kind, src.id, target_id, self.span, method, confidence, src.note or note
+        )
+
+    # -- entry -------------------------------------------------------------
+
+    def run(self) -> None:
+        self.block(self.mod.tree.body)
+
+    def block(self, stmts: Sequence[ast.stmt]) -> None:
+        for stmt in stmts:
+            self.stmt(stmt)
+
+    def _merge_env(
+        self,
+        left: dict[tuple[str, str], tuple[str, ...]],
+        right: dict[tuple[str, str], tuple[str, ...]],
+    ) -> dict[tuple[str, str], tuple[str, ...]]:
+        merged = dict(left)
+        for key, value in right.items():
+            merged[key] = tuple(sorted(set(merged.get(key, ())) | set(value)))
+        return merged
+
+    # -- statements --------------------------------------------------------
+
+    def stmt(self, node: ast.stmt) -> None:
+        previous = self._span
+        self._span = self.node_span(node)
+        try:
+            self._stmt(node)
+        finally:
+            self._span = previous
+
+    def _stmt(self, node: ast.stmt) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            self._function(node)
+            return
+        if isinstance(node, ast.ClassDef):
+            self._class(node)
+            return
+        if isinstance(node, ast.Assign):
+            srcs = self.sources(node.value)
+            for target in node.targets:
+                self.assign(target, srcs, node.value)
+            return
+        if isinstance(node, ast.AnnAssign):
+            if node.value is not None:
+                self.assign(node.target, self.sources(node.value), node.value)
+            return
+        if isinstance(node, ast.AugAssign):
+            self._aug_assign(node)
+            return
+        if isinstance(node, (ast.For, ast.AsyncFor)):
+            iterable = self.sources(node.iter)
+            self.assign(
+                node.target,
+                _retag(iterable, Confidence.PROBABLE, "element of iterable"),
+                node.iter,
+            )
+            before = dict(self.env)
+            self.block(node.body)
+            self.block(node.body)  # second pass picks up loop-carried definitions
+            self.env = self._merge_env(self.env, before)
+            self.block(node.orelse)
+            return
+        if isinstance(node, ast.While):
+            guard = self.sources(node.test)
+            self._emit_reads(guard, "loop condition")
+            before = dict(self.env)
+            self.guards.append(guard)
+            self.block(node.body)
+            self.block(node.body)
+            self.guards.pop()
+            self.env = self._merge_env(self.env, before)
+            self.block(node.orelse)
+            return
+        if isinstance(node, ast.If):
+            guard = self.sources(node.test)
+            self._emit_reads(guard, "branch condition")
+            before = dict(self.env)
+            self.guards.append(guard)
+            self.block(node.body)
+            after_body = dict(self.env)
+            self.env = dict(before)
+            self.block(node.orelse)
+            self.guards.pop()
+            self.env = self._merge_env(after_body, self.env)
+            return
+        if isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                srcs = self.sources(item.context_expr)
+                if item.optional_vars is not None:
+                    self.assign(item.optional_vars, srcs, item.context_expr)
+            self.block(node.body)
+            return
+        if isinstance(node, ast.Try) or type(node).__name__ == "TryStar":
+            before = dict(self.env)
+            self.block(node.body)  # type: ignore[attr-defined]
+            after_body = dict(self.env)
+            merged = self._merge_env(before, after_body)
+            results = [after_body]
+            for handler in node.handlers:  # type: ignore[attr-defined]
+                self.env = dict(merged)
+                if handler.name:
+                    handler_id = self.node_id(handler)
+                    if handler_id:
+                        self.bind_env(handler_id)
+                self.block(handler.body)
+                results.append(dict(self.env))
+            self.env = results[0]
+            for extra in results[1:]:
+                self.env = self._merge_env(self.env, extra)
+            self.block(node.orelse)  # type: ignore[attr-defined]
+            self.block(node.finalbody)  # type: ignore[attr-defined]
+            return
+        if isinstance(node, ast.Return):
+            self._return(node)
+            return
+        if isinstance(node, ast.Expr):
+            self.sources(node.value)
+            return
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                alias_id = self.node_id(alias)
+                if alias_id:
+                    self.bind_env(alias_id)
+            return
+        if isinstance(node, ast.Delete):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    for key in [k for k in self.env if k[1] == target.id]:
+                        self.env.pop(key, None)
+            return
+        if isinstance(node, (ast.Raise, ast.Assert)):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, ast.expr):
+                    self._emit_reads(self.sources(child), "guard")
+            return
+        if isinstance(node, ast.Match):
+            subject = self.sources(node.subject)
+            self._emit_reads(subject, "match subject")
+            before = dict(self.env)
+            results = []
+            for case in node.cases:
+                self.env = dict(before)
+                self._bind_pattern(case.pattern, subject)
+                self.block(case.body)
+                results.append(dict(self.env))
+            self.env = results[0] if results else before
+            for extra in results[1:]:
+                self.env = self._merge_env(self.env, extra)
+            return
+        if isinstance(
+            node, (ast.Global, ast.Nonlocal, ast.Pass, ast.Break, ast.Continue)
+        ):
+            return
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.stmt):
+                self.stmt(child)
+            elif isinstance(child, ast.expr):
+                self.sources(child)
+
+    def _return(self, node: ast.Return) -> None:
+        target = self.reader_id
+        carried: set[str] = set()
+        if node.value is not None:
+            for src in self.sources(node.value):
+                kind = (
+                    LineageKind.READS
+                    if src.kind is LineageKind.READS or self._is_container_node(src.id)
+                    else LineageKind.RETURNS
+                )
+                carried.add(src.id)
+                self.emit(kind, src, target, note="return value")
+        # A return under a guard depends on the condition that selected it:
+        # this is how a rule cascade decides. Real dependence, not a guess. A
+        # value that is already returned here needs no second, weaker edge.
+        for guard in self.guards:
+            for src in guard:
+                if src.id in carried:
+                    continue
+                self.emit(
+                    LineageKind.RETURNS, src, target, extra=Confidence.PROBABLE,
+                    note="control dependence: this branch condition selects this return",
+                )
+
+    def _aug_assign(self, node: ast.AugAssign) -> None:
+        """``y += 1`` mutates ``y``; it does not make a new ``y``."""
+        value = self.sources(node.value)
+        targets = self._mutation_targets(node.target)
+        for target_id in targets:
+            self.t.add_edge(
+                LineageKind.MUTATES, target_id, target_id, self.span, Method.DATAFLOW,
+                Confidence.RESOLVED, "augmented assignment reads and writes this value",
+            )
+            for src in value:
+                self.emit(
+                    LineageKind.MUTATES, src, target_id, note="augmented assignment"
+                )
+            if self._is_parameter(target_id):
+                self.t._mutated_params.add(target_id)
+
+    def _mutation_targets(self, target: ast.expr) -> tuple[str, ...]:
+        if isinstance(target, ast.Name):
+            return tuple(src.id for src in self.read_name(target.id))
+        if isinstance(target, ast.Attribute):
+            return tuple(src.id for src in self.read_attribute(target))
+        if isinstance(target, ast.Subscript):
+            return tuple(src.id for src in self.read_subscript(target))
+        return ()
+
+    def _bind_pattern(self, pattern: ast.pattern, srcs: tuple[_Src, ...]) -> None:
+        if isinstance(pattern, (ast.MatchAs, ast.MatchStar)) and pattern.name:
+            target_id = self.node_id(pattern)
+            if target_id:
+                self.bind_env(target_id)
+                for src in _retag(srcs, Confidence.PROBABLE, "match capture"):
+                    self.emit(LineageKind.ASSIGNS, src, target_id)
+        for child in ast.iter_child_nodes(pattern):
+            if isinstance(child, ast.pattern):
+                self._bind_pattern(child, srcs)
+
+    # -- definitions -------------------------------------------------------
+
+    def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        def_id = self.node_id(node)
+        if def_id:
+            self.bind_env(def_id)
+        self._emit_defaults(node.args)
+        scope_key, element_id = self.mod.scope_of_node.get(id(node), ("", def_id))
+        saved_env = self.env
+        self.env = dict(self.env)
+        self.scopes.append(
+            _WalkScope(
+                key=scope_key, kind="function", element_id=element_id,
+                class_id=self.scope.class_id,
+            )
+        )
+        self._seed_params(node.args)
+        self.block(node.body)
+        self.scopes.pop()
+        self.env = saved_env
+
+    def _seed_params(self, args: ast.arguments) -> None:
+        for arg in _all_args(args):
+            param_id = self.node_id(arg)
+            if not param_id:
+                continue
+            self.bind_env(param_id)
+            if _looks_like_frame(arg.arg):
+                self.t._frame_defs.add(param_id)
+
+    def _emit_defaults(self, args: ast.arguments) -> None:
+        positional = [*args.posonlyargs, *args.args]
+        paired: list[tuple[ast.arg, ast.expr]] = []
+        if args.defaults:
+            paired.extend(
+                zip(positional[len(positional) - len(args.defaults) :], args.defaults)
+            )
+        for arg, default in zip(args.kwonlyargs, args.kw_defaults):
+            if default is not None:
+                paired.append((arg, default))
+        for arg, default in paired:
+            param_id = self.node_id(arg)
+            if not param_id:
+                continue
+            for src in self.sources(default):
+                self.emit(
+                    LineageKind.PARAMETER_BINDING, src, param_id, note="default argument"
+                )
+
+    def _class(self, node: ast.ClassDef) -> None:
+        def_id = self.node_id(node)
+        if def_id:
+            self.bind_env(def_id)
+        scope_key, element_id = self.mod.scope_of_node.get(id(node), ("", def_id))
+        self.scopes.append(
+            _WalkScope(
+                key=scope_key, kind="class", element_id=element_id, class_id=element_id
+            )
+        )
+        self.block(node.body)
+        self.scopes.pop()
+
+    # -- assignment --------------------------------------------------------
+
+    def assign(
+        self, target: ast.expr, srcs: tuple[_Src, ...], value: ast.expr | None
+    ) -> None:
+        pending = self._pending.pop(id(value), None) if value is not None else None
+        if pending is not None and isinstance(target, (ast.Name, ast.Attribute)):
+            self._assign_container_literal(target, pending, value)
+            return
+        if isinstance(target, (ast.Tuple, ast.List)):
+            self._unpack(target, srcs, value)
+            return
+        if isinstance(target, ast.Starred):
+            self.assign(
+                target.value,
+                _retag(
+                    srcs, Confidence.PROBABLE,
+                    f"{_OVER}starred unpacking keeps no position",
+                ),
+                value,
+            )
+            return
+        if isinstance(target, ast.Attribute):
+            self._assign_attribute(target, srcs, value)
+            return
+        if isinstance(target, ast.Subscript):
+            self._assign_subscript(target, srcs, value)
+            return
+        if not isinstance(target, ast.Name):
+            return
+        target_id = self.node_id(target)
+        if not target_id:
+            return
+        self._classify_target(target_id, target.id, value, srcs)
+        self.bind_env(target_id)
+        if isinstance(value, ast.Name) and srcs:
+            self.t._alias_of[target_id] = tuple(sorted(src.id for src in srcs))
+        for src in srcs:
+            kind = src.kind or LineageKind.ASSIGNS
+            self.emit(kind, src, target_id)
+
+    def _assign_container_literal(
+        self, target: ast.Name | ast.Attribute,
+        pending: Sequence[tuple[str, tuple[_Src, ...]]], value: ast.expr,
+    ) -> None:
+        """`d = {"k": v}` writes the key, not a blob called `d`."""
+        if isinstance(target, ast.Name):
+            target_id = self.node_id(target)
+            if not target_id:
+                return
+            self._classify_target(target_id, target.id, value, ())
+            self.bind_env(target_id)
+            containers = (target_id,)
+        else:
+            containers = self._attribute_nodes(target, writing=True)
+        for container_id in containers:
+            self._write_pending(container_id, pending, "")
+
+    def _unpack(
+        self, target: ast.Tuple | ast.List, srcs: tuple[_Src, ...], value: ast.expr | None
+    ) -> None:
+        elements = list(target.elts)
+        starred = any(isinstance(element, ast.Starred) for element in elements)
+        if (
+            isinstance(value, (ast.Tuple, ast.List))
+            and not starred
+            and len(value.elts) == len(elements)
+        ):
+            for element, sub_value in zip(elements, value.elts):
+                self.assign(element, self.sources(sub_value), sub_value)
+            return
+        spread = _retag(
+            srcs, Confidence.PROBABLE, f"{_OVER}unpacking does not key by position here"
+        )
+        for element in elements:
+            self.assign(element, spread, None)
+
+    def _assign_attribute(
+        self, target: ast.Attribute, srcs: tuple[_Src, ...], value: ast.expr | None
+    ) -> None:
+        for attr_node in self._attribute_nodes(target, writing=True):
+            values = srcs or self._literal_origin(value)
+            for src in values:
+                self.emit(
+                    LineageKind.ATTRIBUTE_WRITE, src, attr_node,
+                    note=f"attribute {target.attr!r} written here",
+                )
+
+    def _assign_subscript(
+        self, target: ast.Subscript, srcs: tuple[_Src, ...], value: ast.expr | None
+    ) -> None:
+        containers, key = self._subscript_parts(target)
+        if key is None:
+            for base in containers:
+                for src in srcs:
+                    self.emit(
+                        LineageKind.CONTAINER_WRITE, src, base.id,
+                        extra=combine(base.confidence, Confidence.HEURISTIC),
+                        note=f"{_OVER}container write with a key that is not a literal",
+                    )
+            return
+        values = srcs or self._literal_origin(value)
+        for base in containers:
+            frame = self._is_frame(base.id)
+            node_id = self._key_node(base.id, key, frame)
+            first = node_id not in self.t._established
+            self.t._established.add(node_id)
+            if frame:
+                kind = LineageKind.COLUMN_WRITE
+            else:
+                kind = LineageKind.CONTAINER_WRITE if first else LineageKind.MUTATES
+            label = "column" if frame else "key"
+            for src in values:
+                self.emit(
+                    kind, src, node_id,
+                    extra=Confidence.PROBABLE if frame else None,
+                    note=f"named {label} {key!r}",
+                )
+
+    def _literal_origin(self, value: ast.expr | None) -> tuple[_Src, ...]:
+        """A literal written into a structure originates at the enclosing element.
+
+        `self.mode = "off"` has no variable behind it, but the write is real and
+        the method is where the value comes from. A literal into a plain local
+        emits nothing: that local's own element already says where it is.
+        """
+        if value is None or not _is_literal_expr(value):
+            return ()
+        return (
+            _Src(self.element_id, Confidence.RESOLVED, "literal written at this site"),
+        )
+
+    def _classify_target(
+        self, target_id: str, name: str, value: ast.expr | None, srcs: tuple[_Src, ...]
+    ) -> None:
+        if _looks_like_frame(name) or (
+            isinstance(value, ast.Call) and _is_frame_producer(value)
+        ):
+            self.t._frame_defs.add(target_id)
+        for src in srcs:
+            if src.id.endswith(_INSTANCE):
+                self.t._instance_of[target_id] = src.id[: -len(_INSTANCE)]
+            if src.id in self.t._frame_defs:
+                self.t._frame_defs.add(target_id)
+
+    # -- container and attribute nodes -------------------------------------
+
+    def _alias_roots(self, node_id: str) -> tuple[str, ...]:
+        """Follow ``b = a`` to the binding that actually holds the object.
+
+        Without this, ``alias["count"] = 0`` writes a node nobody reads and the
+        closure's counter looks as if it is never reset.
+        """
+        seen: set[str] = set()
+        roots: set[str] = set()
+        stack = [node_id]
+        while stack:
+            current = stack.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            parents = self.t._alias_of.get(current)
+            if parents:
+                stack.extend(parents)
+            else:
+                roots.add(current)
+        return tuple(sorted(roots))
+
+    def _container_sources(self, node: ast.expr) -> tuple[_Src, ...]:
+        out: list[_Src] = []
+        for src in self.sources(node):
+            for root in self._alias_roots(src.id):
+                out.append(_Src(root, src.confidence, src.note, src.kind))
+        return _merge_srcs(out)
+
+    def _subscript_parts(
+        self, node: ast.Subscript
+    ) -> tuple[tuple[_Src, ...], str | None]:
+        base = node.value
+        key = _literal_key(node.slice)
+        if key is None and isinstance(base, ast.Attribute) and base.attr in (
+            "loc", "iloc", "at", "iat"
+        ):
+            key = _literal_key_from_index(node.slice)
+            base = base.value
+        containers = self._container_sources(base)
+        held = tuple(src for src in containers if src.kind is not LineageKind.READS)
+        return (held or containers), key
+
+    def _key_node(self, container_id: str, key: str, frame: bool) -> str:
+        """A column, or a config-declared feature, is global; any other key is
+        scoped to its container."""
+        if frame or key in self.t._declared_features:
+            node_id = self.t.note_feature(key)
+        else:
+            node_id = key_id(container_id, key)
+            self.t._key_nodes.add(node_id)
+        self.t._container_keys.setdefault(container_id, set()).add(node_id)
+        return node_id
+
+    def _is_frame(self, node_id: str) -> bool:
+        return node_id in self.t._frame_defs
+
+    def _is_container_node(self, node_id: str) -> bool:
+        return node_id in self.t._key_nodes or node_id.startswith("@feature:")
+
+    def _is_parameter(self, node_id: str) -> bool:
+        meta = self.mod.def_meta.get(node_id)
+        return meta is not None and meta.kind == "parameter"
+
+    def _attribute_nodes(self, node: ast.Attribute, *, writing: bool) -> tuple[str, ...]:
+        if isinstance(node.value, ast.Name) and node.value.id == "self":
+            class_id = self.scope.class_id
+            if class_id:
+                return (attr_id(class_id, node.attr),)
+        out: list[str] = []
+        for base in self._container_sources(node.value):
+            # `settings.threshold` written in a function is not the same node as
+            # `Settings.threshold` written in __init__: the corpus keeps them
+            # apart, and merging them makes every instance look like every other.
+            out.append(attr_id(base.id, node.attr))
+        return tuple(sorted(set(out)))
+
+    # -- reads -------------------------------------------------------------
+
+    @property
+    def reader_id(self) -> str:
+        """The element a read is attributed to.
+
+        A lambda or a comprehension has no element of its own in card 1's
+        inventory, so a read inside one is attributed to the function that
+        contains it rather than to an ID nothing resolves.
+        """
+        for scope in reversed(self.scopes):
+            if scope.kind not in ("lambda", "comprehension"):
+                return scope.element_id
+        return self.mod.module
+
+    def _emit_reads(self, srcs: Iterable[_Src], why: str) -> None:
+        for src in srcs:
+            self.emit(LineageKind.READS, src, self.reader_id, note=why)
+
+    def scope_chain(self) -> list[_WalkScope]:
+        chain = list(reversed(self.scopes))
+        if len(chain) > 1 and chain[0].kind in ("function", "lambda", "comprehension"):
+            chain = [chain[0]] + [s for s in chain[1:] if s.kind != "class"]
+        return chain
+
+    def read_name(self, name: str) -> tuple[_Src, ...]:
+        chain = self.scope_chain()
+        for index, scope in enumerate(chain):
+            key = (scope.key, name)
+            local = self.env.get(key)
+            if local:
+                if index == 0:
+                    if len(local) == 1:
+                        return (_Src(local[0], Confidence.RESOLVED),)
+                    merged = f"{_OVER}reaching definitions merged at a branch"
+                    return tuple(
+                        _Src(node_id, Confidence.PROBABLE, merged)
+                        for node_id in sorted(local)
+                    )
+                every = tuple(sorted(set(local) | set(self.mod.all_defs.get(key, ()))))
+                note = (
+                    f"{_OVER}closure or global capture: "
+                    "every definition in the enclosing scope"
+                )
+                if len(every) == 1:
+                    return (_Src(every[0], Confidence.RESOLVED),)
+                return tuple(_Src(node_id, Confidence.PROBABLE, note) for node_id in every)
+            defs = self.mod.all_defs.get(key)
+            if defs:
+                if len(defs) == 1:
+                    return (_Src(defs[0], Confidence.RESOLVED),)
+                note = f"{_OVER}every definition of {name!r} in scope"
+                return tuple(
+                    _Src(node_id, Confidence.PROBABLE, note) for node_id in sorted(defs)
+                )
+        if name in _lineage_BUILTIN_NAMES:
+            return ()
+        self.t.unresolved.append(
+            Unresolved(
+                id=f"@lineage-name:{self.element_id}:{name}",
+                reason=UnresolvedReason.MISSING_TARGET,
+                span=self.span,
+                description=(
+                    f"read of {name!r} in {self.element_id}: no binding found in any scope"
+                ),
+            )
+        )
+        return ()
+
+    def read_attribute(self, node: ast.Attribute) -> tuple[_Src, ...]:
+        if isinstance(node.value, ast.Name):
+            imported = self._import_def(node.value.id)
+            if imported is not None and node.value.id != "self":
+                resolved = self._module_member(imported, node.attr)
+                if resolved:
+                    return (_Src(resolved, Confidence.RESOLVED, "imported module member"),)
+                return ()
+        return tuple(
+            _Src(node_id, Confidence.PROBABLE, f"attribute {node.attr!r}")
+            for node_id in self._attribute_nodes(node, writing=False)
+        )
+
+    def read_subscript(self, node: ast.Subscript) -> tuple[_Src, ...]:
+        containers, key = self._subscript_parts(node)
+        if key is not None:
+            through_call = isinstance(node.value, ast.Call) or (
+                isinstance(node.value, ast.Attribute)
+                and isinstance(node.value.value, ast.Call)
+            )
+            out = []
+            for base in containers:
+                frame = self._is_frame(base.id)
+                node_id = self._key_node(base.id, key, frame)
+                label = "column" if frame else "key"
+                out.append(
+                    _Src(
+                        node_id,
+                        Confidence.PROBABLE if frame else Confidence.RESOLVED,
+                        f"named {label} {key!r}",
+                        LineageKind.READS if through_call else None,
+                    )
+                )
+            # a key read out of a frame operation carries that operation's own
+            # key reads with it: `g.groupby("symbol")["spread"]` reads both
+            for src in self._container_sources(node.value):
+                if src.kind is LineageKind.READS:
+                    out.append(src)
+            return _merge_srcs(out)
+        self.sources(node.slice)
+        out = []
+        for base in containers:
+            out.append(
+                _Src(
+                    base.id,
+                    combine(base.confidence, Confidence.HEURISTIC),
+                    f"{_OVER}container read with a key that is not a literal",
+                )
+            )
+            for member in sorted(self.t._container_keys.get(base.id, ())):
+                out.append(
+                    _Src(
+                        member, Confidence.HEURISTIC,
+                        f"{_OVER}any known key of this container",
+                    )
+                )
+        return _merge_srcs(out)
+
+    def _import_def(self, name: str) -> _Def | None:
+        for scope in self.scope_chain():
+            key = (scope.key, name)
+            ids = self.env.get(key) or tuple(self.mod.all_defs.get(key, ()))
+            for node_id in ids:
+                meta = self.mod.def_meta.get(node_id)
+                if meta is not None and meta.kind == "import":
+                    return meta
+        return None
+
+    def _module_member(self, imported: _Def, name: str) -> str:
+        target = self.t._modules.get(imported.external_module.lstrip("."))
+        if target is None:
+            return ""
+        ids = target.all_defs.get(("", name))
+        return ids[0] if ids else ""
+
+    # -- expressions -------------------------------------------------------
+
+    def sources(self, node: ast.expr | None) -> tuple[_Src, ...]:
+        if node is None or isinstance(node, ast.Constant):
+            return ()
+        if isinstance(node, ast.Name):
+            return self.read_name(node.id)
+        if isinstance(node, ast.Attribute):
+            return self.read_attribute(node)
+        if isinstance(node, ast.Subscript):
+            return self.read_subscript(node)
+        if isinstance(node, ast.Call):
+            return self.call(node)
+        if isinstance(node, ast.NamedExpr):
+            target_id = self.node_id(node.target)
+            srcs = self.sources(node.value)
+            if target_id:
+                self.bind_env(target_id)
+                for src in srcs:
+                    self.emit(
+                        LineageKind.ASSIGNS, src, target_id, note="walrus assignment"
+                    )
+                return (_Src(target_id, Confidence.RESOLVED),)
+            return srcs
+        if isinstance(node, ast.BinOp):
+            return _merge_srcs(self.sources(node.left), self.sources(node.right))
+        if isinstance(node, ast.UnaryOp):
+            return self.sources(node.operand)
+        if isinstance(node, ast.BoolOp):
+            return _merge_srcs(*[self.sources(value) for value in node.values])
+        if isinstance(node, ast.Compare):
+            return _merge_srcs(
+                self.sources(node.left), *[self.sources(c) for c in node.comparators]
+            )
+        if isinstance(node, ast.IfExp):
+            self._emit_reads(self.sources(node.test), "conditional expression")
+            return _merge_srcs(self.sources(node.body), self.sources(node.orelse))
+        if isinstance(node, ast.Dict):
+            return self._dict_literal(node)
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            return _merge_srcs(*[self.sources(element) for element in node.elts])
+        if isinstance(node, ast.Starred):
+            return self.sources(node.value)
+        if isinstance(node, ast.JoinedStr):
+            return _merge_srcs(*[self.sources(value) for value in node.values])
+        if isinstance(node, ast.FormattedValue):
+            return self.sources(node.value)
+        if isinstance(node, (ast.Await, ast.Yield, ast.YieldFrom)):
+            return self.sources(node.value)  # type: ignore[arg-type]
+        if isinstance(node, ast.Lambda):
+            return self._lambda(node, ())
+        if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+            return self._comprehension(node)
+        if isinstance(node, ast.Slice):
+            return _merge_srcs(
+                self.sources(node.lower), self.sources(node.upper), self.sources(node.step)
+            )
+        collected: list[tuple[_Src, ...]] = []
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.expr):
+                collected.append(self.sources(child))
+        return _merge_srcs(*collected)
+
+    def _dict_literal(self, node: ast.Dict) -> tuple[_Src, ...]:
+        """A dict literal's keys are nodes, not part of one blob.
+
+        The container they will be bound to is not known until the assignment,
+        so the keys are returned as pending writes the assignment completes.
+        """
+        pending: list[tuple[str, tuple[_Src, ...]]] = []
+        loose: list[_Src] = []
+        for key, value in zip(node.keys, node.values):
+            value_srcs = self.sources(value)
+            name = _literal_key(key) if key is not None else None
+            if name is None:
+                loose.extend(
+                    _retag(
+                        value_srcs, Confidence.HEURISTIC,
+                        f"{_OVER}dict entry with a key that is not a literal",
+                    )
+                )
+                continue
+            pending.append((name, value_srcs or self._literal_origin(value)))
+            loose.extend(value_srcs)
+        self._pending[id(node)] = pending
+        return _merge_srcs(loose)
+
+    def _comprehension(self, node: ast.expr) -> tuple[_Src, ...]:
+        scope_key, element_id = self.mod.scope_of_node.get(
+            id(node), (self.scope.key, self.element_id)
+        )
+        self.scopes.append(
+            _WalkScope(
+                key=scope_key, kind="comprehension", element_id=element_id,
+                class_id=self.scope.class_id,
+            )
+        )
+        try:
+            for generator in node.generators:  # type: ignore[attr-defined]
+                iterable = self.sources(generator.iter)
+                self.assign(
+                    generator.target,
+                    _retag(iterable, Confidence.PROBABLE, "element of iterable"),
+                    generator.iter,
+                )
+                for condition in generator.ifs:
+                    self._emit_reads(self.sources(condition), "comprehension filter")
+            if isinstance(node, ast.DictComp):
+                return _merge_srcs(self.sources(node.key), self.sources(node.value))
+            return self.sources(node.elt)  # type: ignore[attr-defined]
+        finally:
+            self.scopes.pop()
+
+    def _lambda(self, node: ast.Lambda, bound: tuple[_Src, ...]) -> tuple[_Src, ...]:
+        """Lambdas are inlined: the body's sources are the call's result.
+
+        A lambda has no element of its own in card 1's inventory, so inventing a
+        node for it would put an ID in a slice that resolves to nothing.
+        """
+        scope_key, element_id = self.mod.scope_of_node.get(id(node), ("", ""))
+        if not scope_key:
+            return ()
+        saved = self.env
+        self.env = dict(self.env)
+        self.scopes.append(
+            _WalkScope(
+                key=scope_key, kind="lambda", element_id=element_id,
+                class_id=self.scope.class_id,
+            )
+        )
+        self._seed_params(node.args)
+        params = _all_args(node.args)
+        if bound and params:
+            param_id = self.node_id(params[0])
+            for src in bound:
+                self.emit(
+                    LineageKind.PARAMETER_BINDING, src, param_id,
+                    note="value bound to a lambda parameter",
+                )
+        result = _retag(self.sources(node.body), Confidence.PROBABLE, "lambda result")
+        self.scopes.pop()
+        self.env = saved
+        return result
+
+    # -- calls -------------------------------------------------------------
+
+    def call(self, node: ast.Call) -> tuple[_Src, ...]:
+        func = node.func
+        name = _lineage__dotted(func)
+        base_name = name.split(".")[0] if name else ""
+        attr = func.attr if isinstance(func, ast.Attribute) else ""
+
+        # 0. super() is the same instance; which method it reaches is card 2's
+        #    MRO dispatch, consumed at step 4.
+        if name == "super" and not node.args:
+            return _retag(
+                self.read_name("self"), Confidence.PROBABLE, "super(): the same instance"
+            )
+
+        # 1. reflection and runtime code construction -> explicit barrier
+        if name in BARRIER_BUILTINS or base_name in ("importlib", "pickle", "marshal"):
+            return self._barrier_call(
+                node, UnresolvedReason.DYNAMIC_NAME,
+                _barrier_reason(name or "a dynamic call"),
+            )
+        if name in ("getattr", "setattr"):
+            return self._reflective_attr(node, name)
+
+        # 2. dataframe-shaped operations, where columns are first-class nodes
+        frame = self._dataframe_call(node)
+        if frame is not None:
+            return frame
+
+        # 3. in-place container mutation
+        if attr in MUTATING_METHODS and isinstance(func, ast.Attribute):
+            mutated = self._mutation(node, func)
+            if mutated is not None:
+                return mutated
+
+        # 4. calls we can resolve to a definition we parsed
+        resolved = self._resolve_callee(node)
+        if resolved is not None:
+            callee_id, confidence, method, note = resolved
+            return self._bind_call(node, callee_id, confidence, method, note)
+
+        # 5. transparent builtins and pure stdlib
+        if name in TRANSPARENT_BUILTINS and self._import_def(base_name) is None:
+            return _retag(
+                self._arg_sources(node), Confidence.PROBABLE, f"result of {name}()"
+            )
+        imported = self._import_def(base_name) if base_name else None
+        if imported is not None and self._is_transparent_module(imported):
+            return _retag(
+                self._arg_sources(node), Confidence.PROBABLE,
+                f"result of {name}(), a value-transparent stdlib call",
+            )
+
+        # 6. a method on a value whose type we do not know: the result derives
+        #    from the receiver, which is true of almost every method -- an
+        #    over-approximation, labelled, rather than a barrier on every `.x()`.
+        if isinstance(func, ast.Attribute) and imported is None:
+            receiver = self.sources(func.value)
+            if receiver:
+                return _retag(
+                    _merge_srcs(receiver, self._arg_sources(node)),
+                    Confidence.PROBABLE,
+                    f"{_OVER}result of .{attr}() on a value of unknown type",
+                )
+
+        # 7. anything else is opaque: an explicit barrier, never stitched across
+        reason = (
+            UnresolvedReason.THIRD_PARTY
+            if imported is not None
+            else UnresolvedReason.MISSING_TARGET
+        )
+        description = (
+            f"opaque call to {name or 'a computed callable'}"
+            if imported is None
+            else f"opaque third-party call to {name} (from {imported.external_module})"
+        )
+        return self._barrier_call(node, reason, description)
+
+    def _is_transparent_module(self, imported: _Def) -> bool:
+        module = imported.external_module.lstrip(".")
+        return (
+            module in self.t.transparent_modules
+            or module.split(".")[0] in self.t.transparent_modules
+        )
+
+    def _arg_sources(self, node: ast.Call) -> tuple[_Src, ...]:
+        groups = [self.sources(arg) for arg in node.args]
+        groups.extend(self.sources(kw.value) for kw in node.keywords)
+        return _merge_srcs(*groups)
+
+    def _barrier_call(
+        self, node: ast.Call, reason: UnresolvedReason, description: str
+    ) -> tuple[_Src, ...]:
+        barrier_id = self.t.add_barrier(
+            self.element_id, self.node_span(node), reason, description
+        )
+        for src in self._arg_sources(node):
+            self.t.add_edge(
+                LineageKind.READS, src.id, barrier_id, self.span, Method.DATAFLOW,
+                Confidence.RESOLVED, "value reaches a barrier and is not followed past it",
+            )
+        if isinstance(node.func, ast.Attribute):
+            for base in self.sources(node.func.value):
+                self.t.add_edge(
+                    LineageKind.READS, base.id, barrier_id, self.span, Method.DATAFLOW,
+                    Confidence.RESOLVED,
+                    "receiver reaches a barrier and is not followed past it",
+                )
+        return (
+            _Src(
+                barrier_id, Confidence.UNKNOWN,
+                f"produced past a barrier: {description}",
+            ),
+        )
+
+    def _reflective_attr(self, node: ast.Call, name: str) -> tuple[_Src, ...]:
+        literal = _literal_key(node.args[1]) if len(node.args) > 1 else None
+        if literal is None:
+            return self._barrier_call(
+                node, UnresolvedReason.DYNAMIC_NAME,
+                f"{name} with a name that is not a literal",
+            )
+        bases = self._container_sources(node.args[0]) if node.args else ()
+        if name == "setattr":
+            values = self.sources(node.args[2]) if len(node.args) > 2 else ()
+            for base in bases:
+                node_id = attr_id(base.id, literal)
+                for src in values:
+                    self.t.add_edge(
+                        LineageKind.ATTRIBUTE_WRITE, src.id, node_id, self.span,
+                        Method.GETATTR_LITERAL,
+                        combine(src.confidence, Confidence.PROBABLE),
+                        f"setattr with the literal name {literal!r}",
+                    )
+            return ()
+        return tuple(
+            sorted(
+                _Src(
+                    attr_id(base.id, literal),
+                    combine(base.confidence, Confidence.PROBABLE),
+                    f"getattr with the literal name {literal!r}",
+                )
+                for base in bases
+            )
+        )
+
+    def _mutation(self, node: ast.Call, func: ast.Attribute) -> tuple[_Src, ...] | None:
+        receivers = self._container_sources(func.value)
+        if not receivers:
+            return None
+        if func.attr == "update" and node.args and isinstance(node.args[0], ast.Dict):
+            self.sources(node.args[0])
+            pending = self._pending.pop(id(node.args[0]), [])
+            for receiver in receivers:
+                self._write_pending(receiver.id, pending, "written by update()")
+            return ()
+        if func.attr == "setdefault" and node.args:
+            key = _literal_key(node.args[0])
+            if key is not None:
+                literal = (
+                    self._literal_origin(node.args[1]) if len(node.args) > 1 else ()
+                )
+                values = (
+                    self.sources(node.args[1]) if len(node.args) > 1 else ()
+                ) or literal
+                out = []
+                for receiver in receivers:
+                    out.extend(
+                        self._write_pending(
+                            receiver.id, [(key, values)], "written by setdefault()",
+                        )
+                    )
+                return _merge_srcs(out)
+        values = self._arg_sources(node)
+        for receiver in receivers:
+            for src in values:
+                self.emit(
+                    LineageKind.MUTATES, src, receiver.id,
+                    extra=receiver.confidence, note=f"in-place {func.attr}()",
+                )
+            if self._is_parameter(receiver.id):
+                self.t._mutated_params.add(receiver.id)
+        return ()
+
+    def _write_pending(
+        self, container_id: str, pending: Sequence[tuple[str, tuple[_Src, ...]]],
+        note: str,
+    ) -> tuple[_Src, ...]:
+        """Complete the writes a dict literal or update() promised."""
+        out: list[_Src] = []
+        frame = self._is_frame(container_id)
+        for key, values in pending:
+            node_id = self._key_node(container_id, key, frame)
+            first = node_id not in self.t._established
+            self.t._established.add(node_id)
+            if frame:
+                kind = LineageKind.COLUMN_WRITE
+            else:
+                kind = LineageKind.CONTAINER_WRITE if first else LineageKind.MUTATES
+            for src in values:
+                self.emit(kind, src, node_id, note=f"named key {key!r} {note}".strip())
+            out.append(_Src(node_id, Confidence.RESOLVED, f"named key {key!r}"))
+        return tuple(out)
+
+    # -- dataframe-shaped operations ---------------------------------------
+
+    def _dataframe_call(self, node: ast.Call) -> tuple[_Src, ...] | None:
+        func = node.func
+        name = _lineage__dotted(func)
+        base = name.split(".")[0] if name else ""
+
+        if isinstance(func, ast.Attribute) and base:
+            imported = self._import_def(base)
+            if imported is not None and (
+                imported.external_module.split(".")[0] in PANDAS_MODULES
+                or base in PANDAS_MODULES
+            ):
+                return self._pandas_module_call(node, func.attr)
+        if not isinstance(func, ast.Attribute):
+            return None
+        attr = func.attr
+        if attr not in COLUMN_METHODS and attr not in FRAME_METHODS:
+            return None
+        receivers = self._container_sources(func.value)
+        if not receivers:
+            return None
+        frame_like = any(
+            self._is_frame(receiver.id) or receiver.id.startswith("@feature:")
+            for receiver in receivers
+        ) or _looks_like_frame(_last_name(func.value))
+        confidence = Confidence.PROBABLE
+        note_suffix = (
+            "" if frame_like else f" ({_OVER}receiver assumed frame-shaped by method name)"
+        )
+
+        if attr == "assign":
+            out = list(
+                _retag(receivers, confidence, f"frame carried through .assign(){note_suffix}")
+            )
+            for keyword in node.keywords:
+                if keyword.arg is None:
+                    out.extend(
+                        _retag(
+                            self.sources(keyword.value), Confidence.HEURISTIC,
+                            f"{_OVER}.assign(**mapping) does not name its columns",
+                        )
+                    )
+                    continue
+                column = self.t.note_feature(keyword.arg)
+                self.t._established.add(column)
+                for src in self.sources(keyword.value):
+                    self.emit(
+                        LineageKind.COLUMN_WRITE, src, column,
+                        note=f"column {keyword.arg!r} written by .assign()",
+                    )
+                out.append(
+                    _Src(column, Confidence.RESOLVED, f"column {keyword.arg!r} of the result")
+                )
+            return _merge_srcs(out)
+        if attr in ("merge", "join"):
+            other = self._container_sources(node.args[0]) if node.args else ()
+            keys = self._named_columns(node, ("on", "left_on", "right_on"))
+            out = list(_retag(receivers, confidence, "left frame of a merge"))
+            out.extend(_retag(other, confidence, "right frame of a merge"))
+            for column in keys:
+                out.append(
+                    _Src(column, Confidence.PROBABLE, "join key", LineageKind.READS)
+                )
+            return _merge_srcs(out)
+        if attr == "groupby":
+            keys = self._named_columns(node, ("by",), positional=0)
+            out = list(_retag(receivers, confidence, "frame grouped"))
+            for column in keys:
+                out.append(
+                    _Src(column, Confidence.PROBABLE, "group key", LineageKind.READS)
+                )
+            return _merge_srcs(out)
+        if attr == "rename":
+            mapping = self._keyword(node, "columns")
+            if isinstance(mapping, ast.Dict):
+                out = list(
+                    _retag(receivers, confidence, "frame carried through .rename()")
+                )
+                for key, value in zip(mapping.keys, mapping.values):
+                    old = _literal_key(key) if key else None
+                    new = _literal_key(value)
+                    if old is None or new is None:
+                        continue
+                    new_id = self.t.note_feature(new)
+                    self.t._established.add(new_id)
+                    self.emit(
+                        LineageKind.COLUMN_WRITE,
+                        _Src(self.t.note_feature(old), Confidence.RESOLVED), new_id,
+                        note=f"column {old!r} renamed to {new!r}",
+                    )
+                    out.append(_Src(new_id, Confidence.RESOLVED, "renamed column"))
+                return _merge_srcs(out)
+            return _retag(
+                receivers, Confidence.HEURISTIC,
+                f"{_OVER}.rename() mapping is not a literal",
+            )
+        if attr == "drop":
+            for column in self._named_columns(node, ("columns", "labels"), positional=0):
+                self.emit(
+                    LineageKind.READS, _Src(column, Confidence.PROBABLE), self.element_id,
+                    note="column dropped from the frame",
+                )
+            return _retag(receivers, confidence, "frame carried through .drop()")
+        if attr == "apply":
+            return self._apply(node, receivers, confidence)
+        return _retag(
+            receivers, confidence, f"frame carried through .{attr}(){note_suffix}"
+        )
+
+    def _pandas_module_call(self, node: ast.Call, attr: str) -> tuple[_Src, ...]:
+        if attr in ("DataFrame", "Series"):
+            out: list[_Src] = []
+            for arg in node.args:
+                out.extend(
+                    _retag(self.sources(arg), Confidence.PROBABLE, f"pandas {attr}()")
+                )
+            for keyword in node.keywords:
+                out.extend(
+                    _retag(
+                        self.sources(keyword.value), Confidence.PROBABLE,
+                        f"pandas {attr}()",
+                    )
+                )
+            return _merge_srcs(out)
+        if attr in ("merge", "concat"):
+            out = []
+            for arg in node.args:
+                if isinstance(arg, (ast.List, ast.Tuple)):
+                    for element in arg.elts:
+                        out.extend(
+                            _retag(
+                                self.sources(element), Confidence.PROBABLE,
+                                f"pandas {attr}()",
+                            )
+                        )
+                else:
+                    out.extend(
+                        _retag(self.sources(arg), Confidence.PROBABLE, f"pandas {attr}()")
+                    )
+            for column in self._named_columns(node, ("on", "left_on", "right_on")):
+                out.append(
+                    _Src(column, Confidence.PROBABLE, "join key", LineageKind.READS)
+                )
+            return _merge_srcs(out)
+        if attr.startswith("read_"):
+            return _retag(
+                self._arg_sources(node), Confidence.PROBABLE,
+                f"{_OVER}frame loaded by pandas.{attr}() from outside the program",
+            )
+        return self._barrier_call(
+            node, UnresolvedReason.THIRD_PARTY, f"opaque third-party call to pandas.{attr}"
+        )
+
+    def _apply(
+        self, node: ast.Call, receivers: tuple[_Src, ...], confidence: Confidence
+    ) -> tuple[_Src, ...]:
+        carried = _retag(receivers, confidence, "value carried through .apply()")
+        if not node.args:
+            return carried
+        applied = node.args[0]
+        if isinstance(applied, ast.Lambda):
+            return _merge_srcs(carried, self._lambda(applied, receivers))
+        resolved = self._resolve_name_to_callee(applied)
+        if resolved is not None:
+            callee_id, callee_conf = resolved
+            found = self.t._function_node(callee_id)
+            if found is not None:
+                params = _all_args(found[0].args)  # type: ignore[union-attr]
+                if params:
+                    param_id = found[1].id_of_node.get(id(params[0]), "")
+                    for receiver in receivers:
+                        self.emit(
+                            LineageKind.PARAMETER_BINDING, receiver, param_id,
+                            extra=combine(callee_conf, Confidence.PROBABLE),
+                            note="value bound by .apply()",
+                        )
+                return _merge_srcs(
+                    carried,
+                    (
+                        _Src(
+                            callee_id, combine(callee_conf, Confidence.PROBABLE),
+                            "result of .apply()",
+                        ),
+                    ),
+                )
+        return _merge_srcs(
+            carried,
+            self._barrier_call(
+                node, UnresolvedReason.DYNAMIC_NAME,
+                "apply() with a callable this analysis cannot resolve",
+            ),
+        )
+
+    def _keyword(self, node: ast.Call, name: str) -> ast.expr | None:
+        for keyword in node.keywords:
+            if keyword.arg == name:
+                return keyword.value
+        return None
+
+    def _named_columns(
+        self, node: ast.Call, names: Sequence[str], positional: int | None = None
+    ) -> tuple[str, ...]:
+        found: list[str] = []
+        candidates: list[ast.expr] = []
+        for name in names:
+            value = self._keyword(node, name)
+            if value is not None:
+                candidates.append(value)
+        if positional is not None and len(node.args) > positional:
+            candidates.append(node.args[positional])
+        for candidate in candidates:
+            literal = _literal_key(candidate)
+            if literal is not None:
+                found.append(self.t.note_feature(literal))
+                continue
+            if isinstance(candidate, (ast.List, ast.Tuple)):
+                for element in candidate.elts:
+                    literal = _literal_key(element)
+                    if literal is not None:
+                        found.append(self.t.note_feature(literal))
+        return tuple(sorted(set(found)))
+
+    # -- callee resolution and parameter binding ---------------------------
+
+    def _resolve_callee(
+        self, node: ast.Call
+    ) -> tuple[str, Confidence, Method, str] | None:
+        """Card 2's edge first, then our own scope lookup. Never a guess."""
+        recorded = self.t._call_targets.get(
+            (self.reader_id, getattr(node, "lineno", 0))
+        )
+        if recorded:
+            known = [
+                (tid, conf) for tid, conf in recorded if self.t._is_known_callee(tid)
+            ]
+            if len(known) == 1:
+                return (known[0][0], known[0][1], Method.DATAFLOW, "call edge from card 2")
+            if len(known) > 1:
+                return (
+                    known[0][0], combine(known[0][1], Confidence.PROBABLE),
+                    Method.DATAFLOW,
+                    f"{_OVER}card 2 reports {len(known)} possible callees here",
+                )
+        func = node.func
+        if isinstance(func, ast.Name):
+            resolved = self._resolve_name_to_callee(func)
+            if resolved is not None:
+                return (resolved[0], resolved[1], Method.DATAFLOW, "")
+            return None
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            if func.value.id == "self" and self.scope.class_id:
+                candidate = attr_id(self.scope.class_id, func.attr)
+                if self.t._is_known_callee(candidate):
+                    return (
+                        candidate, Confidence.PROBABLE, Method.DATAFLOW,
+                        "method on self",
+                    )
+                return None
+            imported = self._import_def(func.value.id)
+            if imported is not None:
+                module = imported.external_module.lstrip(".")
+                if module in self.t._modules:
+                    candidate = make_id(module, func.attr)
+                    if self.t._is_known_callee(candidate):
+                        return (
+                            candidate, Confidence.RESOLVED, Method.DATAFLOW,
+                            "call into an imported module",
+                        )
+                return None
+            for src in self._container_sources(func.value):
+                class_id = self.t._instance_of.get(src.id, "")
+                if not class_id and src.id.endswith(_INSTANCE):
+                    class_id = src.id[: -len(_INSTANCE)]
+                if class_id:
+                    candidate = attr_id(class_id, func.attr)
+                    if self.t._is_known_callee(candidate):
+                        return (
+                            candidate, Confidence.PROBABLE, Method.DATAFLOW,
+                            "method on a locally constructed instance",
+                        )
+        return None
+
+    def _resolve_name_to_callee(self, func: ast.expr) -> tuple[str, Confidence] | None:
+        if not isinstance(func, ast.Name):
+            return None
+        for scope in self.scope_chain():
+            key = (scope.key, func.id)
+            ids = self.env.get(key) or tuple(self.mod.all_defs.get(key, ()))
+            for node_id in ids:
+                meta = self.mod.def_meta.get(node_id)
+                if meta is None:
+                    continue
+                if meta.kind in ("function", "class") and self.t._is_known_callee(node_id):
+                    return (
+                        node_id,
+                        Confidence.RESOLVED if len(ids) == 1 else Confidence.PROBABLE,
+                    )
+                if meta.kind == "import":
+                    module = meta.external_module.lstrip(".")
+                    if module in self.t._modules:
+                        candidate = make_id(module, meta.imported_name or meta.name)
+                        if self.t._is_known_callee(candidate):
+                            return (candidate, Confidence.RESOLVED)
+                    return None
+        return None
+
+    def _bind_call(
+        self, node: ast.Call, callee_id: str, confidence: Confidence, method: Method,
+        note: str,
+    ) -> tuple[_Src, ...]:
+        found = self.t._function_node(callee_id)
+        if found is None:
+            if self.t._is_class(callee_id):
+                return self._bind_constructor(node, callee_id, confidence, method, note)
+            return self._barrier_call(
+                node, UnresolvedReason.MISSING_TARGET,
+                f"call to {callee_id}, whose definition was not parsed",
+            )
+        func_node, info = found
+        skip = 0
+        args = func_node.args  # type: ignore[union-attr]
+        leading = [*args.posonlyargs, *args.args][:1]
+        if isinstance(node.func, ast.Attribute) and leading and leading[0].arg in (
+            "self", "cls"
+        ):
+            skip = 1
+            param_id = info.id_of_node.get(id(leading[0]), "")
+            for src in self._container_sources(node.func.value):
+                self.emit(
+                    LineageKind.PARAMETER_BINDING, src, param_id, method=method,
+                    extra=confidence, note=f"receiver bound to {leading[0].arg}",
+                )
+        self._bind_arguments(node, func_node, info, callee_id, confidence, method, note, skip)
+        return (
+            _Src(
+                callee_id, combine(confidence, Confidence.RESOLVED),
+                note or "return value", LineageKind.RETURNS,
+            ),
+        )
+
+    def _bind_constructor(
+        self, node: ast.Call, class_id: str, confidence: Confidence, method: Method,
+        note: str,
+    ) -> tuple[_Src, ...]:
+        """``C(...)`` binds ``__init__``'s parameters and yields an instance node."""
+        instance_id = f"{class_id}{_INSTANCE}"
+        found = self.t._function_node(attr_id(class_id, "__init__"))
+        if found is not None:
+            args = found[0].args  # type: ignore[union-attr]
+            leading = [*args.posonlyargs, *args.args][:1]
+            if leading and leading[0].arg in ("self", "cls"):
+                self.t.add_edge(
+                    LineageKind.PARAMETER_BINDING, instance_id,
+                    found[1].id_of_node.get(id(leading[0]), ""), self.span, method,
+                    combine(confidence, Confidence.RESOLVED),
+                    f"new instance bound to {leading[0].arg}",
+                )
+            self._bind_arguments(
+                node, found[0], found[1], attr_id(class_id, "__init__"), confidence,
+                method, note or "constructor argument", 1,
+            )
+        else:
+            for src in self._arg_sources(node):
+                self.emit(
+                    LineageKind.PARAMETER_BINDING, src, instance_id, method=method,
+                    extra=combine(confidence, Confidence.PROBABLE),
+                    note=f"{_OVER}{class_id} defines no __init__ this analysis parsed",
+                )
+        return (_Src(instance_id, combine(confidence, Confidence.RESOLVED), ""),)
+
+    def _bind_arguments(
+        self, node: ast.Call, func_node: ast.AST, info: _ModuleInfo, callee_id: str,
+        confidence: Confidence, method: Method, note: str, skip: int = 0,
+    ) -> None:
+        args = func_node.args  # type: ignore[union-attr]
+        positional = [*args.posonlyargs, *args.args][skip:]
+        by_name = {arg.arg: arg for arg in _all_args(args)[skip:]}
+        bound: set[str] = set()
+
+        def target_of(arg: ast.arg) -> str:
+            param_id = info.id_of_node.get(id(arg), "")
+            return self.t._param_elements.get((callee_id, arg.arg)) or param_id
+
+        def bind(
+            arg: ast.arg, srcs: tuple[_Src, ...], extra: Confidence, why: str
+        ) -> None:
+            target_id = target_of(arg)
+            if not target_id:
+                return
+            bound.add(arg.arg)
+            for src in srcs:
+                self.t.add_edge(
+                    LineageKind.PARAMETER_BINDING, src.id, target_id, self.span, method,
+                    combine(src.confidence, confidence, extra), src.note or why,
+                )
+            self.t._param_bindings.append((target_id, srcs, self.span, self.element_id))
+
+        index = 0
+        for arg_node in node.args:
+            if isinstance(arg_node, ast.Starred):
+                spread = self.sources(arg_node.value)
+                for arg in positional[index:]:
+                    bind(
+                        arg, spread, Confidence.HEURISTIC,
+                        f"{_OVER}*args expansion does not key by position",
+                    )
+                index = len(positional)
+                continue
+            values = self.sources(arg_node) or self._literal_origin(arg_node)
+            if index < len(positional):
+                bind(positional[index], values, Confidence.RESOLVED, note)
+            elif args.vararg is not None:
+                bind(args.vararg, values, Confidence.RESOLVED, f"*{args.vararg.arg}")
+            index += 1
+        for keyword in node.keywords:
+            if keyword.arg is None:
+                self._bind_double_star(keyword.value, args, by_name, bound, bind, info)
+                continue
+            values = self.sources(keyword.value) or self._literal_origin(keyword.value)
+            arg = by_name.get(keyword.arg)
+            if arg is not None:
+                bind(arg, values, Confidence.RESOLVED, f"keyword {keyword.arg!r}")
+            elif args.kwarg is not None:
+                # `offset=5` with no `offset` parameter lands inside **options
+                # under that key -- the only path from the call site to it.
+                kwarg_id = target_of(args.kwarg)
+                node_id = self._key_node(kwarg_id, keyword.arg, False)
+                self.t._established.add(node_id)
+                for src in values:
+                    self.t.add_edge(
+                        LineageKind.PARAMETER_BINDING, src.id, node_id, self.span,
+                        method, combine(src.confidence, confidence),
+                        f"keyword {keyword.arg!r} inside **{args.kwarg.arg}",
+                    )
+
+    def _bind_double_star(
+        self, mapping: ast.expr, args: ast.arguments, by_name: dict[str, ast.arg],
+        bound: set[str], bind, info: _ModuleInfo,
+    ) -> None:
+        if isinstance(mapping, ast.Dict):
+            for key, value in zip(mapping.keys, mapping.values):
+                literal = _literal_key(key) if key is not None else None
+                values = self.sources(value) or self._literal_origin(value)
+                if literal is not None and literal in by_name:
+                    bind(
+                        by_name[literal], values, Confidence.RESOLVED,
+                        f"**mapping with the literal key {literal!r}",
+                    )
+                elif args.kwarg is not None:
+                    bind(
+                        args.kwarg, values, Confidence.PROBABLE,
+                        f"**mapping into **{args.kwarg.arg}",
+                    )
+            return
+        spread = self.sources(mapping)
+        if args.kwarg is not None:
+            bind(
+                args.kwarg, spread, Confidence.PROBABLE,
+                f"**kwargs into **{args.kwarg.arg}",
+            )
+        for arg in _all_args(args):
+            if arg.arg in bound or arg is args.kwarg or arg is args.vararg:
+                continue
+            bind(
+                arg, spread, Confidence.HEURISTIC,
+                f"{_OVER}**kwargs expansion does not name which parameter it binds",
+            )
+
+
+# --------------------------------------------------------------------------
+# Small helpers
+# --------------------------------------------------------------------------
+
+
+def _barrier_reason(name: str) -> str:
+    if name == "eval":
+        return (
+            "eval() executes a string assembled at runtime; what it reads and writes "
+            "cannot be determined statically, so value flow ends here"
+        )
+    return f"flow into {name}, which reaches code chosen at runtime"
+
+
+def _is_literal_expr(node: ast.expr) -> bool:
+    """True when the expression is built only from constants."""
+    for child in ast.walk(node):
+        if isinstance(child, (ast.Name, ast.Call, ast.Attribute, ast.Subscript)):
+            return False
+    return True
+
+
+def _all_args(args: ast.arguments) -> list[ast.arg]:
+    return [
+        *args.posonlyargs,
+        *args.args,
+        *([args.vararg] if args.vararg else []),
+        *args.kwonlyargs,
+        *([args.kwarg] if args.kwarg else []),
+    ]
+
+
+def _literal_key(node: ast.expr | None) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _literal_key_from_index(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Tuple) and node.elts:
+        return _literal_key(node.elts[-1])
+    return _literal_key(node)
+
+
+def _lineage__dotted(node: ast.expr) -> str:
+    parts: list[str] = []
+    current: ast.expr = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if isinstance(current, ast.Name):
+        parts.append(current.id)
+        return ".".join(reversed(parts))
+    return ""
+
+
+def _last_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _looks_like_frame(name: str) -> bool:
+    if not name:
+        return False
+    lowered = name.lower()
+    return lowered in _FRAME_NAMES or lowered.endswith(_FRAME_NAME_SUFFIXES)
+
+
+def _is_frame_producer(node: ast.Call) -> bool:
+    name = _lineage__dotted(node.func)
+    if not name:
+        return isinstance(node.func, ast.Attribute) and node.func.attr in COLUMN_METHODS
+    tail = name.split(".")[-1]
+    head = name.split(".")[0]
+    constructors = ("DataFrame", "merge", "concat")
+    if head in PANDAS_MODULES and (tail.startswith("read_") or tail in constructors):
+        return True
+    return tail in COLUMN_METHODS
+
+
+# ==========================================================================
+# findings.py
+# ==========================================================================
+
+"""Card 5 -- unplugged detection and hints.
+
+Derives :class:`Finding` records entirely from the graph cards 1-4 already
+built: elements, edges, unresolved records, CFG blocks/edges, decision
+points, lineage edges and slices. This module never re-parses the target --
+doing so would be a second source of truth and a defect per the card's
+acceptance criteria.
+
+Precision over recall throughout: every detector here would rather emit
+nothing than emit a wrong finding, and every finding carries a non-empty
+``evidence_ids`` chain of edge, slice or element IDs the owner can jump to.
+
+Confidence is never invented. It is always ``combine()`` of the provenance
+the finding rests on, per the contract in
+``src/cascade_map/contracts/interfaces.py``.
+"""
+
+
+
+
+__all__ = ["Findings"]
+
+# Edge kinds that constitute "wiring" for reachability purposes: if one of
+# these connects A to B, running A can reach B.
+_STRUCTURAL_EDGE_KINDS = {
+    EdgeKind.CALLS,
+    EdgeKind.INSTANTIATES,
+    EdgeKind.REGISTERS,
+    EdgeKind.DECORATES,
+    EdgeKind.INHERITS,
+    EdgeKind.CONFIGURES,
+    EdgeKind.REFERENCES,
+    EdgeKind.IMPORTS,
+}
+
+# Element kinds worth reporting as unreachable / decision-irrelevant. A dead
+# MODULE (nothing imports it and it is not itself an entry) and a dead CLASS
+# (nothing instantiates, subclasses or references it) are real, reportable
+# findings -- excluding whole kinds here would silently hide them from the
+# owner, which is worse than an honest evidence-bearing finding. Leaf facts
+# like PARAMETER, IMPORT or ASSIGNMENT stay out: too fine-grained to report
+# on their own, and their containing element already carries the finding.
+_REPORTABLE_KINDS = {
+    ElementKind.MODULE,
+    ElementKind.CLASS,
+    ElementKind.FUNCTION,
+    ElementKind.METHOD,
+    ElementKind.PROPERTY,
+}
+
+# Element kinds that bind a name in a Python scope, and so can meaningfully
+# "shadow" one another. CONFIG_KEY, DATA_FILE, FEATURE, IMPORT etc. are not
+# name bindings in this sense.
+_SHADOWABLE_KINDS = {
+    ElementKind.FUNCTION,
+    ElementKind.METHOD,
+    ElementKind.CLASS,
+    ElementKind.PROPERTY,
+    ElementKind.ASSIGNMENT,
+}
+
+_CONFIG_EXTENSIONS = (".json", ".yaml", ".yml", ".ini", ".cfg", ".toml")
+
+_WRITE_LINEAGE_KINDS = {
+    LineageKind.ASSIGNS,
+    LineageKind.COLUMN_WRITE,
+    LineageKind.CONTAINER_WRITE,
+    LineageKind.ATTRIBUTE_WRITE,
+    LineageKind.RETURNS,
+}
+
+_ORDINAL_RE = re.compile(r"#(\d+)$")
+
+_EMPTY_SPAN = SourceSpan(path="", line=0)
+
+
+def _ordinal_of(element_id: str) -> int:
+    match = _ORDINAL_RE.search(element_id)
+    return int(match.group(1)) if match else 1
+
+
+class Findings:
+    """Implements ``FindingsCard``.
+
+    Constructed directly from the sequences cards 1-4 emit. There is no
+    ``root`` parameter and no filesystem access: everything comes from the
+    graph passed in.
+    """
+
+    def __init__(
+        self,
+        *,
+        elements: Sequence[Element],
+        edges: Sequence[Edge] = (),
+        unresolved: Sequence[Unresolved] = (),
+        cfg_blocks: Sequence[CFGBlock] = (),
+        cfg_edges: Sequence[CFGEdge] = (),
+        decision_points: Sequence[DecisionPoint] = (),
+        lineage_edges: Sequence[LineageEdge] = (),
+        barriers: Sequence[Barrier] = (),
+        slices: Sequence[Slice] = (),
+        reachability: Sequence[Reachability] = (),
+        entry_ids: Sequence[str] = (),
+    ) -> None:
+        self._elements = list(elements)
+        self._by_id: Mapping[str, Element] = {e.id: e for e in self._elements}
+        self._edges = list(edges)
+        self._unresolved = list(unresolved)
+        self._cfg_blocks = list(cfg_blocks)
+        self._cfg_edges = list(cfg_edges)
+        self._decision_points = list(decision_points)
+        self._lineage_edges = list(lineage_edges)
+        self._barriers = list(barriers)
+        self._slices = list(slices)
+        # Card 3's canonical answer to "does this reach a decision sink".
+        # DECISION_IRRELEVANT reads this instead of deriving its own verdict
+        # from slices, per the Reachability contract added to close exactly
+        # this second-source-of-truth gap. One element may appear at most
+        # once; a duplicate is last-write-wins, which cannot happen from a
+        # well-formed card 3 output (one record per element).
+        self._reachability_by_element: Mapping[str, Reachability] = {
+            r.element_id: r for r in reachability
+        }
+        # Only entries that name a real element are usable as BFS roots. An
+        # entry_id naming nothing in the graph is silently useless for
+        # reachability, not a crash.
+        self._entry_ids = tuple(sorted(i for i in set(entry_ids) if i in self._by_id))
+
+    # -- public API ---------------------------------------------------
+
+    def find(self) -> Sequence[Finding]:
+        shadowed = self._shadowed_definitions()
+        # An element with an earlier, live definition that shadows it has a
+        # more specific, correct explanation already: reporting it a second
+        # time as UNREACHABLE_ELEMENT sends the owner to look for a missing
+        # call site, when the actual cause is the redefinition.
+        shadowed_ids = {f.element_id for f in shadowed}
+
+        findings: list[Finding] = []
+        findings.extend(self._unreachable_elements(exclude=shadowed_ids))
+        findings.extend(self._dangling_config_references())
+        findings.extend(self._orphaned_config_elements())
+        findings.extend(self._dead_branches())
+        findings.extend(shadowed)
+        findings.extend(self._duplicated_logic())
+        findings.extend(self._unconsumed_features())
+        findings.extend(self._decision_irrelevant())
+        return tuple(sorted(findings, key=lambda f: f.id))
+
+    # -- shared machinery ----------------------------------------------
+
+    def _reachable_set(self) -> tuple[set[str], dict[str, list[Edge]]]:
+        """BFS from entry_ids over structural edges.
+
+        Returns the reached element IDs and an incoming-edge index (built
+        regardless of whether entries exist, so callers can still ask "does
+        anything point at this element" even with no configured entry).
+        """
+        incoming: dict[str, list[Edge]] = defaultdict(list)
+        outgoing: dict[str, list[Edge]] = defaultdict(list)
+        for e in self._edges:
+            if e.kind in _STRUCTURAL_EDGE_KINDS:
+                outgoing[e.source_id].append(e)
+                incoming[e.target_id].append(e)
+
+        reached: set[str] = set(self._entry_ids)
+        # A module that defines an entry element has necessarily already run
+        # its top-level code -- that is how the entry function came to exist
+        # -- even though the import that pulled it in lives outside this
+        # graph, at the interpreter boundary. Without this, every entry
+        # module's own MODULE element reads as unreachable, which is wrong
+        # in the same way for every single-module fixture in the corpus.
+        entry_modules = {
+            el.module
+            for el_id in self._entry_ids
+            if (el := self._by_id.get(el_id)) is not None and el.module
+        }
+        if entry_modules:
+            for el in self._elements:
+                if el.kind == ElementKind.MODULE and el.module in entry_modules:
+                    reached.add(el.id)
+
+        queue: deque[str] = deque(reached)
+        while queue:
+            current = queue.popleft()
+            for e in outgoing.get(current, ()):
+                if e.target_id not in reached:
+                    reached.add(e.target_id)
+                    queue.append(e.target_id)
+        return reached, incoming
+
+    def _unresolved_candidate_ids(self) -> set[str]:
+        """Elements any unresolved call site *might* reach.
+
+        These are UNKNOWN, not unplugged, per the card's defining rule.
+        """
+        ids: set[str] = set()
+        for u in self._unresolved:
+            ids.update(u.candidate_ids)
+        return ids
+
+    def _fid(self, kind: str, *parts: str) -> str:
+        return f"finding::{kind}::{'|'.join(parts)}"
+
+    # -- UNREACHABLE_ELEMENT --------------------------------------------
+
+    def _unreachable_elements(self, *, exclude: set[str] = frozenset()) -> list[Finding]:
+        if not self._entry_ids:
+            # Without a known entry point, reachability is UNKNOWN
+            # everywhere, not wrong everywhere. Report nothing rather than
+            # guess.
+            return []
+
+        reached, incoming = self._reachable_set()
+        unknown_candidates = self._unresolved_candidate_ids()
+
+        unreachable: dict[str, Element] = {}
+        for el in self._elements:
+            if el.kind not in _REPORTABLE_KINDS:
+                continue
+            if el.id in reached:
+                continue
+            if el.id in unknown_candidates:
+                # Reachable only through an unresolved call site: UNKNOWN,
+                # not unplugged. This is the distinction the card exists to
+                # preserve.
+                continue
+            if el.id in exclude:
+                # A more specific finding (e.g. SHADOWED_DEFINITION) already
+                # explains why this element is never used; naming it here
+                # too sends the owner looking for the wrong cause.
+                continue
+            unreachable[el.id] = el
+
+        out: list[Finding] = []
+        for el_id, el in sorted(unreachable.items()):
+            # Report only the outermost unreachable ancestor: a method
+            # inside an already-unreachable class is not a second finding.
+            if el.parent_id in unreachable:
+                continue
+
+            touching = incoming.get(el_id, [])
+            reachability = self._reachability_by_element.get(el_id)
+            evidence_parts = {e.id for e in touching}
+            if reachability is not None:
+                # Card 3's own record for this element is the strongest, most
+                # specific citation available -- prefer it over the coarser
+                # entry_ids fallback.
+                evidence_parts.add(reachability.id)
+            if not evidence_parts:
+                evidence_parts = set(self._entry_ids)
+            evidence = tuple(sorted(evidence_parts))
+            if not evidence:
+                # No edge chain to cite: contract says a finding with an
+                # empty evidence chain does not ship.
+                continue
+
+            confidences = [e.provenance.confidence for e in touching]
+            if reachability is not None:
+                confidences.append(reachability.provenance.confidence)
+            if confidences:
+                conf = combine(*confidences)
+                note = (
+                    reachability.reason
+                    if reachability is not None and reachability.reason
+                    else "all incoming edges originate from other unreachable elements"
+                )
+            else:
+                # Absence of any edge at all is itself a fact resting on
+                # card 2's resolution being complete, so it is RESOLVED
+                # rather than CERTAIN.
+                conf = Confidence.RESOLVED
+                note = "no incoming call/reference/import edge exists in the graph"
+
+            out.append(
+                Finding(
+                    id=self._fid("UNREACHABLE_ELEMENT", el_id),
+                    kind=FindingKind.UNREACHABLE_ELEMENT,
+                    element_id=el_id,
+                    span=el.span,
+                    summary=(
+                        f"{el.qualname or el.name} is not reachable from any "
+                        "known entry point."
+                    ),
+                    hint=(
+                        "Confirm no dynamic caller reaches this before removing "
+                        "it -- check unresolved.jsonl for candidates first."
+                    ),
+                    evidence_ids=evidence,
+                    provenance=Provenance(
+                        method=Method.CFG_REACHABILITY,
+                        confidence=conf,
+                        span=el.span,
+                        note=note,
+                    ),
+                )
+            )
+        return out
+
+    # -- DANGLING_CONFIG_REFERENCE ---------------------------------------
+
+    def _dangling_config_references(self) -> list[Finding]:
+        out: list[Finding] = []
+        for u in self._unresolved:
+            if u.reason != UnresolvedReason.MISSING_TARGET:
+                continue
+            if not u.span.path.endswith(_CONFIG_EXTENSIONS):
+                continue
+            element_id = self._config_element_id_for_span(u.span) or u.id
+            out.append(
+                Finding(
+                    id=self._fid("DANGLING_CONFIG_REFERENCE", u.id),
+                    kind=FindingKind.DANGLING_CONFIG_REFERENCE,
+                    element_id=element_id,
+                    span=u.span,
+                    summary=(
+                        f"Config reference resolves to no element: {u.description}"
+                    ),
+                    hint="Fix the name in the config file, or remove the stale key.",
+                    evidence_ids=(u.id,),
+                    provenance=Provenance(
+                        method=Method.CONFIG_STRING_MATCH,
+                        confidence=Confidence.HEURISTIC,
+                        span=u.span,
+                        note="derived from an unresolved MISSING_TARGET record",
+                    ),
+                )
+            )
+        return out
+
+    def _config_element_id_for_span(self, span: SourceSpan) -> str:
+        for el in self._elements:
+            if el.kind == ElementKind.CONFIG_KEY and el.span.path == span.path and el.span.line == span.line:
+                return el.id
+        return ""
+
+    # -- ORPHANED_CONFIG_ELEMENT ------------------------------------------
+
+    def _orphaned_config_elements(self) -> list[Finding]:
+        """A component-shaped element in a family config demonstrably wires,
+        that no config key names.
+
+        "Demonstrably wires" is load-bearing: absence of a CONFIGURES edge
+        means nothing on its own (most classes are never named by config at
+        all). It only means something once at least one sibling under the
+        same base class *is* named by a config key -- that is what makes the
+        family a config-driven registry rather than an ordinary class
+        hierarchy. `Stage` itself (the base) is never flagged: it is reached
+        by inheritance, not by wiring. `WiredStage` (has its own CONFIGURES
+        edge) is never flagged either.
+        """
+        inherits_by_base: dict[str, list[Edge]] = defaultdict(list)
+        for e in self._edges:
+            if e.kind == EdgeKind.INHERITS:
+                inherits_by_base[e.target_id].append(e)
+
+        configures_by_target: dict[str, list[Edge]] = defaultdict(list)
+        for e in self._edges:
+            if e.kind == EdgeKind.CONFIGURES:
+                configures_by_target[e.target_id].append(e)
+
+        out: dict[str, Finding] = {}
+        for family_edges in inherits_by_base.values():
+            wired_siblings = [
+                e for e in family_edges if configures_by_target.get(e.source_id)
+            ]
+            if not wired_siblings:
+                # This hierarchy shows no sign of being config-driven at
+                # all: nothing to compare an absence against.
+                continue
+            wiring_edge = configures_by_target[wired_siblings[0].source_id][0]
+
+            for child_edge in family_edges:
+                child_id = child_edge.source_id
+                if configures_by_target.get(child_id):
+                    continue  # this sibling is itself named by config
+                child = self._by_id.get(child_id)
+                if child is None or child.kind not in _REPORTABLE_KINDS:
+                    continue
+
+                evidence = tuple(sorted({wiring_edge.id, child_edge.id}))
+                conf = combine(
+                    wiring_edge.provenance.confidence,
+                    child_edge.provenance.confidence,
+                )
+                out[child_id] = Finding(
+                    id=self._fid("ORPHANED_CONFIG_ELEMENT", child_id),
+                    kind=FindingKind.ORPHANED_CONFIG_ELEMENT,
+                    element_id=child_id,
+                    span=child.span,
+                    summary=(
+                        f"{child.qualname or child.name} is in a family a config "
+                        "file wires, and no config key names it."
+                    ),
+                    hint=(
+                        "Either add it to the wiring config or delete it; check "
+                        "other deployments' configs before removing."
+                    ),
+                    evidence_ids=evidence,
+                    provenance=Provenance(
+                        method=Method.CONFIG_STRING_MATCH,
+                        confidence=conf,
+                        span=child.span,
+                    ),
+                )
+        return list(out.values())
+
+    # -- DEAD_BRANCH -------------------------------------------------------
+
+    def _dead_branches(self) -> list[Finding]:
+        block_owner: dict[str, str] = {b.id: b.element_id for b in self._cfg_blocks}
+        block_span: dict[str, SourceSpan] = {b.id: b.span for b in self._cfg_blocks}
+        blocks_by_element: dict[str, list[CFGBlock]] = defaultdict(list)
+        for b in self._cfg_blocks:
+            blocks_by_element[b.element_id].append(b)
+
+        edges_by_element: dict[str, list[CFGEdge]] = defaultdict(list)
+        for e in self._cfg_edges:
+            owner = block_owner.get(e.source_id) or block_owner.get(e.target_id)
+            if owner:
+                edges_by_element[owner].append(e)
+
+        out: list[Finding] = []
+        for element_id, cfg_edges in edges_by_element.items():
+            blocks = blocks_by_element.get(element_id, [])
+            entry_blocks = [b.id for b in blocks if b.kind == BlockKind.ENTRY]
+            adj: dict[str, list[CFGEdge]] = defaultdict(list)
+            for e in cfg_edges:
+                adj[e.source_id].append(e)
+
+            reached_blocks: set[str] = set(entry_blocks)
+            queue: deque[str] = deque(entry_blocks)
+            while queue:
+                current = queue.popleft()
+                for e in adj.get(current, ()):
+                    if e.target_id not in reached_blocks:
+                        reached_blocks.add(e.target_id)
+                        queue.append(e.target_id)
+
+            for e in cfg_edges:
+                dead_reason = ""
+                if entry_blocks and e.source_id in reached_blocks and e.target_id not in reached_blocks:
+                    dead_reason = "target block is unreachable from the element's entry block"
+                elif self._is_contradictory(e):
+                    dead_reason = "condition is a literal constant contradicting the branch taken"
+                if not dead_reason:
+                    continue
+
+                span = block_span.get(e.target_id) or block_span.get(e.source_id) or _EMPTY_SPAN
+                conf = e.provenance.confidence if e.provenance is not None else Confidence.HEURISTIC
+                out.append(
+                    Finding(
+                        id=self._fid("DEAD_BRANCH", e.id),
+                        kind=FindingKind.DEAD_BRANCH,
+                        element_id=element_id,
+                        span=span,
+                        summary=f"CFG edge {e.id} is never taken: {dead_reason}.",
+                        hint="Verify the guard; if it can never hold, remove the branch.",
+                        evidence_ids=(e.id,),
+                        provenance=Provenance(
+                            method=Method.CFG_REACHABILITY,
+                            confidence=conf,
+                            span=span,
+                            note=dead_reason,
+                        ),
+                    )
+                )
+        return out
+
+    @staticmethod
+    def _is_contradictory(edge: CFGEdge) -> bool:
+        condition = (edge.condition or "").strip().lower()
+        if edge.taken_when is True and condition in {"false", "0", "none"}:
+            return True
+        if edge.taken_when is False and condition in {"true", "1"}:
+            return True
+        return False
+
+    # -- SHADOWED_DEFINITION -----------------------------------------------
+
+    def _shadowed_definitions(self) -> list[Finding]:
+        groups: dict[tuple[str, str, str], list[Element]] = defaultdict(list)
+        for el in self._elements:
+            if el.kind not in _SHADOWABLE_KINDS:
+                # Only elements that bind a name in a Python scope can
+                # "shadow" one another. CONFIG_KEY/DATA_FILE/FEATURE ids are
+                # not name bindings: a config file's `/rules/0` and `/rules/1`
+                # share a blank qualname and the same parent (the file) but
+                # are two different keys, not one name redefined.
+                continue
+            if not el.qualname:
+                continue
+            groups[(el.module, el.parent_id, el.qualname)].append(el)
+
+        out: list[Finding] = []
+        for group in groups.values():
+            if len(group) < 2:
+                continue
+            ordered = sorted(group, key=lambda e: _ordinal_of(e.id))
+            for shadowed, shadowing in zip(ordered, ordered[1:]):
+                out.append(
+                    Finding(
+                        id=self._fid("SHADOWED_DEFINITION", shadowed.id, shadowing.id),
+                        kind=FindingKind.SHADOWED_DEFINITION,
+                        element_id=shadowed.id,
+                        span=shadowed.span,
+                        summary=(
+                            f"{shadowed.qualname or shadowed.name} is redefined at "
+                            f"{shadowing.span.path}:{shadowing.span.line}; the earlier "
+                            "definition can never be used if the redefinition is "
+                            "unconditional."
+                        ),
+                        hint=(
+                            "If both definitions coexist on separate branches this is "
+                            "fine; otherwise remove the earlier definition."
+                        ),
+                        evidence_ids=(shadowing.id,),
+                        provenance=Provenance(
+                            method=Method.AST_DIRECT,
+                            confidence=Confidence.PROBABLE,
+                            span=shadowed.span,
+                            note=(
+                                "two definitions of the same name exist structurally; "
+                                "whether the redefinition is unconditional was not "
+                                "verified against the CFG"
+                            ),
+                        ),
+                    )
+                )
+        return out
+
+    # -- DUPLICATED_LOGIC ----------------------------------------------------
+
+    def _duplicated_logic(self) -> list[Finding]:
+        by_hash: dict[str, list[Element]] = defaultdict(list)
+        for el in self._elements:
+            if el.kind not in (ElementKind.FUNCTION, ElementKind.METHOD):
+                continue
+            if not el.content_hash:
+                continue
+            by_hash[el.content_hash].append(el)
+
+        out: list[Finding] = []
+        for content_hash, group in by_hash.items():
+            if len(group) < 2:
+                continue
+            ordered = sorted(group, key=lambda e: e.id)
+            primary, *rest = ordered
+            for dup in rest:
+                out.append(
+                    Finding(
+                        id=self._fid("DUPLICATED_LOGIC", primary.id, dup.id),
+                        kind=FindingKind.DUPLICATED_LOGIC,
+                        element_id=dup.id,
+                        span=dup.span,
+                        summary=(
+                            f"{dup.qualname or dup.name} has a body identical to "
+                            f"{primary.qualname or primary.name}."
+                        ),
+                        hint="Consider consolidating into one element the others call.",
+                        evidence_ids=(primary.id,),
+                        provenance=Provenance(
+                            method=Method.STRUCTURAL_MATCH,
+                            confidence=Confidence.RESOLVED,
+                            span=dup.span,
+                            note=f"identical content_hash {content_hash}",
+                        ),
+                    )
+                )
+        return out
+
+    # -- UNCONSUMED_FEATURE ---------------------------------------------------
+
+    def _unconsumed_features(self) -> list[Finding]:
+        feature_elements = [e for e in self._elements if e.kind == ElementKind.FEATURE]
+        if not feature_elements:
+            return []
+
+        reads_by_feature: dict[str, list[LineageEdge]] = defaultdict(list)
+        writes_by_feature: dict[str, list[LineageEdge]] = defaultdict(list)
+        for le in self._lineage_edges:
+            if le.kind == LineageKind.READS:
+                reads_by_feature[le.source_id].append(le)
+            elif le.kind in _WRITE_LINEAGE_KINDS:
+                writes_by_feature[le.target_id].append(le)
+
+        # A feature with any READS edge at all is consumed by something: at
+        # minimum that rules out "no lineage edge leaves it", which is the
+        # actual claim this finding makes. DecisionPoint.reads_ids and a
+        # sink-reaching backward Slice are a stronger, sink-specific version
+        # of the same fact when card 3/4 supply them; either is sufficient.
+        consumed: set[str] = set(reads_by_feature.keys())
+        for dp in self._decision_points:
+            consumed.update(dp.reads_ids)
+        for s in self._slices:
+            if s.direction == "backward" and s.reaches_sink_ids:
+                consumed.update(s.member_ids)
+
+        out: list[Finding] = []
+        for feat in feature_elements:
+            if feat.id in consumed:
+                continue
+            writes = writes_by_feature.get(feat.id, [])
+            if not writes:
+                # Nothing in the graph shows this feature being computed;
+                # without that, "unconsumed" is not a claim we can support
+                # with evidence.
+                continue
+            reads = reads_by_feature.get(feat.id, [])
+            evidence = tuple(sorted({w.id for w in writes} | {r.id for r in reads}))
+            conf = combine(
+                *(w.provenance.confidence for w in writes),
+                *(r.provenance.confidence for r in reads),
+            )
+            span = writes[0].span or feat.span
+            out.append(
+                Finding(
+                    id=self._fid("UNCONSUMED_FEATURE", feat.id),
+                    kind=FindingKind.UNCONSUMED_FEATURE,
+                    element_id=feat.id,
+                    span=span,
+                    summary=(
+                        f"Feature {feat.name} is computed but no path to a decision "
+                        "sink reads it."
+                    ),
+                    hint="Confirm the feature is truly unused before removing its computation.",
+                    evidence_ids=evidence,
+                    provenance=Provenance(
+                        method=Method.DATAFLOW,
+                        confidence=conf,
+                        span=span,
+                        note="no decision point or sink-reaching backward slice reads this feature",
+                    ),
+                )
+            )
+        return out
+
+    # -- DECISION_IRRELEVANT ---------------------------------------------------
+
+    def _decision_irrelevant(self) -> list[Finding]:
+        if not self._entry_ids:
+            return []
+        reached, incoming = self._reachable_set()
+
+        if self._reachability_by_element:
+            return self._decision_irrelevant_from_reachability(reached, incoming)
+        return self._decision_irrelevant_from_slices(reached, incoming)
+
+    def _decision_irrelevant_from_reachability(
+        self, reached: set[str], incoming: dict[str, list[Edge]]
+    ) -> list[Finding]:
+        """Card 3's canonical `Reachability` record per element, not a
+        recomputed answer -- this is the one place the card contract exists
+        specifically to prevent a second source of truth.
+
+        `UNKNOWN` is never treated as "irrelevant": the contract is explicit
+        that "I could not tell" must never render the same as "this reaches
+        nothing". Only an explicit `NO_SINK_PATH` verdict is reported.
+        """
+        out: list[Finding] = []
+        for el in self._elements:
+            if el.kind not in _REPORTABLE_KINDS:
+                continue
+            if el.id not in reached:
+                continue
+            r = self._reachability_by_element.get(el.id)
+            if r is None or r.state != ReachabilityState.NO_SINK_PATH:
+                continue
+
+            touching = incoming.get(el.id, [])
+            evidence = tuple(sorted({r.id} | {e.id for e in touching}))
+            if not evidence:
+                continue
+            conf = combine(
+                r.provenance.confidence,
+                *(e.provenance.confidence for e in touching),
+            )
+            out.append(
+                Finding(
+                    id=self._fid("DECISION_IRRELEVANT", el.id),
+                    kind=FindingKind.DECISION_IRRELEVANT,
+                    element_id=el.id,
+                    span=el.span,
+                    summary=(
+                        f"{el.qualname or el.name} runs but card 3 marks it "
+                        f"NO_SINK_PATH: {r.reason or 'no path to a decision sink'}."
+                    ),
+                    hint=(
+                        "Check whether this cluster should feed a decision; if not, "
+                        "it may be safe to drop."
+                    ),
+                    evidence_ids=evidence,
+                    provenance=Provenance(
+                        method=Method.CFG_REACHABILITY,
+                        confidence=conf,
+                        span=el.span,
+                        note=f"from card 3 Reachability {r.id}",
+                    ),
+                )
+            )
+        return out
+
+    def _decision_irrelevant_from_slices(
+        self, reached: set[str], incoming: dict[str, list[Edge]]
+    ) -> list[Finding]:
+        """Fallback used only when no `Reachability` records were supplied
+        (e.g. card 3 output not wired in yet). Derives sink-relevance from
+        `DecisionPoint.reads_ids` and sink-reaching `Slice`s instead -- a
+        strictly weaker, locally-derived substitute for the same answer.
+        """
+        sink_relevant: set[str] = set()
+        for dp in self._decision_points:
+            sink_relevant.add(dp.element_id)
+            sink_relevant.update(dp.reads_ids)
+        for s in self._slices:
+            if s.reaches_sink_ids:
+                sink_relevant.update(s.member_ids)
+        if not sink_relevant:
+            # No decision/sink information available at all: reachability to
+            # a sink is UNKNOWN, not "irrelevant". Report nothing.
+            return []
+
+        slice_members: set[str] = set()
+        for s in self._slices:
+            slice_members.update(s.member_ids)
+
+        out: list[Finding] = []
+        for el in self._elements:
+            if el.id not in slice_members:
+                # Scope this finding to elements a lineage slice already
+                # covers, so a plain reachable-but-irrelevant helper (a
+                # logger, a validator with no data role) is not flagged just
+                # because it is not a "decision" itself.
+                continue
+            if el.id not in reached:
+                continue
+            if el.id in sink_relevant:
+                continue
+
+            touching = incoming.get(el.id, [])
+            evidence = tuple(sorted({e.id for e in touching} | set(self._entry_ids)))
+            if not evidence:
+                continue
+            conf = (
+                combine(*(e.provenance.confidence for e in touching))
+                if touching
+                else Confidence.HEURISTIC
+            )
+            out.append(
+                Finding(
+                    id=self._fid("DECISION_IRRELEVANT", el.id),
+                    kind=FindingKind.DECISION_IRRELEVANT,
+                    element_id=el.id,
+                    span=el.span,
+                    summary=(
+                        f"{el.qualname or el.name} runs but no slice or decision "
+                        "point shows it reaching a decision sink."
+                    ),
+                    hint=(
+                        "Check whether this cluster should feed a decision; if not, "
+                        "it may be safe to drop."
+                    ),
+                    evidence_ids=evidence,
+                    provenance=Provenance(
+                        method=Method.DATAFLOW,
+                        confidence=conf,
+                        span=el.span,
+                        note="no card 3 Reachability supplied; derived from slices/decision points",
+                    ),
+                )
+            )
+        return out
+
+
+# ==========================================================================
+# diff.py
+# ==========================================================================
+
+"""Card 6 -- version diff and impact.
+
+Compares two Mode B graphs (`GraphSnapshot`) built from `target_versions/<label>/`
+or `target_engine/`, and answers "what does this change actually affect?"
+
+Scope and design, read before changing anything
+-------------------------------------------------
+Cards 1-4 are being built in parallel with this one. `Differ.diff()` implements
+the `DiffCard` protocol exactly (`diff(before_root, after_root) -> (changes,
+impacts)`), loading each side's artifacts from an `out/<label>/` directory per
+`ARCHITECTURE.md`'s output layout. The real matching and classification logic
+lives in `diff_snapshots(before, after)`, which takes two `GraphSnapshot`
+values directly -- that is what tests exercise, since cards 1-4's real output
+does not exist yet. `Differ.diff` is a thin loader wrapper around it.
+
+Normalisation (formatting-only / comment-only -> UNCHANGED)
+-------------------------------------------------------------
+Body comparison never uses `ast.parse` or `compile` on target text (both can
+raise on isolated fragments and, more importantly, this module must stay
+obviously inert under constraint 1). It uses `tokenize.generate_tokens`, which
+is purely lexical and executes nothing. COMMENT, NL, NEWLINE, INDENT, DEDENT,
+ENCODING and ENDMARKER tokens are dropped; every remaining token's exact
+string (identifiers, keywords, operators, string and number literals) is kept
+and joined with single spaces. Two spans that tokenize to the same sequence
+are UNCHANGED regardless of whitespace, indentation style, blank lines or
+comments. If a span does not tokenize (e.g. an unavailable source file), the
+comparison falls back to `Element.content_hash` equality (HEURISTIC -- not
+formatting-invariant) and, failing that, is reported as changed rather than
+silently claimed unchanged (UNKNOWN confidence) -- an honest gap outranks a
+confident wrong answer, per the project's own stated principle.
+
+Ambiguous matches (`ChangeKind.AMBIGUOUS`)
+---------------------------------------------
+Rename/move candidates are grouped into connected components by tied top
+score (see `_match_renames_moves`): an edge joins a removed element to an
+added one whenever the pair is the *best* available match for either side.
+A component containing exactly one removed and one added element is a clean
+match (RENAMED/MOVED). Any other component -- one element tied against
+several, or several tied against several -- emits one `VersionChange` per
+member with `kind=AMBIGUOUS`, and **every member of the component carries the
+same `candidate_ids`: the full sorted set of every ID in the component,
+including its own**. This is deliberate, not an oversight: an earlier version
+that gave only the many-candidates side an UNKNOWN-confidence ADDED/REMOVED
+pair let the *other* side of the same tie render as a plain CERTAIN ADDED
+with no back-reference -- half the ambiguity was invisible from that end.
+Attaching the identical candidate set to every member means the doubt reads
+the same regardless of which element the owner looked up first.
+
+Known contract gap (reported, not worked around -- see the final report)
+---------------------------------------------------------------------------
+There is no `ChangeKind` for wiring-only changes (a CONFIGURES edge
+repointed, a call edge gained/lost with no accompanying element change). A
+config key repoint is reported via the existing element-level kinds on the
+affected CONFIG_KEY element (SIGNATURE_CHANGED when its target value
+changes); edge-level gains/losses feed `Impact` instead of a `VersionChange`
+of their own. Unlike the ambiguity gap above, this is not a false claim --
+the config key's value did change, and interpreting any `VersionChange`
+already requires looking up the element's `kind` -- so it is reported as a
+weaker request in the card's report, not re-asserted as a blocker.
+"""
+
+
+
+
+__all__ = [
+    "GraphSnapshot",
+    "load_snapshot",
+    "diff_snapshots",
+    "Differ",
+]
+
+
+# ---------------------------------------------------------------------------
+# Snapshot: one version's Mode B graph, the input to the diff
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class GraphSnapshot:
+    """One version's Mode B graph. Card 6 does not produce this -- cards 1-4
+    do. `load_snapshot` reads it from an `out/<label>/` artifact directory;
+    tests construct it directly."""
+
+    label: str
+    elements: tuple[Element, ...] = ()
+    edges: tuple[Edge, ...] = ()
+    lineage_edges: tuple[LineageEdge, ...] = ()
+    slices: tuple[Slice, ...] = ()
+    findings: tuple[Finding, ...] = ()
+    source_root: str = ""
+    """Directory that `Element.span.path` is relative to, for reading source
+    text for normalisation. Empty means source text is unavailable and body
+    comparison falls back per the module docstring."""
+
+    def elements_by_id(self) -> dict[str, Element]:
+        return {e.id: e for e in self.elements}
+
+    def forward_slice(self, root_id: str) -> Slice | None:
+        for s in self.slices:
+            if s.root_id == root_id and s.direction == "forward":
+                return s
+        return None
+
+    def backward_slice(self, root_id: str) -> Slice | None:
+        for s in self.slices:
+            if s.root_id == root_id and s.direction == "backward":
+                return s
+        return None
+
+    def read_span(self, element: Element) -> str | None:
+        """The element's own source text, read-only, never executed. Returns
+        None when unavailable rather than raising -- callers degrade the
+        confidence of whatever comparison they were about to make."""
+        if not self.source_root:
+            return None
+        path = Path(self.source_root) / element.span.path
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            return None
+        start = max(element.span.line - 1, 0)
+        end = element.span.end_line if element.span.end_line else element.span.line
+        end = min(end, len(lines))
+        if start >= end:
+            return None
+        return "\n".join(lines[start:end])
+
+
+def _diff__read_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8")
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
+def _span_from_dict(d: dict | None) -> SourceSpan | None:
+    if d is None:
+        return None
+    return SourceSpan(path=d["path"], line=d["line"], end_line=d.get("end_line"), col=d.get("col"))
+
+
+def _diff__prov_from_dict(d: dict | None) -> Provenance | None:
+    if d is None:
+        return None
+    return Provenance(
+        method=Method(d["method"]),
+        confidence=Confidence(d["confidence"]),
+        span=_span_from_dict(d.get("span")),
+        note=d.get("note", ""),
+        model_id=d.get("model_id", ""),
+        run_id=d.get("run_id", ""),
+        event_ids=tuple(d.get("event_ids", ())),
+    )
+
+
+def _element_from_dict(d: dict) -> Element:
+    return Element(
+        id=d["id"],
+        kind=ElementKind(d["kind"]),
+        name=d["name"],
+        qualname=d["qualname"],
+        module=d["module"],
+        span=_span_from_dict(d["span"]),
+        provenance=_diff__prov_from_dict(d["provenance"]),
+        content_hash=d.get("content_hash") or "",
+        decorators=tuple(d.get("decorators", ())),
+        signature=d.get("signature", ""),
+        docstring=d.get("docstring", ""),
+        parent_id=d.get("parent_id", ""),
+        byte_size=d.get("byte_size", 0),
+    )
+
+
+def _edge_from_dict(d: dict) -> Edge:
+    return Edge(
+        id=d["id"],
+        kind=EdgeKind(d["kind"]),
+        source_id=d["source_id"],
+        target_id=d["target_id"],
+        provenance=_diff__prov_from_dict(d["provenance"]),
+        call_site=_span_from_dict(d.get("call_site")),
+    )
+
+
+def _lineage_from_dict(d: dict) -> LineageEdge:
+
+    return LineageEdge(
+        id=d["id"],
+        kind=LineageKind(d["kind"]),
+        source_id=d["source_id"],
+        target_id=d["target_id"],
+        provenance=_diff__prov_from_dict(d["provenance"]),
+        span=_span_from_dict(d.get("span")),
+    )
+
+
+def _slice_from_dict(d: dict) -> Slice:
+    return Slice(
+        id=d["id"],
+        root_id=d["root_id"],
+        direction=d["direction"],
+        member_ids=tuple(d.get("member_ids", ())),
+        edge_ids=tuple(d.get("edge_ids", ())),
+        barrier_ids=tuple(d.get("barrier_ids", ())),
+        reaches_sink_ids=tuple(d.get("reaches_sink_ids", ())),
+        confidence=Confidence(d["confidence"]),
+    )
+
+
+def _finding_from_dict(d: dict) -> Finding:
+
+    return Finding(
+        id=d["id"],
+        kind=FindingKind(d["kind"]),
+        element_id=d["element_id"],
+        span=_span_from_dict(d["span"]),
+        summary=d.get("summary", ""),
+        hint=d.get("hint", ""),
+        evidence_ids=tuple(d.get("evidence_ids", ())),
+        provenance=_diff__prov_from_dict(d["provenance"]),
+    )
+
+
+def load_snapshot(out_dir: str | Path, source_root: str | Path | None = None) -> GraphSnapshot:
+    """Read one version's artifacts from `out_dir` (`elements.jsonl`,
+    `edges.jsonl`, `lineage.jsonl`, `slices.jsonl`, `findings.jsonl`, per
+    `ARCHITECTURE.md`). Missing files degrade to empty, not an error: cards
+    1-4 may not have produced every artifact yet, and diffing should still do
+    what it can with what exists. `source_root` defaults to `out_dir`."""
+    out = Path(out_dir)
+    elements = tuple(_element_from_dict(d) for d in _diff__read_jsonl(out / "elements.jsonl"))
+    edges = tuple(_edge_from_dict(d) for d in _diff__read_jsonl(out / "edges.jsonl"))
+    lineage_edges = tuple(_lineage_from_dict(d) for d in _diff__read_jsonl(out / "lineage.jsonl"))
+    slices = tuple(_slice_from_dict(d) for d in _diff__read_jsonl(out / "slices.jsonl"))
+    findings = tuple(_finding_from_dict(d) for d in _diff__read_jsonl(out / "findings.jsonl"))
+    root = str(source_root) if source_root is not None else str(out)
+    return GraphSnapshot(
+        label=out.name,
+        elements=elements,
+        edges=edges,
+        lineage_edges=lineage_edges,
+        slices=slices,
+        findings=findings,
+        source_root=root,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Body normalisation -- see module docstring
+# ---------------------------------------------------------------------------
+
+_SKIP_TOKEN_TYPES = {
+    tokenize.COMMENT,
+    tokenize.NL,
+    tokenize.NEWLINE,
+    tokenize.INDENT,
+    tokenize.DEDENT,
+    tokenize.ENCODING,
+    tokenize.ENDMARKER,
+}
+
+
+def _normalized_body(source: str | None) -> str | None:
+    """Comment- and whitespace-insensitive token sequence of `source`. Purely
+    lexical (`tokenize`, never `ast.parse`/`compile`/`exec`): nothing here
+    executes target code. Returns None if `source` is None or does not
+    tokenize, so the caller can fall back rather than assert a wrong answer."""
+    if source is None:
+        return None
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    except (tokenize.TokenizeError, IndentationError, SyntaxError):
+        return None
+    kept = [t.string for t in tokens if t.type not in _SKIP_TOKEN_TYPES]
+    return " ".join(kept)
+
+
+def _body_comparison(b: Element, a: Element, before: GraphSnapshot, after: GraphSnapshot) -> tuple[bool, Confidence, str]:
+    """(bodies_equal, confidence, note) per the fallback chain in the module
+    docstring."""
+    norm_b = _normalized_body(before.read_span(b))
+    norm_a = _normalized_body(after.read_span(a))
+    if norm_b is not None and norm_a is not None:
+        return (
+            norm_b == norm_a,
+            Confidence.RESOLVED,
+            "body compared via token-normalized source (comments and whitespace stripped)",
+        )
+    if b.content_hash and a.content_hash:
+        return (
+            b.content_hash == a.content_hash,
+            Confidence.HEURISTIC,
+            "source text unavailable; fell back to content_hash, which is not "
+            "formatting-invariant",
+        )
+    return (
+        False,
+        Confidence.UNKNOWN,
+        "no source text or content_hash available; body equality could not be "
+        "checked, reported as changed rather than silently unchanged",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Change id
+# ---------------------------------------------------------------------------
+
+
+def _change_id(kind: ChangeKind, before_id: str, after_id: str) -> str:
+    return f"diff::{kind.value}::{before_id or '-'}::{after_id or '-'}"
+
+
+# ---------------------------------------------------------------------------
+# Same-ID classification
+# ---------------------------------------------------------------------------
+
+
+def _classify_same_id(b: Element, a: Element, before: GraphSnapshot, after: GraphSnapshot) -> VersionChange:
+    decorators_equal = b.decorators == a.decorators
+    signature_equal = b.signature == a.signature
+    body_equal, body_confidence, body_note = _body_comparison(b, a, before, after)
+
+    if not signature_equal:
+        kind = ChangeKind.SIGNATURE_CHANGED
+        confidence = Confidence.CERTAIN
+        note = "signature field differs"
+    elif not decorators_equal:
+        kind = ChangeKind.DECORATORS_CHANGED
+        confidence = Confidence.CERTAIN
+        note = "decorators field differs"
+    elif not body_equal:
+        kind = ChangeKind.BODY_CHANGED
+        confidence = body_confidence
+        note = body_note
+    else:
+        kind = ChangeKind.UNCHANGED
+        confidence = combine(Confidence.CERTAIN, Confidence.CERTAIN, body_confidence)
+        note = body_note
+
+    return VersionChange(
+        id=_change_id(kind, b.id, a.id),
+        kind=kind,
+        before_id=b.id,
+        after_id=a.id,
+        provenance=Provenance(method=Method.AST_DIRECT, confidence=confidence, note=note),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rename / move detection for elements whose ID did not survive
+# ---------------------------------------------------------------------------
+
+_RENAME_KINDS = {ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.CLASS, ElementKind.PROPERTY}
+
+
+def _callee_ids(snap: GraphSnapshot, element_id: str) -> frozenset[str]:
+    return frozenset(
+        e.target_id for e in snap.edges if e.source_id == element_id and e.kind == EdgeKind.CALLS
+    )
+
+
+def _score_pair(
+    b: Element, a: Element, before: GraphSnapshot, after: GraphSnapshot
+) -> tuple[int, ChangeKind, Confidence, str] | None:
+    """Score a candidate (removed, added) pair on body structure, signature
+    and call-neighbourhood. Returns None when there is not enough evidence to
+    propose a match at all (element becomes a plain ADDED/REMOVED). All
+    arithmetic here is integer -- the score is internal ranking only, never
+    serialized, so no float ever reaches an emitted record."""
+    body_equal, _, _ = _body_comparison(b, a, before, after)
+    signature_equal = b.signature == a.signature and b.signature != ""
+    name_equal = b.name == a.name
+    callees_b = _callee_ids(before, b.id)
+    callees_a = _callee_ids(after, a.id)
+    union = callees_b | callees_a
+    overlap = len(callees_b & callees_a)
+    denom = len(union)
+    half_or_more = denom > 0 and overlap * 2 >= denom
+
+    if not body_equal and not (signature_equal and half_or_more):
+        return None
+
+    score = (
+        (3 if body_equal else 0)
+        + (1 if signature_equal else 0)
+        + (1 if name_equal else 0)
+        + (overlap * 100 // denom if denom else 0)
+    )
+    moved = name_equal and b.module != a.module
+    kind = ChangeKind.MOVED if moved else ChangeKind.RENAMED
+
+    if body_equal:
+        confidence = Confidence.PROBABLE
+        note = (
+            f"structural match: body identical after normalization; "
+            f"name_equal={name_equal} module_before={b.module} module_after={a.module} "
+            f"call_overlap={overlap}/{denom}"
+        )
+    else:
+        confidence = Confidence.HEURISTIC
+        note = (
+            f"structural match: signature identical, body differs; "
+            f"call_overlap={overlap}/{denom}"
+        )
+    return score, kind, confidence, note
+
+
+def _find(parent: dict[str, str], x: str) -> str:
+    while parent[x] != x:
+        parent[x] = parent[parent[x]]
+        x = parent[x]
+    return x
+
+
+def _union(parent: dict[str, str], x: str, y: str) -> None:
+    rx, ry = _find(parent, x), _find(parent, y)
+    if rx != ry:
+        # union by the smaller root ID -- deterministic and symmetric under
+        # relabeling before/after, since it depends only on the IDs involved.
+        if rx < ry:
+            parent[ry] = rx
+        else:
+            parent[rx] = ry
+
+
+def _match_renames_moves(
+    before_ids: Sequence[str], after_ids: Sequence[str], before: GraphSnapshot, after: GraphSnapshot
+) -> tuple[list[VersionChange], set[str], set[str], set[str]]:
+    """Match removed elements to added ones on body structure, signature and
+    call-neighbourhood, grouped into connected components by tied top score:
+    an edge joins a removed element to an added one whenever the pair is the
+    best available match for *either* side. Deterministic and symmetric --
+    the score of a pair and the union-find tie-break both depend only on the
+    IDs involved, never on which snapshot is called "before" -- so diffing
+    A->B and B->A produce the same components with roles swapped.
+
+    A component with exactly one removed and one added element is a clean
+    match (RENAMED/MOVED). Any other component is ambiguous: every member
+    gets its own AMBIGUOUS `VersionChange`, and all of them carry the same
+    `candidate_ids` -- the full sorted component -- so the doubt is visible
+    from every element in the tie, not just the many-candidates side. See the
+    module docstring.
+
+    Returns (changes, matched_before, matched_after, ambiguous_ids).
+    """
+    before_elems = before.elements_by_id()
+    after_elems = after.elements_by_id()
+
+    candidates: list[tuple[str, str, int, ChangeKind, Confidence, str]] = []
+    for b_id in before_ids:
+        b = before_elems[b_id]
+        if b.kind not in _RENAME_KINDS:
+            continue
+        for a_id in after_ids:
+            a = after_elems[a_id]
+            if a.kind != b.kind:
+                continue
+            scored = _score_pair(b, a, before, after)
+            if scored is None:
+                continue
+            score, kind, confidence, note = scored
+            candidates.append((b_id, a_id, score, kind, confidence, note))
+
+    changes: list[VersionChange] = []
+    matched_before: set[str] = set()
+    matched_after: set[str] = set()
+    ambiguous_ids: set[str] = set()
+
+    if not candidates:
+        return changes, matched_before, matched_after, ambiguous_ids
+
+    best_for_before: dict[str, int] = {}
+    best_for_after: dict[str, int] = {}
+    for b_id, a_id, score, *_ in candidates:
+        best_for_before[b_id] = max(best_for_before.get(b_id, score), score)
+        best_for_after[a_id] = max(best_for_after.get(a_id, score), score)
+
+    parent: dict[str, str] = {}
+    for b_id, a_id, *_ in candidates:
+        parent.setdefault(b_id, b_id)
+        parent.setdefault(a_id, a_id)
+
+    top_edges: list[tuple[str, str, int, ChangeKind, Confidence, str]] = []
+    for cand in candidates:
+        b_id, a_id, score, *_ = cand
+        if score == best_for_before[b_id] or score == best_for_after[a_id]:
+            _union(parent, b_id, a_id)
+            top_edges.append(cand)
+
+    components: dict[str, set[str]] = defaultdict(set)
+    for b_id, a_id, *_ in top_edges:
+        components[_find(parent, b_id)].add(b_id)
+        components[_find(parent, a_id)].add(a_id)
+
+    for root in sorted(components):
+        members = components[root]
+        b_members = sorted(m for m in members if m in before_elems)
+        a_members = sorted(m for m in members if m in after_elems)
+
+        if len(b_members) == 1 and len(a_members) == 1:
+            b_id, a_id = b_members[0], a_members[0]
+            match = next(c for c in top_edges if c[0] == b_id and c[1] == a_id)
+            _, _, _score, kind, confidence, note = match
+            changes.append(
+                VersionChange(
+                    id=_change_id(kind, b_id, a_id),
+                    kind=kind,
+                    before_id=b_id,
+                    after_id=a_id,
+                    provenance=Provenance(method=Method.STRUCTURAL_MATCH, confidence=confidence, note=note),
+                )
+            )
+            matched_before.add(b_id)
+            matched_after.add(a_id)
+            continue
+
+        candidate_ids = tuple(sorted(members))
+        note = f"ambiguous structural match: tied candidates {list(candidate_ids)}"
+        for m in candidate_ids:
+            ambiguous_ids.add(m)
+            is_before = m in before_elems
+            changes.append(
+                VersionChange(
+                    id=_change_id(ChangeKind.AMBIGUOUS, m if is_before else "", "" if is_before else m),
+                    kind=ChangeKind.AMBIGUOUS,
+                    before_id=m if is_before else "",
+                    after_id="" if is_before else m,
+                    provenance=Provenance(method=Method.STRUCTURAL_MATCH, confidence=Confidence.UNKNOWN, note=note),
+                    candidate_ids=candidate_ids,
+                )
+            )
+
+    return changes, matched_before, matched_after, ambiguous_ids
+
+
+# ---------------------------------------------------------------------------
+# Top-level element diff
+# ---------------------------------------------------------------------------
+
+
+def _diff_elements(
+    before: GraphSnapshot, after: GraphSnapshot
+) -> tuple[list[VersionChange], dict[str, str]]:
+    """Returns (changes, match_map) where match_map carries before_id ->
+    after_id for every element whose identity survived (same ID, or matched
+    as a rename/move)."""
+    before_by_id = before.elements_by_id()
+    after_by_id = after.elements_by_id()
+
+    common = sorted(before_by_id.keys() & after_by_id.keys())
+    only_before = sorted(before_by_id.keys() - after_by_id.keys())
+    only_after = sorted(after_by_id.keys() - before_by_id.keys())
+
+    changes: list[VersionChange] = []
+    match_map: dict[str, str] = {}
+
+    for eid in common:
+        vc = _classify_same_id(before_by_id[eid], after_by_id[eid], before, after)
+        changes.append(vc)
+        match_map[eid] = eid
+
+    renamed_moved, matched_before, matched_after, ambiguous_ids = _match_renames_moves(
+        only_before, only_after, before, after
+    )
+    changes.extend(renamed_moved)
+    for vc in renamed_moved:
+        if vc.kind in (ChangeKind.RENAMED, ChangeKind.MOVED):
+            match_map[vc.before_id] = vc.after_id
+
+    for eid in only_before:
+        if eid in matched_before or eid in ambiguous_ids:
+            continue
+        changes.append(
+            VersionChange(
+                id=_change_id(ChangeKind.REMOVED, eid, ""),
+                kind=ChangeKind.REMOVED,
+                before_id=eid,
+                after_id="",
+                provenance=Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN),
+            )
+        )
+
+    for eid in only_after:
+        if eid in matched_after or eid in ambiguous_ids:
+            continue
+        changes.append(
+            VersionChange(
+                id=_change_id(ChangeKind.ADDED, "", eid),
+                kind=ChangeKind.ADDED,
+                before_id="",
+                after_id=eid,
+                provenance=Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN),
+            )
+        )
+
+    changes.sort(key=lambda c: c.id)
+    return changes, match_map
+
+
+# ---------------------------------------------------------------------------
+# Impact
+# ---------------------------------------------------------------------------
+
+
+def _features_changed(vc: VersionChange, before: GraphSnapshot, after: GraphSnapshot) -> tuple[str, ...]:
+    changed_id = vc.after_id or vc.before_id
+    out: set[str] = set()
+    feature_ids = {e.id for e in before.elements if e.kind == ElementKind.FEATURE} | {
+        e.id for e in after.elements if e.kind == ElementKind.FEATURE
+    }
+    for fid in feature_ids:
+        sb = before.backward_slice(fid)
+        sa = after.backward_slice(fid)
+        members_b = set(sb.member_ids) if sb else set()
+        members_a = set(sa.member_ids) if sa else set()
+        if members_b == members_a:
+            continue
+        if changed_id in members_b or changed_id in members_a or vc.before_id in members_b or vc.after_id in members_a:
+            out.add(fid)
+    return tuple(sorted(out))
+
+
+def _reachability_flip_set(before: GraphSnapshot, after: GraphSnapshot, match_map: dict[str, str]) -> set[str]:
+    """Element IDs (in after-version identity where matched) whose forward
+    slice reaching a decision sink flipped between versions."""
+    flips: set[str] = set()
+    reverse_map = {v: k for k, v in match_map.items()}
+    after_slice_roots = {s.root_id for s in after.slices if s.direction == "forward"}
+    for after_root in after_slice_roots:
+        before_root = reverse_map.get(after_root, after_root)
+        sb = before.forward_slice(before_root)
+        sa = after.forward_slice(after_root)
+        reaches_before = bool(sb.reaches_sink_ids) if sb else False
+        reaches_after = bool(sa.reaches_sink_ids) if sa else False
+        if sb is not None and reaches_before != reaches_after:
+            flips.add(after_root)
+    return flips
+
+
+def _findings_key_maps(
+    before: GraphSnapshot, after: GraphSnapshot, match_map: dict[str, str]
+) -> tuple[dict[tuple, str], dict[tuple, str]]:
+    before_keys = {(f.kind, match_map.get(f.element_id, f.element_id)): f.id for f in before.findings}
+    after_keys = {(f.kind, f.element_id): f.id for f in after.findings}
+    return before_keys, after_keys
+
+
+def _build_impacts(
+    changes: Sequence[VersionChange], before: GraphSnapshot, after: GraphSnapshot, match_map: dict[str, str]
+) -> list[Impact]:
+    global_flips = _reachability_flip_set(before, after, match_map)
+    before_finding_keys, after_finding_keys = _findings_key_maps(before, after, match_map)
+    added_finding_keys = set(after_finding_keys) - set(before_finding_keys)
+    removed_finding_keys = set(before_finding_keys) - set(after_finding_keys)
+
+    raw: list[Impact] = []
+    for vc in changes:
+        if vc.kind == ChangeKind.UNCHANGED:
+            continue
+
+        slice_after = after.forward_slice(vc.after_id) if vc.after_id else None
+        slice_before = before.forward_slice(vc.before_id) if vc.before_id else None
+        affected = tuple(
+            sorted(
+                set(slice_after.member_ids if slice_after else ())
+                | set(slice_before.member_ids if slice_before else ())
+            )
+        )
+
+        reaches_before = bool(slice_before.reaches_sink_ids) if slice_before else False
+        reaches_after = bool(slice_after.reaches_sink_ids) if slice_after else False
+        sink_set_before = set(slice_before.reaches_sink_ids) if slice_before else set()
+        sink_set_after = set(slice_after.reaches_sink_ids) if slice_after else set()
+        decision_paths_changed = (reaches_before != reaches_after) or (sink_set_before != sink_set_after)
+
+        features_changed = _features_changed(vc, before, after)
+
+        changed_id = vc.after_id or vc.before_id
+        reachability_flipped = tuple(
+            sorted(global_flips & (set(affected) | {changed_id}))
+        )
+
+        changed_key_id = vc.after_id or match_map.get(vc.before_id, vc.before_id)
+        findings_added = tuple(
+            sorted(
+                fid
+                for key, fid in after_finding_keys.items()
+                if key in added_finding_keys and key[1] == changed_key_id
+            )
+        )
+        findings_removed = tuple(
+            sorted(
+                fid
+                for key, fid in before_finding_keys.items()
+                if key in removed_finding_keys and key[1] == changed_key_id
+            )
+        )
+
+        raw.append(
+            Impact(
+                id=f"impact::{vc.id}",
+                change_id=vc.id,
+                affected_ids=affected,
+                decision_paths_changed=bool(decision_paths_changed),
+                features_changed=features_changed,
+                reachability_flipped=reachability_flipped,
+                findings_added=findings_added,
+                findings_removed=findings_removed,
+                rank=0,
+            )
+        )
+
+    def rank_key(impact: Impact) -> tuple:
+        return (
+            0 if impact.decision_paths_changed else 1,
+            0 if impact.reachability_flipped else 1,
+            0 if (impact.findings_added or impact.findings_removed) else 1,
+            -len(impact.affected_ids),
+            impact.change_id,
+        )
+
+    ordered = sorted(raw, key=rank_key)
+    ranked = [
+        Impact(
+            id=impact.id,
+            change_id=impact.change_id,
+            affected_ids=impact.affected_ids,
+            decision_paths_changed=impact.decision_paths_changed,
+            features_changed=impact.features_changed,
+            reachability_flipped=impact.reachability_flipped,
+            findings_added=impact.findings_added,
+            findings_removed=impact.findings_removed,
+            rank=i + 1,
+        )
+        for i, impact in enumerate(ordered)
+    ]
+    ranked.sort(key=lambda imp: imp.id)
+    return ranked
+
+
+# ---------------------------------------------------------------------------
+# Entry points
+# ---------------------------------------------------------------------------
+
+
+def diff_snapshots(before: GraphSnapshot, after: GraphSnapshot) -> tuple[list[VersionChange], list[Impact]]:
+    changes, match_map = _diff_elements(before, after)
+    impacts = _build_impacts(changes, before, after, match_map)
+    return changes, impacts
+
+
+class Differ:
+    """Implements `DiffCard`. `diff()` loads each version's Mode B graph from
+    its `out/<label>/` artifact directory and delegates to `diff_snapshots`."""
+
+    def diff(self, before_root: str, after_root: str) -> tuple[Sequence[VersionChange], Sequence[Impact]]:
+        before = load_snapshot(before_root)
+        after = load_snapshot(after_root)
+        return diff_snapshots(before, after)
+
+
+# ==========================================================================
+# docrecords.py
+# ==========================================================================
+
+"""Card 16 — documentation records and the completeness gate.
+
+Assembles one :class:`~cascade_map.contracts.interfaces.DocRecord` per
+inventoried element, entirely from graph objects produced by other cards
+(elements, edges, order, lineage, slices, findings, changes, and -- when a
+Mode A overlay exists -- trace events, alignment verdicts and narrative
+steps). This module never opens a target file: everything it needs arrives
+already parsed, as the ``DocsCard`` protocol and the project's constraint 8
+require.
+
+The completeness gate (`DocumentationBuilder.completeness_gate`) is not a
+lint pass. A non-empty result means the run failed: some element has no
+record, or some record has a required field left unfilled. "Unknown" is
+accepted only in the explicit, reasoned form produced by :func:`unknown`;
+a bare missing key or empty string is always a gate failure. There is no
+parameter anywhere in this module that downgrades that to a warning.
+"""
+
+
+
+
+# ---------------------------------------------------------------------------
+# The explicit-unknown sentinel
+# ---------------------------------------------------------------------------
+
+
+def unknown(reason: str) -> dict[str, str]:
+    """The only legitimate way a required field is filled with "nothing."
+
+    A bare ``{}``, ``""`` or missing key is always a gate failure. This
+    sentinel is a gate *pass* precisely because it names why the fact is not
+    available -- the honest-gap principle applies to documentation records
+    the same way it applies to edges and findings.
+    """
+    if not reason:
+        raise ValueError("unknown() requires a non-empty reason")
+    return {"status": "UNKNOWN", "reason": reason}
+
+
+def _is_unknown(value: Any) -> bool:
+    return isinstance(value, dict) and value.get("status") == "UNKNOWN"
+
+
+def _filled(value: Any) -> bool:
+    """True if *value* is a legitimately complete field value."""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value != ""
+    if _is_unknown(value):
+        return bool(value.get("reason"))
+    return True
+
+
+IDENTITY_REQUIRED: tuple[str, ...] = (
+    "id",
+    "kind",
+    "name",
+    "qualname",
+    "module",
+    "path",
+    "line",
+    "end_line",
+    "signature",
+    "parameters",
+    "return_type",
+    "decorators",
+    "docstring",
+)
+
+CASCADE_REQUIRED: tuple[str, ...] = ("order", "callers", "callees", "enclosing_scope")
+
+DATA_ROLE_REQUIRED: tuple[str, ...] = (
+    "features_read",
+    "features_written",
+    "backward_slice_summary",
+    "forward_slice_summary",
+)
+
+DECISION_REQUIRED: tuple[str, ...] = ("reaches_sink", "paths")
+
+RUNTIME_REQUIRED: tuple[str, ...] = (
+    "observed_calls",
+    "value_summary",
+    "alignment_verdict",
+    "narrative_fragment",
+)
+
+
+def _dict_complete(payload: Mapping[str, Any], required: Sequence[str]) -> bool:
+    return all(key in payload and _filled(payload[key]) for key in required)
+
+
+# ---------------------------------------------------------------------------
+# Per-kind field applicability.
+#
+# Every ElementKind gets a record, and every required field in that record is
+# either a real value or an explicit unknown() naming why the field does not
+# apply to that kind. A PACKAGE has no signature; a CONFIG_KEY has no callers;
+# a DATA_FILE has no enclosing Python module. None of that is a gap in the
+# analysis -- it is a fact about the kind -- so it is never left as a raw
+# empty string or an unexplained empty list. Going through every ElementKind
+# here (13 total) is deliberate: a kind absent from today's fixture corpus
+# must still get a correct record when the owner's engine has one.
+# ---------------------------------------------------------------------------
+
+# Kinds that are themselves the root of a Python module namespace, or above
+# it. Their enclosing scope -- if any -- comes only from parent_id (the
+# containing package); falling back to `element.module` would be circular.
+_ROOT_OF_HIERARCHY_KINDS = frozenset({ElementKind.PACKAGE, ElementKind.MODULE})
+
+# Kinds that live outside the Python module namespace entirely: a JSON config
+# file, a key inside it, and a named feature that may be written from more
+# than one module. None of these has a single enclosing Python module.
+_NO_PYTHON_MODULE_KINDS = frozenset(
+    {ElementKind.DATA_FILE, ElementKind.CONFIG_KEY, ElementKind.FEATURE}
+)
+
+# Only these can carry Python decorators.
+_DECORATABLE_KINDS = frozenset(
+    {ElementKind.CLASS, ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.PROPERTY}
+)
+
+# Only these can appear as a source or target of a CALLS edge.
+_CALL_GRAPH_KINDS = frozenset(
+    {ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.PROPERTY}
+)
+
+# Only these execute and so can read or write a feature. A FEATURE element is
+# the data itself, not something that reads or writes; a CLASS is a template,
+# not a running frame; PACKAGE/MODULE/IMPORT/PARAMETER/DATA_FILE/CONFIG_KEY/
+# BLOB never appear as the source of a lineage edge.
+_DATA_ROLE_KINDS = frozenset(
+    {
+        ElementKind.FUNCTION,
+        ElementKind.METHOD,
+        ElementKind.PROPERTY,
+        ElementKind.MODULE,
+        ElementKind.ASSIGNMENT,
+    }
+)
+
+
+# ---------------------------------------------------------------------------
+# Signature parsing -- text already produced by card 1's own AST walk. This
+# is string-splitting the `signature` field the graph already carries, not
+# re-parsing the target: the source of truth remains card 1's AST visit.
+# ---------------------------------------------------------------------------
+
+_PARAM_SPLIT = re.compile(r",\s*(?![^\[\]]*\])(?![^()]*\))")
+
+
+def _split_top_level(inner: str) -> list[str]:
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in inner:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    tail = "".join(current).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def parse_signature(signature: str) -> tuple[list[dict[str, str]], str]:
+    """Best-effort split of a ``def``-style signature into parameters and a
+    return annotation. Deterministic string parsing only; never touches the
+    target file. Returns ``([], "")`` for anything that does not look like a
+    parenthesized signature -- callers treat that as an explicit unknown.
+    """
+    open_at = signature.find("(")
+    if open_at == -1:
+        return [], ""
+    depth = 0
+    close_at = -1
+    for idx in range(open_at, len(signature)):
+        if signature[idx] == "(":
+            depth += 1
+        elif signature[idx] == ")":
+            depth -= 1
+            if depth == 0:
+                close_at = idx
+                break
+    if close_at == -1:
+        return [], ""
+    inner = signature[open_at + 1 : close_at]
+    return_type = ""
+    arrow = signature.find("->", close_at)
+    if arrow != -1:
+        return_type = signature[arrow + 2 :].strip().rstrip(":").strip()
+    params: list[dict[str, str]] = []
+    for raw in _split_top_level(inner):
+        if not raw or raw in ("self", "cls"):
+            continue
+        raw = raw.lstrip("*")
+        name = raw
+        annotation = ""
+        default = ""
+        if "=" in name:
+            name, default = name.split("=", 1)
+            name = name.strip()
+            default = default.strip()
+        if ":" in name:
+            name, annotation = name.split(":", 1)
+            name = name.strip()
+            annotation = annotation.strip()
+        if not name:
+            continue
+        params.append(
+            {
+                "name": name,
+                "annotation": annotation or "UNANNOTATED",
+                "default": default,
+            }
+        )
+    return params, return_type
+
+
+# ---------------------------------------------------------------------------
+# The builder
+# ---------------------------------------------------------------------------
+
+
+class DocumentationBuilder:
+    """Implements the ``DocsCard`` protocol.
+
+    Every input is a graph object supplied by another card; this class never
+    reads a file. Construct one instance per run with whatever cards 1-6 (and
+    optionally 11-14) produced, call :meth:`records`, and run
+    :meth:`completeness_gate` on the result before anything is written out.
+    """
+
+    def __init__(
+        self,
+        elements: Sequence[Element],
+        edges: Sequence[Edge] = (),
+        order_nodes: Sequence[OrderNode] = (),
+        decisions: Sequence[DecisionPoint] = (),
+        lineage_edges: Sequence[LineageEdge] = (),
+        slices: Sequence[Slice] = (),
+        findings: Sequence[Finding] = (),
+        changes: Sequence[VersionChange] = (),
+        decision_sink_ids: Sequence[str] = (),
+        trace_events: Sequence[TraceEvent] = (),
+        alignment_verdicts: Sequence[AlignmentVerdict] = (),
+        narrative_steps: Sequence[NarrativeStep] = (),
+        has_runtime_overlay: bool = False,
+    ) -> None:
+        self._elements = list(elements)
+        self._edges = list(edges)
+        self._order_nodes = list(order_nodes)
+        self._decisions = list(decisions)
+        self._lineage_edges = list(lineage_edges)
+        self._slices = list(slices)
+        self._findings = list(findings)
+        self._changes = list(changes)
+        self._decision_sink_ids = frozenset(decision_sink_ids)
+        self._trace_events = list(trace_events)
+        self._alignment_verdicts = list(alignment_verdicts)
+        self._narrative_steps = list(narrative_steps)
+        self._has_runtime = bool(
+            has_runtime_overlay or trace_events or alignment_verdicts or narrative_steps
+        )
+
+        self._element_by_id = {el.id: el for el in self._elements}
+        self._callers: dict[str, list[str]] = {}
+        self._callees: dict[str, list[str]] = {}
+        for edge in self._edges:
+            if edge.kind is EdgeKind.CALLS:
+                self._callees.setdefault(edge.source_id, []).append(edge.target_id)
+                self._callers.setdefault(edge.target_id, []).append(edge.source_id)
+
+        self._order_index: dict[str, str] = {}
+        for node in self._order_nodes:
+            for position, element_id in enumerate(node.element_ids):
+                self._order_index[element_id] = f"{node.id}[{position}]:{node.kind}"
+
+        self._findings_by_element: dict[str, list[str]] = {}
+        for finding in self._findings:
+            self._findings_by_element.setdefault(finding.element_id, []).append(finding.id)
+
+        self._changes_by_element: dict[str, set[str]] = {}
+        for change in self._changes:
+            for element_id in {change.before_id, change.after_id}:
+                if element_id:
+                    self._changes_by_element.setdefault(element_id, set()).add(change.id)
+
+        self._adjacency: dict[str, list[str]] = {}
+        for edge in self._edges:
+            self._adjacency.setdefault(edge.source_id, []).append(edge.target_id)
+
+    # -- assembly -----------------------------------------------------
+
+    def records(self) -> Sequence[DocRecord]:
+        return tuple(self._build_record(el) for el in sorted(self._elements, key=lambda e: e.id))
+
+    def _build_record(self, element: Element) -> DocRecord:
+        identity = self._identity(element)
+        cascade_position = self._cascade_position(element)
+        data_role = self._data_role(element)
+        decision_relevance = self._decision_relevance(element)
+        runtime = self._runtime(element) if self._has_runtime else {}
+
+        finding_ids = tuple(sorted(self._findings_by_element.get(element.id, ())))
+        change_ids = tuple(sorted(self._changes_by_element.get(element.id, ())))
+
+        provenance = Provenance(
+            method=Method.STRUCTURAL_MATCH,
+            confidence=combine(element.provenance.confidence),
+            span=element.span,
+            note="assembled from the graph; not re-derived from source",
+        )
+
+        return DocRecord(
+            id=f"doc::{element.id}",
+            element_id=element.id,
+            identity=identity,
+            cascade_position=cascade_position,
+            data_role=data_role,
+            decision_relevance=decision_relevance,
+            finding_ids=finding_ids,
+            change_ids=change_ids,
+            provenance=provenance,
+            runtime=runtime,
+        )
+
+    def _identity(self, element: Element) -> dict[str, Any]:
+        kind = element.kind
+
+        if element.signature:
+            params, return_type = parse_signature(element.signature)
+            parameters: Any = params
+            return_val: Any = return_type or unknown(
+                "signature has no -> annotation and none could be inferred"
+            )
+            signature_val: Any = element.signature
+        else:
+            reason = f"{kind} elements have no call signature"
+            parameters = unknown(reason)
+            return_val = unknown(reason)
+            signature_val = unknown(reason)
+
+        if kind in _NO_PYTHON_MODULE_KINDS:
+            module_val: Any = unknown(
+                f"{kind} elements live outside the Python module namespace"
+            )
+        else:
+            module_val = element.module or unknown(
+                f"no module recorded for this {kind}; expected one for this kind"
+            )
+
+        if kind in _DECORATABLE_KINDS:
+            decorators_val: Any = list(element.decorators)
+        else:
+            decorators_val = unknown(f"{kind} elements cannot carry decorators")
+
+        return {
+            "id": element.id,
+            "kind": str(kind),
+            "name": element.name,
+            "qualname": element.qualname or element.name,
+            "module": module_val,
+            "path": element.span.path,
+            "line": element.span.line,
+            "end_line": element.span.end_line if element.span.end_line is not None else element.span.line,
+            "signature": signature_val,
+            "parameters": parameters,
+            "return_type": return_val,
+            "decorators": decorators_val,
+            "docstring": element.docstring or unknown(f"no docstring present for this {kind}"),
+        }
+
+    def _cascade_position(self, element: Element) -> dict[str, Any]:
+        kind = element.kind
+        order = self._order_index.get(element.id)
+        if order is None:
+            order = unknown(f"{kind} is not a member of any order node")
+
+        if kind in _CALL_GRAPH_KINDS:
+            callers: Any = sorted(set(self._callers.get(element.id, ())))
+            callees: Any = sorted(set(self._callees.get(element.id, ())))
+        else:
+            reason = f"{kind} elements do not appear in the CALLS call graph"
+            callers = unknown(reason)
+            callees = unknown(reason)
+
+        if element.parent_id:
+            enclosing_scope: Any = element.parent_id
+        elif kind in _ROOT_OF_HIERARCHY_KINDS:
+            enclosing_scope = unknown(
+                f"{kind} is at the root of the hierarchy; it has no enclosing scope"
+            )
+        elif element.module and kind not in _NO_PYTHON_MODULE_KINDS:
+            enclosing_scope = element.module
+        else:
+            enclosing_scope = unknown(f"no enclosing scope recorded for this {kind}")
+
+        return {
+            "order": order,
+            "callers": callers,
+            "callees": callees,
+            "enclosing_scope": enclosing_scope,
+        }
+
+    def _data_role(self, element: Element) -> dict[str, Any]:
+        kind = element.kind
+        if kind not in _DATA_ROLE_KINDS:
+            reason = f"{kind} elements do not read or write features directly"
+            features_read: Any = unknown(reason)
+            features_written: Any = unknown(reason)
+        else:
+            reads: set[str] = set()
+            writes: set[str] = set()
+            write_kinds = {
+                LineageKind.ASSIGNS,
+                LineageKind.COLUMN_WRITE,
+                LineageKind.CONTAINER_WRITE,
+                LineageKind.ATTRIBUTE_WRITE,
+            }
+            saw_any_lineage = bool(self._lineage_edges)
+            for edge in self._lineage_edges:
+                if edge.source_id != element.id:
+                    continue
+                if edge.kind is LineageKind.READS:
+                    reads.add(edge.target_id)
+                elif edge.kind in write_kinds:
+                    writes.add(edge.target_id)
+
+            features_read = sorted(reads) if saw_any_lineage else unknown(
+                "no lineage data supplied to the documentation builder"
+            )
+            features_written = sorted(writes) if saw_any_lineage else unknown(
+                "no lineage data supplied to the documentation builder"
+            )
+
+        backward = self._slice_summary(element.id, "backward")
+        forward = self._slice_summary(element.id, "forward")
+        return {
+            "features_read": features_read,
+            "features_written": features_written,
+            "backward_slice_summary": backward,
+            "forward_slice_summary": forward,
+        }
+
+    def _slice_summary(self, element_id: str, direction: str) -> Any:
+        for sl in self._slices:
+            if sl.root_id == element_id and sl.direction == direction:
+                return {
+                    "member_count": len(sl.member_ids),
+                    "barrier_count": len(sl.barrier_ids),
+                    "reaches_sink_ids": sorted(sl.reaches_sink_ids),
+                    "confidence": str(sl.confidence),
+                }
+        return unknown(f"no {direction} slice computed rooted at this element")
+
+    def _decision_relevance(self, element: Element) -> dict[str, Any]:
+        if not self._decision_sink_ids:
+            reason = "no decision sink configured (Q1 unresolved); reachability is UNKNOWN, not false"
+            return {"reaches_sink": unknown(reason), "paths": unknown(reason)}
+
+        path = self._bfs_path(element.id, self._decision_sink_ids)
+        if path is None:
+            return {"reaches_sink": False, "paths": []}
+        return {"reaches_sink": True, "paths": [path]}
+
+    def _bfs_path(self, start: str, targets: frozenset[str]) -> list[str] | None:
+        if start in targets:
+            return [start]
+        from collections import deque
+
+        visited = {start}
+        queue: deque[list[str]] = deque([[start]])
+        while queue:
+            path = queue.popleft()
+            node = path[-1]
+            for neighbor in sorted(set(self._adjacency.get(node, ()))):
+                if neighbor in targets:
+                    return path + [neighbor]
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(path + [neighbor])
+        return None
+
+    def _runtime(self, element: Element) -> dict[str, Any]:
+        calls = [
+            ev
+            for ev in self._trace_events
+            if ev.element_id == element.id and str(ev.kind) == "CALL"
+        ]
+        observed_calls = len(calls)
+
+        value_events = sorted(
+            (ev for ev in self._trace_events if ev.element_id == element.id and ev.values),
+            key=lambda ev: ev.event_id,
+        )
+        if value_events:
+            value_summary: Any = [
+                {
+                    "event_id": ev.event_id,
+                    "captures": sorted(
+                        {
+                            f"{name}:{cap.status}:{cap.type_name}"
+                            for name, cap in ev.values.items()
+                        }
+                    ),
+                }
+                for ev in value_events
+            ]
+        else:
+            value_summary = unknown("no value captures recorded for this element")
+
+        verdicts = sorted(
+            (v for v in self._alignment_verdicts if v.element_id == element.id),
+            key=lambda v: v.id,
+        )
+        alignment_verdict: Any
+        if verdicts:
+            alignment_verdict = str(verdicts[0].verdict)
+        else:
+            alignment_verdict = unknown("no alignment verdict for this element")
+
+        steps = sorted(
+            (s for s in self._narrative_steps if element.id in s.element_ids),
+            key=lambda s: s.sequence,
+        )
+        narrative_fragment: Any
+        if steps:
+            narrative_fragment = steps[0].text
+        else:
+            narrative_fragment = unknown("no narrative step references this element")
+
+        return {
+            "observed_calls": observed_calls,
+            "value_summary": value_summary,
+            "alignment_verdict": alignment_verdict,
+            "narrative_fragment": narrative_fragment,
+        }
+
+    # -- the gate -------------------------------------------------------
+
+    def completeness_gate(self, records: Sequence[DocRecord]) -> Sequence[str]:
+        """Return the sorted element IDs of every completeness failure.
+
+        Checks two things: every element this builder was constructed with
+        has a record among *records*, and every record present has every
+        required field filled (an explicit :func:`unknown` counts as filled;
+        a missing key or empty string does not). Non-empty return means the
+        run fails -- there is no parameter here to make that a warning.
+        """
+        offenders: set[str] = set()
+        by_element = {r.element_id: r for r in records}
+
+        for element in self._elements:
+            record = by_element.get(element.id)
+            if record is None:
+                offenders.add(element.id)
+                continue
+            if not self._record_complete(record):
+                offenders.add(element.id)
+
+        return tuple(sorted(offenders))
+
+    def _record_complete(self, record: DocRecord) -> bool:
+        if not record.id or not record.element_id:
+            return False
+        if record.provenance is None:
+            return False
+        if not _dict_complete(record.identity, IDENTITY_REQUIRED):
+            return False
+        if not _dict_complete(record.cascade_position, CASCADE_REQUIRED):
+            return False
+        if not _dict_complete(record.data_role, DATA_ROLE_REQUIRED):
+            return False
+        if not _dict_complete(record.decision_relevance, DECISION_REQUIRED):
+            return False
+        if self._has_runtime and not _dict_complete(record.runtime, RUNTIME_REQUIRED):
+            return False
+        return True
+
+    # -- enrichment (optional, prose-only) -------------------------------
+
+    def enrich(
+        self, records: Sequence[DocRecord], client: EnrichmentClient
+    ) -> Sequence[DocRecord]:
+        """Attach model prose to a copy of *records*. Never touches any other
+        field, and returns *records* unchanged (same values, new tuple) when
+        the client is disabled -- so the deterministic artifact is
+        byte-identical whether or not this method is even called.
+        """
+        if not client.enabled:
+            return tuple(records)
+        enriched: list[DocRecord] = []
+        for record in records:
+            result = client.summarize_element(record.identity)
+            enriched.append(replace(record, model_prose=result.prose, model_id=result.model_id))
+        return tuple(enriched)
+
+
+# ==========================================================================
+# enrichment.py
+# ==========================================================================
+
+"""Card 16 — the enrichment client.
+
+Optional, prose-only, and never a source of fact. Rules enforced here:
+
+* The key comes from ``CASCADE_MAP_API_KEY``. This module never reads or sets
+  ``ANTHROPIC_API_KEY`` -- that variable belongs to Claude Code's own billing,
+  not to CASCADE-MAP's runtime model calls.
+* With no key set, :attr:`EnrichmentClient.enabled` is False and every call
+  degrades to a no-op that returns empty strings. Nothing else in the card
+  depends on this being on.
+* Every call is injected through a *transport* callable so tests never touch
+  the network. The default transport (used only outside tests, never
+  exercised by this module's own test suite) raises rather than silently
+  doing nothing, so a missing transport cannot be mistaken for "disabled."
+* Output is prose only. It is the caller's job (``docrecords.py``) to keep it
+  in a field structurally separate from AST- and trace-derived facts and to
+  never feed it back into the graph.
+* Payloads sent to the model are restricted to what this module accepts as
+  input: short, already-public-in-the-record identity strings (name,
+  qualname, kind, signature, docstring). Never target source bodies, never
+  blob contents. `docs/runtime_prompts/` is the authority for prompt content
+  and escalation policy; at the time this module was written that directory
+  did not exist, so no prompt file is loaded and no escalation to
+  claude-sonnet-5 is implemented here -- see the card's final report.
+"""
+
+
+
+_enrichment_API_KEY_ENV = "CASCADE_MAP_API_KEY"
+"""The only environment variable this module reads for credentials."""
+
+HAIKU_MODEL = "claude-haiku-4-5-20251001"
+SONNET_MODEL = "claude-sonnet-5"
+
+_FORBIDDEN_ENV = "ANTHROPIC_API_KEY"
+"""Never read. Named only so a reviewer can grep for the constraint."""
+
+# Fields an identity payload may carry to the model. Nothing else is sent.
+_ALLOWED_IDENTITY_FIELDS = (
+    "name",
+    "qualname",
+    "kind",
+    "module",
+    "signature",
+    "docstring",
+)
+
+Transport = Callable[[Mapping[str, str], str], str]
+"""``(payload, model) -> prose``. Swapped for a stub in every test."""
+
+
+class EnrichmentDisabled(RuntimeError):
+    """Raised only if code calls the client without checking ``enabled`` first
+    and no stub transport was supplied. Should never surface in a real run:
+    callers must check ``enabled``."""
+
+
+@dataclass(frozen=True, slots=True)
+class EnrichmentResult:
+    """Prose plus the label it must always carry. Never a fact."""
+
+    prose: str
+    model_id: str
+    source: str = "MODEL_PROPOSED"
+
+
+class EnrichmentClient:
+    """Talks to a language model for prose only, never for facts.
+
+    ``transport`` is required to actually call anything. Without one, the
+    client still reports ``enabled`` correctly (from the key alone) but
+    raises if asked to summarize, so a forgotten transport fails loudly in
+    development rather than silently producing empty prose that looks like a
+    disabled run.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        transport: Transport | None = None,
+    ) -> None:
+        self._api_key = api_key if api_key is not None else os.environ.get(_enrichment_API_KEY_ENV, "")
+        self._transport = transport
+
+    @property
+    def enabled(self) -> bool:
+        """True only when a non-empty ``CASCADE_MAP_API_KEY`` was found."""
+        return bool(self._api_key)
+
+    def summarize_element(
+        self,
+        identity: Mapping[str, object],
+        model: str = HAIKU_MODEL,
+    ) -> EnrichmentResult:
+        """Return a one-shot prose summary of an element's identity facts.
+
+        Sends only the fields named in ``_ALLOWED_IDENTITY_FIELDS``, stringified
+        and truncated defensively; never the element's full source body, never
+        blob content. Returns an empty, unlabelled-model result when disabled.
+        """
+        if not self.enabled:
+            return EnrichmentResult(prose="", model_id="")
+        if self._transport is None:
+            raise EnrichmentDisabled(
+                "enrichment is enabled (a key is set) but no transport was "
+                "configured; tests and callers must inject a stub transport "
+                "rather than let this reach the network"
+            )
+        payload = {
+            field: str(identity[field])[:2000]
+            for field in _ALLOWED_IDENTITY_FIELDS
+            if field in identity and identity[field] not in (None, "")
+        }
+        prose = self._transport(payload, model)
+        return EnrichmentResult(prose=prose, model_id=model)
+
+
+# ==========================================================================
+# harness/errors.py
+# ==========================================================================
+
+"""Exceptions internal to the harness.
+
+``BlockedOperation`` is raised from inside the audit hook to abort the
+operation the target attempted -- the actual isolation mechanism (constraint
+7). ``HarnessRefusal`` is raised before anything is executed, when a guarantee
+this card owns cannot be made. There is no flag anywhere that turns either of
+these into a warning: catching one always means "this did not happen."
+"""
+
+
+
+class BlockedOperation(Exception):
+    """Raised inside the audit hook to abort a denied operation.
+
+    By the time this is raised the denial is already recorded as a
+    ``BlockedAttempt`` on the active ``SandboxContext``, so a caller that
+    catches and discards it loses nothing from the run record.
+    """
+
+
+class HarnessRefusal(Exception):
+    """The run cannot start. Carries the exact reason.
+
+    Constraint 7: a refusal is a correct outcome, never a warning to proceed
+    past. There is no force flag and nothing here should ever be suppressed
+    to let a run continue -- ``Harness.start`` catches this internally and
+    turns it into a refused ``RunRecord``; it is exposed for callers that want
+    to fail loudly instead.
+    """
+
+
+class ScenarioStageError(Exception):
+    """The target's own code failed to run to completion, tagged with which
+    stage of reaching it failed.
+
+    ``stage`` is ``"import"`` (``spec.module`` itself, or something it
+    imports, never loaded -- possibly a wrong ``target_root`` or a typo'd
+    module name, not necessarily a defect in the target) or ``"call"``
+    (the module loaded, but the declared entry point does not exist on it,
+    or raised once called). ``original`` is the exception actually raised,
+    kept whole -- type, message and ``__traceback__`` are all still directly
+    inspectable on it.
+
+    Distinguishing the two matters to whoever reads the result: "your
+    module does not exist" and "your `main()` raised" are different
+    problems. ``_execute`` catches this and turns it into
+    ``RunRecord.scenario_failure`` via ``Harness._build_scenario_failure``
+    -- the run still completes (this is not a refusal; every control was
+    active), but is no longer indistinguishable from a clean one.
+    """
+
+    def __init__(self, stage: str, original: BaseException) -> None:
+        super().__init__(str(original))
+        self.stage = stage
+        self.original = original
+
+
+# ==========================================================================
+# harness/hashing.py
+# ==========================================================================
+
+"""Deterministic identifiers the harness needs before it will run anything.
+
+Target content hashes, the graph hash they must match, and the run ID. All
+three are pure functions of their inputs so that two runs against the same
+target, scenario and config produce byte-identical output -- the replay
+guarantee starts here, not just in card 12's event log.
+"""
+
+
+
+
+#: Never part of the target's own content; walking into these would make the
+#: hash depend on incidental local state (a cache directory, a VCS folder)
+#: rather than on the target itself.
+_EXCLUDED_DIR_NAMES = frozenset(
+    {"__pycache__", ".git", ".hg", ".svn", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+)
+
+
+def compute_target_hashes(target_root: Path) -> dict[str, str]:
+    """SHA-256 of every file under *target_root*, keyed by POSIX-relative path.
+
+    A missing root hashes to an empty mapping rather than raising: the caller
+    (``Harness.start``) turns that into a named refusal, which is the correct
+    place for a human-readable reason to live.
+    """
+    root = Path(target_root)
+    hashes: dict[str, str] = {}
+    if not root.exists():
+        return hashes
+    for path in sorted(root.rglob("*")):
+        if any(part in _EXCLUDED_DIR_NAMES for part in path.parts):
+            continue
+        if path.is_file():
+            rel = path.relative_to(root).as_posix()
+            hashes[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashes
+
+
+def compute_graph_hash(target_hashes: dict[str, str]) -> str:
+    """The hash a completed Mode B graph is stamped with.
+
+    Purely a function of the target's own content hashes, so the harness can
+    recompute "what the graph should say" without reading the graph's own
+    on-disk format -- whose exact shape (``manifest.json``) is not part of
+    the binding contract card 11 implements against. See the harness build
+    report for the resulting gap.
+    """
+    payload = canonical_dumps({"target_hashes": target_hashes})
+    return hashlib.sha256(payload.encode("ascii")).hexdigest()
+
+
+def config_fingerprint(
+    declared_process_names: frozenset[str],
+    client_names: frozenset[str],
+    env_passthrough: frozenset[str],
+) -> str:
+    """A deterministic summary of the parts of a run config that affect what
+    a run is allowed to do, for folding into the run ID."""
+    payload = canonical_dumps(
+        {
+            "declared_process_names": sorted(declared_process_names),
+            "client_names": sorted(client_names),
+            "env_passthrough": sorted(env_passthrough),
+        }
+    )
+    return hashlib.sha256(payload.encode("ascii")).hexdigest()
+
+
+def compute_run_id(scenario: str, graph_hash: str, config_fp: str) -> str:
+    """A run ID that is a pure function of scenario, graph and config.
+
+    Deterministic, not random: the same scenario against the same graph with
+    the same declared controls always gets the same run ID, which is what
+    lets a replay of a recorded run be compared byte-for-byte against a fresh
+    one instead of merely "close."
+    """
+    payload = canonical_dumps({"scenario": scenario, "graph_hash": graph_hash, "config": config_fp})
+    digest = hashlib.sha256(payload.encode("ascii")).hexdigest()
+    return f"run_{digest[:16]}"
+
+
+# ==========================================================================
+# harness/config.py
+# ==========================================================================
+
+"""Run configuration: everything the owner must declare before a Mode A run.
+
+Every collection here defaults to empty. That is not a convenience default;
+it is the mechanism. An unconfigured harness controls everything away by
+omission -- default-deny is a property of these defaults, not of a caller
+remembering to lock something down.
+"""
+
+
+
+
+@dataclass(frozen=True)
+class ScenarioSpec:
+    """One Mode A scenario: what to run and how to reach it.
+
+    *module* is imported with *target_root* on ``sys.path`` (mirrors how card
+    1 addresses elements: a bare, importable module name rooted at the
+    target). When *function* is set, it is called with *args* after import;
+    left empty, the import alone is the scenario (mirrors ``python -m``,
+    where the module's own top-level code and any ``if __name__ ==
+    "__main__"`` block do the work).
+    """
+
+    name: str
+    module: str
+    function: str = ""
+    args: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RunConfig:
+    """Everything a ``Harness`` needs to know before it will consider a run.
+
+    ``target_root`` -- where the scenario's code lives (``target_engine/`` in
+    production; a fixture directory in this card's own tests).
+
+    ``mode_b_out_dir`` -- the completed Mode B graph's output directory. Its
+    presence (an ``elements.jsonl``) is the evidence a graph exists at all;
+    its content hashes are what ``graph_hash`` is checked against. Also where
+    ``runtime/<run_id>/run.json`` is written.
+
+    ``sandbox_root`` -- every write the scenario makes lands here or is
+    blocked. Not the same directory as ``mode_b_out_dir``: the sandbox is
+    scoped to the *target's* writes, never to the harness's own artifacts.
+
+    ``scenarios`` -- named entry points. An undeclared scenario name is a
+    refusal, not a guess at which module to run.
+
+    ``declared_process_names`` -- executable basenames (or the literal token
+    ``"fork"``) the run config explicitly allows to spawn. Empty by default:
+    every subprocess, exec and fork is blocked until named here.
+
+    ``client_stubs`` -- external systems named in ``TARGET_PROFILE.md``,
+    keyed by the module name the target imports them as. Each factory
+    returns a stub or replay module installed into ``sys.modules`` before the
+    scenario runs, so the target never reaches the real socket layer for a
+    declared client at all. A client the target reaches for that is *not*
+    here goes through the real ``socket``/``open`` calls the stub would have
+    intercepted, and those are blocked like anything else undeclared -- an
+    undeclared client is a hard stop by construction, not a special case.
+
+    ``env_passthrough`` -- environment variable names visible to the
+    scenario. Empty by default: nothing, including secrets, passes through
+    unless named here.
+    """
+
+    target_root: Path
+    mode_b_out_dir: Path
+    sandbox_root: Path
+    scenarios: dict[str, ScenarioSpec] = field(default_factory=dict)
+    declared_process_names: frozenset[str] = frozenset()
+    client_stubs: dict[str, Callable[[], ModuleType]] = field(default_factory=dict)
+    env_passthrough: frozenset[str] = frozenset()
+
+
+# ==========================================================================
+# harness/sandbox.py
+# ==========================================================================
+
+"""The actual isolation mechanism: a process-wide audit hook, default-deny.
+
+``sys.addaudithook`` (PEP 578) fires for network connects and DNS lookups,
+file opens and filesystem mutations, and process spawning -- at the C level,
+underneath ``socket``, ``os``, ``subprocess`` and everything built on them, no
+matter how the target reaches for them. A hook that raises aborts the
+operation and propagates the exception to the caller instead of letting it
+complete; that is the enforcement, not a side channel to it. Once added, a
+hook cannot be removed for the life of the interpreter (deliberately, on
+Python's part) -- so a run that can install one has a guarantee that persists
+for as long as the process does, and no code path, including a bug in this
+module, can later switch it back off.
+
+Enforcement answers exactly one question, for every audited event, on every
+thread: **is a run currently active?** Two designs for answering it have
+already failed, and the failures are the reason this one looks the way it
+does.
+
+Round one used a ``ContextVar``. A ``ContextVar`` scopes a value to one
+logical flow of control, and a plain ``threading.Thread`` starts with a
+fresh default context -- a value set in the parent is invisible to it. A
+target thread that opened a socket saw no active context and was never
+blocked. Fixed by moving to a plain module-level global, visible to every
+thread with no cooperation required.
+
+Round two kept the global but tried to answer "is anything still running?"
+at block-exit time by *enumerating* threads: snapshot before, diff after,
+join what's new, register what's still alive by thread identity so its later
+actions stay judged after the flag itself cleared. Two more escapes followed
+the same shape: a ``threading.Thread`` *constructed* inside the active block
+but *started* after it returns is invisible to ``threading.enumerate()``
+until it starts, by which point the snapshot has already been taken and the
+flag has already cleared; and ``_thread.start_new_thread`` bypasses
+``threading``'s bookkeeping entirely and never appears in
+``threading.enumerate()`` at all. Both escapes were the same root cause as
+round one wearing a different disguise: enforcement depended on *knowing
+which threads exist*, and there is always another way to create one the
+registry does not see.
+
+**The fix is to stop trying to know.** There is no registry, no snapshot, no
+thread-identity tracking anywhere in this module. ``activate`` sets one
+module-level pointer on entry. On exit it makes a best-effort, bounded
+attempt to join non-daemon threads it can currently see -- pure hygiene, not
+a correctness mechanism, and not treated as proof of anything -- and then
+**does not clear the pointer**. A ``Thread`` object can be constructed and
+started from arbitrary later code with no observable trace at the moment
+``activate`` tears down, so there is no sound moment to declare "nothing from
+this run can still be running." Failing closed means treating that as true
+indefinitely rather than guessing it is false: enforcement for a run ends
+when a later run's ``activate`` call replaces it, or at process exit,
+whichever comes first -- never at block exit. An over-long window costs a
+spurious block (a refusal, the safe direction); a short one costs the
+real-world side effect this card exists to prevent.
+
+This has two consequences, and they get different treatment on purpose.
+
+First: the harness's own bookkeeping (creating the sandbox directory,
+writing ``run.json`` once the scenario returns) is part of *this run*, not a
+separate concern -- so a ``SandboxContext``'s write area is not just its
+sandbox root but every directory this run legitimately owns (see
+``SandboxContext.write_roots``). This is not an exemption reachable
+regardless of which run is active; it only ever applies while *this*
+context is the active one, exactly like ``sandbox_root`` itself always has.
+
+Second: because the pointer never clears, *any other* code that runs in the
+same process after a run has started -- an unrelated test, pytest's own
+housekeeping, a second run's own pre-flight steps before its own
+``activate`` call -- is judged against whatever the previous run left
+behind, which is almost never what that code needs. Widening what counts as
+"this run's own area" cannot fix that, because the code being swept in does
+not belong to any run at all. The only correct fix is to keep that code out
+of this process. In production this is already true: one ``cascade-map
+trace`` invocation is one process that exits once its run record is
+written, so there is no "after" for anything to be judged against. Inside
+this module's own test suite, which deliberately runs the harness many
+times in one process to prove the escapes stay closed, the fix is the same
+one production gets for free: ``tests/test_harness.py`` runs every scenario
+that touches ``activate`` in a genuinely separate interpreter, so this
+process's own ``_active_ctx`` is never touched by a test at all, and nothing
+this module does needs to know that its tests exist.
+"""
+
+
+
+
+
+# ---------------------------------------------------------------------------
+# Event classification
+# ---------------------------------------------------------------------------
+
+#: Every audit event that represents reaching off the machine, including DNS.
+#: There is no allowlist here: ARCHITECTURE.md specifies none, so none exists.
+#: A stub declared for a named external system bypasses this entirely by
+#: construction -- it satisfies the import before any of these events fire.
+NETWORK_EVENTS: frozenset[str] = frozenset(
+    {
+        "socket.connect",
+        "socket.connect_ex",
+        "socket.getaddrinfo",
+        "socket.gethostbyname",
+        "socket.gethostbyname_ex",
+        "socket.gethostbyaddr",
+        "socket.getnameinfo",
+        "socket.sendmsg_afalg",
+        "urllib.Request",
+        "ftplib.connect",
+        "smtplib.connect",
+    }
+)
+
+#: Spawning or cloning a new process. Blocked unless the executable's basename
+#: (or, for fork, the literal token "fork") is in the run config's declared set.
+PROCESS_EVENTS: frozenset[str] = frozenset(
+    {
+        "os.system",
+        "os.posix_spawn",
+        "os.exec",
+        "os.fork",
+        "os.forkpty",
+        "subprocess.Popen",
+    }
+)
+
+#: Filesystem mutation events with no read/write ambiguity: touching one of
+#: these is a write, at the path(s) extracted below. "open"/"os.open" are
+#: handled separately because they can be a read or a write depending on mode.
+FS_MUTATION_EVENTS: frozenset[str] = frozenset(
+    {
+        "os.mkdir",
+        "os.rmdir",
+        "os.remove",
+        "os.truncate",
+        "os.chmod",
+        "os.chflags",
+        "os.lchflags",
+        "os.rename",
+        "os.replace",
+        "os.link",
+        "os.symlink",
+        "shutil.copyfile",
+        "shutil.copymode",
+        "shutil.copystat",
+        "shutil.move",
+        "shutil.rmtree",
+        "shutil.unpack_archive",
+        "shutil.make_archive",
+    }
+)
+
+_OPEN_EVENTS: frozenset[str] = frozenset({"open", "os.open"})
+
+#: ``multiprocessing``'s "spawn" start method launches the child by calling
+#: ``_posixsubprocess.fork_exec`` directly (see ``multiprocessing.util.
+#: spawnv_passfds``), bypassing ``subprocess.Popen.__init__`` entirely --
+#: which is the only place the "subprocess.Popen" audit event is actually
+#: raised. Nothing in ``PROCESS_EVENTS`` fires for it: verified empirically,
+#: not assumed (see the harness build report). The one place this path is
+#: reliably observable is the ``import`` of the backend module that performs
+#: it, which every start method loads lazily, only once a process is about
+#: to actually be launched -- so that import is where this control gates
+#: multiprocessing, declared through the same mechanism as everything else
+#: in ``declared_process_names``, via the literal token ``"multiprocessing"``.
+_MULTIPROCESSING_LAUNCH_MODULES: frozenset[str] = frozenset(
+    {
+        "multiprocessing.popen_spawn_posix",
+        "multiprocessing.popen_spawn_win32",
+        "multiprocessing.popen_forkserver",
+        "multiprocessing.forkserver",
+    }
+)
+
+#: Fired only by ``Harness._selftest_audit_hook``. Never a real Python event,
+#: so it cannot collide with anything the target might legitimately do; it
+#: exists purely to prove the hook is wired to the active context before a
+#: single line of the target runs.
+SELFTEST_EVENT = "cascade_map.selftest"
+
+
+def _safe_repr(value: object, limit: int = 200) -> str:
+    try:
+        text = repr(value)
+    except Exception:  # noqa: BLE001 - a hostile __repr__ must not break the guard
+        text = "<unrepresentable>"
+    return text if len(text) <= limit else text[:limit] + "...(truncated)"
+
+
+def _stringify(value: object) -> str | None:
+    """Best-effort path extraction. ``None`` means "not a path we can judge"."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "surrogateescape")
+    if isinstance(value, os.PathLike):
+        try:
+            return os.fspath(value)
+        except TypeError:
+            return None
+    return None
+
+
+def _flags_indicate_write(flags: object) -> bool:
+    if not isinstance(flags, int):
+        return False
+    write_bits = 0
+    for name in ("O_WRONLY", "O_RDWR", "O_CREAT", "O_APPEND", "O_TRUNC", "O_EXCL"):
+        write_bits |= getattr(os, name, 0)
+    return bool(flags & write_bits)
+
+
+def _classify_open(event: str, args: tuple[object, ...]) -> tuple[str | None, bool]:
+    """Return (path, is_write) for an "open"/"os.open" audit event."""
+    if event == "open" and len(args) == 3:
+        file, mode, flags = args
+        path = _stringify(file)
+        if path is None:
+            return None, False
+        is_write = isinstance(mode, str) and any(c in mode for c in "wax+")
+        is_write = is_write or _flags_indicate_write(flags)
+        return path, is_write
+    if event == "os.open" and len(args) == 3:
+        path_arg, flags, _mode = args
+        path = _stringify(path_arg)
+        if path is None:
+            return None, False
+        return path, _flags_indicate_write(flags)
+    return None, False
+
+
+def _extract_write_paths(event: str, args: tuple[object, ...]) -> list[str]:
+    """Paths a filesystem-mutation event touches. Both ends of a rename/link
+    matter: either one landing outside the sandbox is a write outside it."""
+    if event in (
+        "os.mkdir",
+        "os.rmdir",
+        "os.remove",
+        "os.truncate",
+        "os.chmod",
+        "os.chflags",
+        "os.lchflags",
+        "shutil.rmtree",
+    ):
+        path = _stringify(args[0]) if args else None
+        return [path] if path else []
+    if event in (
+        "os.rename",
+        "os.replace",
+        "os.link",
+        "os.symlink",
+        "shutil.copyfile",
+        "shutil.copymode",
+        "shutil.copystat",
+        "shutil.move",
+    ):
+        return [p for a in args[:2] if (p := _stringify(a)) is not None]
+    if event in ("shutil.unpack_archive", "shutil.make_archive"):
+        return [p for a in args if (p := _stringify(a)) is not None]
+    return []
+
+
+def _extract_executable(event: str, args: tuple[object, ...]) -> str | None:
+    """The program name a process-spawn event names, or ``None`` if it names
+    none (``os.fork``/``os.forkpty``: there is nothing to declare but "fork")."""
+    if event == "os.system":
+        cmd = args[0] if args else None
+        if isinstance(cmd, str) and cmd.strip():
+            return os.path.basename(cmd.strip().split()[0])
+        return None
+    if event == "subprocess.Popen" and len(args) >= 2:
+        executable, exec_args = args[0], args[1]
+        if executable:
+            return os.path.basename(str(executable))
+        if isinstance(exec_args, (list, tuple)) and exec_args:
+            return os.path.basename(str(exec_args[0]))
+        if isinstance(exec_args, str):
+            return os.path.basename(exec_args)
+        return None
+    if event in ("os.exec", "os.posix_spawn") and args:
+        path = args[0]
+        return os.path.basename(str(path)) if path else None
+    return None
+
+
+def within_sandbox(path: str, root: str) -> bool:
+    """True when *path*, fully resolved, lands inside *root*.
+
+    ``realpath`` resolves ``..`` segments and symlinks along the way, so an
+    absolute-path escape, a ``..`` escape and a symlink escape are all caught
+    by the same check: whatever the path claims to be, this is where it
+    actually points.
+    """
+    try:
+        real = os.path.realpath(path)
+        real_root = os.path.realpath(root)
+    except (OSError, ValueError):
+        return False
+    return real == real_root or real.startswith(real_root + os.sep)
+
+
+def within_any(path: str, roots: tuple[str, ...]) -> bool:
+    """True when *path* lands inside any of *roots* -- a context's full
+    ``write_roots``, not just its sandbox."""
+    return any(within_sandbox(path, root) for root in roots)
+
+
+# ---------------------------------------------------------------------------
+# The sandbox context: one per run, holds everything the hook needs to judge
+# ---------------------------------------------------------------------------
+
+
+class SandboxContext:
+    """State for one harness run: what is allowed, and what has been blocked.
+
+    ``write_roots`` is every directory *this run* may write to -- its
+    sandbox, plus any other directory the harness itself legitimately owns
+    for this same run (its Mode B output directory, where ``run.json``
+    lands). This is not a standing exemption: it only applies while this
+    context is the one ``activate`` has made current, the same as
+    ``sandbox_root`` on its own always has.
+    """
+
+    def __init__(
+        self,
+        sandbox_root: str,
+        declared_process_names: frozenset[str],
+        extra_write_roots: tuple[str, ...] = (),
+    ) -> None:
+        self.sandbox_root = sandbox_root
+        self.write_roots: tuple[str, ...] = (sandbox_root, *extra_write_roots)
+        self.declared_process_names = declared_process_names
+        self.blocked: list[BlockedAttempt] = []
+        self.reads_outside_sandbox: list[BlockedAttempt] = []
+        self.selftest_token: str = ""
+        self.selftest_seen: bool = False
+        self._counter = 0
+
+    def _next_id(self, prefix: str) -> str:
+        self._counter += 1
+        return f"{prefix}#{self._counter}"
+
+    def _record_blocked(self, kind: str, detail: str) -> BlockedAttempt:
+        attempt = BlockedAttempt(id=self._next_id("blocked"), kind=kind, detail=detail)
+        self.blocked.append(attempt)
+        return attempt
+
+    def _record_read_outside(self, detail: str) -> BlockedAttempt:
+        attempt = BlockedAttempt(
+            id=self._next_id("read_outside_sandbox"),
+            kind="filesystem_read_outside_sandbox",
+            detail=detail,
+        )
+        self.reads_outside_sandbox.append(attempt)
+        return attempt
+
+    # -- the dispatch entry point, called for every audited event ----------
+
+    def handle_event(self, event: str, args: tuple[object, ...]) -> None:
+        if event == SELFTEST_EVENT:
+            if args and args[0] == self.selftest_token:
+                self.selftest_seen = True
+            return
+        if event in NETWORK_EVENTS:
+            self._handle_network(event, args)
+            return
+        if event in PROCESS_EVENTS:
+            self._handle_process(event, args)
+            return
+        if event == "import":
+            self._handle_import(event, args)
+            return
+        if event in _OPEN_EVENTS:
+            self._handle_open(event, args)
+            return
+        if event in FS_MUTATION_EVENTS:
+            self._handle_mutation(event, args)
+            return
+
+    def _handle_network(self, event: str, args: tuple[object, ...]) -> None:
+        detail = f"{event} args={_safe_repr(args)}"
+        self._record_blocked("network", detail)
+        raise BlockedOperation(f"network blocked at the socket layer: {event}")
+
+    def _handle_process(self, event: str, args: tuple[object, ...]) -> None:
+        if event in ("os.fork", "os.forkpty"):
+            allowed = "fork" in self.declared_process_names or event in self.declared_process_names
+        else:
+            exe = _extract_executable(event, args)
+            allowed = exe is not None and exe in self.declared_process_names
+        if allowed:
+            return
+        detail = f"{event} args={_safe_repr(args)}"
+        self._record_blocked("process", detail)
+        raise BlockedOperation(f"process spawn blocked (not declared in run config): {event}")
+
+    def _handle_import(self, event: str, args: tuple[object, ...]) -> None:
+        module = args[0] if args else None
+        if not isinstance(module, str) or module not in _MULTIPROCESSING_LAUNCH_MODULES:
+            return
+        if "multiprocessing" in self.declared_process_names:
+            return
+        detail = f"import {module!r} (multiprocessing process-launch backend)"
+        self._record_blocked("process", detail)
+        raise BlockedOperation(
+            f"process spawn blocked (not declared in run config): import {module}"
+        )
+
+    def _handle_open(self, event: str, args: tuple[object, ...]) -> None:
+        path, is_write = _classify_open(event, args)
+        if path is None:
+            return
+        if is_write:
+            if not within_any(path, self.write_roots):
+                detail = f"{event} write to {path!r}, outside the sandbox"
+                self._record_blocked("filesystem_write", detail)
+                raise BlockedOperation(f"filesystem write blocked, outside sandbox: {path!r}")
+        elif not within_any(path, self.write_roots):
+            self._record_read_outside(f"{event} read {path!r}, outside the sandbox")
+
+    def _handle_mutation(self, event: str, args: tuple[object, ...]) -> None:
+        for path in _extract_write_paths(event, args):
+            if not within_any(path, self.write_roots):
+                detail = f"{event} on {path!r}, outside the sandbox"
+                self._record_blocked("filesystem_write", detail)
+                raise BlockedOperation(f"filesystem mutation blocked, outside sandbox: {path!r}")
+
+
+# ---------------------------------------------------------------------------
+# Process-wide installation, run-scoped activation
+# ---------------------------------------------------------------------------
+
+#: The currently active run, or ``None`` if no run has ever started in this
+#: process. A plain module global: every thread reads the same object with no
+#: cooperation required from whatever created the thread, and no registry of
+#: "which threads exist" is consulted anywhere below -- see the module
+#: docstring for why that registry is exactly what round two's escapes broke.
+#: Reads in the hot path (``_dispatch``) are lock-free -- a bare reference
+#: read is atomic under the GIL.
+_active_ctx: SandboxContext | None = None
+_state_lock = threading.Lock()
+
+_hook_installed = False
+
+
+def _dispatch(event: str, args: tuple[object, ...]) -> None:
+    ctx = _active_ctx
+    if ctx is None:
+        return
+    ctx.handle_event(event, args)
+
+
+def install_hook() -> None:
+    """Install the process-wide audit hook, once. Idempotent and permanent:
+    Python does not offer a way to remove an audit hook, by design."""
+    global _hook_installed
+    if _hook_installed:
+        return
+    sys.addaudithook(_dispatch)
+    _hook_installed = True
+
+
+@contextmanager
+def activate(ctx: SandboxContext) -> Iterator[SandboxContext]:
+    """Make *ctx* the context the process-wide hook enforces.
+
+    Sets the pointer on entry; deliberately does **not** clear it on exit.
+    See the module docstring: there is no sound way to prove a thread
+    constructed during this block, or started via ``_thread.start_new_thread``
+    (invisible to every ``threading`` API), cannot still run or still start
+    later. A best-effort, bounded join of currently-visible non-daemon
+    threads happens on the way out as hygiene -- it does not gate whether the
+    pointer clears, because treating its success as proof is the exact
+    mistake that let two different escapes through this module already.
+    Enforcement for this run ends when a later ``activate`` call replaces the
+    pointer, or at process exit.
+    """
+    global _active_ctx
+    install_hook()
+    with _state_lock:
+        _active_ctx = ctx
+    try:
+        yield ctx
+    finally:
+        current = threading.current_thread()
+        for t in threading.enumerate():
+            if t is not current and not t.daemon and t.is_alive():
+                t.join(timeout=5.0)
+
+
+# ==========================================================================
+# harness/harness.py
+# ==========================================================================
+
+"""Card 11: the safe execution harness.
+
+Mode A must be incapable of real-world side effects (constraint 7). Before a
+single line of the scenario runs, ``Harness.start`` verifies the Mode B graph
+this run overlays is current, verifies every isolation control is actually
+active, and only then executes -- inside the sandbox built in
+:mod:`cascade_map.harness.sandbox`. Any check that fails refuses the run and
+names exactly which guarantee could not be made. There is no force flag, no
+warn-and-continue, and no partial mode: every refusal path returns a
+``RunRecord`` with ``refused=True`` and never executes anything.
+"""
+
+
+
+
+
+__all__ = ["Harness"]
+
+#: Escape paths this harness knows it cannot close, named in every run
+#: record -- see ``RunRecord.unguaranteed`` in the contract. Both are
+#: demonstrated, not theoretical (``tests/test_harness.py``); an empty
+#: ``unguaranteed`` would be a false claim of complete coverage, which
+#: constraint 7 does not allow. Worded for the owner reading ``run.json``,
+#: not for a developer reading this source.
+UNGUARANTEED_LIMITS: tuple[str, ...] = (
+    "A process launched by calling the interpreter's low-level process-spawn "
+    "primitive directly (bypassing Python's subprocess module) is invisible "
+    "to every control this harness has: it can run, unblocked and "
+    "unrecorded. Closing this needs isolation underneath this harness "
+    "itself -- a container, a sandboxed OS user, or similar -- not "
+    "something this harness's own checks can guarantee alone.",
+    "A process this run explicitly declared and permitted to spawn is not "
+    "supervised once it is running: it is a separate program with none of "
+    "this harness's controls attached, so anything it does on its own -- "
+    "reach the network, write files, spawn further processes -- happens "
+    "unblocked and unrecorded by this harness.",
+)
+
+#: Same rule ``ValueCapture`` follows, for the same reason: a truncated
+#: traceback that reads as complete would send someone to the wrong frame,
+#: so the cap is explicit and disclosed in the text, not a silent cutoff.
+SCENARIO_FAILURE_TRACEBACK_CAP = 8000
+
+
+class Harness:
+    """Implements ``HarnessCard`` (``cascade_map.contracts.interfaces``)."""
+
+    def __init__(self, config: RunConfig) -> None:
+        self.config = config
+
+    # -- HarnessCard -----------------------------------------------------
+
+    def start(
+        self, scenario: str, graph_hash: str, observer: RunObserver | None = None
+    ) -> RunRecord:
+        """Verify every control, then run -- or refuse and say which
+        guarantee could not be made. Constraint 7. There is no force option.
+
+        *observer* -- card 12's seam, never imported here (this module only
+        ever sees the protocol; see ``RunObserver`` in the contract). Started
+        immediately before the target call, inside the sandbox window this
+        method alone controls, and stopped immediately after -- including
+        when the target raises. A refused run never constructs, starts or
+        even sees one: there is nothing to observe, and this method returns
+        before any of the code paths below that touch *observer* run at all.
+        With ``observer=None`` this method behaves exactly as it did before
+        the parameter existed; a tracing run is the same run with something
+        watching, not a different code path.
+        """
+        target_hashes = compute_target_hashes(self.config.target_root)
+        current_graph_hash = compute_graph_hash(target_hashes)
+        run_id = compute_run_id(scenario, graph_hash, self._config_fingerprint())
+        sandbox_dir = str(self.config.sandbox_root)
+
+        controls = {
+            "network": False,
+            "filesystem": False,
+            "process": False,
+            "environment": False,
+            "external_clients": False,
+        }
+
+        def refuse(reason: str) -> RunRecord:
+            record = RunRecord(
+                run_id=run_id,
+                target_hashes=target_hashes,
+                graph_hash=graph_hash,
+                scenario=scenario,
+                interpreter=sys.version,
+                controls_active=dict(controls),
+                blocked=(),
+                unguaranteed=UNGUARANTEED_LIMITS,
+                sandbox_dir=sandbox_dir,
+                refused=True,
+                refusal_reason=reason,
+            )
+            self._write_run_record(record)
+            return record
+
+        # 1. A completed Mode B graph must exist, and must match the target
+        #    as it stands right now. Nothing else is checked before this.
+        anchor = self.config.mode_b_out_dir / "elements.jsonl"
+        if not anchor.exists():
+            return refuse(
+                f"no completed Mode B graph found at {anchor}: Mode A always runs on "
+                f"top of a completed Mode B graph, and refuses to guess one."
+            )
+        if current_graph_hash != graph_hash:
+            return refuse(
+                "stale graph: the target's content has changed since the Mode B graph "
+                f"was built (the graph expects {graph_hash}, the target now hashes to "
+                f"{current_graph_hash}). Re-run Mode B before Mode A."
+            )
+
+        # 2. The scenario must be an explicit, declared entry point.
+        spec = self.config.scenarios.get(scenario)
+        if spec is None:
+            return refuse(
+                f"scenario {scenario!r} is not declared in the run config; refusing "
+                f"rather than guessing an entry point into the target."
+            )
+
+        # 3. Build the sandbox and prove the audit hook is actually wired to
+        #    it before trusting it with anything. This is what makes "the
+        #    absence of a working control blocks the run" true rather than
+        #    aspirational: a hook that silently failed to install looks
+        #    identical to one that works, unless something checks.
+        try:
+            self.config.sandbox_root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return refuse(f"could not create the sandbox root: {exc}")
+
+        ctx = SandboxContext(
+            sandbox_root=str(self.config.sandbox_root.resolve()),
+            declared_process_names=self.config.declared_process_names,
+            # The harness's own post-run bookkeeping (run.json) writes here,
+            # not into the target's sandbox -- both belong to this same run,
+            # so both are this context's own write area. See sandbox.py's
+            # module docstring for why this is scoped to the context rather
+            # than a standing, process-wide exemption.
+            extra_write_roots=(str(self.config.mode_b_out_dir.resolve()),),
+        )
+        if not self._selftest_audit_hook(ctx):
+            return refuse(
+                "could not verify the audit hook is intercepting operations for this "
+                "run; network, filesystem-write and process controls cannot be "
+                "guaranteed, so none of them can be trusted."
+            )
+        controls["network"] = True
+        controls["filesystem"] = True
+        controls["process"] = True
+
+        # 4. The environment the scenario will see must be built from an
+        #    explicit allowlist, never from the ambient process environment.
+        filtered_env, env_ok = self._prepare_environment()
+        if not env_ok:
+            return refuse("could not filter the process environment safely.")
+        controls["environment"] = True
+
+        # External clients: there is no network allowlist (see sandbox.py),
+        # so every declared client's stub is what keeps it off the socket
+        # layer at all, and every undeclared one falls through to the same
+        # default-deny network control already verified above.
+        controls["external_clients"] = True
+
+        # 5. Execute, inside the sandbox, with everything above in force.
+        record = self._execute(
+            run_id,
+            target_hashes,
+            graph_hash,
+            scenario,
+            spec,
+            ctx,
+            controls,
+            filtered_env,
+            sandbox_dir,
+            observer,
+        )
+        self._write_run_record(record)
+        return record
+
+    # -- execution ---------------------------------------------------------
+
+    def _execute(
+        self,
+        run_id: str,
+        target_hashes: dict[str, str],
+        graph_hash: str,
+        scenario: str,
+        spec: ScenarioSpec,
+        ctx: SandboxContext,
+        controls: dict[str, bool],
+        filtered_env: dict[str, str],
+        sandbox_dir: str,
+        observer: RunObserver | None,
+    ) -> RunRecord:
+        original_env = dict(os.environ)
+        original_cwd = os.getcwd()
+        original_tempdir = tempfile.tempdir
+        original_dont_write_bytecode = sys.dont_write_bytecode
+        installed_modules: dict[str, object | None] = {}
+        scenario_failure: ScenarioFailure | None = None
+        observer_failure: ScenarioFailure | None = None
+        try:
+            os.environ.clear()
+            os.environ.update(filtered_env)
+            sandbox_tmp = self.config.sandbox_root / "tmp"
+            sandbox_tmp.mkdir(parents=True, exist_ok=True)
+            tempfile.tempdir = str(sandbox_tmp)
+            os.chdir(self.config.sandbox_root)
+            # Importlib writes a .pyc next to the source on a normal import,
+            # wrapped in a narrow `except OSError` it does not extend to our
+            # BlockedOperation -- left enabled, a blocked cache write would
+            # abort the import before a single line of the scenario ran,
+            # which would look like a clean run instead of the refusal it
+            # actually is. Disabling cache writes here is itself a real
+            # control (bytecode caching is a filesystem write the scenario
+            # never gets to ask for), not just a workaround for the audit
+            # hook's interaction with importlib.
+            sys.dont_write_bytecode = True
+            for name, factory in self.config.client_stubs.items():
+                installed_modules[name] = sys.modules.get(name)
+                sys.modules[name] = factory()
+            with activate(ctx):
+                # Started only once the sandbox window is open, stopped
+                # before it closes -- an observer started outside this
+                # `with` would watch a process that is not yet contained.
+                # The inner try/finally is what makes "stopped even when
+                # the target raises" true rather than aspirational: if
+                # observer.start() itself never ran, there is nothing to
+                # stop, so it is only entered once start() has succeeded.
+                if observer is not None:
+                    # What the observer receives: everything verified so
+                    # far (real controls_active, real unguaranteed, the
+                    # real run_id), with blocked=() because nothing has
+                    # happened yet -- not a record fabricated before
+                    # verification, which is what card 12's own refusal
+                    # check exists to catch.
+                    pre_execution_record = RunRecord(
+                        run_id=run_id,
+                        target_hashes=target_hashes,
+                        graph_hash=graph_hash,
+                        scenario=scenario,
+                        interpreter=sys.version,
+                        controls_active=dict(controls),
+                        blocked=(),
+                        unguaranteed=UNGUARANTEED_LIMITS,
+                        sandbox_dir=sandbox_dir,
+                        refused=False,
+                        refusal_reason="",
+                    )
+                    # The observer is not exempt from misbehaving -- that is
+                    # the whole reason `observer_failure` exists. Caught
+                    # locally, not left to the outer `except Exception`
+                    # below, which is for this method's own setup/teardown
+                    # and would otherwise discard it exactly like the defect
+                    # this replaces. BlockedOperation/HarnessRefusal are not
+                    # "the observer misbehaving" -- an observer that itself
+                    # trips a control is judged the same way the target
+                    # would be, so those propagate to the handlers that
+                    # already exist for them.
+                    observer_started = False
+                    try:
+                        observer.start(pre_execution_record)
+                        observer_started = True
+                    except (BlockedOperation, HarnessRefusal):
+                        raise
+                    except Exception as exc:  # noqa: BLE001
+                        # start() failed: the run was not observed at all.
+                        # The scenario still runs -- an unrelated bug in
+                        # what is watching it is not a reason to refuse or
+                        # to skip running the target -- so this falls
+                        # through to the same _run_scenario call below,
+                        # and stop() is never attempted, since nothing
+                        # started.
+                        observer_failure = self._build_observer_failure("start", exc)
+                    try:
+                        self._run_scenario(spec)
+                    finally:
+                        if observer_started:
+                            try:
+                                observer.stop()
+                            except (BlockedOperation, HarnessRefusal):
+                                raise
+                            except Exception as exc:  # noqa: BLE001
+                                # stop() failed: unlike a start() failure,
+                                # the run may have been observed for most
+                                # of its duration -- a different, milder
+                                # finding, but still one the owner needs,
+                                # so it is recorded rather than assumed
+                                # harmless because "card 12's stop() never
+                                # raises" is a guarantee about card 12, not
+                                # about every observer this harness might
+                                # ever be given.
+                                observer_failure = self._build_observer_failure("stop", exc)
+                else:
+                    self._run_scenario(spec)
+        except BlockedOperation:
+            # Safe to discard: the denial is already a BlockedAttempt on
+            # ctx.blocked (see sandbox.py) by the time this is caught, so it
+            # reaches the RunRecord through `blocked` below. Nothing here is
+            # silently lost.
+            pass
+        except HarnessRefusal:
+            raise
+        except ScenarioStageError as exc:
+            # The run still completes -- it is not a refusal (constraint 7's
+            # refusal is about guarantees the harness could not make; every
+            # control here was active) and not silently discarded either:
+            # `_run_scenario` already identified whether the target never
+            # imported (`.stage == "import"`) or its entry point was missing
+            # or raised (`.stage == "call"`), and that travels onward on
+            # `RunRecord.scenario_failure` instead of being dropped.
+            scenario_failure = self._build_scenario_failure(exc)
+        except Exception:  # noqa: BLE001 - genuinely unexpected: not a target failure
+            # Everything _run_scenario can raise from the target's own code
+            # is wrapped in ScenarioStageError above; reaching this instead
+            # means the failure was in this method's own setup/teardown
+            # (chdir, env, client stub installation), not in the scenario.
+            pass
+        finally:
+            os.chdir(original_cwd)
+            os.environ.clear()
+            os.environ.update(original_env)
+            tempfile.tempdir = original_tempdir
+            sys.dont_write_bytecode = original_dont_write_bytecode
+            for name, previous in installed_modules.items():
+                if previous is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = previous
+
+        blocked: tuple[BlockedAttempt, ...] = tuple(ctx.blocked) + tuple(ctx.reads_outside_sandbox)
+        return RunRecord(
+            run_id=run_id,
+            target_hashes=target_hashes,
+            graph_hash=graph_hash,
+            scenario=scenario,
+            interpreter=sys.version,
+            controls_active=dict(controls),
+            blocked=blocked,
+            unguaranteed=UNGUARANTEED_LIMITS,
+            sandbox_dir=sandbox_dir,
+            scenario_failure=scenario_failure,
+            observer_failure=observer_failure,
+            refused=False,
+            refusal_reason="",
+        )
+
+    def _run_scenario(self, spec: ScenarioSpec) -> None:
+        target_root = str(self.config.target_root.resolve())
+        path_added = target_root not in sys.path
+        if path_added:
+            sys.path.insert(0, target_root)
+        try:
+            try:
+                module = importlib.import_module(spec.module)
+            except (BlockedOperation, HarnessRefusal):
+                raise  # unwrapped: _execute's existing handlers deal with these
+            except BaseException as exc:
+                raise ScenarioStageError("import", exc) from exc
+            if spec.function:
+                try:
+                    func = getattr(module, spec.function)
+                    func(*spec.args)
+                except (BlockedOperation, HarnessRefusal):
+                    raise
+                except BaseException as exc:
+                    raise ScenarioStageError("call", exc) from exc
+        finally:
+            if path_added:
+                try:
+                    sys.path.remove(target_root)
+                except ValueError:
+                    pass
+            for name in [
+                n for n in sys.modules if n == spec.module or n.startswith(spec.module + ".")
+            ]:
+                sys.modules.pop(name, None)
+
+    @staticmethod
+    def _capped_traceback(exc: BaseException) -> str:
+        """The traceback text every ``ScenarioFailure`` carries, capped
+        explicitly rather than silently truncated -- the same rule
+        ``ValueCapture`` follows: a cutoff that reads as complete would send
+        someone to the wrong frame.
+        """
+        formatted = "".join(traceback_module.format_exception(type(exc), exc, exc.__traceback__))
+        if len(formatted) > SCENARIO_FAILURE_TRACEBACK_CAP:
+            kept = formatted[:SCENARIO_FAILURE_TRACEBACK_CAP]
+            formatted = (
+                f"{kept}\n...[traceback truncated: showing "
+                f"{SCENARIO_FAILURE_TRACEBACK_CAP} of {len(formatted)} characters]"
+            )
+        return formatted
+
+    @classmethod
+    def _build_scenario_failure(cls, exc: ScenarioStageError) -> ScenarioFailure:
+        """Turn a caught ``ScenarioStageError`` into the record the owner
+        reads: the target misbehaved."""
+        original = exc.original
+        return ScenarioFailure(
+            stage=exc.stage,
+            exception_type=type(original).__name__,
+            message=str(original),
+            traceback=cls._capped_traceback(original),
+        )
+
+    @classmethod
+    def _build_observer_failure(cls, stage: str, exc: BaseException) -> ScenarioFailure:
+        """Turn an exception raised by the observer itself into the record
+        the owner reads: the opposite finding from ``_build_scenario_failure``
+        -- the target may have run perfectly and nobody was watching (or
+        stopped watching partway through). *stage* is ``"start"`` or
+        ``"stop"``; see ``RunRecord.observer_failure``.
+        """
+        return ScenarioFailure(
+            stage=stage,
+            exception_type=type(exc).__name__,
+            message=str(exc),
+            traceback=cls._capped_traceback(exc),
+        )
+
+    # -- self-tests ----------------------------------------------------------
+
+    def _selftest_audit_hook(self, ctx: SandboxContext) -> bool:
+        """Prove the hook delegates to *ctx* without performing any real,
+        potentially side-effecting operation. A canary event name that no
+        real Python operation ever raises, seen only if the plumbing works.
+        """
+        import sys as _sys
+
+        token = f"selftest-{id(ctx)}-{os.getpid()}"
+        ctx.selftest_token = token
+        try:
+            with activate(ctx):
+                _sys.audit("cascade_map.selftest", token)
+        except Exception:  # noqa: BLE001 - any failure here means "not verified"
+            return False
+        return ctx.selftest_seen
+
+    def _prepare_environment(self) -> tuple[dict[str, str], bool]:
+        try:
+            filtered = {
+                key: value
+                for key, value in os.environ.items()
+                if key in self.config.env_passthrough
+            }
+        except Exception:  # noqa: BLE001
+            return {}, False
+        return filtered, True
+
+    # -- bookkeeping ---------------------------------------------------------
+
+    def _config_fingerprint(self) -> str:
+        return config_fingerprint(
+            self.config.declared_process_names,
+            frozenset(self.config.client_stubs),
+            self.config.env_passthrough,
+        )
+
+    def _write_run_record(self, record: RunRecord) -> Path:
+        """Persist ``runtime/<run_id>/run.json``. Ordinary file IO by the
+        harness itself, not the target -- this is the tool's own artifact
+        output, outside the sandbox by design, exactly like every other
+        card's ``*.jsonl`` output.
+        """
+        runtime_dir = self.config.mode_b_out_dir / "runtime" / record.run_id
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        path = runtime_dir / "run.json"
+        path.write_text(canonical_dumps(record) + "\n", encoding="ascii")
+        return path
+
+
+# ==========================================================================
+# tracer/limits.py
+# ==========================================================================
+
+"""Caps and redaction policy for bounded value capture.
+
+The target moves multi-megabyte frames. Capture is bounded *before* a value is
+rendered, and anything the caps touch says so explicitly: a truncation that
+reads like a complete value is a defect, not a simplification.
+
+Every number here is an int. ``canonical_dumps`` rejects floats, so no cap,
+size or ratio anywhere in this card may be one.
+"""
+
+
+
+__all__ = ["CaptureLimits", "RedactionPolicy", "DEFAULT_LIMITS", "DEFAULT_SENSITIVE_PATTERNS"]
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureLimits:
+    """Per-value and per-event caps.
+
+    ``max_event_chars`` is applied to the canonical JSON of an event's whole
+    value map, so one event cannot blow the budget by carrying twenty values
+    that are each individually under the per-value cap.
+    """
+
+    max_repr_chars: int = 512
+    """Longest rendered value kept whole."""
+
+    max_event_chars: int = 4096
+    """Budget for one event's entire value map, in canonical-JSON characters."""
+
+    max_items: int = 10
+    """Longest container kept whole."""
+
+    sample_items: int = 5
+    """Items, rows or characters-worth of sample kept from a summarized value."""
+
+    max_string_sample: int = 120
+    """Characters of a long string kept as the sample."""
+
+    max_columns: int = 20
+    """Columns named in a frame summary before the rest are counted, not named."""
+
+    count_nulls: bool = True
+    """Call ``isna()``/``isnull()`` on frame-like values to report null counts.
+    Off for values whose accessors must not be touched."""
+
+    max_depth: int = 2
+    """Nesting depth rendered inside a container sample."""
+
+    capture_self: bool = False
+    """Capture the receiver of a method call. Off by default: every method call
+    in the cascade would otherwise render an engine object, which costs more
+    than it tells. When off, ``self`` is emitted as an explicit DROPPED capture
+    with that reason -- not omitted."""
+
+
+DEFAULT_LIMITS = CaptureLimits()
+
+
+DEFAULT_SENSITIVE_PATTERNS: tuple[str, ...] = (
+    r"(?i)pass(word|wd|phrase)",
+    r"(?i)secret",
+    r"(?i)token",
+    r"(?i)api[_-]?key",
+    r"(?i)access[_-]?key",
+    r"(?i)private[_-]?key",
+    r"(?i)credential",
+    r"(?i)auth(orization)?$",
+    r"(?i)session[_-]?id",
+    r"(?i)account[_-]?(no|number|id)",
+    r"(?i)(^|_)iban($|_)",
+    r"(?i)(^|_)ssn($|_)",
+    r"(?i)card[_-]?number",
+    r"(?i)(^|_)cvv($|_)",
+    r"(?i)(^|_)pin($|_)",
+)
+"""Fallback patterns.
+
+`TARGET_PROFILE.md` leaves "Values to redact" unanswered. Rather than capture
+everything in the clear until the owner fills it in, capture redacts these
+names by default and the tracer reports that it is running on the fallback set.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class RedactionPolicy:
+    """What is redacted, decided at capture time and never afterwards.
+
+    A value redacted after capture has already been written down once. The only
+    place redaction is worth anything is the moment the value is seen, so this
+    policy is consulted before a value is rendered at all.
+    """
+
+    names: frozenset[str] = frozenset()
+    """Exact value names -- an argument, a feature -- always redacted."""
+
+    element_ids: frozenset[str] = frozenset()
+    """Elements whose every captured value is redacted."""
+
+    patterns: tuple[str, ...] = DEFAULT_SENSITIVE_PATTERNS
+    from_profile: bool = False
+    """False when running on the fallback pattern set because the owner has not
+    filled in TARGET_PROFILE's redaction list. Reported, never assumed safe."""
+
+    @staticmethod
+    def from_owner(
+        names: Iterable[str] = (),
+        element_ids: Iterable[str] = (),
+        patterns: Sequence[str] | None = None,
+    ) -> "RedactionPolicy":
+        """Build the policy from owner-declared entries."""
+        return RedactionPolicy(
+            names=frozenset(names),
+            element_ids=frozenset(element_ids),
+            patterns=tuple(patterns) if patterns is not None else DEFAULT_SENSITIVE_PATTERNS,
+            from_profile=True,
+        )
+
+    def compiled(self) -> tuple[Pattern[str], ...]:
+        return tuple(re.compile(p) for p in self.patterns)
+
+    def reason_for(self, name: str, element_id: str = "") -> str:
+        """Return why *name* must be redacted, or "" when it must not."""
+        if element_id and element_id in self.element_ids:
+            return f"element {element_id} is on the owner's redaction list"
+        if name in self.names:
+            return f"value name {name!r} is on the owner's redaction list"
+        for pattern in self.compiled():
+            if pattern.search(name):
+                source = "owner" if self.from_profile else "fallback"
+                return f"value name {name!r} matches {source} sensitive pattern {pattern.pattern!r}"
+        return ""
+
+
+# ==========================================================================
+# tracer/capture.py
+# ==========================================================================
+
+"""Bounded, redacting value capture.
+
+Three rules govern every function here.
+
+1. **Nothing is silently truncated.** A capture that is not ``FULL`` carries a
+   ``CaptureStatus``, an ``original_size``, a ``reason``, and a ``repr_text``
+   that *begins* with the status in angle brackets. A reader can never mistake
+   a summary for the whole value.
+2. **Redaction happens before rendering.** A sensitive value is never turned
+   into a string at all, so it cannot leak through a summary, a length or an
+   exception message.
+3. **Capture never raises.** A value whose ``repr`` or accessors blow up
+   becomes a ``DROPPED`` capture naming the exception. Losing an event because
+   one argument misbehaved would lose the evidence the run exists to produce.
+"""
+
+
+
+
+
+__all__ = [
+    "capture_value",
+    "capture_values",
+    "dropped",
+    "stable_text",
+    "MISSING",
+]
+
+_ADDRESS = re.compile(r"(?<= at )(?:0x[0-9a-fA-F]+|[0-9]{6,})")
+_HEX_PLACEHOLDER = "0x..."
+_DECIMAL_PLACEHOLDER = "..."
+ADDRESS_NOTE = (
+    "memory addresses normalised to 0x...: an address is not information -- it is "
+    "different in every process and comparable to nothing -- and leaving it in would "
+    "make two runs of one scenario differ byte for byte"
+)
+
+
+def stable_text(text: str) -> str:
+    """Strip what cannot reproduce from rendered text.
+
+    CPython's default repr is ``<Thing object at 0x7f2b2c66bd80>``. The address
+    changes every run, so a trace carrying one is not replayable -- and on a
+    116k-line engine most captured objects have no custom ``__repr__``, so most
+    captured values would carry one. ``type_name`` already holds the half of
+    that repr which means anything.
+
+    Not every identity is hex. ``importlib._bootstrap._ModuleLock`` formats
+    ``id(self)`` as a plain integer -- ``_ModuleLock('run_linear') at
+    140264054584784`` -- and the import machinery produces one before the
+    target's own code is reached, so the hex form alone left every run
+    divergent.
+
+    Two shapes are therefore normalised after the word "at": a ``0x`` hex
+    literal, which becomes ``0x...``, and a decimal of **six digits or more**,
+    which becomes ``...``. The digit floor is the
+    one narrowing this makes: a real ``"retry at 3"`` or ``"... at 1500"``
+    survives, while every plausible CPython ``id()`` -- the lowest heap address
+    on any live platform is far above 100000 -- is caught. A genuine six-digit
+    number after "at" (a unix timestamp, say) would be normalised, and the
+    capture's ``reason`` says so, which is what keeps an over-normalisation
+    visible rather than silent.
+    """
+    return _ADDRESS.sub(
+        lambda match: _HEX_PLACEHOLDER
+        if match.group().startswith("0x")
+        else _DECIMAL_PLACEHOLDER,
+        text,
+    )
+
+
+class _Missing:
+    """A value the tracer could not obtain at all."""
+
+    def __repr__(self) -> str:  # pragma: no cover - trivial
+        return "<missing>"
+
+
+MISSING = _Missing()
+
+_SCALARS = (bool, int, type(None))
+_CONTAINERS = (list, tuple, set, frozenset, dict)
+
+
+def dropped(reason: str, type_name: str = "", original_size: int = 0) -> ValueCapture:
+    """A value that was not captured, and why."""
+    return ValueCapture(
+        status=CaptureStatus.DROPPED,
+        repr_text=f"<DROPPED: {reason}>",
+        type_name=type_name,
+        original_size=original_size,
+        reason=reason,
+    )
+
+
+def capture_value(
+    name: str,
+    value: Any,
+    *,
+    limits: CaptureLimits = DEFAULT_LIMITS,
+    policy: RedactionPolicy | None = None,
+    element_id: str = "",
+) -> ValueCapture:
+    """Capture one value under the caps, redacting first."""
+    type_name = _type_name(value)
+    if value is MISSING:
+        return dropped("value not reachable from the frame", type_name)
+
+    policy = policy if policy is not None else RedactionPolicy()
+    redaction = policy.reason_for(name, element_id)
+    if redaction:
+        # Deliberately no repr, no length, no shape: the value is not rendered.
+        return ValueCapture(
+            status=CaptureStatus.REDACTED,
+            repr_text="<REDACTED>",
+            type_name=type_name,
+            original_size=0,
+            reason=(
+                f"{redaction}; the value was not inspected, so no size was measured"
+            ),
+        )
+
+    try:
+        return _stabilise(_capture(value, type_name, limits))
+    except BaseException as exc:  # noqa: BLE001 - capture must never raise
+        return dropped(f"capture raised {type(exc).__name__}", type_name)
+
+
+def capture_values(
+    values: Mapping[str, Any],
+    *,
+    limits: CaptureLimits = DEFAULT_LIMITS,
+    policy: RedactionPolicy | None = None,
+    element_id: str = "",
+) -> dict[str, ValueCapture]:
+    """Capture a whole event's values under the per-event budget.
+
+    Names are processed in sorted order so that which value exhausts the budget
+    is a property of the data, not of dict ordering. Values past the budget are
+    ``DROPPED`` with their measured size -- never omitted.
+    """
+    captured: dict[str, ValueCapture] = {}
+    spent = 0
+    exhausted = False
+    for key in sorted(values):
+        capture = capture_value(
+            key, values[key], limits=limits, policy=policy, element_id=element_id
+        )
+        cost = len(canonical_dumps(capture)) + len(key) + 3
+        if exhausted or spent + cost > limits.max_event_chars:
+            exhausted = True
+            captured[key] = dropped(
+                f"per-event capture budget of {limits.max_event_chars} characters exhausted "
+                f"after {spent} characters; this value needed {cost}",
+                capture.type_name,
+                original_size=cost,
+            )
+            continue
+        spent += cost
+        captured[key] = capture
+    return captured
+
+
+# ---------------------------------------------------------------------------
+# internals
+# ---------------------------------------------------------------------------
+
+
+def _stabilise(capture: ValueCapture) -> ValueCapture:
+    """Normalise addresses out, and say so when any were found."""
+    repr_text = stable_text(capture.repr_text)
+    shape = stable_text(capture.shape)
+    if repr_text == capture.repr_text and shape == capture.shape:
+        return capture
+    reason = f"{capture.reason}; {ADDRESS_NOTE}" if capture.reason else ADDRESS_NOTE
+    return replace(capture, repr_text=repr_text, shape=shape, reason=reason)
+
+
+def _type_name(value: Any) -> str:
+    try:
+        return type(value).__qualname__
+    except BaseException:  # noqa: BLE001 # pragma: no cover
+        return "<unknown>"
+
+
+def _capture(value: Any, type_name: str, limits: CaptureLimits) -> ValueCapture:
+    if isinstance(value, _SCALARS):
+        return ValueCapture(CaptureStatus.FULL, repr(value), type_name)
+    if isinstance(value, float):
+        # Rendered as a string: canonical_dumps rejects float payloads outright.
+        return ValueCapture(CaptureStatus.FULL, repr(value), type_name)
+    if isinstance(value, str):
+        return _capture_string(value, type_name, limits)
+    if isinstance(value, (bytes, bytearray)):
+        return _capture_bytes(value, type_name, limits)
+    if _is_frame_like(value):
+        return _capture_frame(value, type_name, limits)
+    if _is_array_like(value):
+        return _capture_array(value, type_name, limits)
+    if isinstance(value, _CONTAINERS):
+        return _capture_container(value, type_name, limits)
+    return _capture_object(value, type_name, limits)
+
+
+def _capture_string(value: str, type_name: str, limits: CaptureLimits) -> ValueCapture:
+    rendered = repr(value)
+    if len(rendered) <= limits.max_repr_chars:
+        return ValueCapture(CaptureStatus.FULL, rendered, type_name)
+    sample = repr(value[: limits.max_string_sample])
+    reason = (
+        f"string of {len(value)} characters exceeds max_repr_chars="
+        f"{limits.max_repr_chars}; first {limits.max_string_sample} characters kept"
+    )
+    return ValueCapture(
+        status=CaptureStatus.SUMMARIZED,
+        repr_text=f"<SUMMARIZED: str len={len(value)} head={sample}>",
+        type_name=type_name,
+        shape=f"len={len(value)}",
+        original_size=len(value),
+        reason=f"{reason}; original_size is characters",
+    )
+
+
+def _capture_bytes(value: bytes | bytearray, type_name: str, limits: CaptureLimits) -> ValueCapture:
+    if len(value) * 4 <= limits.max_repr_chars:
+        return ValueCapture(CaptureStatus.FULL, repr(bytes(value)), type_name)
+    head = bytes(value[: limits.sample_items]).hex()
+    return ValueCapture(
+        status=CaptureStatus.SUMMARIZED,
+        repr_text=f"<SUMMARIZED: {type_name} len={len(value)} head_hex={head}>",
+        type_name=type_name,
+        shape=f"len={len(value)}",
+        original_size=len(value),
+        reason=(
+            f"binary value of {len(value)} bytes exceeds the render cap; "
+            f"first {limits.sample_items} bytes kept as hex; original_size is bytes"
+        ),
+    )
+
+
+def _capture_container(value: Any, type_name: str, limits: CaptureLimits) -> ValueCapture:
+    count = len(value)
+    if count <= limits.max_items:
+        rendered = _render(value, limits, limits.max_depth)
+        if len(rendered) <= limits.max_repr_chars:
+            return ValueCapture(CaptureStatus.FULL, rendered, type_name, shape=f"len={count}")
+    sample = _render(value, limits, limits.max_depth, cap=limits.sample_items)
+    if len(sample) > limits.max_repr_chars:
+        sample = sample[: limits.max_repr_chars] + "..."
+    return ValueCapture(
+        status=CaptureStatus.SUMMARIZED,
+        repr_text=f"<SUMMARIZED: {type_name} len={count} sample={sample}>",
+        type_name=type_name,
+        shape=f"len={count}",
+        original_size=count,
+        reason=(
+            f"container of {count} items exceeds max_items={limits.max_items} or "
+            f"max_repr_chars={limits.max_repr_chars}; first {limits.sample_items} items "
+            "kept; original_size is items"
+        ),
+    )
+
+
+def _capture_frame(value: Any, type_name: str, limits: CaptureLimits) -> ValueCapture:
+    shape = _attr(value, "shape")
+    rows, cols = _rows_cols(shape)
+    columns = _column_dtypes(value, limits)
+    nulls = _null_counts(value, limits) if limits.count_nulls else "not counted"
+    sample = _frame_sample(value, limits)
+    size, unit = _frame_size(value, rows, cols)
+    return ValueCapture(
+        status=CaptureStatus.SUMMARIZED,
+        repr_text=(
+            f"<SUMMARIZED: {type_name} rows={rows} cols={cols} columns={columns} "
+            f"nulls={nulls} head={sample}>"
+        ),
+        type_name=type_name,
+        shape=_shape_text(shape),
+        original_size=size,
+        reason=(
+            "frame-like values are always summarized, never rendered whole; "
+            f"first {limits.sample_items} rows sampled; original_size is {unit}"
+        ),
+    )
+
+
+def _capture_array(value: Any, type_name: str, limits: CaptureLimits) -> ValueCapture:
+    shape = _attr(value, "shape")
+    dtype = _capture__text(_attr(value, "dtype"))
+    sample = _render(value, limits, 1, cap=limits.sample_items)
+    if len(sample) > limits.max_repr_chars:
+        sample = sample[: limits.max_repr_chars] + "..."
+    size = _int(_attr(value, "nbytes"))
+    unit = "bytes"
+    if size == 0:
+        size = _element_count(shape)
+        unit = "elements"
+    return ValueCapture(
+        status=CaptureStatus.SUMMARIZED,
+        repr_text=(
+            f"<SUMMARIZED: {type_name} shape={_shape_text(shape)} dtype={dtype} sample={sample}>"
+        ),
+        type_name=type_name,
+        shape=_shape_text(shape),
+        original_size=size,
+        reason=(
+            "array-like values are always summarized, never rendered whole; "
+            f"first {limits.sample_items} elements sampled; original_size is {unit}"
+        ),
+    )
+
+
+def _capture_object(value: Any, type_name: str, limits: CaptureLimits) -> ValueCapture:
+    rendered = repr(value)
+    if len(rendered) <= limits.max_repr_chars:
+        return ValueCapture(CaptureStatus.FULL, rendered, type_name)
+    head = rendered[: limits.max_string_sample]
+    return ValueCapture(
+        status=CaptureStatus.SUMMARIZED,
+        repr_text=f"<SUMMARIZED: {type_name} repr_len={len(rendered)} head={head!r}>",
+        type_name=type_name,
+        original_size=len(rendered),
+        reason=(
+            f"repr of {len(rendered)} characters exceeds max_repr_chars="
+            f"{limits.max_repr_chars}; original_size is characters of repr"
+        ),
+    )
+
+
+def _render(value: Any, limits: CaptureLimits, depth: int, cap: int | None = None) -> str:
+    """Deterministic bounded rendering. Sets are sorted; dicts keep their order."""
+    if isinstance(value, _SCALARS) or isinstance(value, float):
+        return repr(value)
+    if isinstance(value, str):
+        if len(value) <= limits.max_string_sample:
+            return repr(value)
+        return f"{value[: limits.max_string_sample]!r}...+{len(value) - limits.max_string_sample}"
+    if isinstance(value, (bytes, bytearray)):
+        return f"<{_type_name(value)} len={len(value)}>"
+    if depth <= 0:
+        return f"<{_type_name(value)}>"
+    limit = cap if cap is not None else limits.max_items
+    if isinstance(value, dict):
+        items = list(value.items())[:limit]
+        body = ",".join(
+            f"{_render(k, limits, depth - 1)}:{_render(v, limits, depth - 1)}" for k, v in items
+        )
+        more = len(value) - len(items)
+        return "{" + body + (f",...+{more}" if more > 0 else "") + "}"
+    if isinstance(value, (set, frozenset)):
+        ordered = sorted((_render(item, limits, depth - 1) for item in value))[:limit]
+        more = len(value) - len(ordered)
+        return "{" + ",".join(ordered) + (f",...+{more}" if more > 0 else "") + "}"
+    if isinstance(value, (list, tuple)):
+        items = list(value)[:limit]
+        body = ",".join(_render(item, limits, depth - 1) for item in items)
+        more = len(value) - len(items)
+        opener, closer = ("[", "]") if isinstance(value, list) else ("(", ")")
+        return opener + body + (f",...+{more}" if more > 0 else "") + closer
+    sliced = _slice(value, limit)
+    if sliced is not None:
+        return _render(list(sliced), limits, depth, cap=limit)
+    return f"<{_type_name(value)}>"
+
+
+# ---- duck-typed inspection; every accessor is guarded ----------------------
+
+
+def _is_frame_like(value: Any) -> bool:
+    return all(_has(value, name) for name in ("shape", "columns", "dtypes"))
+
+
+def _is_array_like(value: Any) -> bool:
+    return _has(value, "shape") and _has(value, "dtype")
+
+
+def _has(value: Any, name: str) -> bool:
+    try:
+        return hasattr(value, name)
+    except BaseException:  # noqa: BLE001
+        return False
+
+
+def _attr(value: Any, name: str) -> Any:
+    try:
+        return getattr(value, name)
+    except BaseException:  # noqa: BLE001
+        return None
+
+
+def _capture__text(value: Any) -> str:
+    try:
+        return str(value)
+    except BaseException:  # noqa: BLE001
+        return "<unreadable>"
+
+
+def _int(value: Any) -> int:
+    try:
+        return int(value)
+    except BaseException:  # noqa: BLE001
+        return 0
+
+
+def _slice(value: Any, limit: int) -> Any:
+    try:
+        return value[:limit]
+    except BaseException:  # noqa: BLE001
+        return None
+
+
+def _shape_text(shape: Any) -> str:
+    if shape is None:
+        return ""
+    try:
+        return "(" + ", ".join(str(int(dim)) for dim in shape) + ")"
+    except BaseException:  # noqa: BLE001
+        return _capture__text(shape)
+
+
+def _rows_cols(shape: Any) -> tuple[int, int]:
+    try:
+        dims = [int(dim) for dim in shape]
+    except BaseException:  # noqa: BLE001
+        return (0, 0)
+    rows = dims[0] if dims else 0
+    cols = dims[1] if len(dims) > 1 else 1
+    return (rows, cols)
+
+
+def _element_count(shape: Any) -> int:
+    try:
+        total = 1
+        for dim in shape:
+            total *= int(dim)
+        return total
+    except BaseException:  # noqa: BLE001
+        return 0
+
+
+def _column_dtypes(value: Any, limits: CaptureLimits) -> str:
+    columns = _attr(value, "columns")
+    dtypes = _attr(value, "dtypes")
+    try:
+        names = [str(name) for name in columns]
+    except BaseException:  # noqa: BLE001
+        return "<unreadable>"
+    mapping: dict[str, str] = {}
+    try:
+        mapping = {str(k): _capture__text(v) for k, v in dict(dtypes).items()}
+    except BaseException:  # noqa: BLE001
+        mapping = {}
+    shown = names[: limits.max_columns]
+    body = ",".join(f"{name}:{mapping.get(name, '?')}" for name in shown)
+    more = len(names) - len(shown)
+    return "[" + body + (f",...+{more}" if more > 0 else "") + "]"
+
+
+def _null_counts(value: Any, limits: CaptureLimits) -> str:
+    for accessor in ("isna", "isnull"):
+        method = _attr(value, accessor)
+        if method is None:
+            continue
+        try:
+            counts = dict(method().sum())
+        except BaseException:  # noqa: BLE001
+            continue
+        shown = list(counts.items())[: limits.max_columns]
+        body = ",".join(f"{str(k)}:{_int(v)}" for k, v in shown)
+        more = len(counts) - len(shown)
+        return "{" + body + (f",...+{more}" if more > 0 else "") + "}"
+    return "unavailable"
+
+
+def _frame_sample(value: Any, limits: CaptureLimits) -> str:
+    head = _attr(value, "head")
+    rows: Any = None
+    if head is not None:
+        try:
+            rows = head(limits.sample_items)
+        except BaseException:  # noqa: BLE001
+            rows = None
+    if rows is None:
+        return "unavailable"
+    records = _attr(rows, "to_dict")
+    if records is not None:
+        try:
+            return _render(records("records"), limits, 2, cap=limits.sample_items)
+        except BaseException:  # noqa: BLE001
+            pass
+    return _render(rows, limits, 2, cap=limits.sample_items)
+
+
+def _frame_size(value: Any, rows: int, cols: int) -> tuple[int, str]:
+    usage = _attr(value, "memory_usage")
+    if usage is not None:
+        try:
+            return (_int(usage(deep=True).sum()), "bytes")
+        except BaseException:  # noqa: BLE001
+            pass
+    nbytes = _attr(value, "nbytes")
+    if nbytes is not None:
+        size = _int(nbytes)
+        if size:
+            return (size, "bytes")
+    return (rows * cols, "cells")
+
+
+# ==========================================================================
+# tracer/static_index.py
+# ==========================================================================
+
+"""The static graph, indexed for keying runtime events onto it.
+
+This module is the whole reason the runtime evidence is an *overlay* rather
+than a second graph: every event is looked up here and comes back with a static
+element ID, or comes back with a refusal that names the code location and the
+reason. Nothing in this module writes to the static graph.
+
+Mapping keys on ``(file, qualname)`` and is confirmed by line containment.
+It deliberately does not key on line number alone: element IDs are structural
+(`make_id`), so a reformat must not strand every event.
+"""
+
+
+
+
+__all__ = ["CodeLocation", "EventMapping", "BranchOutcome", "StaticIndex"]
+
+FEATURE_PREFIX = "@feature:"
+
+
+@dataclass(frozen=True, slots=True)
+class CodeLocation:
+    """Where a runtime event happened, as the interpreter reported it."""
+
+    path: str
+    """Relative to the analysed root when the file is under it; otherwise a
+    machine-independent stand-in such as ``<stdlib>/random.py``. Absolute paths
+    never reach an artifact -- ARCHITECTURE keeps them in run_meta.json."""
+
+    qualname: str
+    line: int
+    first_line: int = 0
+    under_root: bool = False
+    synthetic: bool = False
+    """True for code objects with no file: ``<string>``, ``<stdin>``, an
+    ``exec`` of generated source. These are the run_unmapped shape."""
+
+
+@dataclass(frozen=True, slots=True)
+class EventMapping:
+    """The result of keying one code location onto the static graph."""
+
+    element_id: str
+    method: Method
+    confidence: Confidence
+    reason: str = ""
+    """Empty when mapped. When ``element_id`` is empty this says why, and the
+    event is emitted as UNMAPPED rather than dropped."""
+
+
+@dataclass(frozen=True, slots=True)
+class BranchOutcome:
+    label: str
+    target_id: str
+    confidence: Confidence
+    reason: str = ""
+
+
+def _norm(path: str) -> str:
+    return posixpath.normpath(path.replace(os.sep, "/"))
+
+
+class StaticIndex:
+    """Read-only index over the Mode B artifacts card 12 overlays."""
+
+    def __init__(
+        self,
+        root: str,
+        elements: Sequence[Element] = (),
+        edges: Sequence[Edge] = (),
+        decisions: Sequence[DecisionPoint] = (),
+        cfg_blocks: Sequence[CFGBlock] = (),
+        cfg_edges: Sequence[CFGEdge] = (),
+        lineage: Sequence[LineageEdge] = (),
+        order_nodes: Sequence[OrderNode] = (),
+        sink_element_ids: Iterable[str] = (),
+    ) -> None:
+        self.root = os.path.abspath(root)
+        self.elements = tuple(elements)
+        self.edges = tuple(edges)
+        self.decisions = tuple(decisions)
+        self.cfg_blocks = tuple(cfg_blocks)
+        self.cfg_edges = tuple(cfg_edges)
+        self.lineage = tuple(lineage)
+        self.order_nodes = tuple(order_nodes)
+
+        self._by_key: dict[tuple[str, str], list[Element]] = {}
+        self._by_id: dict[str, Element] = {}
+        for element in self.elements:
+            self._by_id[element.id] = element
+            key = (_norm(element.span.path), _qualkey(element))
+            self._by_key.setdefault(key, []).append(element)
+        for bucket in self._by_key.values():
+            bucket.sort(key=lambda e: (e.span.line, e.id))
+
+        self._blocks_by_element: dict[str, list[CFGBlock]] = {}
+        for block in self.cfg_blocks:
+            self._blocks_by_element.setdefault(block.element_id, []).append(block)
+        self._block_by_id = {block.id: block for block in self.cfg_blocks}
+        self._succ: dict[str, list[CFGEdge]] = {}
+        for edge in self.cfg_edges:
+            self._succ.setdefault(edge.source_id, []).append(edge)
+        for bucket in self._succ.values():
+            bucket.sort(key=lambda e: e.id)
+
+        self._decisions_by_element: dict[str, list[DecisionPoint]] = {}
+        for decision in self.decisions:
+            self._decisions_by_element.setdefault(decision.element_id, []).append(decision)
+        for bucket in self._decisions_by_element.values():
+            bucket.sort(key=lambda d: d.id)
+
+        self._decision_by_id = {d.id: d for d in self.decisions}
+        declared = {d.element_id for d in self.decisions if d.is_sink}
+        self.sink_element_ids: frozenset[str] = frozenset(declared | set(sink_element_ids))
+        self.sink_decision_ids: frozenset[str] = frozenset(
+            d.id for d in self.decisions if d.is_sink
+        )
+
+        self._branch_lines: dict[str, dict[int, str]] = {}
+        self._handler_lines: dict[str, set[int]] = {}
+        self._feature_lines: dict[str, dict[int, tuple[str, ...]]] = {}
+        self._build_line_plans()
+
+    # -- paths -------------------------------------------------------------
+
+    def relocate(self, filename: str) -> CodeLocation:
+        """Turn an interpreter filename into a machine-independent location.
+
+        Three outcomes, and the difference between the last two is the whole
+        point of the mapping rate:
+
+        * **under the root** -- the target. Traced, and keyed to an element.
+        * **synthetic** -- a code object with no file: ``<string>``,
+          ``<stdin>``, an ``exec`` of generated source. Traced, and UNMAPPED
+          when it keys to nothing, because that is a finding: the static
+          analysis should have had it and did not.
+        * **external** -- not the target at all. A real file outside the root,
+          or a frozen stdlib module (``<frozen importlib._bootstrap>``). Not
+          traced, counted by file in the recording header. An import-machinery
+          frame is not a finding about our analysis, and counting it as one
+          buries the events that are.
+        """
+        if not filename:
+            return CodeLocation(path="<unknown>", qualname="", line=0, synthetic=True)
+        if filename.startswith("<frozen ") and filename.endswith(">"):
+            return CodeLocation(
+                path="<frozen>/" + filename[len("<frozen ") : -1].strip(),
+                qualname="",
+                line=0,
+            )
+        if filename.startswith("<"):
+            return CodeLocation(path=filename, qualname="", line=0, synthetic=True)
+        absolute = os.path.abspath(filename)
+        if absolute == self.root or absolute.startswith(self.root + os.sep):
+            return CodeLocation(
+                path=_norm(os.path.relpath(absolute, self.root)),
+                qualname="",
+                line=0,
+                under_root=True,
+            )
+        return CodeLocation(path=_external(absolute), qualname="", line=0)
+
+    # -- mapping -----------------------------------------------------------
+
+    def map_code(self, location: CodeLocation) -> EventMapping:
+        """Key a code location onto a static element, or say why it did not."""
+        if location.synthetic:
+            return EventMapping(
+                "",
+                Method.RUNTIME_OBSERVED,
+                Confidence.UNKNOWN,
+                f"dynamically created code object with no source file "
+                f"({location.path!r}, qualname {location.qualname!r}): the static analysis "
+                "never saw this code",
+            )
+        if not location.under_root:
+            return EventMapping(
+                "",
+                Method.RUNTIME_OBSERVED,
+                Confidence.UNKNOWN,
+                f"code at {location.path} lies outside the analysed root, so no static "
+                "element exists for it",
+            )
+        key = (_norm(location.path), _normalise_qualname(location.qualname))
+        candidates = self._by_key.get(key, [])
+        if not candidates:
+            return EventMapping(
+                "",
+                Method.RUNTIME_OBSERVED,
+                Confidence.UNKNOWN,
+                f"no static element at {location.path} with qualname "
+                f"{_normalise_qualname(location.qualname)!r} (first line "
+                f"{location.first_line}); the static analysis missed this element",
+            )
+        if len(candidates) == 1:
+            element = candidates[0]
+            if _covers(element.span, location.first_line):
+                return EventMapping(element.id, Method.RUNTIME_OBSERVED, Confidence.RESOLVED)
+            return EventMapping(
+                element.id,
+                Method.RUNTIME_OBSERVED,
+                Confidence.PROBABLE,
+                f"only candidate for the qualname, but its span "
+                f"({element.span.line}-{element.span.end_line}) does not cover the running "
+                f"code's first line {location.first_line}",
+            )
+        covering = [e for e in candidates if _covers(e.span, location.first_line)]
+        if len(covering) == 1:
+            return EventMapping(covering[0].id, Method.RUNTIME_OBSERVED, Confidence.PROBABLE)
+        return EventMapping(
+            "",
+            Method.RUNTIME_OBSERVED,
+            Confidence.UNKNOWN,
+            f"{len(candidates)} static elements share qualname "
+            f"{_normalise_qualname(location.qualname)!r} in {location.path} and "
+            f"{len(covering)} of them cover line {location.first_line}: ambiguous, so no "
+            "element is claimed. Candidates: "
+            + ",".join(sorted(e.id for e in candidates)),
+        )
+
+    def element(self, element_id: str) -> Element | None:
+        return self._by_id.get(element_id)
+
+    def decision(self, decision_id: str) -> DecisionPoint | None:
+        if not decision_id:
+            return None
+        return self._decision_by_id.get(decision_id)
+
+    # -- line plans --------------------------------------------------------
+
+    def _build_line_plans(self) -> None:
+        for block in self.cfg_blocks:
+            path = _norm(block.span.path)
+            if block.kind in (BlockKind.BRANCH, BlockKind.LOOP_HEAD):
+                self._branch_lines.setdefault(path, {})[block.span.line] = block.id
+            if block.kind == BlockKind.HANDLER:
+                for line in _lines(block.span):
+                    self._handler_lines.setdefault(path, set()).add(line)
+        for edge in self.lineage:
+            if not edge.target_id.startswith(FEATURE_PREFIX) or edge.span is None:
+                continue
+            path = _norm(edge.span.path)
+            bucket = self._feature_lines.setdefault(path, {})
+            existing = bucket.get(edge.span.line, ())
+            if edge.target_id not in existing:
+                bucket[edge.span.line] = tuple(sorted(existing + (edge.target_id,)))
+
+    def branch_lines(self, path: str) -> dict[int, str]:
+        return dict(self._branch_lines.get(_norm(path), {}))
+
+    def handler_lines(self, path: str) -> set[int]:
+        return set(self._handler_lines.get(_norm(path), set()))
+
+    def feature_lines(self, path: str) -> dict[int, tuple[str, ...]]:
+        return dict(self._feature_lines.get(_norm(path), {}))
+
+    def traces_lines(self, path: str) -> bool:
+        """Whether line events are worth paying for in this file."""
+        key = _norm(path)
+        return bool(
+            self._branch_lines.get(key)
+            or self._feature_lines.get(key)
+            or self._handler_lines.get(key)
+        )
+
+    # -- decisions and branches -------------------------------------------
+
+    def decision_at(self, element_id: str, line: int, path: str) -> DecisionPoint | None:
+        """Which decision point sits on this branch line, if any."""
+        points = self._decisions_by_element.get(element_id, [])
+        if not points:
+            return None
+        text = linecache.getline(os.path.join(self.root, _norm(path)), line).strip()
+        if text:
+            matches = [p for p in points if p.condition_source and p.condition_source in text]
+            if len(matches) == 1:
+                return matches[0]
+        if len(points) == 1:
+            return points[0]
+        return None
+
+    def reads_names(self, decision: DecisionPoint | None) -> tuple[str, ...]:
+        """Plain names a decision reads, for lookup in the running frame."""
+        if decision is None:
+            return ()
+        names = []
+        for read_id in decision.reads_ids:
+            names.append(_leaf_name(read_id))
+        return tuple(sorted({n for n in names if n}))
+
+    def branch_outcome(
+        self, block_id: str, next_line: int, decision: DecisionPoint | None
+    ) -> BranchOutcome:
+        """Which way a branch actually went, given the next line that ran."""
+        successors = self._succ.get(block_id, [])
+        matched = [
+            edge
+            for edge in successors
+            if (block := self._block_by_id.get(edge.target_id)) is not None
+            and _covers(block.span, next_line)
+        ]
+        if len(matched) == 1:
+            edge = matched[0]
+            target_block = self._block_by_id[edge.target_id]
+            label = _edge_label(edge)
+            if decision is not None:
+                for outcome_label, target_id in decision.outcomes:
+                    if target_id in (edge.target_id, target_block.element_id):
+                        return BranchOutcome(outcome_label, target_id, Confidence.RESOLVED)
+            return BranchOutcome(label, edge.target_id, Confidence.PROBABLE)
+        if not successors:
+            return BranchOutcome(
+                f"line:{next_line}",
+                "",
+                Confidence.UNKNOWN,
+                f"branch block {block_id} has no CFG successors in the static graph; "
+                f"the run continued at line {next_line}",
+            )
+        return BranchOutcome(
+            f"line:{next_line}",
+            "",
+            Confidence.UNKNOWN,
+            f"{len(matched)} of {len(successors)} CFG successors of {block_id} cover line "
+            f"{next_line}: the branch taken cannot be named from the static graph",
+        )
+
+    # -- contradiction inputs ---------------------------------------------
+
+    def call_pairs(self) -> dict[tuple[str, str], str]:
+        """Static CALLS edges as ``(source, target) -> edge id``."""
+        pairs: dict[tuple[str, str], str] = {}
+        for edge in self.edges:
+            if edge.kind is EdgeKind.CALLS:
+                pairs.setdefault((edge.source_id, edge.target_id), edge.id)
+        return pairs
+
+    def sequence_pairs(self) -> list[tuple[str, str, str]]:
+        """Ordered pairs the static graph claims: ``(before, after, order node)``."""
+        pairs: list[tuple[str, str, str]] = []
+        for node in sorted(self.order_nodes, key=lambda n: n.id):
+            if node.kind is not OrderKind.SEQUENCE:
+                continue
+            members = list(node.element_ids)
+            for index, before in enumerate(members):
+                for after in members[index + 1 :]:
+                    pairs.append((before, after, node.id))
+        return pairs
+
+    def callable_element_ids(self) -> frozenset[str]:
+        return frozenset(
+            element.id
+            for element in self.elements
+            if element.kind in (ElementKind.FUNCTION, ElementKind.METHOD, ElementKind.PROPERTY)
+        )
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+
+def _external(absolute: str) -> str:
+    """A stand-in path for code outside the root, stable across machines."""
+    parts = absolute.replace(os.sep, "/").split("/")
+    for marker in ("site-packages", "dist-packages"):
+        if marker in parts:
+            return "<" + marker + ">/" + "/".join(parts[parts.index(marker) + 1 :])
+    for index, part in enumerate(parts):
+        if part.startswith("python3.") and index + 1 < len(parts):
+            return "<stdlib>/" + "/".join(parts[index + 1 :])
+    return "<external>/" + parts[-1]
+
+
+def _qualkey(element: Element) -> str:
+    if element.kind in (ElementKind.MODULE, ElementKind.PACKAGE):
+        return "<module>"
+    return _normalise_qualname(element.qualname or element.name)
+
+
+def _normalise_qualname(qualname: str) -> str:
+    if not qualname:
+        return "<module>"
+    return ".".join(part for part in qualname.split(".") if part != "<locals>")
+
+
+def _leaf_name(element_id: str) -> str:
+    if element_id.startswith(FEATURE_PREFIX):
+        return element_id[len(FEATURE_PREFIX) :]
+    tail = element_id.split("::")[-1]
+    tail = tail.split("#")[0]
+    return tail.split(".")[-1]
+
+
+def _covers(span: SourceSpan, line: int) -> bool:
+    if line <= 0:
+        return False
+    end = span.end_line if span.end_line is not None else span.line
+    return span.line <= line <= max(end, span.line)
+
+
+def _lines(span: SourceSpan) -> range:
+    end = span.end_line if span.end_line is not None else span.line
+    return range(span.line, max(end, span.line) + 1)
+
+
+def _edge_label(edge: CFGEdge) -> str:
+    if edge.taken_when is True:
+        return "true"
+    if edge.taken_when is False:
+        return "false"
+    if edge.condition:
+        return edge.condition
+    return edge.target_id
+
+
+# ==========================================================================
+# tracer/recording.py
+# ==========================================================================
+
+"""The raw observation stream: what the collector wrote down, before mapping.
+
+A recording is the *evidence*; `events.jsonl` is the *reading* of it. Splitting
+the two is what makes "replaying a recorded run is byte-identical" a real test
+rather than a hope: materialisation is a pure function of a recording plus the
+static graph, so it can be run twice, or a year later, and must agree.
+
+Values are already captured -- bounded and redacted -- by the time they reach
+this file. A raw object never survives the collector.
+"""
+
+
+
+
+__all__ = ["ObsKind", "RawObservation", "Recording", "RECORDING_VERSION"]
+
+RECORDING_VERSION = "1"
+
+
+class ObsKind(StrEnum):
+    CALL = "CALL"
+    RETURN = "RETURN"
+    EXCEPTION = "EXCEPTION"
+    BRANCH_COND = "BRANCH_COND"
+    BRANCH_NEXT = "BRANCH_NEXT"
+    FEATURE = "FEATURE"
+    HANDLER = "HANDLER"
+
+
+@dataclass(frozen=True, slots=True)
+class RawObservation:
+    """One thing the collector saw, with the location it saw it at."""
+
+    kind: ObsKind
+    thread_slot: int
+    thread_seq: int
+    """Monotonic within a thread. Emission order is (slot, seq), which is
+    stable whatever the interleaving was -- the interleaving itself is recorded
+    separately as an observed property rather than being smoothed away."""
+
+    arrival: int
+    """Global arrival order. Kept because it is the evidence of interleaving;
+    never used to order emitted events."""
+
+    frame_key: int
+    parent_frame_key: int
+    depth: int
+    path: str
+    line: int
+    first_line: int
+    qualname: str
+    under_root: bool = False
+    synthetic: bool = False
+    values: dict[str, ValueCapture] = field(default_factory=dict)
+    detail: dict[str, str] = field(default_factory=dict)
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "kind": str(self.kind),
+            "thread_slot": self.thread_slot,
+            "thread_seq": self.thread_seq,
+            "arrival": self.arrival,
+            "frame_key": self.frame_key,
+            "parent_frame_key": self.parent_frame_key,
+            "depth": self.depth,
+            "path": self.path,
+            "line": self.line,
+            "first_line": self.first_line,
+            "qualname": self.qualname,
+            "under_root": self.under_root,
+            "synthetic": self.synthetic,
+            "values": {name: _capture_json(c) for name, c in sorted(self.values.items())},
+            "detail": {k: v for k, v in sorted(self.detail.items())},
+        }
+
+    @staticmethod
+    def from_json(payload: dict[str, Any]) -> "RawObservation":
+        return RawObservation(
+            kind=ObsKind(payload["kind"]),
+            thread_slot=int(payload["thread_slot"]),
+            thread_seq=int(payload["thread_seq"]),
+            arrival=int(payload["arrival"]),
+            frame_key=int(payload["frame_key"]),
+            parent_frame_key=int(payload["parent_frame_key"]),
+            depth=int(payload["depth"]),
+            path=str(payload["path"]),
+            line=int(payload["line"]),
+            first_line=int(payload["first_line"]),
+            qualname=str(payload["qualname"]),
+            under_root=bool(payload.get("under_root", False)),
+            synthetic=bool(payload.get("synthetic", False)),
+            values={
+                name: _capture_from_json(value)
+                for name, value in dict(payload.get("values", {})).items()
+            },
+            detail={str(k): str(v) for k, v in dict(payload.get("detail", {})).items()},
+        )
+
+
+def _capture_json(capture: ValueCapture) -> dict[str, Any]:
+    return {
+        "status": str(capture.status),
+        "repr_text": capture.repr_text,
+        "type_name": capture.type_name,
+        "shape": capture.shape,
+        "original_size": capture.original_size,
+        "reason": capture.reason,
+    }
+
+
+def _capture_from_json(payload: dict[str, Any]) -> ValueCapture:
+    return ValueCapture(
+        status=CaptureStatus(payload["status"]),
+        repr_text=str(payload.get("repr_text", "")),
+        type_name=str(payload.get("type_name", "")),
+        shape=str(payload.get("shape", "")),
+        original_size=int(payload.get("original_size", 0)),
+        reason=str(payload.get("reason", "")),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Recording:
+    """A header plus the observations, in arrival order."""
+
+    header: dict[str, Any]
+    observations: tuple[RawObservation, ...] = ()
+
+    def dumps(self) -> str:
+        lines = [canonical_dumps({"header": self.header})]
+        lines.extend(canonical_dumps(obs.to_json()) for obs in self.observations)
+        return "".join(f"{line}\n" for line in lines)
+
+    @staticmethod
+    def loads(text: str) -> "Recording":
+        header: dict[str, Any] = {}
+        observations: list[RawObservation] = []
+        for raw in text.splitlines():
+            if not raw.strip():
+                continue
+            payload = json.loads(raw)
+            if "header" in payload:
+                header = dict(payload["header"])
+                continue
+            observations.append(RawObservation.from_json(payload))
+        return Recording(header=header, observations=tuple(observations))
+
+    def write(self, path: str | Path) -> Path:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(self.dumps(), encoding="utf-8")
+        return target
+
+    @staticmethod
+    def read(path: str | Path) -> "Recording":
+        return Recording.loads(Path(path).read_text(encoding="utf-8"))
+
+    def ordered(self) -> list[RawObservation]:
+        """Observations in the stable emission order: (thread slot, thread seq)."""
+        return sorted(self.observations, key=lambda o: (o.thread_slot, o.thread_seq, o.arrival))
+
+    def with_observations(self, observations: Iterable[RawObservation]) -> "Recording":
+        return Recording(header=dict(self.header), observations=tuple(observations))
+
+    def with_header(self, **updates: Any) -> "Recording":
+        header = dict(self.header)
+        header.update(updates)
+        return Recording(header=header, observations=self.observations)
+
+
+# ==========================================================================
+# tracer/collector.py
+# ==========================================================================
+
+"""In-process collection. A component of a card 11 run -- never its own process.
+
+There is no ``subprocess``, ``os.system``, ``fork`` or ``exec`` anywhere in
+this package, and a test asserts it. The harness owns the process, its
+filesystem and its network; the tracer is installed *inside* that process and
+writes down what it sees.
+
+Before it writes anything down it checks the harness's own controls. If the
+run refused, or a required guarantee is missing or off, collection raises
+`TraceRefused` and no tracing is installed at all. A refusal is the correct
+outcome, never a warning to proceed past.
+"""
+
+
+
+
+
+__all__ = [
+    "TraceRefused",
+    "TraceCollector",
+    "DEFAULT_REQUIRED_CONTROLS",
+    "refusal_reason",
+]
+
+DEFAULT_REQUIRED_CONTROLS: tuple[str, ...] = ("network", "filesystem", "subprocess")
+
+_OWN_PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+"""CASCADE-MAP's own frames are not observations of the target. They are
+skipped and not counted: counting the tracer's own ``__exit__`` as external
+target code would put noise in the mapping report.""" 
+
+_CONTROL_NOISE = frozenset(
+    {
+        "block",
+        "blocked",
+        "blocking",
+        "deny",
+        "denied",
+        "default",
+        "is",
+        "active",
+        "enabled",
+        "on",
+        "sandbox",
+        "sandboxed",
+        "redirect",
+        "redirected",
+        "isolation",
+        "isolated",
+        "control",
+        "controls",
+        "guard",
+        "guarded",
+        "outbound",
+        "mode",
+        "a",
+    }
+)
+
+_CONTROL_ALIASES = {
+    "net": "network",
+    "network": "network",
+    "networking": "network",
+    "fs": "filesystem",
+    "file": "filesystem",
+    "files": "filesystem",
+    "filesystem": "filesystem",
+    "write": "filesystem",
+    "writes": "filesystem",
+    "process": "subprocess",
+    "processes": "subprocess",
+    "spawn": "subprocess",
+    "spawning": "subprocess",
+    "fork": "subprocess",
+    "subprocess": "subprocess",
+}
+
+
+class TraceRefused(RuntimeError):
+    """Collection refused. Carries the guarantee that could not be made."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _tokens(key: str) -> set[str]:
+    parts: list[str] = []
+    current = ""
+    for char in key.lower():
+        if char.isalnum():
+            current += char
+        else:
+            parts.append(current)
+            current = ""
+    parts.append(current)
+    out: set[str] = set()
+    for part in parts:
+        if not part or part in _CONTROL_NOISE:
+            continue
+        out.add(_CONTROL_ALIASES.get(part, part))
+    return out
+
+
+def refusal_reason(
+    run: RunRecord, required: Sequence[str] = DEFAULT_REQUIRED_CONTROLS
+) -> str:
+    """Why this run may not be traced, or "" when it may.
+
+    The tracer does not enforce isolation -- card 11 does -- but it refuses to
+    produce evidence from a run whose isolation was never established. Trusting
+    the flag would make a trace of an unsandboxed run indistinguishable from a
+    trace of a sandboxed one.
+    """
+    if run.refused:
+        return (
+            f"run {run.run_id} refused to start"
+            + (f": {run.refusal_reason}" if run.refusal_reason else "")
+            + "; there is nothing to trace"
+        )
+    controls = dict(run.controls_active or {})
+    for name in required:
+        matching = {key: value for key, value in controls.items() if name in _tokens(key)}
+        if not matching:
+            return (
+                f"run {run.run_id} does not report a {name!r} control "
+                f"(controls reported: {sorted(controls) or 'none'}); the tracer cannot "
+                "confirm the run is incapable of real-world side effects"
+            )
+        off = sorted(key for key, value in matching.items() if not value)
+        if off:
+            return (
+                f"run {run.run_id} reports the {name!r} control inactive "
+                f"({', '.join(off)}); tracing would record a run that could reach the "
+                "real world"
+            )
+    return ""
+
+
+@dataclass(slots=True)
+class _CodeMeta:
+    path: str
+    own: bool
+    qualname: str
+    first_line: int
+    under_root: bool
+    synthetic: bool
+    traced: bool
+    element_id: str
+    trace_lines: bool
+    branch_lines: dict[int, str]
+    feature_lines: dict[int, tuple[str, ...]]
+    handler_lines: set[int]
+    nd_names: tuple[str, ...]
+
+
+@dataclass(slots=True)
+class _FrameState:
+    meta: _CodeMeta
+    frame_key: int
+    parent_key: int
+    depth: int
+    thread_slot: int
+    pending_branch: str = ""
+    pending_branch_line: int = 0
+    pending_features: tuple[str, ...] = ()
+    pending_feature_line: int = 0
+    exception_seen: bool = False
+    handler_seen: bool = False
+
+
+class TraceCollector:
+    """Installs the trace hook, writes observations, and gets out of the way."""
+
+    def __init__(
+        self,
+        run: RunRecord,
+        index: StaticIndex,
+        *,
+        limits: CaptureLimits = DEFAULT_LIMITS,
+        policy: RedactionPolicy | None = None,
+        max_observations: int = 200_000,
+        required_controls: Sequence[str] = DEFAULT_REQUIRED_CONTROLS,
+        trace_dynamic: bool = True,
+    ) -> None:
+        reason = refusal_reason(run, required_controls)
+        if reason:
+            raise TraceRefused(reason)
+        self.run = run
+        self.index = index
+        self.limits = limits
+        self.policy = policy if policy is not None else RedactionPolicy()
+        self.max_observations = max_observations
+        self.trace_dynamic = trace_dynamic
+        self.required_controls = tuple(required_controls)
+
+        self._lock = threading.Lock()
+        self._observations: list[RawObservation] = []
+        self._meta: dict[CodeType, _CodeMeta] = {}
+        self._frames: dict[FrameType, _FrameState] = {}
+        self._stacks: dict[int, list[_FrameState]] = {}
+        self._slots: dict[int, int] = {}
+        self._thread_seq: dict[int, int] = {}
+        self._external: dict[str, int] = {}
+        self._seen_frames: set[int] = set()
+        self._arrival = 0
+        self._frame_keys = 0
+        self._truncated = 0
+        self._active = False
+
+    # -- lifecycle ---------------------------------------------------------
+
+    def start(self) -> "TraceCollector":
+        reason = refusal_reason(self.run, self.required_controls)
+        if reason:
+            raise TraceRefused(reason)
+        if self._active:
+            raise RuntimeError("collector already started")
+        self._active = True
+        threading.settrace(self._dispatch)
+        sys.settrace(self._dispatch)
+        return self
+
+    def stop(self) -> None:
+        if not self._active:
+            return
+        sys.settrace(None)
+        threading.settrace(None)  # type: ignore[arg-type]
+        self._active = False
+        self._frames.clear()
+        self._stacks.clear()
+
+    def __enter__(self) -> "TraceCollector":
+        return self.start()
+
+    def __exit__(self, *exc: object) -> bool:
+        self.stop()
+        return False
+
+    # -- output ------------------------------------------------------------
+
+    def recording(self) -> Recording:
+        header: dict[str, Any] = {
+            "recording_version": RECORDING_VERSION,
+            "run_id": self.run.run_id,
+            "observation_count": len(self._observations),
+            "dropped_observations": self._truncated,
+            "max_observations": self.max_observations,
+            "hash_randomization": bool(sys.flags.hash_randomization),
+            "unguaranteed": list(getattr(self.run, "unguaranteed", ()) or ()),
+            "thread_count": len(self._slots),
+            "thread_slots": sorted(self._slots.values()),
+            "external_frames": {key: self._external[key] for key in sorted(self._external)},
+            "redaction_from_profile": self.policy.from_profile,
+            "limits": {
+                "max_repr_chars": self.limits.max_repr_chars,
+                "max_event_chars": self.limits.max_event_chars,
+                "max_items": self.limits.max_items,
+                "sample_items": self.limits.sample_items,
+                "max_string_sample": self.limits.max_string_sample,
+                "max_columns": self.limits.max_columns,
+                "count_nulls": self.limits.count_nulls,
+                "capture_self": self.limits.capture_self,
+            },
+        }
+        return Recording(header=header, observations=tuple(self._observations))
+
+    # -- the hook ----------------------------------------------------------
+
+    def _dispatch(self, frame: FrameType, event: str, arg: Any) -> Callable[..., Any] | None:
+        if event != "call" or not self._active:
+            return None
+        meta = self._meta_for(frame.f_code)
+        if not meta.traced:
+            if meta.own:
+                return None
+            with self._lock:
+                self._external[meta.path] = self._external.get(meta.path, 0) + 1
+            return None
+        ident = threading.get_ident()
+        slot = self._slot(ident)
+        stack = self._stacks.setdefault(ident, [])
+        parent = stack[-1].frame_key if stack else 0
+        state = _FrameState(
+            meta=meta,
+            frame_key=self._next_frame_key(),
+            parent_key=parent,
+            depth=len(stack),
+            thread_slot=slot,
+        )
+        stack.append(state)
+        self._frames[frame] = state
+        detail: dict[str, str] = {}
+        if meta.nd_names:
+            detail["nd_names"] = ",".join(meta.nd_names)
+        if id(frame) in self._seen_frames:
+            detail["resumed"] = "1"
+        else:
+            self._seen_frames.add(id(frame))
+        self._record(ObsKind.CALL, state, frame.f_lineno, self._call_values(frame, meta), detail)
+        frame.f_trace_lines = meta.trace_lines
+        return self._local
+
+    def _local(self, frame: FrameType, event: str, arg: Any) -> Callable[..., Any] | None:
+        state = self._frames.get(frame)
+        if state is None or not self._active:
+            return None
+        if event == "line":
+            self._on_line(frame, state)
+        elif event == "return":
+            self._on_return(frame, state, arg)
+        elif event == "exception":
+            self._on_exception(frame, state, arg)
+        return self._local
+
+    # -- per-event handling -------------------------------------------------
+
+    def _on_line(self, frame: FrameType, state: _FrameState) -> None:
+        line = frame.f_lineno
+        self._flush_features(frame, state)
+        if state.pending_branch:
+            self._record(
+                ObsKind.BRANCH_NEXT,
+                state,
+                line,
+                {},
+                {
+                    "block_id": state.pending_branch,
+                    "cond_line": str(state.pending_branch_line),
+                    "via": "line",
+                },
+            )
+            state.pending_branch = ""
+        meta = state.meta
+        if state.exception_seen and line in meta.handler_lines:
+            state.handler_seen = True
+            self._record(ObsKind.HANDLER, state, line, {}, {})
+        block = meta.branch_lines.get(line)
+        if block:
+            decision = (
+                self.index.decision_at(meta.element_id, line, meta.path)
+                if meta.element_id
+                else None
+            )
+            names = self.index.reads_names(decision)
+            raw = {name: frame.f_locals.get(name, MISSING) for name in names}
+            self._record(
+                ObsKind.BRANCH_COND,
+                state,
+                line,
+                capture_values(
+                    raw, limits=self.limits, policy=self.policy, element_id=meta.element_id
+                ),
+                {
+                    "block_id": block,
+                    "decision_id": decision.id if decision is not None else "",
+                    "condition": decision.condition_source if decision is not None else "",
+                    "is_sink": "1" if decision is not None and decision.is_sink else "0",
+                },
+            )
+            state.pending_branch = block
+            state.pending_branch_line = line
+        features = meta.feature_lines.get(line)
+        if features:
+            state.pending_features = features
+            state.pending_feature_line = line
+
+    def _on_return(self, frame: FrameType, state: _FrameState, arg: Any) -> None:
+        self._flush_features(frame, state)
+        if state.pending_branch:
+            self._record(
+                ObsKind.BRANCH_NEXT,
+                state,
+                frame.f_lineno,
+                {},
+                {
+                    "block_id": state.pending_branch,
+                    "cond_line": str(state.pending_branch_line),
+                    "via": "return",
+                },
+            )
+            state.pending_branch = ""
+        unwinding = state.exception_seen and not state.handler_seen and arg is None
+        if unwinding:
+            values = {
+                "return_value": dropped(
+                    "the frame left via an exception, so there is no return value",
+                    "",
+                )
+            }
+        else:
+            values = capture_values(
+                {"return_value": arg},
+                limits=self.limits,
+                policy=self.policy,
+                element_id=state.meta.element_id,
+            )
+        detail = {
+            "exception_seen": "1" if state.exception_seen else "0",
+            "handler_seen": "1" if state.handler_seen else "0",
+            "unwinding": "1" if unwinding else "0",
+        }
+        self._record(ObsKind.RETURN, state, frame.f_lineno, values, detail)
+        stack = self._stacks.get(threading.get_ident())
+        if stack and stack[-1] is state:
+            stack.pop()
+        elif stack and state in stack:
+            stack.remove(state)
+        self._frames.pop(frame, None)
+
+    def _on_exception(self, frame: FrameType, state: _FrameState, arg: Any) -> None:
+        state.exception_seen = True
+        exc_type = arg[0] if isinstance(arg, tuple) and arg else None
+        exc_value = arg[1] if isinstance(arg, tuple) and len(arg) > 1 else None
+        type_name = getattr(exc_type, "__name__", "<unknown>")
+        values = capture_values(
+            {"exception_type": type_name, "exception_message": exc_value},
+            limits=self.limits,
+            policy=self.policy,
+            element_id=state.meta.element_id,
+        )
+        self._record(
+            ObsKind.EXCEPTION,
+            state,
+            frame.f_lineno,
+            values,
+            {"exception_type": type_name},
+        )
+
+    def _flush_features(self, frame: FrameType, state: _FrameState) -> None:
+        if not state.pending_features:
+            return
+        pending = state.pending_features
+        line = state.pending_feature_line
+        state.pending_features = ()
+        for feature_id in pending:
+            name = feature_id.split(":", 1)[1] if ":" in feature_id else feature_id
+            value = _feature_value(frame, name)
+            self._record(
+                ObsKind.FEATURE,
+                state,
+                line,
+                capture_values(
+                    {name: value},
+                    limits=self.limits,
+                    policy=self.policy,
+                    element_id=feature_id,
+                ),
+                {"feature_id": feature_id, "feature_name": name},
+            )
+
+    # -- plumbing ----------------------------------------------------------
+
+    def _meta_for(self, code: CodeType) -> _CodeMeta:
+        cached = self._meta.get(code)
+        if cached is not None:
+            return cached
+        own = os.path.abspath(code.co_filename).startswith(_OWN_PACKAGE + os.sep)
+        location = self.index.relocate(code.co_filename)
+        qualname = getattr(code, "co_qualname", code.co_name)
+        full = CodeLocation(
+            path=location.path,
+            qualname=qualname,
+            line=code.co_firstlineno,
+            first_line=code.co_firstlineno,
+            under_root=location.under_root,
+            synthetic=location.synthetic,
+        )
+        traced = (not own) and (
+            location.under_root or (location.synthetic and self.trace_dynamic)
+        )
+        mapping = self.index.map_code(full) if traced else None
+        meta = _CodeMeta(
+            path=location.path,
+            own=own,
+            qualname=qualname,
+            first_line=code.co_firstlineno,
+            under_root=location.under_root,
+            synthetic=location.synthetic,
+            traced=traced,
+            element_id=mapping.element_id if mapping is not None else "",
+            trace_lines=traced and self.index.traces_lines(location.path),
+            branch_lines=self.index.branch_lines(location.path) if traced else {},
+            feature_lines=self.index.feature_lines(location.path) if traced else {},
+            handler_lines=self.index.handler_lines(location.path) if traced else set(),
+            nd_names=names_in(code.co_names) if traced else (),
+        )
+        self._meta[code] = meta
+        return meta
+
+    def _call_values(self, frame: FrameType, meta: _CodeMeta) -> dict[str, ValueCapture]:
+        code = frame.f_code
+        count = code.co_argcount + code.co_kwonlyargcount
+        names = list(code.co_varnames[:count])
+        index = count
+        if code.co_flags & 0x04 and index < len(code.co_varnames):
+            names.append(code.co_varnames[index])
+            index += 1
+        if code.co_flags & 0x08 and index < len(code.co_varnames):
+            names.append(code.co_varnames[index])
+        locals_ = frame.f_locals
+        raw: dict[str, Any] = {}
+        skipped: dict[str, ValueCapture] = {}
+        for name in names:
+            if name in ("self", "cls") and not self.limits.capture_self:
+                skipped[name] = dropped(
+                    "receiver not captured: capture_self is off, which keeps method calls "
+                    "cheap; set CaptureLimits(capture_self=True) to capture it",
+                    type(locals_.get(name)).__qualname__ if name in locals_ else "",
+                )
+                continue
+            raw[name] = locals_.get(name, MISSING)
+        captured = capture_values(
+            raw, limits=self.limits, policy=self.policy, element_id=meta.element_id
+        )
+        captured.update(skipped)
+        return captured
+
+    def _slot(self, ident: int) -> int:
+        with self._lock:
+            slot = self._slots.get(ident)
+            if slot is None:
+                slot = len(self._slots)
+                self._slots[ident] = slot
+            return slot
+
+    def _next_frame_key(self) -> int:
+        with self._lock:
+            self._frame_keys += 1
+            return self._frame_keys
+
+    def _record(
+        self,
+        kind: ObsKind,
+        state: _FrameState,
+        line: int,
+        values: dict[str, ValueCapture],
+        detail: dict[str, str],
+    ) -> None:
+        with self._lock:
+            if self._arrival >= self.max_observations:
+                self._truncated += 1
+                return
+            self._arrival += 1
+            arrival = self._arrival
+            seq = self._thread_seq.get(state.thread_slot, 0) + 1
+            self._thread_seq[state.thread_slot] = seq
+            self._observations.append(
+                RawObservation(
+                    kind=kind,
+                    thread_slot=state.thread_slot,
+                    thread_seq=seq,
+                    arrival=arrival,
+                    frame_key=state.frame_key,
+                    parent_frame_key=state.parent_key,
+                    depth=state.depth,
+                    path=state.meta.path,
+                    line=line,
+                    first_line=state.meta.first_line,
+                    qualname=state.meta.qualname,
+                    under_root=state.meta.under_root,
+                    synthetic=state.meta.synthetic,
+                    values=values,
+                    detail=detail,
+                )
+            )
+
+
+def _feature_value(frame: FrameType, name: str) -> Any:
+    """Read a tracked feature out of the running frame, or report it missing.
+
+    Local name first, then any mapping or frame-like local that holds the key
+    -- scanned in sorted order so the answer does not depend on dict ordering.
+    A feature that cannot be reached becomes an explicit DROPPED capture.
+    """
+    locals_ = frame.f_locals
+    if name in locals_:
+        return locals_[name]
+    for key in sorted(locals_):
+        container = locals_[key]
+        try:
+            if isinstance(container, dict):
+                if name in container:
+                    return container[name]
+                continue
+            columns = getattr(container, "columns", None)
+            if columns is not None and name in list(columns):
+                return container[name]
+        except BaseException:  # noqa: BLE001
+            continue
+    if name in frame.f_globals:
+        return frame.f_globals[name]
+    return MISSING
+
+
+# ==========================================================================
+# tracer/nondeterminism.py
+# ==========================================================================
+
+"""Nondeterminism the target brings, recorded rather than hidden.
+
+The tracer's own output is deterministic: ordering is (thread slot, thread
+sequence), IDs are minted from that order, and serialization goes through
+`canonical_dumps`. That is the tracer's half of the bargain.
+
+The target's half is different. A run that reads the wall clock, draws random
+numbers, iterates a set under hash randomization or interleaves threads is not
+reproducible, and pretending otherwise would make every later comparison of two
+runs a lie. So each source is emitted as an observed property of the run, with
+the events that evidence it.
+
+There is no contract type for this yet; `NondeterminismObservation` is local to
+card 12 and is a reported contract-change request.
+"""
+
+
+
+
+__all__ = [
+    "NondeterminismKind",
+    "NondeterminismObservation",
+    "NONDETERMINISTIC_NAMES",
+    "NONDETERMINISTIC_MODULES",
+    "names_in",
+]
+
+
+class NondeterminismKind(StrEnum):
+    WALL_CLOCK = "WALL_CLOCK"
+    RANDOMNESS = "RANDOMNESS"
+    IDENTITY = "IDENTITY"
+    """uuid, id(), object addresses."""
+
+    HASH_ORDERING = "HASH_ORDERING"
+    THREAD_INTERLEAVING = "THREAD_INTERLEAVING"
+    ENVIRONMENT = "ENVIRONMENT"
+    TRACE_TRUNCATED = "TRACE_TRUNCATED"
+    """Not the target's nondeterminism but the tracer's own limit, recorded in
+    the same place so a short trace can never be mistaken for a short run."""
+
+
+#: Names whose appearance in an executed code object's ``co_names`` is evidence
+#: that the code reached for a nondeterministic source. Evidence, not proof:
+#: these are reported HEURISTIC and name the exact symbol seen.
+NONDETERMINISTIC_NAMES: dict[str, NondeterminismKind] = {
+    "time": NondeterminismKind.WALL_CLOCK,
+    "time_ns": NondeterminismKind.WALL_CLOCK,
+    "monotonic": NondeterminismKind.WALL_CLOCK,
+    "perf_counter": NondeterminismKind.WALL_CLOCK,
+    "perf_counter_ns": NondeterminismKind.WALL_CLOCK,
+    "now": NondeterminismKind.WALL_CLOCK,
+    "utcnow": NondeterminismKind.WALL_CLOCK,
+    "today": NondeterminismKind.WALL_CLOCK,
+    "timestamp": NondeterminismKind.WALL_CLOCK,
+    "random": NondeterminismKind.RANDOMNESS,
+    "randint": NondeterminismKind.RANDOMNESS,
+    "randrange": NondeterminismKind.RANDOMNESS,
+    "getrandbits": NondeterminismKind.RANDOMNESS,
+    "shuffle": NondeterminismKind.RANDOMNESS,
+    "choice": NondeterminismKind.RANDOMNESS,
+    "choices": NondeterminismKind.RANDOMNESS,
+    "sample": NondeterminismKind.RANDOMNESS,
+    "gauss": NondeterminismKind.RANDOMNESS,
+    "uniform": NondeterminismKind.RANDOMNESS,
+    "urandom": NondeterminismKind.RANDOMNESS,
+    "token_hex": NondeterminismKind.RANDOMNESS,
+    "token_bytes": NondeterminismKind.RANDOMNESS,
+    "uuid1": NondeterminismKind.IDENTITY,
+    "uuid4": NondeterminismKind.IDENTITY,
+}
+
+#: Modules whose executed frames are proof, not evidence.
+NONDETERMINISTIC_MODULES: dict[str, NondeterminismKind] = {
+    "random": NondeterminismKind.RANDOMNESS,
+    "secrets": NondeterminismKind.RANDOMNESS,
+    "uuid": NondeterminismKind.IDENTITY,
+    "datetime": NondeterminismKind.WALL_CLOCK,
+}
+
+
+def names_in(co_names: tuple[str, ...]) -> tuple[str, ...]:
+    """The nondeterministic symbols an executed code object referenced."""
+    return tuple(sorted({name for name in co_names if name in NONDETERMINISTIC_NAMES}))
+
+
+@dataclass(frozen=True, slots=True)
+class _nondeterminism_NondeterminismObservation:
+    """One reason two runs of this target may not agree.
+
+    Tagged RUNTIME_OBSERVED with the run and the events that evidence it, like
+    every other runtime fact.
+    """
+
+    id: str
+    run_id: str
+    kind: NondeterminismKind
+    element_id: str
+    detail: str
+    event_ids: tuple[str, ...]
+    provenance: Provenance
+
+    @staticmethod
+    def build(
+        run_id: str,
+        kind: NondeterminismKind,
+        element_id: str,
+        detail: str,
+        event_ids: tuple[str, ...],
+        confidence: Confidence,
+        span: Any = None,
+    ) -> "NondeterminismObservation":
+        anchor = element_id or (event_ids[0] if event_ids else "run")
+        return _nondeterminism_NondeterminismObservation(
+            id=f"nondet:{run_id}:{kind}:{anchor}",
+            run_id=run_id,
+            kind=kind,
+            element_id=element_id,
+            detail=detail,
+            event_ids=event_ids,
+            provenance=Provenance(
+                method=Method.RUNTIME_OBSERVED,
+                confidence=confidence,
+                span=span,
+                note=detail,
+                run_id=run_id,
+                event_ids=event_ids,
+            ),
+        )
+
+
+# ==========================================================================
+# tracer/contradictions.py
+# ==========================================================================
+
+"""Where the run disagrees with the static graph.
+
+The static graph is never edited to match what a run happened to do. One run is
+one scenario: an edge that was not taken here may be taken tomorrow, and a call
+the graph did not predict may be a resolution card 2 honestly could not make.
+So a disagreement is emitted as its own record, tagged RUNTIME_OBSERVED with
+the run and the events that evidence it, and the graph is left alone.
+
+There is no contract type for this yet. `Unresolved` has no provenance, so it
+cannot carry the run ID and event IDs constraint 2 requires; `Finding` has no
+kind for a contradiction. `Contradiction` is therefore local to card 12 and is
+a reported contract-change request.
+"""
+
+
+
+
+__all__ = ["ContradictionKind", "Contradiction"]
+
+MAX_EVIDENCE_EVENTS = 5
+
+
+class ContradictionKind(StrEnum):
+    EDGE_NOT_TAKEN = "EDGE_NOT_TAKEN"
+    """The static graph predicts a call the run never made, from a caller the
+    run did enter. Scenario-scoped: stated as an observation, not a verdict."""
+
+    CALL_NOT_PREDICTED = "CALL_NOT_PREDICTED"
+    """The run made a call the static graph has no edge for."""
+
+    ORDER_DIFFERS = "ORDER_DIFFERS"
+    """A SEQUENCE the static graph fixed ran the other way round."""
+
+    ELEMENT_NOT_PREDICTED = "ELEMENT_NOT_PREDICTED"
+    """An element ran that the static inventory does not contain at all."""
+
+
+@dataclass(frozen=True, slots=True)
+class _contradictions_Contradiction:
+    id: str
+    kind: ContradictionKind
+    run_id: str
+    static_ids: tuple[str, ...]
+    """The static facts contradicted: element, edge or order-node IDs."""
+
+    observed_ids: tuple[str, ...]
+    """The elements actually involved in the observation."""
+
+    summary: str
+    occurrences: int
+    provenance: Provenance
+
+    @staticmethod
+    def build(
+        run_id: str,
+        kind: ContradictionKind,
+        static_ids: tuple[str, ...],
+        observed_ids: tuple[str, ...],
+        summary: str,
+        event_ids: tuple[str, ...],
+        confidence: Confidence,
+        span: SourceSpan | None = None,
+        occurrences: int = 1,
+    ) -> "Contradiction":
+        anchor = "|".join(static_ids or observed_ids)
+        evidence = tuple(sorted(event_ids)[:MAX_EVIDENCE_EVENTS])
+        return _contradictions_Contradiction(
+            id=f"contradiction:{run_id}:{kind}:{anchor}",
+            kind=kind,
+            run_id=run_id,
+            static_ids=static_ids,
+            observed_ids=observed_ids,
+            summary=summary,
+            occurrences=occurrences,
+            provenance=Provenance(
+                method=Method.RUNTIME_OBSERVED,
+                confidence=confidence,
+                span=span,
+                note=summary,
+                run_id=run_id,
+                event_ids=evidence,
+            ),
+        )
+
+
+# ==========================================================================
+# tracer/tracer.py
+# ==========================================================================
+
+"""Materialisation: turning a recording into the overlay.
+
+`Tracer.trace` is a pure function of a recording plus the static graph. It
+starts no process, imports nothing from the target and reads no target source
+except the single line `linecache` needs to tell two decision points apart.
+Run it twice on the same recording and the bytes are the same; that is the
+whole of the replay guarantee.
+
+Everything it produces attaches to IDs card 1 minted. Nothing it produces
+edits them.
+"""
+
+
+
+
+
+__all__ = ["MappingReport", "TraceResult", "Tracer", "event_id_for"]
+
+EVENT_ID_WIDTH = 8
+
+
+def event_id_for(sequence: int) -> str:
+    """Deterministic within a run, and sorted by it.
+
+    `schema.json` sorts events.jsonl by ``event_id``, so the ID is zero-padded:
+    unpadded counters would sort evt_10 before evt_2 and scramble the one file
+    whose natural reading order is execution order.
+    """
+    return f"evt_{sequence:0{EVENT_ID_WIDTH}d}"
+
+
+@dataclass(frozen=True, slots=True)
+class _tracer_MappingReport:
+    """How much of the run landed on the static graph. Reported, always."""
+
+    run_id: str
+    total_events: int
+    mapped_events: int
+    unmapped_events: int
+    rate_permille: int
+    """Mapping rate in parts per thousand. An int because artifacts carry no
+    floats; ``rate_text`` is the human form."""
+
+    rate_text: str
+    unmapped_reasons: dict[str, int]
+    external_frames: dict[str, int]
+    observations: int
+    dropped_observations: int
+    elements_entered: int
+    external_frames_total: int = 0
+    """Frame entries skipped because they are not the target -- stdlib,
+    site-packages, frozen modules. Recorded, never counted against the rate:
+    UNMAPPED means "the static map should have had this", and an importlib
+    frame is not that. `external_frames` says which files they came from."""
+
+    persist_error: str = ""
+    """Why this run's recording is not on disk, when it could not be written.
+    Empty when it was written, or when no recordings directory is configured."""
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "total_events": self.total_events,
+            "mapped_events": self.mapped_events,
+            "unmapped_events": self.unmapped_events,
+            "rate_permille": self.rate_permille,
+            "rate_text": self.rate_text,
+            "unmapped_reasons": dict(sorted(self.unmapped_reasons.items())),
+            "external_frames": dict(sorted(self.external_frames.items())),
+            "observations": self.observations,
+            "dropped_observations": self.dropped_observations,
+            "elements_entered": self.elements_entered,
+            "external_frames_total": self.external_frames_total,
+            "persist_error": self.persist_error,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class TraceResult:
+    run_id: str
+    events: tuple[TraceEvent, ...]
+    contradictions: tuple[_contradictions_Contradiction, ...]
+    nondeterminism: tuple[_nondeterminism_NondeterminismObservation, ...]
+    mapping: _tracer_MappingReport
+
+
+class Tracer:
+    """Card 12's entry point. Implements `TracerCard`."""
+
+    def __init__(
+        self,
+        index: StaticIndex,
+        *,
+        recordings_dir: str | Path | None = None,
+        limits: CaptureLimits = DEFAULT_LIMITS,
+        policy: RedactionPolicy | None = None,
+        required_controls: Sequence[str] = DEFAULT_REQUIRED_CONTROLS,
+        max_observations: int = 200_000,
+    ) -> None:
+        self.index = index
+        self.recordings_dir = Path(recordings_dir) if recordings_dir is not None else None
+        self.limits = limits
+        self.policy = policy if policy is not None else RedactionPolicy()
+        self.required_controls = tuple(required_controls)
+        self.max_observations = max_observations
+        self._recordings: dict[str, Recording] = {}
+        self._observing: TraceCollector | None = None
+        self._observed_run: RunRecord | None = None
+
+    # -- collection (called by the harness, inside its own process) --------
+
+    def start(self, run: RunRecord) -> None:
+        """`RunObserver`: begin observing the run the harness just verified.
+
+        The record arrives here rather than at construction because the
+        refusal below is only worth anything against the record the harness
+        actually produced -- real `controls_active`, real `run_id`. A check fed
+        a record fabricated before verification does not fail quietly; it
+        reports a pass.
+
+        Called inside the sandbox window. If it refuses, nothing is installed
+        and `stop()` afterwards is a no-op.
+        """
+        if self._observing is not None:
+            raise RuntimeError(
+                f"this tracer is already observing run {self._observed_run.run_id}"
+                if self._observed_run is not None
+                else "this tracer is already observing a run"
+            )
+        collector = self.collector(run)  # refuses here on a run it may not trace
+        self._observing = collector
+        self._observed_run = run
+        try:
+            collector.start()
+        except BaseException:
+            self._observing = None
+            self._observed_run = None
+            raise
+
+    def stop(self) -> None:
+        """`RunObserver`: stop observing and keep the recording.
+
+        Safe to call when `start()` refused or never ran -- the harness puts
+        this in a `finally`, so it must never turn a target's exception into a
+        tracer's exception. Holding the recording here is what lets
+        `result(run)` work in-process, with no round trip through disk.
+
+        It is also written to `recordings_dir` when one is configured, because
+        in-process is not the only case: card 11's sandbox never lifts
+        enforcement once a run starts, so `cascade-map trace` runs the harness
+        in a child process and that child's memory -- and the held recording
+        with it -- dies at exit. The file is the only thing that survives.
+
+        This runs *inside* the sandbox window, so the write may itself be
+        blocked. That is recorded on the recording and in the mapping report,
+        never raised: a target's run must not fail because its observer could
+        not save a file. A refused `start()` writes nothing at all -- an empty
+        file would later read as a run that observed nothing rather than a run
+        that never happened.
+        """
+        collector = self._observing
+        run = self._observed_run
+        self._observing = None
+        self._observed_run = None
+        if collector is None:
+            return
+        try:
+            collector.stop()
+        finally:
+            if run is not None:
+                recording = collector.recording()
+                error = self._persist(run, recording)
+                if error:
+                    recording = recording.with_header(persist_error=error)
+                self.hold(run, recording)
+
+    def _persist(self, run: RunRecord, recording: Recording) -> str:
+        """Write the recording out, or return why it could not be written."""
+        if self.recordings_dir is None:
+            return ""
+        relative = f"{run.run_id}/recording.jsonl"
+        try:
+            recording.write(self.recording_path(run.run_id))
+        except Exception as exc:  # noqa: BLE001 - including the sandbox's own denial
+            return stable_text(
+                f"the recording could not be persisted to {relative}: "
+                f"{type(exc).__name__}: {exc}. This run can still be materialised in "
+                "process from the held copy, but it cannot be replayed later."
+            )
+        return ""
+
+    def collector(self, run: RunRecord) -> TraceCollector:
+        """The hook the harness installs around the target call.
+
+        Kept for callers driving collection themselves; `start`/`stop` are the
+        `RunObserver` adapter over it."""
+        return TraceCollector(
+            run,
+            self.index,
+            limits=self.limits,
+            policy=self.policy,
+            required_controls=self.required_controls,
+            max_observations=self.max_observations,
+        )
+
+    def hold(self, run: RunRecord, recording: Recording) -> None:
+        """Keep a freshly collected recording for materialisation in-process."""
+        self._recordings[run.run_id] = recording
+
+    def recording_path(self, run_id: str) -> Path:
+        if self.recordings_dir is None:
+            raise TraceRefused(
+                f"no recordings directory is configured, so run {run_id} cannot be "
+                "replayed; the tracer never starts a process of its own"
+            )
+        return self.recordings_dir / run_id / "recording.jsonl"
+
+    def load_recording(self, run: RunRecord) -> Recording:
+        held = self._recordings.get(run.run_id)
+        if held is not None:
+            return held
+        path = self.recording_path(run.run_id)
+        if not path.exists():
+            raise TraceRefused(
+                f"no recording for run {run.run_id} at {path.name}; a run must be "
+                "collected inside the card 11 harness before it can be traced"
+            )
+        return Recording.read(path)
+
+    # -- TracerCard --------------------------------------------------------
+
+    def trace(self, run: RunRecord) -> Sequence[TraceEvent]:
+        return self.result(run).events
+
+    def result(self, run: RunRecord) -> TraceResult:
+        reason = refusal_reason(run, self.required_controls)
+        if reason:
+            raise TraceRefused(reason)
+        return self.materialise(run, self.load_recording(run))
+
+    # -- materialisation ---------------------------------------------------
+
+    def materialise(self, run: RunRecord, recording: Recording) -> TraceResult:
+        run_id = run.run_id
+        ordered = recording.ordered()
+        dispositions = _dispositions(ordered)
+        events: list[TraceEvent] = []
+        frame_event: dict[int, str] = {}
+        pending_cond: dict[int, RawObservation] = {}
+        entered: dict[str, list[str]] = {}
+        observed_calls: dict[tuple[str, str], list[str]] = {}
+        first_call: dict[str, int] = {}
+        unmapped_reasons: dict[str, int] = {}
+        nd_names_seen: dict[tuple[str, str], list[str]] = {}
+        element_of_event: dict[str, str] = {}
+        sequence = 0
+
+        def emit(
+            kind: EventKind,
+            obs: RawObservation,
+            element_id: str,
+            confidence: Confidence,
+            note: str,
+            values: dict[str, Any] | None = None,
+            branch_taken: str = "",
+        ) -> TraceEvent:
+            nonlocal sequence
+            sequence += 1
+            eid = event_id_for(sequence)
+            event = TraceEvent(
+                event_id=eid,
+                run_id=run_id,
+                kind=kind,
+                element_id=element_id,
+                sequence=sequence,
+                depth=obs.depth,
+                caller_event_id=frame_event.get(obs.parent_frame_key, ""),
+                values=dict(values if values is not None else obs.values),
+                branch_taken=branch_taken,
+                provenance=Provenance(
+                    method=Method.RUNTIME_OBSERVED,
+                    confidence=confidence,
+                    span=SourceSpan(path=obs.path, line=obs.line),
+                    note=note,
+                    run_id=run_id,
+                    event_ids=(eid,),
+                ),
+            )
+            events.append(event)
+            return event
+
+        for obs in ordered:
+            mapping = self.index.map_code(
+                CodeLocation(
+                    path=obs.path,
+                    qualname=obs.qualname,
+                    line=obs.line,
+                    first_line=obs.first_line,
+                    under_root=obs.under_root,
+                    synthetic=obs.synthetic,
+                )
+            )
+            element_id = mapping.element_id
+            if not element_id:
+                unmapped_reasons[_category(mapping.reason)] = (
+                    unmapped_reasons.get(_category(mapping.reason), 0) + 1
+                )
+                note = (
+                    f"UNMAPPED {obs.kind} at {obs.path}:{obs.line} "
+                    f"(qualname {obs.qualname!r}): {mapping.reason}"
+                )
+                if obs.kind is ObsKind.BRANCH_COND:
+                    pending_cond[obs.frame_key] = obs
+                    continue
+                if obs.kind is ObsKind.HANDLER:
+                    continue
+                if obs.kind is ObsKind.BRANCH_NEXT:
+                    pending_cond.pop(obs.frame_key, None)
+                event = emit(EventKind.UNMAPPED, obs, "", Confidence.UNKNOWN, note)
+                if obs.kind is ObsKind.CALL:
+                    frame_event[obs.frame_key] = event.event_id
+                continue
+
+            if obs.kind is ObsKind.CALL:
+                note = _note(mapping.reason, f"entered {element_id}")
+                event = emit(EventKind.CALL, obs, element_id, mapping.confidence, note)
+                frame_event[obs.frame_key] = event.event_id
+                entered.setdefault(element_id, []).append(event.event_id)
+                first_call.setdefault(element_id, event.sequence)
+                caller_event = frame_event.get(obs.parent_frame_key, "")
+                caller_element = element_of_event.get(caller_event, "")
+                element_of_event[event.event_id] = element_id
+                if caller_element:
+                    observed_calls.setdefault((caller_element, element_id), []).append(
+                        event.event_id
+                    )
+                for name in _nd_names(obs):
+                    nd_names_seen.setdefault(
+                        (element_id, str(NONDETERMINISTIC_NAMES[name])), []
+                    ).append(f"{event.event_id}:{name}")
+            elif obs.kind is ObsKind.RETURN:
+                note = _note(mapping.reason, f"left {element_id}")
+                if obs.detail.get("unwinding") == "1":
+                    note += "; the frame left via an exception, not a return"
+                emit(EventKind.RETURN, obs, element_id, mapping.confidence, note)
+                if element_id in self.index.sink_element_ids:
+                    emit(
+                        EventKind.DECISION,
+                        obs,
+                        element_id,
+                        mapping.confidence,
+                        f"final decision produced at sink {element_id}",
+                        values={"decision": obs.values.get("return_value")}
+                        if "return_value" in obs.values
+                        else {},
+                    )
+            elif obs.kind is ObsKind.EXCEPTION:
+                disposition, confidence, why = dispositions.get(
+                    (obs.frame_key, obs.thread_slot, obs.thread_seq),
+                    ("UNKNOWN", Confidence.UNKNOWN, "disposition not determined"),
+                )
+                note = _note(
+                    mapping.reason,
+                    f"{obs.detail.get('exception_type', 'exception')} raised in "
+                    f"{element_id}; disposition={disposition} ({why})",
+                )
+                emit(
+                    EventKind.EXCEPTION,
+                    obs,
+                    element_id,
+                    combine(mapping.confidence, confidence),
+                    note,
+                )
+            elif obs.kind is ObsKind.FEATURE:
+                feature_id = obs.detail.get("feature_id", "")
+                note = _note(
+                    mapping.reason,
+                    f"feature {feature_id} written by {element_id} at "
+                    f"{obs.path}:{obs.line}",
+                )
+                emit(
+                    EventKind.FEATURE_WRITE,
+                    obs,
+                    feature_id or element_id,
+                    mapping.confidence,
+                    note,
+                )
+            elif obs.kind is ObsKind.BRANCH_COND:
+                pending_cond[obs.frame_key] = obs
+            elif obs.kind is ObsKind.BRANCH_NEXT:
+                cond = pending_cond.pop(obs.frame_key, None)
+                if cond is None:
+                    continue
+                decision = self.index.decision(cond.detail.get("decision_id", ""))
+                outcome = self.index.branch_outcome(
+                    cond.detail.get("block_id", ""), obs.line, decision
+                )
+                note = _note(
+                    mapping.reason,
+                    f"condition {cond.detail.get('condition', '') or '<unknown>'!r} at "
+                    f"{cond.path}:{cond.line} continued at line {obs.line}"
+                    + (f"; {outcome.reason}" if outcome.reason else ""),
+                )
+                branch_event = emit(
+                    EventKind.BRANCH,
+                    cond,
+                    element_id,
+                    combine(mapping.confidence, outcome.confidence),
+                    note,
+                    values=dict(cond.values),
+                    branch_taken=outcome.label,
+                )
+                if cond.detail.get("is_sink") == "1":
+                    emit(
+                        EventKind.DECISION,
+                        cond,
+                        element_id,
+                        branch_event.provenance.confidence
+                        if branch_event.provenance
+                        else Confidence.UNKNOWN,
+                        f"final decision at sink decision "
+                        f"{cond.detail.get('decision_id', '')}: {outcome.label}",
+                        values=dict(cond.values),
+                        branch_taken=outcome.label,
+                    )
+
+        for frame_key, cond in sorted(pending_cond.items()):
+            mapping = self.index.map_code(
+                CodeLocation(
+                    path=cond.path,
+                    qualname=cond.qualname,
+                    line=cond.line,
+                    first_line=cond.first_line,
+                    under_root=cond.under_root,
+                    synthetic=cond.synthetic,
+                )
+            )
+            emit(
+                EventKind.BRANCH if mapping.element_id else EventKind.UNMAPPED,
+                cond,
+                mapping.element_id,
+                Confidence.UNKNOWN,
+                "the branch never resolved: the trace ended before the next line ran, "
+                "so which way this condition went is not known",
+                values=dict(cond.values),
+            )
+
+        dropped = int(recording.header.get("dropped_observations", 0) or 0)
+        if dropped:
+            last = ordered[-1] if ordered else _origin()
+            emit(
+                EventKind.UNMAPPED,
+                last,
+                "",
+                Confidence.UNKNOWN,
+                f"tracing stopped at max_observations="
+                f"{recording.header.get('max_observations')}: {dropped} further "
+                "observations were not recorded. This trace is shorter than the run.",
+            )
+
+        mapped = sum(1 for event in events if event.element_id)
+        total = len(events)
+        permille = (mapped * 1000) // total if total else 0
+        external = {
+            str(key): int(value)
+            for key, value in dict(recording.header.get("external_frames", {})).items()
+        }
+        external_total = sum(external.values())
+        external_text = f", {external_total} external frames skipped" if external_total else ""
+        report = _tracer_MappingReport(
+            run_id=run_id,
+            total_events=total,
+            mapped_events=mapped,
+            unmapped_events=total - mapped,
+            rate_permille=permille,
+            rate_text=(
+                f"{mapped}/{total} target events mapped "
+                f"({permille // 10}.{permille % 10}%){external_text}"
+                if total
+                else f"0/0 target events mapped: nothing of the target was "
+                f"observed in this run{external_text}"
+            ),
+            unmapped_reasons=unmapped_reasons,
+            external_frames=external,
+            external_frames_total=external_total,
+            observations=len(ordered),
+            dropped_observations=dropped,
+            elements_entered=len(entered),
+            persist_error=str(recording.header.get("persist_error", "")),
+        )
+
+        return TraceResult(
+            run_id=run_id,
+            events=tuple(events),
+            contradictions=self._contradictions(run_id, entered, observed_calls, first_call),
+            nondeterminism=self._nondeterminism(run_id, recording, nd_names_seen, dropped),
+            mapping=report,
+        )
+
+    # -- overlay records ---------------------------------------------------
+
+    def _contradictions(
+        self,
+        run_id: str,
+        entered: dict[str, list[str]],
+        observed_calls: dict[tuple[str, str], list[str]],
+        first_call: dict[str, int],
+    ) -> tuple[_contradictions_Contradiction, ...]:
+        out: list[_contradictions_Contradiction] = []
+        static_pairs = self.index.call_pairs()
+        for (source, target), edge_id in sorted(static_pairs.items()):
+            if source not in entered or (source, target) in observed_calls:
+                continue
+            out.append(
+                _contradictions_Contradiction.build(
+                    run_id,
+                    ContradictionKind.EDGE_NOT_TAKEN,
+                    (edge_id,),
+                    (source, target),
+                    f"the static graph has a CALLS edge {source} -> {target}, and "
+                    f"{source} ran {len(entered[source])} time(s) in this run, but the "
+                    "call was never made. The edge may still be right under another "
+                    "scenario: this is an observation of one run, not a verdict on the "
+                    "graph.",
+                    tuple(entered[source]),
+                    Confidence.RESOLVED,
+                    occurrences=len(entered[source]),
+                )
+            )
+        for (source, target), event_ids in sorted(observed_calls.items()):
+            if (source, target) in static_pairs:
+                continue
+            out.append(
+                _contradictions_Contradiction.build(
+                    run_id,
+                    ContradictionKind.CALL_NOT_PREDICTED,
+                    (),
+                    (source, target),
+                    f"{source} called {target} {len(event_ids)} time(s), and the static "
+                    "graph has no CALLS edge for it. Either card 2 could not resolve the "
+                    "call or the call is dynamic.",
+                    tuple(event_ids),
+                    Confidence.RESOLVED,
+                    occurrences=len(event_ids),
+                )
+            )
+        for before, after, node_id in self.index.sequence_pairs():
+            if before not in first_call or after not in first_call:
+                continue
+            if first_call[after] < first_call[before]:
+                out.append(
+                    _contradictions_Contradiction.build(
+                        run_id,
+                        ContradictionKind.ORDER_DIFFERS,
+                        (node_id,),
+                        (before, after),
+                        f"order node {node_id} is a SEQUENCE placing {before} before "
+                        f"{after}, but {after} ran first in this run.",
+                        (
+                            event_id_for(first_call[before]),
+                            event_id_for(first_call[after]),
+                        ),
+                        Confidence.RESOLVED,
+                    )
+                )
+        return tuple(sorted(out, key=lambda c: c.id))
+
+    def _nondeterminism(
+        self,
+        run_id: str,
+        recording: Recording,
+        nd_names_seen: dict[tuple[str, str], list[str]],
+        dropped: int,
+    ) -> tuple[_nondeterminism_NondeterminismObservation, ...]:
+        out: list[_nondeterminism_NondeterminismObservation] = []
+        for (element_id, kind), hits in sorted(nd_names_seen.items()):
+            names = sorted({hit.split(":", 1)[1] for hit in hits})
+            event_ids = tuple(sorted({hit.split(":", 1)[0] for hit in hits}))
+            out.append(
+                _nondeterminism_NondeterminismObservation.build(
+                    run_id,
+                    NondeterminismKind(kind),
+                    element_id,
+                    f"{element_id} referenced {', '.join(names)} while running: this "
+                    "element's result is not reproducible from its inputs alone",
+                    event_ids,
+                    Confidence.HEURISTIC,
+                )
+            )
+        for path, count in sorted(
+            dict(recording.header.get("external_frames", {})).items()
+        ):
+            module = str(path).rsplit("/", 1)[-1].removesuffix(".py")
+            kind = NONDETERMINISTIC_MODULES.get(module)
+            if kind is None:
+                continue
+            out.append(
+                _nondeterminism_NondeterminismObservation.build(
+                    run_id,
+                    kind,
+                    "",
+                    f"the run executed {count} frame(s) in {path}, a nondeterministic "
+                    "source outside the analysed root",
+                    (),
+                    Confidence.RESOLVED,
+                )
+            )
+        if recording.header.get("hash_randomization"):
+            out.append(
+                _nondeterminism_NondeterminismObservation.build(
+                    run_id,
+                    NondeterminismKind.HASH_ORDERING,
+                    "",
+                    "hash randomization was active in the traced process, so iteration "
+                    "order over sets and over dicts keyed by str or bytes can differ "
+                    "between runs of the target",
+                    (),
+                    Confidence.RESOLVED,
+                )
+            )
+        if int(recording.header.get("thread_count", 1) or 1) > 1:
+            out.append(
+                _nondeterminism_NondeterminismObservation.build(
+                    run_id,
+                    NondeterminismKind.THREAD_INTERLEAVING,
+                    "",
+                    f"the run used {recording.header.get('thread_count')} threads. Events "
+                    "are emitted grouped by thread and ordered within each thread, which "
+                    "is stable; the interleaving that actually happened is kept in the "
+                    "recording's arrival order and is not reproducible",
+                    (),
+                    Confidence.RESOLVED,
+                )
+            )
+        if dropped:
+            out.append(
+                _nondeterminism_NondeterminismObservation.build(
+                    run_id,
+                    NondeterminismKind.TRACE_TRUNCATED,
+                    "",
+                    f"{dropped} observations were not recorded once the collector reached "
+                    f"max_observations={recording.header.get('max_observations')}; the "
+                    "trace is shorter than the run",
+                    (),
+                    Confidence.RESOLVED,
+                )
+            )
+        return tuple(sorted(out, key=lambda o: o.id))
+
+    # -- artifacts ---------------------------------------------------------
+
+    def events_jsonl(self, events: Sequence[TraceEvent]) -> str:
+        return canonical_jsonl(events, "event_id")
+
+    def emit(self, result: TraceResult, out_dir: str | Path) -> dict[str, str]:
+        """Write the overlay. `events.jsonl` is the contract artifact; the other
+        three are card 12's own records and are reported as contract requests."""
+        directory = Path(out_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        files = {
+            "events.jsonl": self.events_jsonl(result.events),
+            "contradictions.jsonl": canonical_jsonl(result.contradictions, "id"),
+            "nondeterminism.jsonl": canonical_jsonl(result.nondeterminism, "id"),
+            "mapping.json": canonical_dumps(result.mapping.to_json()) + "\n",
+        }
+        for name, text in files.items():
+            (directory / name).write_text(text, encoding="utf-8")
+        return files
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+
+def _origin() -> RawObservation:
+    return RawObservation(
+        kind=ObsKind.CALL,
+        thread_slot=0,
+        thread_seq=0,
+        arrival=0,
+        frame_key=0,
+        parent_frame_key=0,
+        depth=0,
+        path="<run>",
+        line=0,
+        first_line=0,
+        qualname="",
+    )
+
+
+def _note(reason: str, text: str) -> str:
+    return f"{text}; {reason}" if reason else text
+
+
+def _nd_names(obs: RawObservation) -> tuple[str, ...]:
+    raw = obs.detail.get("nd_names", "")
+    return tuple(name for name in raw.split(",") if name in NONDETERMINISTIC_NAMES)
+
+
+def _category(reason: str) -> str:
+    if reason.startswith("dynamically created"):
+        return "DYNAMIC_CODE"
+    if "outside the analysed root" in reason:
+        return "EXTERNAL_CODE"
+    if reason.startswith("no static element"):
+        return "MISSING_FROM_INVENTORY"
+    if "ambiguous" in reason:
+        return "AMBIGUOUS"
+    return "OTHER"
+
+
+def _dispositions(
+    ordered: Sequence[RawObservation],
+) -> dict[tuple[int, int, int], tuple[str, Confidence, str]]:
+    """Was each exception caught in its own frame, or did it leave?"""
+    by_frame: dict[int, list[RawObservation]] = {}
+    for obs in ordered:
+        by_frame.setdefault(obs.frame_key, []).append(obs)
+    out: dict[tuple[int, int, int], tuple[str, Confidence, str]] = {}
+    for frame_key, observations in by_frame.items():
+        for index, obs in enumerate(observations):
+            if obs.kind is not ObsKind.EXCEPTION:
+                continue
+            verdict = ("PROPAGATED", Confidence.HEURISTIC, "no later event in this frame")
+            for later in observations[index + 1 :]:
+                if later.kind is ObsKind.HANDLER:
+                    verdict = (
+                        "CAUGHT",
+                        Confidence.RESOLVED,
+                        "an except handler block of this element ran afterwards",
+                    )
+                    break
+                if later.kind is ObsKind.RETURN:
+                    if later.detail.get("unwinding") == "1":
+                        verdict = (
+                            "PROPAGATED",
+                            Confidence.PROBABLE,
+                            "the frame left without returning a value",
+                        )
+                    else:
+                        verdict = (
+                            "CAUGHT",
+                            Confidence.PROBABLE,
+                            "the frame returned normally afterwards",
+                        )
+                    break
+            out[(frame_key, obs.thread_slot, obs.thread_seq)] = verdict
+    return out
+
+
+# ==========================================================================
+# alignment.py
+# ==========================================================================
+
+"""Card 13 — the intent registry and alignment verdicts.
+
+This module answers the project's hardest question: *does this element do what it
+is meant to do*. It is also the easiest place in CASCADE-MAP to produce confident
+nonsense, so every rule below is written to fail towards an honest gap rather than
+a confident claim.
+
+The rules, in the order they bind:
+
+* **Intents are owner data.** An intent loaded from the owner's spec is
+  ``CONFIRMED``. Anything this module derives from a docstring or a name is
+  ``PROPOSED`` (:func:`propose_intents`) and may never ground ``ALIGNED`` or
+  ``MISALIGNED`` -- a proposed intent yields ``UNVERIFIABLE``, always.
+* **Absence is a reported state.** No intent for an element is ``NO_INTENT``. No
+  scenario exercised the element is ``NOT_EXERCISED``. Neither is a pass and
+  neither is a failure, and ``NOT_EXERCISED`` is never reported as ``ALIGNED``.
+* **A verdict names its evidence.** Every verdict carries the intent it was judged
+  against, the event IDs and/or static edge IDs it rests on, a method and a
+  confidence. ``MISALIGNED`` additionally names the one expectation and the one
+  contradicting observation, both in checkable terms.
+* **Unchecked is not aligned.** If any expectation of a confirmed intent could not
+  be evaluated, the aggregate verdict is ``UNVERIFIABLE`` and says which one. Only
+  a contradiction outranks that.
+* **A model is never authoritative.** Escalation to ``claude-sonnet-5`` may attach
+  a *proposed reading* to an ``UNVERIFIABLE`` verdict, labelled with its source and
+  model ID and tied to concrete event IDs. It never produces a fact, an edge, a
+  confidence or a final verdict, and it is fully disabled when
+  ``CASCADE_MAP_API_KEY`` is unset. ``ANTHROPIC_API_KEY`` is never read.
+
+Nothing here executes, imports or evaluates target code. Invariants are checked by
+comparing *captured* values (card 12's :class:`ValueCapture` records) against a
+tiny, explicitly parsed expectation language; there is no ``eval``.
+"""
+
+
+
+
+__all__ = [
+    "MODEL_ID",
+    "API_KEY_ENV",
+    "PROMPT_PATH",
+    "RETURN_VALUE_KEYS",
+    "IntentRegistry",
+    "load_registry",
+    "parse_registry_text",
+    "propose_intents",
+    "CheckStatus",
+    "CheckKind",
+    "Check",
+    "CheckResult",
+    "parse_check",
+    "Coverage",
+    "AlignmentEngine",
+    "AlignmentModel",
+    "AnthropicAlignmentModel",
+    "model_available",
+    "default_model",
+    "load_prompt",
+    "intents_jsonl",
+    "verdicts_jsonl",
+    "issues_jsonl",
+]
+
+
+MODEL_ID = "claude-sonnet-5"
+"""The only model this card may escalate to. Proposals only -- never a verdict."""
+
+_alignment_API_KEY_ENV = "CASCADE_MAP_API_KEY"
+"""The only environment variable consulted for a key. ``ANTHROPIC_API_KEY`` is
+deliberately never read: it would switch the operator's own billing."""
+
+FORBIDDEN_KEY_ENV = "ANTHROPIC_API_KEY"
+
+PROMPT_PATH = "docs/runtime_prompts/13_alignment.md"
+"""Where the escalation prompt lives. If the file is absent a built-in fallback is
+used and the verdict's note records which prompt was used."""
+
+RETURN_VALUE_KEYS: tuple[str, ...] = ("return_value", "return", "returns", "result")
+"""Keys a ``RETURN`` event's ``values`` map may use for the returned value, tried in
+order. The contract does not fix this name; trying a short ordered list and
+reporting ``UNVERIFIABLE`` when none is present is the honest fallback."""
+
+_INTENT_ID_PREFIX = "@intent:"
+_PROPOSED_ID_PREFIX = "@proposed-intent:"
+_VERDICT_ID_PREFIX = "@verdict:"
+_ISSUE_ID_PREFIX = "@intent-issue:"
+_NO_RUN = "no-run"
+
+_ENTRY_KEYS = frozenset(
+    {"id", "element_id", "status", "statement", "invariants", "expected_reads", "expected_writes"}
+)
+_DOC_KEYS = frozenset({"version", "intents"})
+_WRITE_KINDS = frozenset(
+    {
+        LineageKind.ASSIGNS,
+        LineageKind.COLUMN_WRITE,
+        LineageKind.CONTAINER_WRITE,
+        LineageKind.ATTRIBUTE_WRITE,
+        LineageKind.RETURNS,
+        LineageKind.MUTATES,
+    }
+)
+_READ_KINDS = frozenset({LineageKind.READS, LineageKind.PARAMETER_BINDING})
+
+
+# ---------------------------------------------------------------------------
+# A very small YAML subset, parsed with line numbers
+# ---------------------------------------------------------------------------
+#
+# Core dependencies are stdlib + networkx, so PyYAML is not available to this
+# module. The intents spec is a flat, hand-written document, so a strict subset
+# parser is enough -- and it is preferable: it gives an exact line number for every
+# entry (constraint 3 wants locations) and it cannot import or construct Python
+# objects the way a full YAML loader can.
+#
+# Supported: block mappings, block sequences, `#` comments, single- and
+# double-quoted scalars, plain scalars, and empty flow collections plus flow
+# sequences of scalars. Not supported, and reported as a syntax error with its
+# line: anchors, aliases, tags, multi-line scalars, tab indentation, nested flow
+# collections.
+
+
+class _ParseError(Exception):
+    def __init__(self, message: str, line: int) -> None:
+        super().__init__(message)
+        self.message = message
+        self.line = line
+
+
+@dataclass(frozen=True, slots=True)
+class _Node:
+    """A parsed YAML node that remembers where it came from."""
+
+    line: int
+    scalar: str | None = None
+    quoted: bool = False
+    items: tuple[_Node, ...] | None = None
+    fields: tuple[tuple[str, _Node], ...] | None = None
+
+    @property
+    def is_scalar(self) -> bool:
+        return self.scalar is not None
+
+    @property
+    def is_seq(self) -> bool:
+        return self.items is not None
+
+    @property
+    def is_map(self) -> bool:
+        return self.fields is not None
+
+
+def _strip_comment(raw: str) -> str:
+    out: list[str] = []
+    quote: str | None = None
+    for index, char in enumerate(raw):
+        if quote is None and char == "#":
+            if index == 0 or raw[index - 1] in " \t":
+                break
+            out.append(char)
+            continue
+        if quote is None and char in "\"'":
+            quote = char
+        elif quote is not None and char == quote:
+            quote = None
+        out.append(char)
+    return "".join(out).rstrip()
+
+
+def _logical_lines(text: str) -> list[list[Any]]:
+    lines: list[list[Any]] = []
+    for number, raw in enumerate(text.splitlines(), start=1):
+        stripped = _strip_comment(raw)
+        if not stripped.strip():
+            continue
+        leading = raw[: len(raw) - len(raw.lstrip())]
+        if "\t" in leading:
+            raise _ParseError("tab indentation is not supported", number)
+        indent = len(stripped) - len(stripped.lstrip(" "))
+        content = stripped.strip()
+        if content.startswith(("&", "*", "!", "---", "...", ">", "|")):
+            raise _ParseError(f"unsupported YAML construct: {content[:16]!r}", number)
+        lines.append([indent, content, number])
+    return lines
+
+
+def _split_key(content: str, line: int) -> tuple[str, str]:
+    quote: str | None = None
+    for index, char in enumerate(content):
+        if quote is None and char in "\"'":
+            quote = char
+        elif quote is not None and char == quote:
+            quote = None
+        elif quote is None and char == ":":
+            if index + 1 < len(content) and content[index + 1] != " ":
+                continue
+            key = content[:index].strip()
+            if not key:
+                raise _ParseError("mapping key is empty", line)
+            return _unquote(key), content[index + 1 :].strip()
+    raise _ParseError(f"expected 'key: value', got {content!r}", line)
+
+
+def _unquote(text: str) -> str:
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        return text[1:-1]
+    return text
+
+
+def _is_quoted(text: str) -> bool:
+    return len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'"
+
+
+def _scalar_node(raw: str, line: int) -> _Node:
+    if raw in ("[]", "{}"):
+        return _Node(line=line, items=()) if raw == "[]" else _Node(line=line, fields=())
+    if raw.startswith("["):
+        if not raw.endswith("]"):
+            raise _ParseError("unterminated flow sequence", line)
+        body = raw[1:-1].strip()
+        if not body:
+            return _Node(line=line, items=())
+        if "[" in body or "{" in body:
+            raise _ParseError("nested flow collections are not supported", line)
+        items = tuple(
+            _Node(line=line, scalar=_unquote(part.strip()), quoted=_is_quoted(part.strip()))
+            for part in _split_flow(body, line)
+        )
+        return _Node(line=line, items=items)
+    if raw.startswith("{"):
+        raise _ParseError("flow mappings are not supported", line)
+    if raw[0] in "&*!|>":
+        # An anchor, alias, tag or block scalar in a value position would otherwise be
+        # read as the literal text of an owner's intent, which is a silent misreading
+        # of owner data. Refuse it here, with its line.
+        raise _ParseError(
+            f"unsupported YAML construct in value: {raw[:16]!r}; quote it if it is literal text",
+            line,
+        )
+    return _Node(line=line, scalar=_unquote(raw), quoted=_is_quoted(raw))
+
+
+def _split_flow(body: str, line: int) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    quote: str | None = None
+    for char in body:
+        if quote is None and char in "\"'":
+            quote = char
+        elif quote is not None and char == quote:
+            quote = None
+        if quote is None and char == ",":
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    if quote is not None:
+        raise _ParseError("unterminated quoted scalar", line)
+    parts.append("".join(current))
+    return [part for part in parts if part.strip()]
+
+
+def _looks_like_mapping(content: str) -> bool:
+    """True when the line is ``key: value`` or ``key:`` outside quotes.
+
+    ``run_linear::step_one`` and ``returns.value == 1`` are scalars, not mappings:
+    a colon only opens a value when a space or the end of the line follows it.
+    """
+    quote: str | None = None
+    for index, char in enumerate(content):
+        if quote is None and char in "\"'":
+            quote = char
+        elif quote is not None and char == quote:
+            quote = None
+        elif quote is None and char == ":":
+            if index + 1 == len(content) or content[index + 1] == " ":
+                return bool(content[:index].strip())
+    return False
+
+
+def _parse_node(lines: list[list[Any]], pos: int, indent: int) -> tuple[_Node, int]:
+    content = str(lines[pos][1])
+    if content == "-" or content.startswith("- "):
+        return _parse_seq(lines, pos, indent)
+    if _looks_like_mapping(content):
+        return _parse_map(lines, pos, indent)
+    line = int(lines[pos][2])
+    if pos + 1 < len(lines) and int(lines[pos + 1][0]) > indent:
+        raise _ParseError(f"expected 'key: value', got {content!r}", line)
+    return _scalar_node(content, line), pos + 1
+
+
+def _parse_seq(lines: list[list[Any]], pos: int, indent: int) -> tuple[_Node, int]:
+    start_line = int(lines[pos][2])
+    items: list[_Node] = []
+    while pos < len(lines) and int(lines[pos][0]) == indent:
+        content = str(lines[pos][1])
+        line = int(lines[pos][2])
+        if content != "-" and not content.startswith("- "):
+            break
+        rest = content[1:]
+        if not rest.strip():
+            pos += 1
+            if pos < len(lines) and int(lines[pos][0]) > indent:
+                node, pos = _parse_node(lines, pos, int(lines[pos][0]))
+                items.append(node)
+            else:
+                items.append(_Node(line=line, scalar=""))
+            continue
+        extra = len(rest) - len(rest.lstrip(" "))
+        inner_indent = indent + 1 + extra
+        virtual: list[list[Any]] = [[inner_indent, rest.strip(), line]]
+        pos += 1
+        while pos < len(lines) and int(lines[pos][0]) > indent:
+            virtual.append(lines[pos])
+            pos += 1
+        node, consumed = _parse_node(virtual, 0, inner_indent)
+        if consumed != len(virtual):
+            raise _ParseError("inconsistent indentation inside sequence item", int(virtual[consumed][2]))
+        items.append(node)
+    return _Node(line=start_line, items=tuple(items)), pos
+
+
+def _parse_map(lines: list[list[Any]], pos: int, indent: int) -> tuple[_Node, int]:
+    start_line = int(lines[pos][2])
+    fields: list[tuple[str, _Node]] = []
+    while pos < len(lines) and int(lines[pos][0]) == indent:
+        content = str(lines[pos][1])
+        line = int(lines[pos][2])
+        if content.startswith("- "):
+            break
+        key, rest = _split_key(content, line)
+        pos += 1
+        if rest:
+            fields.append((key, _scalar_node(rest, line)))
+            continue
+        if pos < len(lines) and int(lines[pos][0]) > indent:
+            node, pos = _parse_node(lines, pos, int(lines[pos][0]))
+            # A block value is reported at its key's line: that is where the owner
+            # looks when the tool says the entry is malformed.
+            fields.append((key, replace(node, line=line)))
+        else:
+            fields.append((key, _Node(line=line, scalar="")))
+    return _Node(line=start_line, fields=tuple(fields)), pos
+
+
+def _parse_document(text: str) -> _Node:
+    lines = _logical_lines(text)
+    if not lines:
+        return _Node(line=1, fields=())
+    indent = int(lines[0][0])
+    node, pos = _parse_node(lines, 0, indent)
+    if pos != len(lines):
+        raise _ParseError("unexpected indentation", int(lines[pos][2]))
+    return node
+
+
+# ---------------------------------------------------------------------------
+# The registry
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class IntentRegistry:
+    """Owner-confirmed intents, keyed by stable element ID.
+
+    ``issues`` is a first-class output, never a log line: unknown element IDs,
+    duplicate intents and malformed entries each land here with a
+    :class:`SourceSpan`. ``rejected_element_ids`` names elements whose entry was
+    malformed enough that loading it would have been a guess -- those elements are
+    judged ``UNVERIFIABLE``, not ``NO_INTENT``, because the owner *did* write
+    something and it is this tool that could not read it.
+    """
+
+    source_path: str
+    present: bool
+    intents: tuple[Intent, ...] = ()
+    issues: tuple[Unresolved, ...] = ()
+    rejected_element_ids: tuple[str, ...] = ()
+    ambiguous_element_ids: tuple[str, ...] = ()
+    unknown_check_performed: bool = False
+
+    def for_element(self, element_id: str) -> tuple[Intent, ...]:
+        return tuple(intent for intent in self.intents if intent.element_id == element_id)
+
+    @property
+    def by_element(self) -> Mapping[str, tuple[Intent, ...]]:
+        grouped: dict[str, list[Intent]] = {}
+        for intent in self.intents:
+            grouped.setdefault(intent.element_id, []).append(intent)
+        return {key: tuple(value) for key, value in sorted(grouped.items())}
+
+
+class _IssueSink:
+    """Mints deterministic, collision-free IDs for registry issues."""
+
+    def __init__(self, path: str) -> None:
+        self._path = path
+        self._seen: dict[str, int] = {}
+        self.issues: list[Unresolved] = []
+
+    def add(
+        self,
+        reason: UnresolvedReason,
+        line: int,
+        description: str,
+        *,
+        candidate_ids: tuple[str, ...] = (),
+    ) -> None:
+        base = f"{_ISSUE_ID_PREFIX}{self._path}:{line}:{reason.value}"
+        count = self._seen.get(base, 0) + 1
+        self._seen[base] = count
+        issue_id = base if count == 1 else f"{base}#{count}"
+        self.issues.append(
+            Unresolved(
+                id=issue_id,
+                reason=reason,
+                span=SourceSpan(path=self._path, line=line),
+                description=description,
+                attempted=(Method.AST_DIRECT,),
+                candidate_ids=candidate_ids,
+            )
+        )
+
+
+def parse_registry_text(
+    text: str,
+    path: str,
+    known_element_ids: Iterable[str] | None = None,
+) -> IntentRegistry:
+    """Parse an intents document already in memory. See :func:`load_registry`."""
+    sink = _IssueSink(path)
+    known: frozenset[str] | None = None if known_element_ids is None else frozenset(known_element_ids)
+
+    try:
+        document = _parse_document(text)
+    except _ParseError as error:
+        sink.add(UnresolvedReason.SYNTAX_ERROR, error.line, f"intent spec is malformed: {error.message}")
+        return IntentRegistry(
+            source_path=path,
+            present=True,
+            issues=tuple(sorted(sink.issues, key=lambda issue: issue.id)),
+            unknown_check_performed=known is not None,
+        )
+
+    entries = _document_entries(document, sink)
+    intents: list[Intent] = []
+    rejected: list[str] = []
+    seen_ids: dict[str, int] = {}
+    seen_elements: dict[str, int] = {}
+
+    for entry in entries:
+        intent, element_id, ok = _entry_to_intent(entry, path, sink)
+        if not ok:
+            if element_id:
+                rejected.append(element_id)
+            continue
+        assert intent is not None
+        if intent.id in seen_ids:
+            sink.add(
+                UnresolvedReason.ID_COLLISION,
+                entry.line,
+                f"duplicate intent id {intent.id!r}; first declared at line {seen_ids[intent.id]}",
+                candidate_ids=(intent.id,),
+            )
+        else:
+            seen_ids[intent.id] = entry.line
+        if intent.element_id in seen_elements:
+            sink.add(
+                UnresolvedReason.AMBIGUOUS,
+                entry.line,
+                (
+                    f"duplicate intent for element {intent.element_id!r}; first declared at line "
+                    f"{seen_elements[intent.element_id]}. Both are kept and the element is judged "
+                    f"UNVERIFIABLE: picking one would be a guess."
+                ),
+                candidate_ids=(intent.element_id,),
+            )
+        else:
+            seen_elements[intent.element_id] = entry.line
+        if known is not None and intent.element_id not in known:
+            sink.add(
+                UnresolvedReason.MISSING_TARGET,
+                entry.line,
+                f"intent names unknown element id {intent.element_id!r}",
+                candidate_ids=(intent.element_id,),
+            )
+        intents.append(intent)
+
+    ambiguous = tuple(
+        sorted({intent.element_id for intent in intents if _count(intents, intent.element_id) > 1})
+    )
+    return IntentRegistry(
+        source_path=path,
+        present=True,
+        intents=tuple(sorted(intents, key=lambda item: (item.id, item.element_id))),
+        issues=tuple(sorted(sink.issues, key=lambda issue: issue.id)),
+        rejected_element_ids=tuple(sorted(set(rejected))),
+        ambiguous_element_ids=ambiguous,
+        unknown_check_performed=known is not None,
+    )
+
+
+def _count(intents: Sequence[Intent], element_id: str) -> int:
+    return sum(1 for intent in intents if intent.element_id == element_id)
+
+
+def _document_entries(document: _Node, sink: _IssueSink) -> list[_Node]:
+    if document.is_seq:
+        return list(document.items or ())
+    if not document.is_map:
+        sink.add(
+            UnresolvedReason.SYNTAX_ERROR,
+            document.line,
+            "intent spec must be a mapping with an 'intents:' key, or a sequence of entries",
+        )
+        return []
+    entries: list[_Node] = []
+    for key, value in document.fields or ():
+        if key not in _DOC_KEYS:
+            sink.add(
+                UnresolvedReason.SYNTAX_ERROR,
+                value.line,
+                f"unknown top-level key {key!r}; expected one of {sorted(_DOC_KEYS)}",
+            )
+            continue
+        if key != "intents":
+            continue
+        if value.is_seq:
+            entries.extend(value.items or ())
+        elif value.is_scalar and not value.scalar:
+            continue
+        else:
+            sink.add(
+                UnresolvedReason.SYNTAX_ERROR, value.line, "'intents' must be a sequence of entries"
+            )
+    return entries
+
+
+def _entry_to_intent(
+    entry: _Node, path: str, sink: _IssueSink
+) -> tuple[Intent | None, str, bool]:
+    """Validate one entry. Returns (intent, element_id, ok).
+
+    A malformed entry is reported with its line and *not* loaded: judging against
+    half an entry the owner wrote would be exactly the confident nonsense this card
+    exists to avoid. The element is instead returned so it can be judged
+    ``UNVERIFIABLE``.
+    """
+    if not entry.is_map:
+        sink.add(UnresolvedReason.SYNTAX_ERROR, entry.line, "intent entry must be a mapping")
+        return None, "", False
+
+    fields = dict(entry.fields or ())
+    element_node = fields.get("element_id")
+    element_id = (element_node.scalar or "").strip() if element_node and element_node.is_scalar else ""
+
+    ok = True
+    for key, value in entry.fields or ():
+        if key not in _ENTRY_KEYS:
+            sink.add(
+                UnresolvedReason.SYNTAX_ERROR,
+                value.line,
+                f"unknown key {key!r} in intent entry for {element_id or '<no element_id>'}; "
+                f"expected one of {sorted(_ENTRY_KEYS)}. The entry is not loaded.",
+                candidate_ids=(element_id,) if element_id else (),
+            )
+            ok = False
+
+    if len(fields) != len(entry.fields or ()):
+        sink.add(
+            UnresolvedReason.SYNTAX_ERROR,
+            entry.line,
+            f"duplicate key in intent entry for {element_id or '<no element_id>'}",
+            candidate_ids=(element_id,) if element_id else (),
+        )
+        ok = False
+
+    if not element_id:
+        sink.add(
+            UnresolvedReason.SYNTAX_ERROR,
+            entry.line,
+            "intent entry has no 'element_id'; an intent must be keyed by a stable element ID",
+        )
+        return None, "", False
+
+    status_node = fields.get("status")
+    status_text = (status_node.scalar or "").strip() if status_node and status_node.is_scalar else ""
+    if status_text not in (IntentStatus.CONFIRMED.value, IntentStatus.PROPOSED.value):
+        sink.add(
+            UnresolvedReason.SYNTAX_ERROR,
+            status_node.line if status_node else entry.line,
+            f"intent for {element_id!r} has status {status_text or '<missing>'!r}; it must be "
+            f"'CONFIRMED' or 'PROPOSED'. There is no default: an unstated status must never be "
+            f"read as owner confirmation.",
+            candidate_ids=(element_id,),
+        )
+        ok = False
+
+    statement_node = fields.get("statement")
+    statement = (
+        (statement_node.scalar or "").strip()
+        if statement_node is not None and statement_node.is_scalar
+        else ""
+    )
+    if not statement:
+        sink.add(
+            UnresolvedReason.SYNTAX_ERROR,
+            statement_node.line if statement_node else entry.line,
+            f"intent for {element_id!r} has no 'statement'",
+            candidate_ids=(element_id,),
+        )
+        ok = False
+
+    lists: dict[str, tuple[str, ...]] = {}
+    for key in ("invariants", "expected_reads", "expected_writes"):
+        node = fields.get(key)
+        values, list_ok = _string_list(node, key, element_id, sink)
+        lists[key] = values
+        ok = ok and list_ok
+
+    id_node = fields.get("id")
+    intent_id = (id_node.scalar or "").strip() if id_node and id_node.is_scalar else ""
+    if not intent_id:
+        intent_id = f"{_INTENT_ID_PREFIX}{element_id}"
+
+    if not ok:
+        return None, element_id, False
+
+    intent = Intent(
+        id=intent_id,
+        element_id=element_id,
+        status=IntentStatus(status_text),
+        statement=statement,
+        invariants=lists["invariants"],
+        expected_reads=lists["expected_reads"],
+        expected_writes=lists["expected_writes"],
+        provenance=Provenance(
+            method=Method.AST_DIRECT,
+            confidence=Confidence.CERTAIN,
+            span=SourceSpan(path=path, line=entry.line),
+            note="owner-confirmed intent spec" if status_text == "CONFIRMED" else "spec-declared proposal",
+        ),
+    )
+    return intent, element_id, True
+
+
+def _string_list(
+    node: _Node | None, key: str, element_id: str, sink: _IssueSink
+) -> tuple[tuple[str, ...], bool]:
+    if node is None:
+        return (), True
+    if node.is_scalar and not node.scalar:
+        return (), True
+    if not node.is_seq:
+        sink.add(
+            UnresolvedReason.SYNTAX_ERROR,
+            node.line,
+            f"{key!r} of intent for {element_id!r} must be a list of strings",
+            candidate_ids=(element_id,),
+        )
+        return (), False
+    values: list[str] = []
+    ok = True
+    for item in node.items or ():
+        if not item.is_scalar:
+            sink.add(
+                UnresolvedReason.SYNTAX_ERROR,
+                item.line,
+                f"entry in {key!r} of intent for {element_id!r} must be a string",
+                candidate_ids=(element_id,),
+            )
+            ok = False
+            continue
+        text = (item.scalar or "").strip()
+        if not text:
+            sink.add(
+                UnresolvedReason.SYNTAX_ERROR,
+                item.line,
+                f"empty entry in {key!r} of intent for {element_id!r}",
+                candidate_ids=(element_id,),
+            )
+            ok = False
+            continue
+        values.append(text)
+    return tuple(values), ok
+
+
+def load_registry(
+    path: str | os.PathLike[str] | None,
+    known_element_ids: Iterable[str] | None = None,
+) -> IntentRegistry:
+    """Load the owner-confirmed intents spec named in ``TARGET_PROFILE.md``.
+
+    ``None``, an empty string or the literal ``"none"`` mean the owner declared no
+    spec. That is not an error: the registry is empty, ``present`` is ``False``, and
+    every element is judged ``NO_INTENT``.
+
+    A missing file, an undecodable file or a malformed document each produce an
+    :class:`Unresolved` record with the path and line -- never a silent empty
+    registry, which would be indistinguishable from "the owner has no intents".
+    """
+    if path is None:
+        return IntentRegistry(source_path="", present=False)
+    text_path = str(path)
+    if not text_path or text_path.strip().lower() == "none":
+        return IntentRegistry(source_path="", present=False)
+
+    sink = _IssueSink(text_path)
+    file_path = Path(text_path)
+    if not file_path.is_file():
+        sink.add(
+            UnresolvedReason.MISSING_TARGET,
+            1,
+            f"intent spec {text_path!r} named in TARGET_PROFILE.md does not exist",
+        )
+        return IntentRegistry(
+            source_path=text_path,
+            present=False,
+            issues=tuple(sink.issues),
+            unknown_check_performed=known_element_ids is not None,
+        )
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        sink.add(
+            UnresolvedReason.DECODE_ERROR,
+            1,
+            f"intent spec {text_path!r} is not valid UTF-8: {error.reason}",
+        )
+        return IntentRegistry(
+            source_path=text_path,
+            present=True,
+            issues=tuple(sink.issues),
+            unknown_check_performed=known_element_ids is not None,
+        )
+    return parse_registry_text(text, text_path, known_element_ids)
+
+
+# ---------------------------------------------------------------------------
+# Proposed intents — never authoritative
+# ---------------------------------------------------------------------------
+
+
+def propose_intents(elements: Sequence[Element]) -> tuple[Intent, ...]:
+    """Derive ``PROPOSED`` intents from docstrings and names.
+
+    These exist so the owner has something to confirm or correct, and for no other
+    reason. Every one is ``PROPOSED``, carries ``NAME_HEURISTIC``/``HEURISTIC``
+    provenance, and carries **no** invariants: an invariant this tool invented and
+    then checked against the run would be marking its own homework. A proposed
+    intent can never produce ``ALIGNED`` or ``MISALIGNED`` -- see
+    :meth:`AlignmentEngine.judge`.
+    """
+    proposals: list[Intent] = []
+    for element in elements:
+        statement, source = _proposed_statement(element)
+        if not statement:
+            continue
+        proposals.append(
+            Intent(
+                id=f"{_PROPOSED_ID_PREFIX}{element.id}",
+                element_id=element.id,
+                status=IntentStatus.PROPOSED,
+                statement=statement,
+                provenance=Provenance(
+                    method=Method.NAME_HEURISTIC,
+                    confidence=Confidence.HEURISTIC,
+                    span=element.span,
+                    note=f"proposed from {source}; not owner-confirmed and not binding",
+                ),
+            )
+        )
+    return tuple(sorted(proposals, key=lambda intent: intent.id))
+
+
+def _proposed_statement(element: Element) -> tuple[str, str]:
+    docstring = (element.docstring or "").strip()
+    if docstring:
+        first = docstring.splitlines()[0].strip()
+        if first:
+            return first, "docstring"
+    name = (element.name or "").strip()
+    if name:
+        words = [part for part in re.split(r"[_\W]+", name) if part]
+        if words:
+            return f"Named {name!r}, suggesting it {' '.join(words).lower()}.", "name"
+    return "", ""
+
+
+# ---------------------------------------------------------------------------
+# The expectation language
+# ---------------------------------------------------------------------------
+
+
+class CheckStatus(StrEnum):
+    PASS = "PASS"
+    FAIL = "FAIL"
+    UNVERIFIABLE = "UNVERIFIABLE"
+
+
+class CheckKind(StrEnum):
+    VALUE = "VALUE"
+    TYPE = "TYPE"
+    CAPTURE_STATUS = "CAPTURE_STATUS"
+    CALLS = "CALLS"
+    NOT_CALLS = "NOT_CALLS"
+    RUNS_BEFORE = "RUNS_BEFORE"
+    RUNS_AFTER = "RUNS_AFTER"
+    WRITES = "WRITES"
+    READS = "READS"
+    UNPARSEABLE = "UNPARSEABLE"
+
+
+@dataclass(frozen=True, slots=True)
+class _Literal:
+    kind: str
+    """``int``, ``str`` (was quoted), ``bare`` or ``list``."""
+
+    raw: str
+    number: int = 0
+    members: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Check:
+    """One parsed, checkable expectation drawn from an intent."""
+
+    kind: CheckKind
+    text: str
+    """The invariant exactly as the owner wrote it. Quoted back in every verdict."""
+
+    subject: str = ""
+    """``returns``, an argument name, a captured-value key, or an element/feature ID."""
+
+    op: str = ""
+    literal: _Literal | None = None
+    reason: str = ""
+    """Why the check could not be parsed, when kind is UNPARSEABLE."""
+
+
+@dataclass(frozen=True, slots=True)
+class CheckResult:
+    status: CheckStatus
+    expectation: str
+    observation: str
+    evidence_ids: tuple[str, ...] = ()
+    confidence: Confidence = Confidence.UNKNOWN
+
+
+_COMPARISON = re.compile(
+    r"^(?P<lhs>[A-Za-z_][A-Za-z0-9_.\[\]\"'@:-]*)\s*(?P<op>==|!=|>=|<=|>|<|\bin\b)\s+(?P<rhs>.+)$"
+)
+_CALLS = re.compile(r"^calls\s+(?P<target>\S+)$")
+_NOT_CALLS = re.compile(r"^(?:not\s+calls|does\s+not\s+call)\s+(?P<target>\S+)$")
+_RUNS_BEFORE = re.compile(r"^runs\s+before\s+(?P<target>\S+)$")
+_RUNS_AFTER = re.compile(r"^runs\s+after\s+(?P<target>\S+)$")
+_LHS = re.compile(
+    r"^(?:returns|return|arg\.(?P<arg>[A-Za-z_][A-Za-z0-9_]*)|values\.(?P<key>[^.]+))"
+    r"\.(?P<attr>type|value|status)$"
+)
+
+
+def parse_check(text: str) -> Check:
+    """Parse one invariant string. Never raises: an unparseable invariant is a
+    ``Check`` of kind ``UNPARSEABLE`` carrying its reason, which makes the element
+    ``UNVERIFIABLE`` rather than quietly checking fewer things than the owner wrote.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return Check(kind=CheckKind.UNPARSEABLE, text=text, reason="empty invariant")
+
+    for pattern, kind in (
+        (_NOT_CALLS, CheckKind.NOT_CALLS),
+        (_CALLS, CheckKind.CALLS),
+        (_RUNS_BEFORE, CheckKind.RUNS_BEFORE),
+        (_RUNS_AFTER, CheckKind.RUNS_AFTER),
+    ):
+        match = pattern.match(stripped)
+        if match:
+            return Check(kind=kind, text=stripped, subject=match.group("target"))
+
+    match = _COMPARISON.match(stripped)
+    if not match:
+        return Check(
+            kind=CheckKind.UNPARSEABLE,
+            text=stripped,
+            reason=(
+                "not in the checkable expectation language "
+                "(<returns|arg.NAME|values.KEY>.<type|value|status> <op> <literal>, "
+                "'calls X', 'not calls X', 'runs before X', 'runs after X')"
+            ),
+        )
+    lhs_match = _LHS.match(match.group("lhs"))
+    if not lhs_match:
+        return Check(
+            kind=CheckKind.UNPARSEABLE,
+            text=stripped,
+            reason=f"unknown subject {match.group('lhs')!r}",
+        )
+    attr = lhs_match.group("attr")
+    if lhs_match.group("arg"):
+        subject = lhs_match.group("arg")
+    elif lhs_match.group("key"):
+        subject = _unquote(lhs_match.group("key"))
+    else:
+        subject = "returns"
+    literal = _parse_literal(match.group("rhs").strip())
+    if literal is None:
+        return Check(
+            kind=CheckKind.UNPARSEABLE, text=stripped, reason=f"unreadable literal {match.group('rhs')!r}"
+        )
+    op = match.group("op")
+    if op == "in" and literal.kind != "list":
+        return Check(kind=CheckKind.UNPARSEABLE, text=stripped, reason="'in' needs a (a, b) list")
+    if op != "in" and literal.kind == "list":
+        return Check(kind=CheckKind.UNPARSEABLE, text=stripped, reason="a list literal needs 'in'")
+    kind = {
+        "type": CheckKind.TYPE,
+        "value": CheckKind.VALUE,
+        "status": CheckKind.CAPTURE_STATUS,
+    }[attr]
+    return Check(kind=kind, text=stripped, subject=subject, op=op, literal=literal)
+
+
+def _parse_literal(raw: str) -> _Literal | None:
+    if raw.startswith("(") and raw.endswith(")"):
+        body = raw[1:-1]
+        members = tuple(_unquote(part.strip()) for part in body.split(",") if part.strip())
+        if not members:
+            return None
+        return _Literal(kind="list", raw=raw, members=members)
+    if _is_quoted(raw):
+        return _Literal(kind="str", raw=_unquote(raw))
+    if re.fullmatch(r"[+-]?\d+", raw):
+        return _Literal(kind="int", raw=raw, number=int(raw))
+    if re.fullmatch(r"[+-]?\d+\.\d+", raw):
+        # Floats are rejected outright: constraint 4 cannot survive their repr, and
+        # a float equality check is not a thing this tool will pretend to do.
+        return None
+    if re.fullmatch(r"[A-Za-z_@][\w.@:\-]*", raw):
+        return _Literal(kind="bare", raw=raw)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Coverage:
+    """How much of the intent set was actually checkable, and against what.
+
+    Every number here is an integer. Percentages are left to the reader: a float in
+    an artifact breaks the byte-identical guarantee (constraint 4).
+    """
+
+    run_id: str
+    elements_judged: int
+    intents_total: int
+    intents_confirmed: int
+    intents_proposed: int
+    intents_with_expectations: int
+    intents_checked: int
+    checks_total: int
+    checks_passed: int
+    checks_failed: int
+    checks_unverifiable: int
+    checks_unparseable: int
+    verdicts: Mapping[str, int] = field(default_factory=dict)
+    evidence: Mapping[str, int] = field(default_factory=dict)
+    registry_issues: int = 0
+    notes: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "elements_judged": self.elements_judged,
+            "intents_total": self.intents_total,
+            "intents_confirmed": self.intents_confirmed,
+            "intents_proposed": self.intents_proposed,
+            "intents_with_expectations": self.intents_with_expectations,
+            "intents_checked": self.intents_checked,
+            "checks_total": self.checks_total,
+            "checks_passed": self.checks_passed,
+            "checks_failed": self.checks_failed,
+            "checks_unverifiable": self.checks_unverifiable,
+            "checks_unparseable": self.checks_unparseable,
+            "verdicts": dict(sorted(self.verdicts.items())),
+            "evidence": dict(sorted(self.evidence.items())),
+            "registry_issues": self.registry_issues,
+            "notes": list(self.notes),
+        }
+
+
+# ---------------------------------------------------------------------------
+# The model escalation — bounded, labelled, never authoritative
+# ---------------------------------------------------------------------------
+
+
+_FALLBACK_PROMPT = """\
+You are reading evidence from a program trace. You do NOT decide anything.
+
+Intent (owner-confirmed): {statement}
+Element: {element_id}
+Observed events (id, kind, captured values):
+{evidence}
+
+Propose, in at most two sentences, one reading of whether the observed behaviour is
+consistent with the intent, and name the event ID that a human should check first.
+You are proposing, not deciding. Do not output a verdict, a confidence or a fact.
+"""
+
+
+class AlignmentModel(Protocol):
+    """A bounded proposer. It receives a prompt and returns prose, nothing else."""
+
+    def propose(self, prompt: str) -> str: ...
+
+
+def model_available() -> bool:
+    """True only when ``CASCADE_MAP_API_KEY`` is set and non-empty."""
+    return bool(os.environ.get(_alignment_API_KEY_ENV, "").strip())
+
+
+def load_prompt(prompt_path: str | os.PathLike[str] | None = None) -> tuple[str, str]:
+    """Return (template, source-label) for the escalation prompt."""
+    candidate = Path(prompt_path) if prompt_path is not None else Path(PROMPT_PATH)
+    if candidate.is_file():
+        return candidate.read_text(encoding="utf-8"), str(candidate)
+    return _FALLBACK_PROMPT, "builtin-fallback"
+
+
+class AnthropicAlignmentModel:
+    """The real escalation client. Never constructed in tests; never reached
+    without a key. Reads :data:`API_KEY_ENV` and refuses ``ANTHROPIC_API_KEY``."""
+
+    def __init__(self, *, model_id: str = MODEL_ID, timeout: int = 30) -> None:
+        key = os.environ.get(_alignment_API_KEY_ENV, "").strip()
+        if not key:
+            raise RuntimeError(
+                f"{_alignment_API_KEY_ENV} is not set. Model escalation is optional and stays off; "
+                f"{FORBIDDEN_KEY_ENV} is never read."
+            )
+        self._key = key
+        self._model_id = model_id
+        self._timeout = timeout
+
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    def propose(self, prompt: str) -> str:  # pragma: no cover - network, never in tests
+        import json
+        import urllib.request
+
+        request = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=json.dumps(
+                {
+                    "model": self._model_id,
+                    "max_tokens": 300,
+                    "messages": [{"role": "user", "content": prompt}],
+                }
+            ).encode("utf-8"),
+            headers={
+                "content-type": "application/json",
+                "anthropic-version": "2023-06-01",
+                "x-api-key": self._key,
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=self._timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        parts = [block.get("text", "") for block in payload.get("content", [])]
+        return "".join(parts)
+
+
+def default_model() -> AlignmentModel | None:
+    """The client the engine uses when the owner set a key, else ``None``."""
+    if not model_available():
+        return None
+    return AnthropicAlignmentModel()
+
+
+# ---------------------------------------------------------------------------
+# The engine
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class _Judged:
+    verdict: AlignmentVerdict
+    results: tuple[CheckResult, ...]
+    had_expectations: bool
+    was_checked: bool
+
+
+class AlignmentEngine:
+    """Implements :class:`~cascade_map.contracts.interfaces.AlignmentCard`.
+
+    Static evidence (cards 2-4) and the :class:`RunRecord` are supplied to the
+    constructor so that :meth:`judge` matches the protocol exactly. Static evidence
+    is optional and its absence is never treated as a contradiction: without a call
+    graph, an unobserved call is ``UNVERIFIABLE``, not ``MISALIGNED``.
+    """
+
+    def __init__(
+        self,
+        *,
+        registry: IntentRegistry | None = None,
+        elements: Sequence[Element] = (),
+        edges: Sequence[Edge] = (),
+        lineage_edges: Sequence[LineageEdge] = (),
+        run: RunRecord | None = None,
+        model: AlignmentModel | None = None,
+        prompt_path: str | os.PathLike[str] | None = None,
+    ) -> None:
+        self._registry = registry
+        self._elements = tuple(elements)
+        self._edges = tuple(edges)
+        self._lineage = tuple(lineage_edges)
+        self._run = run
+        self._model = model
+        self._prompt_path = prompt_path
+        self._coverage = Coverage(
+            run_id="",
+            elements_judged=0,
+            intents_total=0,
+            intents_confirmed=0,
+            intents_proposed=0,
+            intents_with_expectations=0,
+            intents_checked=0,
+            checks_total=0,
+            checks_passed=0,
+            checks_failed=0,
+            checks_unverifiable=0,
+            checks_unparseable=0,
+        )
+
+    # -- public API --------------------------------------------------------
+
+    def coverage(self) -> Coverage:
+        """Coverage of the most recent :meth:`judge` call."""
+        return self._coverage
+
+    def judge(
+        self, intents: Sequence[Intent], events: Sequence[TraceEvent]
+    ) -> Sequence[AlignmentVerdict]:
+        run_ids = sorted({event.run_id for event in events if event.run_id})
+        blocker = self._blocking_reason(run_ids)
+        run_id = run_ids[0] if len(run_ids) == 1 else (self._run.run_id if self._run else "")
+
+        by_element: dict[str, list[Intent]] = {}
+        for intent in intents:
+            by_element.setdefault(intent.element_id, []).append(intent)
+        events_by_element = _index_events(events)
+
+        universe = set(by_element)
+        universe.update(element.id for element in self._elements)
+        universe.update(event.element_id for event in events if event.element_id)
+        if self._registry is not None:
+            universe.update(self._registry.rejected_element_ids)
+
+        verdicts: list[AlignmentVerdict] = []
+        results: list[CheckResult] = []
+        with_expectations = 0
+        checked = 0
+        notes: list[str] = []
+
+        for element_id in sorted(universe):
+            element_intents = sorted(by_element.get(element_id, ()), key=lambda i: i.id)
+            judged = self._judge_element(
+                element_id=element_id,
+                element_intents=element_intents,
+                events=events,
+                events_by_element=events_by_element,
+                run_id=run_id,
+                blocker=blocker,
+            )
+            verdicts.append(judged.verdict)
+            results.extend(judged.results)
+            with_expectations += 1 if judged.had_expectations else 0
+            checked += 1 if judged.was_checked else 0
+
+        if blocker:
+            notes.append(blocker)
+        if self._registry is not None and not self._registry.present:
+            notes.append(
+                f"no intent spec: {self._registry.source_path or 'none declared'} -- "
+                f"every element is NO_INTENT, which is a reported state, not a pass"
+            )
+        if not self._edges:
+            notes.append("no static call graph supplied: call expectations degrade to UNVERIFIABLE")
+        if not self._lineage:
+            notes.append("no lineage edges supplied: read/write expectations degrade to UNVERIFIABLE")
+        if self._model is not None:
+            notes.append(
+                f"model escalation active ({MODEL_ID}): proposals only, attached to UNVERIFIABLE "
+                f"verdicts; output is not byte-identical across runs while it is on"
+            )
+
+        self._coverage = self._build_coverage(
+            run_id=run_id,
+            intents=intents,
+            verdicts=verdicts,
+            results=results,
+            with_expectations=with_expectations,
+            checked=checked,
+            events=events,
+            notes=tuple(notes),
+        )
+        return tuple(verdicts)
+
+    # -- internals ---------------------------------------------------------
+
+    def _blocking_reason(self, run_ids: Sequence[str]) -> str:
+        """A reason no verdict in this call may be grounded, or ''.
+
+        A refused run and a mixed-run event set are both cases where producing
+        ALIGNED/MISALIGNED would be nonsense, so the whole call degrades to
+        UNVERIFIABLE with the reason attached rather than judging anything.
+        """
+        if self._run is not None and self._run.refused:
+            return (
+                f"run {self._run.run_id} refused to start: "
+                f"{self._run.refusal_reason or 'no reason recorded'}; no runtime evidence exists"
+            )
+        if len(run_ids) > 1:
+            return (
+                "trace events span multiple runs ("
+                + ", ".join(run_ids)
+                + "); a verdict must be keyed to exactly one run"
+            )
+        if self._run is not None and run_ids and run_ids[0] != self._run.run_id:
+            return (
+                f"trace events belong to run {run_ids[0]} but the run record is "
+                f"{self._run.run_id}; the overlay does not key onto this run"
+            )
+        return ""
+
+    def _judge_element(
+        self,
+        *,
+        element_id: str,
+        element_intents: Sequence[Intent],
+        events: Sequence[TraceEvent],
+        events_by_element: Mapping[str, tuple[TraceEvent, ...]],
+        run_id: str,
+        blocker: str,
+    ) -> _Judged:
+        own_events = events_by_element.get(element_id, ())
+        evidence = tuple(event.event_id for event in own_events)
+        rejected = bool(self._registry and element_id in self._registry.rejected_element_ids)
+
+        if rejected and not element_intents:
+            return _Judged(
+                verdict=self._verdict(
+                    element_id=element_id,
+                    intent_id="",
+                    verdict=Verdict.UNVERIFIABLE,
+                    expectation="the owner wrote an intent for this element",
+                    observation=(
+                        f"the entry in {self._registry.source_path if self._registry else ''} is "
+                        f"malformed and was not loaded; see the unresolved records for its line. "
+                        f"This is not NO_INTENT: an intent exists and could not be read."
+                    ),
+                    evidence_ids=evidence,
+                    method=Method.STRUCTURAL_MATCH,
+                    confidence=Confidence.UNKNOWN,
+                    run_id=run_id,
+                    note="registry entry rejected",
+                ),
+                results=(),
+                had_expectations=False,
+                was_checked=False,
+            )
+
+        if not element_intents:
+            source = (
+                self._registry.source_path
+                if self._registry and self._registry.present
+                else "no intent spec declared"
+            )
+            return _Judged(
+                verdict=self._verdict(
+                    element_id=element_id,
+                    intent_id="",
+                    verdict=Verdict.NO_INTENT,
+                    expectation="",
+                    observation=(
+                        f"no intent is registered for {element_id} ({source}). Reported, not "
+                        f"assumed: this is neither a pass nor a failure."
+                    ),
+                    evidence_ids=evidence,
+                    method=Method.STRUCTURAL_MATCH,
+                    confidence=Confidence.CERTAIN,
+                    run_id=run_id,
+                    note="registry lookup",
+                ),
+                results=(),
+                had_expectations=False,
+                was_checked=False,
+            )
+
+        if len(element_intents) > 1:
+            ids = ", ".join(intent.id for intent in element_intents)
+            return _Judged(
+                verdict=self._verdict(
+                    element_id=element_id,
+                    intent_id=element_intents[0].id,
+                    verdict=Verdict.UNVERIFIABLE,
+                    expectation="exactly one intent governs this element",
+                    observation=(
+                        f"{len(element_intents)} intents claim {element_id}: {ids}. Choosing one "
+                        f"would be a guess, so nothing is judged."
+                    ),
+                    evidence_ids=evidence,
+                    method=Method.STRUCTURAL_MATCH,
+                    confidence=Confidence.UNKNOWN,
+                    run_id=run_id,
+                    note="ambiguous registry",
+                ),
+                results=(),
+                had_expectations=False,
+                was_checked=False,
+            )
+
+        intent = element_intents[0]
+
+        if blocker:
+            return _Judged(
+                verdict=self._verdict(
+                    element_id=element_id,
+                    intent_id=intent.id,
+                    verdict=Verdict.UNVERIFIABLE,
+                    expectation=intent.statement,
+                    observation=f"no verdict can rest on this evidence: {blocker}",
+                    evidence_ids=evidence,
+                    method=Method.STRUCTURAL_MATCH,
+                    confidence=Confidence.UNKNOWN,
+                    run_id=run_id,
+                    note="evidence unusable",
+                ),
+                results=(),
+                had_expectations=bool(_expectation_count(intent)),
+                was_checked=False,
+            )
+
+        if intent.status is not IntentStatus.CONFIRMED:
+            suffix = (
+                ""
+                if own_events
+                else f"; the element was also not exercised in run {run_id or '<none>'}"
+            )
+            return _Judged(
+                verdict=self._verdict(
+                    element_id=element_id,
+                    intent_id=intent.id,
+                    verdict=Verdict.UNVERIFIABLE,
+                    expectation=intent.statement,
+                    observation=(
+                        f"intent {intent.id} is {intent.status.value}, not owner-confirmed. A "
+                        f"PROPOSED intent may never ground ALIGNED or MISALIGNED{suffix}."
+                    ),
+                    evidence_ids=evidence,
+                    method=Method.STRUCTURAL_MATCH,
+                    confidence=Confidence.UNKNOWN,
+                    run_id=run_id,
+                    note="intent not confirmed by the owner",
+                ),
+                results=(),
+                had_expectations=bool(_expectation_count(intent)),
+                was_checked=False,
+            )
+
+        if not own_events:
+            return _Judged(
+                verdict=self._verdict(
+                    element_id=element_id,
+                    intent_id=intent.id,
+                    verdict=Verdict.NOT_EXERCISED,
+                    expectation=intent.statement,
+                    observation=(
+                        f"no event in run {run_id or '<none>'} names {element_id}; the intent is "
+                        f"unverified. NOT_EXERCISED is not ALIGNED."
+                    ),
+                    evidence_ids=(),
+                    method=Method.RUNTIME_OBSERVED,
+                    confidence=Confidence.CERTAIN,
+                    run_id=run_id,
+                    note="absence of events in this run; other scenarios may exercise it",
+                ),
+                results=(),
+                had_expectations=bool(_expectation_count(intent)),
+                was_checked=False,
+            )
+
+        results = self._evaluate(intent, own_events, events, events_by_element)
+        if not results:
+            verdict = self._unverifiable_prose(intent, element_id, own_events, run_id, evidence)
+            return _Judged(verdict=verdict, results=(), had_expectations=False, was_checked=False)
+
+        return _Judged(
+            verdict=self._aggregate(intent, element_id, results, run_id),
+            results=results,
+            had_expectations=True,
+            was_checked=True,
+        )
+
+    def _evaluate(
+        self,
+        intent: Intent,
+        own_events: Sequence[TraceEvent],
+        events: Sequence[TraceEvent],
+        events_by_element: Mapping[str, tuple[TraceEvent, ...]],
+    ) -> tuple[CheckResult, ...]:
+        results: list[CheckResult] = []
+        for text in intent.invariants:
+            check = parse_check(text)
+            results.append(
+                self._evaluate_check(check, intent, own_events, events, events_by_element)
+            )
+        for feature in intent.expected_writes:
+            results.append(self._evaluate_flow(intent, feature, own_events, events, write=True))
+        for feature in intent.expected_reads:
+            results.append(self._evaluate_flow(intent, feature, own_events, events, write=False))
+        return tuple(results)
+
+    def _evaluate_check(
+        self,
+        check: Check,
+        intent: Intent,
+        own_events: Sequence[TraceEvent],
+        events: Sequence[TraceEvent],
+        events_by_element: Mapping[str, tuple[TraceEvent, ...]],
+    ) -> CheckResult:
+        expectation = f"invariant {check.text!r}"
+        if check.kind is CheckKind.UNPARSEABLE:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    f"the invariant could not be parsed ({check.reason}); it was not checked, and "
+                    f"an unchecked expectation is never reported as met"
+                ),
+            )
+        if check.kind in (CheckKind.CALLS, CheckKind.NOT_CALLS):
+            return self._evaluate_calls(check, intent, own_events, events_by_element)
+        if check.kind in (CheckKind.RUNS_BEFORE, CheckKind.RUNS_AFTER):
+            return self._evaluate_order(check, own_events, events_by_element)
+        return self._evaluate_value(check, own_events)
+
+    # -- value invariants --------------------------------------------------
+
+    def _evaluate_value(self, check: Check, own_events: Sequence[TraceEvent]) -> CheckResult:
+        expectation = f"invariant {check.text!r}"
+        wanted_kinds = (
+            (EventKind.RETURN,) if check.subject == "returns" else (EventKind.CALL, EventKind.RETURN)
+        )
+        keys = RETURN_VALUE_KEYS if check.subject == "returns" else (check.subject,)
+
+        found: list[tuple[TraceEvent, ValueCapture]] = []
+        for event in own_events:
+            if event.kind not in wanted_kinds:
+                continue
+            for key in keys:
+                if key in event.values:
+                    found.append((event, event.values[key]))
+                    break
+        if not found:
+            names = " / ".join(keys)
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    f"no captured value named {names} on any {'/'.join(k.value for k in wanted_kinds)} "
+                    f"event for this element; the invariant was not checked"
+                ),
+                evidence_ids=tuple(event.event_id for event in own_events),
+            )
+
+        evidence: list[str] = []
+        confidences: list[Confidence] = []
+        for event, capture in found:
+            evidence.append(event.event_id)
+            outcome = _compare(check, capture)
+            if outcome.status is CheckStatus.FAIL:
+                return CheckResult(
+                    status=CheckStatus.FAIL,
+                    expectation=expectation,
+                    observation=f"{outcome.observation} (event {event.event_id})",
+                    evidence_ids=(event.event_id,),
+                    confidence=Confidence.CERTAIN,
+                )
+            if outcome.status is CheckStatus.UNVERIFIABLE:
+                return CheckResult(
+                    status=CheckStatus.UNVERIFIABLE,
+                    expectation=expectation,
+                    observation=f"{outcome.observation} (event {event.event_id})",
+                    evidence_ids=(event.event_id,),
+                )
+            confidences.append(outcome.confidence)
+        return CheckResult(
+            status=CheckStatus.PASS,
+            expectation=expectation,
+            observation=(
+                f"held on {len(found)} observed value"
+                f"{'' if len(found) == 1 else 's'}: {', '.join(evidence)}"
+            ),
+            evidence_ids=tuple(evidence),
+            confidence=combine(*confidences) if confidences else Confidence.UNKNOWN,
+        )
+
+    # -- structural invariants --------------------------------------------
+
+    def _evaluate_calls(
+        self,
+        check: Check,
+        intent: Intent,
+        own_events: Sequence[TraceEvent],
+        events_by_element: Mapping[str, tuple[TraceEvent, ...]],
+    ) -> CheckResult:
+        expectation = f"invariant {check.text!r}"
+        own_ids = {event.event_id for event in own_events}
+        observed = [
+            event
+            for event in events_by_element.get(check.subject, ())
+            if event.kind is EventKind.CALL and event.caller_event_id in own_ids
+        ]
+        if check.kind is CheckKind.CALLS:
+            if observed:
+                return CheckResult(
+                    status=CheckStatus.PASS,
+                    expectation=expectation,
+                    observation=(
+                        f"observed {len(observed)} CALL of {check.subject} from this element: "
+                        f"{', '.join(event.event_id for event in observed)}"
+                    ),
+                    evidence_ids=tuple(event.event_id for event in observed),
+                    confidence=Confidence.CERTAIN,
+                )
+            edge = self._find_call_edge(intent.element_id, check.subject)
+            if edge is not None:
+                return CheckResult(
+                    status=CheckStatus.UNVERIFIABLE,
+                    expectation=expectation,
+                    observation=(
+                        f"the static graph has a CALLS edge to {check.subject} ({edge.id}) but no "
+                        f"CALL was observed in this run; this scenario does not settle it"
+                    ),
+                    evidence_ids=(edge.id,) + tuple(event.event_id for event in own_events),
+                )
+            if not self._edges:
+                return CheckResult(
+                    status=CheckStatus.UNVERIFIABLE,
+                    expectation=expectation,
+                    observation=(
+                        f"no CALL of {check.subject} was observed, and no static call graph was "
+                        f"supplied; absence in one run is not a contradiction"
+                    ),
+                    evidence_ids=tuple(event.event_id for event in own_events),
+                )
+            return CheckResult(
+                status=CheckStatus.FAIL,
+                expectation=expectation,
+                observation=(
+                    f"no CALL of {check.subject} from this element in run "
+                    f"{own_events[0].run_id or '<none>'}, and the static call graph has no CALLS "
+                    f"edge to it either"
+                ),
+                evidence_ids=tuple(event.event_id for event in own_events),
+                confidence=Confidence.PROBABLE,
+            )
+        if observed:
+            return CheckResult(
+                status=CheckStatus.FAIL,
+                expectation=expectation,
+                observation=(
+                    f"{check.subject} was called from this element at event "
+                    f"{observed[0].event_id}"
+                ),
+                evidence_ids=(observed[0].event_id,),
+                confidence=Confidence.CERTAIN,
+            )
+        return CheckResult(
+            status=CheckStatus.PASS,
+            expectation=expectation,
+            observation=(
+                f"no CALL of {check.subject} from this element in run "
+                f"{own_events[0].run_id or '<none>'}; one run cannot prove absence in general"
+            ),
+            evidence_ids=tuple(event.event_id for event in own_events),
+            confidence=Confidence.PROBABLE,
+        )
+
+    def _evaluate_order(
+        self,
+        check: Check,
+        own_events: Sequence[TraceEvent],
+        events_by_element: Mapping[str, tuple[TraceEvent, ...]],
+    ) -> CheckResult:
+        expectation = f"invariant {check.text!r}"
+        other = events_by_element.get(check.subject, ())
+        if not other:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=f"{check.subject} was not exercised in this run; order is unobservable",
+                evidence_ids=tuple(event.event_id for event in own_events),
+            )
+        mine = min(own_events, key=lambda event: event.sequence)
+        theirs = min(other, key=lambda event: event.sequence)
+        before = mine.sequence < theirs.sequence
+        wants_before = check.kind is CheckKind.RUNS_BEFORE
+        evidence = (mine.event_id, theirs.event_id)
+        if before == wants_before:
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expectation=expectation,
+                observation=(
+                    f"first event of this element is {mine.event_id} (sequence {mine.sequence}), "
+                    f"{check.subject} first runs at {theirs.event_id} (sequence {theirs.sequence})"
+                ),
+                evidence_ids=evidence,
+                confidence=Confidence.CERTAIN,
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expectation=expectation,
+            observation=(
+                f"this element first runs at sequence {mine.sequence} ({mine.event_id}) and "
+                f"{check.subject} first runs at sequence {theirs.sequence} ({theirs.event_id}), "
+                f"the opposite order"
+            ),
+            evidence_ids=evidence,
+            confidence=Confidence.CERTAIN,
+        )
+
+    def _evaluate_flow(
+        self,
+        intent: Intent,
+        feature: str,
+        own_events: Sequence[TraceEvent],
+        events: Sequence[TraceEvent],
+        *,
+        write: bool,
+    ) -> CheckResult:
+        word = "writes" if write else "reads"
+        expectation = f"expected_{'writes' if write else 'reads'} names {feature!r}"
+        observed = _flow_events(feature, intent.element_id, own_events, events, write=write)
+        if observed:
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expectation=expectation,
+                observation=(
+                    f"observed {word} of {feature} at {', '.join(sorted(observed))}"
+                ),
+                evidence_ids=tuple(sorted(observed)),
+                confidence=Confidence.CERTAIN,
+            )
+        edge = self._find_lineage_edge(intent.element_id, feature, write=write)
+        if edge is not None:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    f"lineage edge {edge.id} says this element {word} {feature}, but no such "
+                    f"event was observed in this run"
+                ),
+                evidence_ids=(edge.id,) + tuple(event.event_id for event in own_events),
+            )
+        if not self._lineage:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    f"no runtime event shows this element {word} {feature}, and no lineage was "
+                    f"supplied; absence of evidence is not a contradiction"
+                ),
+                evidence_ids=tuple(event.event_id for event in own_events),
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expectation=expectation,
+            observation=(
+                f"no runtime event and no lineage edge shows this element {word} {feature}"
+            ),
+            evidence_ids=tuple(event.event_id for event in own_events),
+            confidence=Confidence.PROBABLE,
+        )
+
+    def _find_call_edge(self, source_id: str, target_id: str) -> Edge | None:
+        for edge in self._edges:
+            if edge.kind is EdgeKind.CALLS and edge.source_id == source_id and edge.target_id == target_id:
+                return edge
+        return None
+
+    def _find_lineage_edge(self, element_id: str, feature: str, *, write: bool) -> LineageEdge | None:
+        kinds = _WRITE_KINDS if write else _READ_KINDS
+        names = _feature_aliases(feature)
+        for edge in self._lineage:
+            if edge.kind not in kinds:
+                continue
+            if write and edge.source_id == element_id and edge.target_id in names:
+                return edge
+            if not write and edge.target_id == element_id and edge.source_id in names:
+                return edge
+        return None
+
+    # -- aggregation -------------------------------------------------------
+
+    def _aggregate(
+        self,
+        intent: Intent,
+        element_id: str,
+        results: Sequence[CheckResult],
+        run_id: str,
+    ) -> AlignmentVerdict:
+        failures = [result for result in results if result.status is CheckStatus.FAIL]
+        unverifiable = [result for result in results if result.status is CheckStatus.UNVERIFIABLE]
+        passes = [result for result in results if result.status is CheckStatus.PASS]
+        note = "; ".join(f"{result.status.value}: {result.expectation}" for result in results)
+
+        if failures:
+            first = failures[0]
+            return self._verdict(
+                element_id=element_id,
+                intent_id=intent.id,
+                verdict=Verdict.MISALIGNED,
+                expectation=first.expectation,
+                observation=first.observation,
+                evidence_ids=_merge_evidence(failures),
+                method=Method.RUNTIME_OBSERVED,
+                confidence=combine(*[result.confidence for result in failures]),
+                run_id=run_id,
+                note=note,
+                event_ids=_merge_evidence(failures),
+            )
+        if unverifiable:
+            first = unverifiable[0]
+            checked = len(passes)
+            return self._verdict(
+                element_id=element_id,
+                intent_id=intent.id,
+                verdict=Verdict.UNVERIFIABLE,
+                expectation=first.expectation,
+                observation=(
+                    f"{first.observation}. {checked} of {len(results)} expectations held; an "
+                    f"intent is not ALIGNED while any expectation is unchecked."
+                ),
+                evidence_ids=_merge_evidence(results),
+                method=Method.RUNTIME_OBSERVED,
+                confidence=Confidence.UNKNOWN,
+                run_id=run_id,
+                note=note,
+                event_ids=_merge_evidence(results),
+            )
+        return self._verdict(
+            element_id=element_id,
+            intent_id=intent.id,
+            verdict=Verdict.ALIGNED,
+            expectation="; ".join(result.expectation for result in passes),
+            observation="; ".join(result.observation for result in passes),
+            evidence_ids=_merge_evidence(passes),
+            method=Method.RUNTIME_OBSERVED,
+            confidence=combine(*[result.confidence for result in passes]),
+            run_id=run_id,
+            note=note,
+            event_ids=_merge_evidence(passes),
+        )
+
+    def _unverifiable_prose(
+        self,
+        intent: Intent,
+        element_id: str,
+        own_events: Sequence[TraceEvent],
+        run_id: str,
+        evidence: tuple[str, ...],
+    ) -> AlignmentVerdict:
+        """A confirmed intent with no checkable expectation. Prose is not a check."""
+        observation = (
+            f"the intent states {intent.statement!r} but declares no invariant, expected read or "
+            f"expected write; there is nothing to check it against. The element ran "
+            f"{len(own_events)} time{'' if len(own_events) == 1 else 's'} in run "
+            f"{run_id or '<none>'}."
+        )
+        method = Method.STRUCTURAL_MATCH
+        confidence = Confidence.UNKNOWN
+        model_id = ""
+        note = "no checkable expectation"
+        if self._model is not None:
+            proposal = self._propose(intent, own_events)
+            if proposal:
+                observation = (
+                    f"{observation} MODEL PROPOSAL ({MODEL_ID}, a reading to check, not a verdict): "
+                    f"{proposal}"
+                )
+                method = Method.MODEL_PROPOSED
+                model_id = MODEL_ID
+                note = f"{note}; model proposal attached, {self._prompt_label()}"
+        return self._verdict(
+            element_id=element_id,
+            intent_id=intent.id,
+            verdict=Verdict.UNVERIFIABLE,
+            expectation=intent.statement,
+            observation=observation,
+            evidence_ids=evidence,
+            method=method,
+            confidence=confidence,
+            run_id=run_id,
+            note=note,
+            model_id=model_id,
+            event_ids=evidence,
+        )
+
+    def _prompt_label(self) -> str:
+        _, label = load_prompt(self._prompt_path)
+        return f"prompt={label}"
+
+    def _propose(self, intent: Intent, own_events: Sequence[TraceEvent]) -> str:
+        """Ask the model for a reading. Bounded, labelled, never a verdict.
+
+        The result is flattened to a single line and truncated, and it is only ever
+        used as prose inside an ``UNVERIFIABLE`` verdict tied to the event IDs below.
+        A model that answers "MISALIGNED" changes nothing: the verdict is decided
+        before this method is called.
+        """
+        if self._model is None:
+            return ""
+        template, _ = load_prompt(self._prompt_path)
+        evidence = "\n".join(
+            f"- {event.event_id} {event.kind.value} "
+            + ", ".join(
+                f"{key}={capture.repr_text!r} ({capture.status.value})"
+                for key, capture in sorted(event.values.items())
+            )
+            for event in own_events
+        )
+        prompt = template.format(
+            statement=intent.statement, element_id=intent.element_id, evidence=evidence
+        )
+        try:
+            raw = self._model.propose(prompt)
+        except Exception as error:  # a model failure never fails the run
+            return f"[escalation failed: {type(error).__name__}]"
+        flattened = " ".join(str(raw).split())
+        return flattened[:400]
+
+    def _verdict(
+        self,
+        *,
+        element_id: str,
+        intent_id: str,
+        verdict: Verdict,
+        expectation: str,
+        observation: str,
+        evidence_ids: tuple[str, ...],
+        method: Method,
+        confidence: Confidence,
+        run_id: str,
+        note: str,
+        model_id: str = "",
+        event_ids: tuple[str, ...] = (),
+    ) -> AlignmentVerdict:
+        return AlignmentVerdict(
+            id=f"{_VERDICT_ID_PREFIX}{run_id or _NO_RUN}:{element_id}",
+            element_id=element_id,
+            intent_id=intent_id,
+            verdict=verdict,
+            expectation=expectation,
+            observation=observation,
+            evidence_ids=tuple(sorted(set(evidence_ids))),
+            provenance=Provenance(
+                method=method,
+                confidence=confidence,
+                note=note,
+                model_id=model_id,
+                run_id=run_id if method in (Method.RUNTIME_OBSERVED, Method.MODEL_PROPOSED) else "",
+                event_ids=tuple(sorted(set(event_ids))),
+            ),
+        )
+
+    def _build_coverage(
+        self,
+        *,
+        run_id: str,
+        intents: Sequence[Intent],
+        verdicts: Sequence[AlignmentVerdict],
+        results: Sequence[CheckResult],
+        with_expectations: int,
+        checked: int,
+        events: Sequence[TraceEvent],
+        notes: tuple[str, ...],
+    ) -> Coverage:
+        counts = {verdict.value: 0 for verdict in Verdict}
+        for item in verdicts:
+            counts[item.verdict.value] += 1
+        unparseable = sum(
+            1
+            for intent in intents
+            for text in intent.invariants
+            if parse_check(text).kind is CheckKind.UNPARSEABLE
+        )
+        model_proposals = sum(
+            1 for item in verdicts if item.provenance.method is Method.MODEL_PROPOSED
+        )
+        return Coverage(
+            run_id=run_id,
+            elements_judged=len(verdicts),
+            intents_total=len(intents),
+            intents_confirmed=sum(
+                1 for intent in intents if intent.status is IntentStatus.CONFIRMED
+            ),
+            intents_proposed=sum(1 for intent in intents if intent.status is IntentStatus.PROPOSED),
+            intents_with_expectations=with_expectations,
+            intents_checked=checked,
+            checks_total=len(results),
+            checks_passed=sum(1 for result in results if result.status is CheckStatus.PASS),
+            checks_failed=sum(1 for result in results if result.status is CheckStatus.FAIL),
+            checks_unverifiable=sum(
+                1 for result in results if result.status is CheckStatus.UNVERIFIABLE
+            ),
+            checks_unparseable=unparseable,
+            verdicts=counts,
+            evidence={
+                "runtime_events": len(events),
+                "static_edges": len(self._edges),
+                "lineage_edges": len(self._lineage),
+                "static_elements": len(self._elements),
+                "model_proposals": model_proposals,
+            },
+            registry_issues=len(self._registry.issues) if self._registry else 0,
+            notes=notes,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Comparison helpers
+# ---------------------------------------------------------------------------
+
+
+def _compare(check: Check, capture: ValueCapture) -> CheckResult:
+    literal = check.literal
+    assert literal is not None
+    if check.kind is CheckKind.CAPTURE_STATUS:
+        return _compare_text(check, capture.status.value, "capture status")
+    if check.kind is CheckKind.TYPE:
+        if not capture.type_name:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=check.text,
+                observation="the capture records no type name",
+            )
+        return _compare_text(check, capture.type_name, "type")
+    if capture.status is not CaptureStatus.FULL:
+        return CheckResult(
+            status=CheckStatus.UNVERIFIABLE,
+            expectation=check.text,
+            observation=(
+                f"the value was captured {capture.status.value}"
+                + (f" ({capture.reason})" if capture.reason else "")
+                + "; a partial value cannot confirm or contradict a value invariant"
+            ),
+        )
+    text = capture.repr_text
+    if literal.kind == "int":
+        try:
+            actual = int(text.strip())
+        except ValueError:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=check.text,
+                observation=f"captured value {text!r} is not an integer; it cannot be compared to "
+                f"{literal.raw}",
+            )
+        ok = {
+            "==": actual == literal.number,
+            "!=": actual != literal.number,
+            ">": actual > literal.number,
+            ">=": actual >= literal.number,
+            "<": actual < literal.number,
+            "<=": actual <= literal.number,
+        }[check.op]
+        if ok:
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expectation=check.text,
+                observation=f"observed {actual}",
+                confidence=Confidence.CERTAIN,
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expectation=check.text,
+            observation=f"observed value {actual}, which is not {check.op} {literal.number}",
+            confidence=Confidence.CERTAIN,
+        )
+    if literal.kind == "str":
+        return _compare_text(check, _unquote_repr(text), "value")
+    return _compare_text(check, text, "value")
+
+
+def _compare_text(check: Check, actual: str, label: str) -> CheckResult:
+    literal = check.literal
+    assert literal is not None
+    if check.op == "in":
+        ok = actual in literal.members
+        rendered = "(" + ", ".join(literal.members) + ")"
+    elif check.op == "==":
+        ok = actual == literal.raw
+        rendered = literal.raw
+    elif check.op == "!=":
+        ok = actual != literal.raw
+        rendered = literal.raw
+    else:
+        return CheckResult(
+            status=CheckStatus.UNVERIFIABLE,
+            expectation=check.text,
+            observation=(
+                f"{check.op!r} is only defined for integer values; observed {label} {actual!r} "
+                f"is not an integer"
+            ),
+        )
+    if ok:
+        return CheckResult(
+            status=CheckStatus.PASS,
+            expectation=check.text,
+            observation=f"observed {label} {actual!r}",
+            confidence=Confidence.CERTAIN,
+        )
+    return CheckResult(
+        status=CheckStatus.FAIL,
+        expectation=check.text,
+        observation=f"observed {label} {actual!r}, expected {check.op} {rendered}",
+        confidence=Confidence.CERTAIN,
+    )
+
+
+def _unquote_repr(text: str) -> str:
+    stripped = text.strip()
+    if len(stripped) >= 2 and stripped[0] == stripped[-1] and stripped[0] in "\"'":
+        return stripped[1:-1]
+    return stripped
+
+
+def _feature_aliases(feature: str) -> frozenset[str]:
+    bare = feature.split(":", 1)[1] if feature.startswith("@feature:") else feature
+    return frozenset({feature, bare, feature_id(bare)})
+
+
+def _flow_events(
+    feature: str,
+    element_id: str,
+    own_events: Sequence[TraceEvent],
+    events: Sequence[TraceEvent],
+    *,
+    write: bool,
+) -> set[str]:
+    """Find runtime evidence that *element_id* read or wrote *feature*.
+
+    The contract does not fix how a FEATURE_WRITE event names its feature, so both
+    readings are accepted and reported the same way: the event may be keyed to the
+    feature's own ID (with the writing element as its caller), or keyed to the
+    writing element with the feature among its captured value keys.
+    """
+    names = _feature_aliases(feature)
+    own_ids = {event.event_id for event in own_events}
+    found: set[str] = set()
+    if write:
+        for event in events:
+            if event.kind is not EventKind.FEATURE_WRITE:
+                continue
+            if event.element_id in names and event.caller_event_id in own_ids:
+                found.add(event.event_id)
+            elif event.element_id == element_id and names & set(event.values):
+                found.add(event.event_id)
+        return found
+    for event in own_events:
+        if names & set(event.values):
+            found.add(event.event_id)
+    return found
+
+
+def _index_events(events: Sequence[TraceEvent]) -> dict[str, tuple[TraceEvent, ...]]:
+    grouped: dict[str, list[TraceEvent]] = {}
+    for event in events:
+        if not event.element_id:
+            continue
+        grouped.setdefault(event.element_id, []).append(event)
+    return {
+        key: tuple(sorted(value, key=lambda event: (event.sequence, event.event_id)))
+        for key, value in grouped.items()
+    }
+
+
+def _merge_evidence(results: Sequence[CheckResult]) -> tuple[str, ...]:
+    ids: set[str] = set()
+    for result in results:
+        ids.update(result.evidence_ids)
+    return tuple(sorted(ids))
+
+
+def _expectation_count(intent: Intent) -> int:
+    return len(intent.invariants) + len(intent.expected_reads) + len(intent.expected_writes)
+
+
+# ---------------------------------------------------------------------------
+# Artifacts
+# ---------------------------------------------------------------------------
+
+
+def intents_jsonl(intents: Sequence[Intent]) -> str:
+    """``intents.jsonl`` -- sorted, canonical, byte-identical across runs."""
+    return canonical_jsonl(intents, "id")
+
+
+def verdicts_jsonl(verdicts: Sequence[AlignmentVerdict]) -> str:
+    """``runtime/<run_id>/verdicts.jsonl``."""
+    return canonical_jsonl(verdicts, "id")
+
+
+def issues_jsonl(issues: Sequence[Unresolved]) -> str:
+    """Registry issues, in the shared ``unresolved.jsonl`` shape."""
+    return canonical_jsonl(issues, "id")
+
+
+# ==========================================================================
+# narrative.py
+# ==========================================================================
+
+"""Card 14 — the execution narrative.
+
+Renders a recorded run as an ordered, anchored account of what executed. See
+``NarrativeCard`` in ``cascade_map.contracts.interfaces`` for the binding
+contract; its docstring explains why the static structures (``OrderNode``,
+``DecisionPoint``, ``RunRecord``) are parameters here rather than fields
+denormalised onto ``TraceEvent`` -- one source of truth per fact, the same
+reason runtime evidence is an overlay rather than a second graph.
+
+## What each parameter buys this module
+
+* ``events`` (card 12): what ran, in what order, with what values, at each
+  depth.
+* ``order_nodes`` (card 3): the cascade's *structure*, not its names.
+  ``OrderNode`` carries no label field -- nothing in the data says the
+  root's first child is "ingestion" rather than "data engineering". This
+  module reads the single tree root's ``children``, in order, as the run's
+  top-level segments and assigns each element the segment that contains it,
+  but names each segment only by its position -- ``"segment 1"``,
+  ``"segment 2"``, ... -- never by a guessed cascade-stage name. A confident
+  wrong label is worse than an honest position; see ``_phase_name_for_segment``.
+  ``EventKind`` still wins for the phases it *does* let us name honestly: a
+  feature write is "feature engineering" outright, a decision or an
+  exception is its own phase -- the segment lookup only classifies plain
+  calls and returns, which carry no such signal.
+* ``decisions`` (card 3): ``DecisionPoint.condition_source``, ``reads_ids``
+  and ``outcomes`` turn a bare "branch_taken" into the condition as written,
+  the branches not taken, and (via ``is_sink``) which decision is the run's
+  final one.
+* ``run`` (card 11): ``RunRecord.blocked`` is the only place a blocked
+  side-effect attempt lives, and ``RunRecord.refused``/``refusal_reason``
+  say plainly that nothing ran at all.
+
+Nothing here infers intent or invents causation the trace does not show
+(that is card 13).
+
+## The anchoring rule, exactly
+
+* Every step carries at least one anchor (non-empty ``element_ids`` or
+  non-empty ``event_ids``), always.
+* A step backed by a ``TraceEvent`` carries ``event_ids``, always.
+* It also carries ``element_ids`` -- **unless** its event is
+  ``EventKind.UNMAPPED`` with an empty ``element_id``. That is the only
+  exemption: forcing an element ID onto an event that maps to no static
+  element would invent the very mapping card 12 could not make.
+* Steps not backed by any ``TraceEvent`` -- "not entered", "blocked",
+  "refused" -- carry ``element_ids`` and/or a checkable identifier (a
+  ``BlockedAttempt.id`` or the run ID) in place of ``event_ids``, because no
+  event exists for them to cite.
+
+Determinism: given the same events, order_nodes, decisions and run,
+``narrate()`` returns byte-identical ``NarrativeStep``s every time,
+regardless of the input sequences' own ordering.
+"""
+
+
+
+
+__all__ = ["Narrator"]
+
+
+# ---------------------------------------------------------------------------
+# Phase names.
+# ---------------------------------------------------------------------------
+
+_PHASE_FEATURE = "feature engineering"
+_PHASE_DECISION = "decision logic"
+_PHASE_FINAL = "final decision"
+_PHASE_EXCEPTION = "exception"
+_PHASE_UNMAPPED = "unmapped"
+_PHASE_BLOCKED = "blocked side effects"
+_PHASE_NOT_ENTERED = "not entered"
+_PHASE_UNCLASSIFIED = "execution"
+"""A call/return on an element no order-node segment claims. Honest fallback,
+not a guess: card 3 simply did not place this element in the cascade order."""
+
+_SEGMENT_RE = re.compile(r"^segment (\d+)$")
+"""Matches the positional segment phase names ``_phase_name_for_segment``
+produces, so ``_group_by_phase`` can order them numerically without knowing
+in advance how many segments a given order-node tree has."""
+
+# Fixed phases, in the order they are presented after the positional
+# segments. Segments always come first because they are the cascade's own
+# structural order; these five are ordered by how confidently each can be
+# named at all (justified names before honest fallbacks before anomalies).
+_FIXED_PHASE_ORDER = (
+    _PHASE_FEATURE,
+    _PHASE_DECISION,
+    _PHASE_FINAL,
+    _PHASE_UNCLASSIFIED,
+    _PHASE_EXCEPTION,
+    _PHASE_UNMAPPED,
+    _PHASE_BLOCKED,
+    _PHASE_NOT_ENTERED,
+)
+
+_LOOP_THRESHOLD = 3
+"""Minimum consecutive same-site calls before they are summarised as a loop
+rather than narrated one step per iteration."""
+
+
+def _phase_name_for_segment(index: int) -> str:
+    """Name a positional cascade segment honestly: by position, not by a
+    guessed cascade-stage label. ``OrderNode`` carries no name field, so
+    "segment 1" is the only claim this module can make and defend."""
+    return f"segment {index + 1}"
+
+
+def _segment_index_by_element(order_nodes: Sequence[OrderNode]) -> dict[str, int]:
+    """Map each element ID to the index of its top-level cascade segment.
+
+    The order-node tree's single root -- a node no other node lists as a
+    child -- is read as a SEQUENCE whose ``children``, in order, are the
+    cascade's top-level segments. Each segment's element IDs (collected by
+    walking its own children recursively) map to that segment's index.
+
+    If the graph has no single unambiguous root (empty, disconnected, or
+    more than one root-less node), each root-less node is its own segment,
+    taken in the order the caller supplied -- still deterministic, just
+    unable to claim a single sequence the way one root's ``children`` can.
+    """
+    if not order_nodes:
+        return {}
+    by_id = {node.id: node for node in order_nodes}
+    is_child: set[str] = set()
+    for node in order_nodes:
+        is_child.update(node.children)
+    roots = [node for node in order_nodes if node.id not in is_child]
+    if not roots:
+        roots = list(order_nodes)
+
+    if len(roots) == 1 and roots[0].children:
+        segment_roots = [by_id[cid] for cid in roots[0].children if cid in by_id]
+    else:
+        segment_roots = roots
+
+    mapping: dict[str, int] = {}
+    for index, seg_root in enumerate(segment_roots):
+        stack = [seg_root]
+        seen_nodes: set[str] = set()
+        while stack:
+            node = stack.pop()
+            if node.id in seen_nodes:
+                continue
+            seen_nodes.add(node.id)
+            for element_id in node.element_ids:
+                mapping.setdefault(element_id, index)
+            for child_id in node.children:
+                child = by_id.get(child_id)
+                if child is not None:
+                    stack.append(child)
+    return mapping
+
+
+def _value_clause(name: str, capture: ValueCapture) -> str:
+    """Render one captured value, calling out anything short of FULL."""
+    base = f"{name}={capture.repr_text}"
+    if capture.type_name:
+        base += f" ({capture.type_name})"
+    if capture.status is CaptureStatus.FULL:
+        return base
+    if capture.status is CaptureStatus.SUMMARIZED:
+        return f"{base} [SUMMARIZED, original_size={capture.original_size}]"
+    if capture.status is CaptureStatus.REDACTED:
+        reason = capture.reason or "no reason recorded"
+        return f"{base} [REDACTED: {reason}]"
+    reason = capture.reason or "no reason recorded"
+    return f"{name}=<dropped> [DROPPED: {reason}]"
+
+
+def _values_clause(event: TraceEvent) -> str:
+    if not event.values:
+        return ""
+    parts = [_value_clause(name, event.values[name]) for name in sorted(event.values)]
+    return "; ".join(parts)
+
+
+@dataclass(frozen=True, slots=True)
+class _Site:
+    element_id: str
+    caller_event_id: str
+    depth: int
+
+
+def _site_of(event: TraceEvent) -> _Site:
+    return _Site(event.element_id, event.caller_event_id, event.depth)
+
+
+def _subtree_end(events: list[TraceEvent], call_index: int) -> int:
+    """Index (exclusive) of the end of the subtree rooted at events[call_index].
+
+    The subtree is every following event with depth > the call's depth, plus
+    the matching RETURN at the same depth if present, up to (but not
+    including) the next event at depth <= the call's depth.
+    """
+    call = events[call_index]
+    i = call_index + 1
+    while i < len(events) and events[i].depth > call.depth:
+        i += 1
+    if (
+        i < len(events)
+        and events[i].depth == call.depth
+        and events[i].kind is EventKind.RETURN
+        and events[i].element_id == call.element_id
+        and events[i].caller_event_id == call.caller_event_id
+    ):
+        i += 1
+    return i
+
+
+class Narrator:
+    """Implements ``NarrativeCard``."""
+
+    def narrate(
+        self,
+        events: Sequence[TraceEvent],
+        order_nodes: Sequence[OrderNode],
+        decisions: Sequence[DecisionPoint],
+        run: RunRecord,
+    ) -> list[NarrativeStep]:
+        if run.refused:
+            return [self._refusal_step(run)]
+
+        ordered = sorted(events, key=lambda e: e.sequence)
+        run_id = run.run_id or (ordered[0].run_id if ordered else "")
+        self._all_events = ordered
+
+        segment_by_element = _segment_index_by_element(order_nodes)
+        decision_by_element = {d.element_id: d for d in decisions}
+
+        leaves: list[NarrativeStep] = []
+        i = 0
+        while i < len(ordered):
+            event = ordered[i]
+            if event.kind is EventKind.CALL:
+                loop_len = self._loop_run_length(ordered, i)
+                if loop_len >= _LOOP_THRESHOLD:
+                    step, consumed = self._summarise_loop(
+                        ordered, i, loop_len, run_id, segment_by_element
+                    )
+                    leaves.append(step)
+                    i += consumed
+                    continue
+            leaves.append(self._leaf_step(event, run_id, segment_by_element, decision_by_element))
+            i += 1
+
+        leaves.extend(self._not_entered_steps(order_nodes, ordered, run_id))
+        leaves.extend(self._blocked_steps(run, run_id))
+
+        return self._group_by_phase(leaves, run_id)
+
+    # -- refusal --------------------------------------------------------------
+
+    def _refusal_step(self, run: RunRecord) -> NarrativeStep:
+        reason = run.refusal_reason or "<no reason recorded>"
+        return NarrativeStep(
+            id=f"nar:{run.run_id}:refused",
+            run_id=run.run_id,
+            sequence=1,
+            phase="refused",
+            text=f"Run refused to start: {reason}.",
+            element_ids=(),
+            event_ids=(run.run_id,) if run.run_id else (),
+        )
+
+    # -- loop detection -------------------------------------------------------
+
+    def _loop_run_length(self, events: list[TraceEvent], start: int) -> int:
+        """Number of consecutive sibling-level repeats of the CALL at *start*.
+
+        Siblings share depth, element_id and caller_event_id. Nested events
+        inside each call's subtree do not interrupt the run.
+        """
+        site = _site_of(events[start])
+        count = 0
+        i = start
+        while i < len(events):
+            event = events[i]
+            if event.kind is not EventKind.CALL or _site_of(event) != site:
+                break
+            count += 1
+            i = _subtree_end(events, i)
+        return count
+
+    def _summarise_loop(
+        self,
+        events: list[TraceEvent],
+        start: int,
+        loop_len: int,
+        run_id: str,
+        segment_by_element: dict[str, int],
+    ) -> tuple[NarrativeStep, int]:
+        site = _site_of(events[start])
+        iteration_spans: list[tuple[int, int]] = []
+        i = start
+        for _ in range(loop_len):
+            end = _subtree_end(events, i)
+            iteration_spans.append((i, end))
+            i = end
+        consumed = i - start
+
+        def return_repr(span: tuple[int, int]) -> str | None:
+            lo, hi = span
+            for idx in range(lo, hi):
+                ev = events[idx]
+                if (
+                    ev.kind is EventKind.RETURN
+                    and ev.element_id == site.element_id
+                    and ev.caller_event_id == site.caller_event_id
+                    and "return_value" in ev.values
+                ):
+                    return ev.values["return_value"].repr_text
+            return None
+
+        reprs = [return_repr(span) for span in iteration_spans]
+
+        changed: list[int] = []
+        for idx in range(1, len(reprs)):
+            if reprs[idx] is not None and reprs[idx] != reprs[idx - 1]:
+                changed.append(idx)
+
+        called_out = sorted({0, loop_len - 1, *changed})
+
+        detail_parts: list[str] = []
+        for pos in called_out:
+            lo, _hi = iteration_spans[pos]
+            call_event = events[lo]
+            label = (
+                "first"
+                if pos == 0
+                else ("last" if pos == loop_len - 1 else f"iteration {pos + 1}")
+            )
+            repr_text = reprs[pos]
+            if repr_text is not None:
+                detail_parts.append(f"{label} (event {call_event.event_id}) returned {repr_text}")
+            else:
+                detail_parts.append(f"{label} (event {call_event.event_id})")
+
+        text = (
+            f"Loop: {site.element_id} was called {loop_len} times in a row "
+            f"with the same caller. " + "; ".join(detail_parts) + "."
+        )
+
+        all_event_ids: list[str] = []
+        all_element_ids: set[str] = set()
+        for lo, hi in iteration_spans:
+            for idx in range(lo, hi):
+                all_event_ids.append(events[idx].event_id)
+                all_element_ids.add(events[idx].element_id)
+
+        index = segment_by_element.get(site.element_id)
+        phase = _PHASE_UNCLASSIFIED if index is None else _phase_name_for_segment(index)
+
+        step = NarrativeStep(
+            id=f"nar:{run_id}:loop:{events[start].event_id}",
+            run_id=run_id,
+            sequence=0,
+            phase=phase,
+            text=text,
+            element_ids=tuple(sorted(all_element_ids)),
+            event_ids=tuple(all_event_ids),
+        )
+        return step, consumed
+
+    # -- leaf narration ---------------------------------------------------------
+
+    def _leaf_step(
+        self,
+        event: TraceEvent,
+        run_id: str,
+        segment_by_element: dict[str, int],
+        decision_by_element: dict[str, DecisionPoint],
+    ) -> NarrativeStep:
+        phase = self._phase_for_event(event, segment_by_element, decision_by_element)
+        text = self._render_text(event, decision_by_element)
+        if event.element_id:
+            element_ids: tuple[str, ...] = (event.element_id,)
+        elif event.kind is EventKind.UNMAPPED:
+            # The only exemption: an UNMAPPED event maps to no static
+            # element, so claiming one would invent the mapping card 12
+            # could not make. event_ids below is still a real anchor.
+            element_ids = ()
+        else:
+            # The contract does not produce this for any other EventKind;
+            # if it ever does, do not silently drop the anchor requirement.
+            raise ValueError(
+                f"event {event.event_id!r} of kind {event.kind!r} has no element_id "
+                "and is not UNMAPPED -- refusing to emit an unanchored step"
+            )
+        return NarrativeStep(
+            id=f"nar:{run_id}:{event.event_id}",
+            run_id=run_id,
+            sequence=0,
+            phase=phase,
+            text=text,
+            element_ids=element_ids,
+            event_ids=(event.event_id,),
+        )
+
+    def _phase_for_event(
+        self,
+        event: TraceEvent,
+        segment_by_element: dict[str, int],
+        decision_by_element: dict[str, DecisionPoint],
+    ) -> str:
+        if event.kind is EventKind.FEATURE_WRITE:
+            return _PHASE_FEATURE
+        if event.kind is EventKind.EXCEPTION:
+            return _PHASE_EXCEPTION
+        if event.kind is EventKind.UNMAPPED:
+            return _PHASE_UNMAPPED
+        if event.kind is EventKind.DECISION:
+            decision = decision_by_element.get(event.element_id)
+            if decision is not None and decision.is_sink:
+                return _PHASE_FINAL
+            return _PHASE_DECISION
+        index = segment_by_element.get(event.element_id)
+        if index is None:
+            return _PHASE_UNCLASSIFIED
+        return _phase_name_for_segment(index)
+
+    def _render_text(self, event: TraceEvent, decision_by_element: dict[str, DecisionPoint]) -> str:
+        values = _values_clause(event)
+        if event.kind is EventKind.CALL:
+            return f"Called {event.element_id}."
+        if event.kind is EventKind.RETURN:
+            if values:
+                return f"Returned from {event.element_id} with {values}."
+            return f"Returned from {event.element_id}."
+        if event.kind is EventKind.BRANCH:
+            branch = event.branch_taken or "<unrecorded>"
+            reads = f" (read {values})" if values else ""
+            return f"Branch at {event.element_id} took '{branch}'{reads}."
+        if event.kind is EventKind.DECISION:
+            return self._render_decision(event, decision_by_element)
+        if event.kind is EventKind.FEATURE_WRITE:
+            if values:
+                return f"Feature write at {event.element_id}: {values}."
+            return f"Feature write at {event.element_id}."
+        if event.kind is EventKind.EXCEPTION:
+            outcome = "swallowed (execution continued)" if self._swallowed(event) else "propagated"
+            detail = f" -- {values}" if values else ""
+            return f"Exception at {event.element_id}{detail} ({outcome})."
+        # UNMAPPED
+        detail = f" -- {values}" if values else ""
+        target = event.element_id or "<no static element>"
+        return f"Unmapped event at {target}{detail}: does not map to any static element."
+
+    def _render_decision(
+        self, event: TraceEvent, decision_by_element: dict[str, DecisionPoint]
+    ) -> str:
+        values = _values_clause(event)
+        branch = event.branch_taken or "<unrecorded>"
+        decision = decision_by_element.get(event.element_id)
+        if decision is None:
+            reads = f" reads {values}" if values else ""
+            return f"Decision at {event.element_id}{reads}; took branch '{branch}'."
+        condition = decision.condition_source or "<condition not recorded>"
+        if values:
+            reads = f" reads {values}"
+        elif decision.reads_ids:
+            reads = f" reads {', '.join(decision.reads_ids)}"
+        else:
+            reads = ""
+        labels = [label for label, _target in decision.outcomes]
+        not_taken = [label for label in labels if label != branch]
+        not_taken_clause = f"; did not take: {', '.join(not_taken)}" if not_taken else ""
+        return (
+            f"Decision at {event.element_id}: condition `{condition}`{reads}; "
+            f"took branch '{branch}'{not_taken_clause}."
+        )
+
+    def _swallowed(self, event: TraceEvent) -> bool:
+        following = getattr(self, "_all_events", None)
+        if following is None:
+            return False
+        for later in following:
+            if later.sequence > event.sequence and later.depth <= event.depth:
+                return True
+        return False
+
+    # -- what did not happen ---------------------------------------------------
+
+    def _not_entered_steps(
+        self, order_nodes: Sequence[OrderNode], events: list[TraceEvent], run_id: str
+    ) -> list[NarrativeStep]:
+        all_elements: set[str] = set()
+        for node in order_nodes:
+            all_elements.update(node.element_ids)
+        seen = {e.element_id for e in events if e.element_id}
+        never_entered = sorted(all_elements - seen)
+        return [
+            NarrativeStep(
+                id=f"nar:{run_id}:not_entered:{element_id}",
+                run_id=run_id,
+                sequence=0,
+                phase=_PHASE_NOT_ENTERED,
+                text=f"{element_id} was part of the cascade order but no event in this run "
+                f"observed it: it was never entered.",
+                element_ids=(element_id,),
+                event_ids=(),
+            )
+            for element_id in never_entered
+        ]
+
+    def _blocked_steps(self, run: RunRecord, run_id: str) -> list[NarrativeStep]:
+        steps = []
+        for attempt in sorted(run.blocked, key=lambda a: a.id):
+            element_ids = (attempt.element_id,) if attempt.element_id else ()
+            event_ids = (attempt.event_id,) if attempt.event_id else (attempt.id,)
+            where = f" at {attempt.element_id}" if attempt.element_id else ""
+            steps.append(
+                NarrativeStep(
+                    id=f"nar:{run_id}:blocked:{attempt.id}",
+                    run_id=run_id,
+                    sequence=0,
+                    phase=_PHASE_BLOCKED,
+                    text=f"Blocked side effect ({attempt.kind}){where}: {attempt.detail}.",
+                    element_ids=element_ids,
+                    event_ids=event_ids,
+                )
+            )
+        return steps
+
+    # -- phase grouping ---------------------------------------------------------
+
+    def _group_by_phase(self, leaves: list[NarrativeStep], run_id: str) -> list[NarrativeStep]:
+        by_phase: dict[str, list[NarrativeStep]] = {}
+        for leaf in leaves:
+            by_phase.setdefault(leaf.phase, []).append(leaf)
+
+        # Positional segments first, in numeric order -- that is the
+        # cascade's own structural order. Then the fixed phases, in the
+        # order they can be named with justification.
+        segment_phases = sorted(
+            (p for p in by_phase if _SEGMENT_RE.match(p)),
+            key=lambda p: int(_SEGMENT_RE.match(p).group(1)),  # type: ignore[union-attr]
+        )
+        fixed_phases = [p for p in _FIXED_PHASE_ORDER if p in by_phase]
+        phases_present = segment_phases + fixed_phases
+
+        out: list[NarrativeStep] = []
+        seq = 1
+        for phase in phases_present:
+            children = by_phase[phase]
+            child_ids = tuple(c.id for c in children)
+            element_ids = tuple(sorted({eid for c in children for eid in c.element_ids}))
+            event_ids = tuple(eid for c in children for eid in c.event_ids)
+            if _SEGMENT_RE.match(phase):
+                text = (
+                    f"Phase '{phase}' (a positional segment of the cascade order; "
+                    f"card 3 does not name it): {len(children)} step(s)."
+                )
+            else:
+                text = f"Phase '{phase}': {len(children)} step(s)."
+            summary = NarrativeStep(
+                id=f"nar:{run_id}:phase:{phase.replace(' ', '_')}",
+                run_id=run_id,
+                sequence=seq,
+                phase=phase,
+                text=text,
+                element_ids=element_ids,
+                event_ids=event_ids,
+                children=child_ids,
+            )
+            out.append(summary)
+            seq += 1
+            for child in children:
+                out.append(
+                    NarrativeStep(
+                        id=child.id,
+                        run_id=child.run_id,
+                        sequence=seq,
+                        phase=child.phase,
+                        text=child.text,
+                        element_ids=child.element_ids,
+                        event_ids=child.event_ids,
+                        children=child.children,
+                        model_prose=child.model_prose,
+                        model_id=child.model_id,
+                    )
+                )
+                seq += 1
+        return out
+
+
+# ==========================================================================
+# viewer/loader.py
+# ==========================================================================
+
+"""Read-only loader for CASCADE-MAP artifacts.
+
+The viewer never derives a fact. Every view is built from a direct parse of
+the JSONL/JSON files an analysis card emitted, indexed here for lookup. A
+missing file degrades the views that need it -- reported through
+:attr:`ArtifactStore.available`, never silently rendered as "nothing here".
+
+This module never reads ``target_engine/`` or ``target_versions/`` and never
+imports, execs or unpickles anything. It parses JSON text with the stdlib
+``json`` module only.
+"""
+
+
+
+# name -> filename, relative to the artifact root. Matches every top-level
+# file in ARCHITECTURE.md's output layout except the files that live under
+# runtime/<run_id>/ (run.json, events.jsonl, contradictions.jsonl,
+# nondeterminism.jsonl, mapping.json, verdicts.jsonl, narrative.jsonl):
+# those need a run_id and are loaded by RuntimeStore, phase A of this card.
+ARTIFACT_FILES: dict[str, str] = {
+    "elements": "elements.jsonl",
+    "unresolved": "unresolved.jsonl",
+    "edges": "edges.jsonl",
+    "cfg_blocks": "cfg_blocks.jsonl",
+    "cfg_edges": "cfg_edges.jsonl",
+    "order": "order.jsonl",
+    "decisions": "decisions.jsonl",
+    "reachability": "reachability.jsonl",
+    "lineage": "lineage.jsonl",
+    "barriers": "barriers.jsonl",
+    "slices": "slices.jsonl",
+    "findings": "findings.jsonl",
+    "changes": "changes.jsonl",
+    "impacts": "impacts.jsonl",
+    "records": "records.jsonl",
+    "intents": "intents.jsonl",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class LoadError:
+    """A line the loader could not parse. Reported, never dropped silently."""
+
+    file: str
+    line_number: int
+    reason: str
+
+
+def _loader__read_jsonl(path: Path, file_label: str, errors: list[LoadError]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    text = path.read_text(encoding="utf-8")
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors.append(LoadError(file=file_label, line_number=line_number, reason=str(exc)))
+            continue
+        if not isinstance(record, dict):
+            errors.append(
+                LoadError(
+                    file=file_label,
+                    line_number=line_number,
+                    reason=f"expected a JSON object, got {type(record).__name__}",
+                )
+            )
+            continue
+        records.append(record)
+    return records
+
+
+def _multi_index(records: list[dict[str, Any]], key: str) -> dict[str, list[dict[str, Any]]]:
+    index: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        value = record.get(key)
+        if isinstance(value, str) and value:
+            index[value].append(record)
+    return dict(index)
+
+
+def _multi_index_many(records: list[dict[str, Any]], key: str) -> dict[str, list[dict[str, Any]]]:
+    """Index by a field that holds a list of ids (e.g. evidence_ids)."""
+    index: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        for value in record.get(key) or ():
+            if isinstance(value, str) and value:
+                index[value].append(record)
+    return dict(index)
+
+
+def _read_json_object(
+    path: Path, file_label: str, errors: list[LoadError]
+) -> dict[str, Any] | None:
+    """Parse a single-object JSON artifact (``run.json``, ``mapping.json``).
+
+    Line number 0 marks a whole-file error, matching how ``manifest.json``
+    (not a per-line artifact either) already reports a parse failure.
+    """
+    text = path.read_text(encoding="utf-8")
+    try:
+        record = json.loads(text)
+    except json.JSONDecodeError as exc:
+        errors.append(LoadError(file=file_label, line_number=0, reason=str(exc)))
+        return None
+    if not isinstance(record, dict):
+        errors.append(
+            LoadError(
+                file=file_label,
+                line_number=0,
+                reason=f"expected a JSON object, got {type(record).__name__}",
+            )
+        )
+        return None
+    return record
+
+
+@dataclass
+class ArtifactStore:
+    """All artifacts for one ``out/<label>/`` run, loaded and indexed.
+
+    Every field is read directly off disk. Nothing here is computed by
+    analysis -- indices are lookups (by id, by path, by membership in an
+    already-emitted list), not new facts.
+    """
+
+    root: Path
+    available: dict[str, bool] = field(default_factory=dict)
+    errors: list[LoadError] = field(default_factory=list)
+    raw: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    manifest: dict[str, Any] = field(default_factory=dict)
+
+    # indices, populated by _build_indices()
+    elements_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    edges_out: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    edges_in: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    unresolved_by_path: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    unresolved_by_candidate: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    order_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    order_containing_element: dict[str, list[str]] = field(default_factory=dict)
+    order_parent: dict[str, str] = field(default_factory=dict)
+    order_roots: list[str] = field(default_factory=list)
+    decisions_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    decisions_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    decisions_reading: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    reachability_by_element: dict[str, dict[str, Any]] = field(default_factory=dict)
+    lineage_out: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    lineage_in: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    barriers_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    slices_by_root: dict[tuple[str, str], list[dict[str, Any]]] = field(default_factory=dict)
+    slices_by_member: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    findings_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    findings_by_evidence: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    changes_by_before: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    changes_by_after: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    impacts_by_change: dict[str, dict[str, Any]] = field(default_factory=dict)
+    records_by_element: dict[str, dict[str, Any]] = field(default_factory=dict)
+    intents_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+
+    @classmethod
+    def load(cls, root: str | Path) -> "ArtifactStore":
+        root = Path(root)
+        store = cls(root=root)
+        errors: list[LoadError] = []
+
+        manifest_path = root / "manifest.json"
+        if manifest_path.exists():
+            try:
+                store.manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                errors.append(LoadError(file="manifest.json", line_number=0, reason=str(exc)))
+
+        for name, filename in ARTIFACT_FILES.items():
+            path = root / filename
+            if path.exists():
+                store.available[name] = True
+                store.raw[name] = _loader__read_jsonl(path, filename, errors)
+            else:
+                store.available[name] = False
+                store.raw[name] = []
+
+        store.errors = errors
+        store._build_indices()
+        return store
+
+    # -- indexing -----------------------------------------------------
+
+    def _build_indices(self) -> None:
+        self.elements_by_id = {e["id"]: e for e in self.raw["elements"] if "id" in e}
+
+        edges = self.raw["edges"]
+        self.edges_out = _multi_index(edges, "source_id")
+        self.edges_in = _multi_index(edges, "target_id")
+
+        for u in self.raw["unresolved"]:
+            span = u.get("span") or {}
+            p = span.get("path")
+            if isinstance(p, str) and p:
+                self.unresolved_by_path.setdefault(p, []).append(u)
+            for cid in u.get("candidate_ids") or ():
+                self.unresolved_by_candidate.setdefault(cid, []).append(u)
+
+        order_nodes = self.raw["order"]
+        self.order_by_id = {n["id"]: n for n in order_nodes if "id" in n}
+        for n in order_nodes:
+            node_id = n.get("id")
+            for eid in n.get("element_ids") or ():
+                self.order_containing_element.setdefault(eid, []).append(node_id)
+            for child in n.get("children") or ():
+                self.order_parent[child] = node_id
+        all_children = set(self.order_parent.keys())
+        self.order_roots = sorted(
+            nid for nid in self.order_by_id if nid not in all_children
+        )
+
+        decisions = self.raw["decisions"]
+        self.decisions_by_id = {d["id"]: d for d in decisions if "id" in d}
+        self.decisions_by_element = _multi_index(decisions, "element_id")
+        self.decisions_reading = _multi_index_many(decisions, "reads_ids")
+
+        # One Reachability record per element (card 3). If card 3 ever emits
+        # more than one for the same element, the first in id order wins,
+        # deterministically -- the viewer does not adjudicate between them.
+        for r in self.raw["reachability"]:
+            eid = r.get("element_id")
+            if isinstance(eid, str) and eid and eid not in self.reachability_by_element:
+                self.reachability_by_element[eid] = r
+
+        lineage = self.raw["lineage"]
+        self.lineage_out = _multi_index(lineage, "source_id")
+        self.lineage_in = _multi_index(lineage, "target_id")
+
+        self.barriers_by_element = _multi_index(self.raw["barriers"], "element_id")
+
+        for s in self.raw["slices"]:
+            root_id = s.get("root_id")
+            direction = s.get("direction")
+            if root_id and direction:
+                self.slices_by_root.setdefault((root_id, direction), []).append(s)
+            for member in s.get("member_ids") or ():
+                self.slices_by_member.setdefault(member, []).append(s)
+
+        findings = self.raw["findings"]
+        self.findings_by_element = _multi_index(findings, "element_id")
+        self.findings_by_evidence = _multi_index_many(findings, "evidence_ids")
+
+        changes = self.raw["changes"]
+        self.changes_by_before = _multi_index(changes, "before_id")
+        self.changes_by_after = _multi_index(changes, "after_id")
+
+        self.impacts_by_change = {
+            i["change_id"]: i for i in self.raw["impacts"] if i.get("change_id")
+        }
+
+        self.records_by_element = {
+            r["element_id"]: r for r in self.raw["records"] if r.get("element_id")
+        }
+
+        self.intents_by_element = _multi_index(self.raw["intents"], "element_id")
+
+    # -- convenience ----------------------------------------------------
+
+    def element(self, element_id: str) -> dict[str, Any] | None:
+        return self.elements_by_id.get(element_id)
+
+    def known_ids(self) -> set[str]:
+        """Every ID this store has ever seen, from any artifact -- used to
+        check that drill-down targets actually resolve somewhere."""
+        ids: set[str] = set(self.elements_by_id)
+        ids.update(self.order_by_id)
+        ids.update(self.decisions_by_id)
+        ids.update(self.impacts_by_change)
+        for name in ("unresolved", "cfg_blocks", "cfg_edges", "reachability", "lineage",
+                      "barriers", "slices", "findings", "changes", "records", "intents"):
+            for record in self.raw.get(name, ()):
+                rid = record.get("id")
+                if isinstance(rid, str):
+                    ids.add(rid)
+        return ids
+
+
+# ---------------------------------------------------------------------------
+# Phase A -- the runtime overlay, keyed by run_id
+# ---------------------------------------------------------------------------
+
+# Single-object JSON artifacts under runtime/<run_id>/.
+RUNTIME_JSON_FILES: dict[str, str] = {
+    "run": "run.json",
+    "mapping": "mapping.json",
+}
+
+# JSONL artifacts under runtime/<run_id>/.
+RUNTIME_JSONL_FILES: dict[str, str] = {
+    "events": "events.jsonl",
+    "contradictions": "contradictions.jsonl",
+    "nondeterminism": "nondeterminism.jsonl",
+    "verdicts": "verdicts.jsonl",
+    "narrative": "narrative.jsonl",
+}
+
+
+def list_runs(root: str | Path) -> list[str]:
+    """Every run_id with a directory under ``root/runtime/``, sorted.
+
+    A directory listing only -- it does not validate contents or pick a
+    "latest" run (the contract carries no reliable, non-clock signal for
+    that; ``run_meta.json`` is explicitly not byte-compared). The reader --
+    a human or card 10 -- picks which run to load with
+    :meth:`RuntimeStore.load`.
+    """
+    runtime_dir = Path(root) / "runtime"
+    if not runtime_dir.is_dir():
+        return []
+    return sorted(p.name for p in runtime_dir.iterdir() if p.is_dir())
+
+
+@dataclass
+class RuntimeStore:
+    """One run's overlay -- ``runtime/<run_id>/*``, loaded and indexed.
+
+    Mirrors :class:`ArtifactStore` exactly: every field is read directly
+    off disk, every index is a lookup over records already emitted by
+    cards 11-14 (never a new fact), a missing file degrades
+    (``available[name] = False``) rather than raising, and a malformed
+    line is reported as a :class:`LoadError`, never silently dropped.
+    """
+
+    root: Path
+    run_id: str
+    available: dict[str, bool] = field(default_factory=dict)
+    errors: list[LoadError] = field(default_factory=list)
+    raw: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    run_record: dict[str, Any] | None = None
+    mapping_report: dict[str, Any] | None = None
+
+    events_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    events_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    events_ordered: list[dict[str, Any]] = field(default_factory=list)
+    unmapped_events: list[dict[str, Any]] = field(default_factory=list)
+    contradictions_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    nondeterminism_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    verdicts_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    verdicts_by_intent: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    narrative_steps: list[dict[str, Any]] = field(default_factory=list)
+    narrative_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    narrative_by_event: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+
+    @classmethod
+    def load(cls, root: str | Path, run_id: str) -> "RuntimeStore":
+        root = Path(root)
+        rstore = cls(root=root, run_id=run_id)
+        rundir = root / "runtime" / run_id
+        errors: list[LoadError] = []
+
+        for name, filename in RUNTIME_JSON_FILES.items():
+            path = rundir / filename
+            label = f"runtime/{run_id}/{filename}"
+            if path.exists():
+                rstore.available[name] = True
+                obj = _read_json_object(path, label, errors)
+                if name == "run":
+                    rstore.run_record = obj
+                else:
+                    rstore.mapping_report = obj
+            else:
+                rstore.available[name] = False
+
+        for name, filename in RUNTIME_JSONL_FILES.items():
+            path = rundir / filename
+            label = f"runtime/{run_id}/{filename}"
+            if path.exists():
+                rstore.available[name] = True
+                rstore.raw[name] = _loader__read_jsonl(path, label, errors)
+            else:
+                rstore.available[name] = False
+                rstore.raw[name] = []
+
+        rstore.errors = errors
+        rstore._build_indices()
+        return rstore
+
+    def _build_indices(self) -> None:
+        events = self.raw.get("events", [])
+        self.events_by_id = {e["event_id"]: e for e in events if "event_id" in e}
+        self.events_by_element = _multi_index(events, "element_id")
+        # Observed execution order is sequence, not event_id -- the two are
+        # expected to agree (card 12 mints event_id in trace order) but
+        # sequence is the field the contract defines as the order.
+        # Filtered to records that have an event_id, matching events_by_id --
+        # a record missing its required id cannot be looked up by one, so it
+        # is excluded here the same way a nameless element is excluded from
+        # ArtifactStore.elements_by_id (never from .raw, which keeps it).
+        self.events_ordered = sorted(
+            (e for e in events if "event_id" in e),
+            key=lambda e: (e.get("sequence", 0), e.get("event_id", "")),
+        )
+        self.unmapped_events = [e for e in events if e.get("kind") == "UNMAPPED"]
+
+        self.contradictions_by_element = _multi_index(
+            self.raw.get("contradictions", []), "element_id"
+        )
+        self.nondeterminism_by_element = _multi_index(
+            self.raw.get("nondeterminism", []), "element_id"
+        )
+
+        verdicts = self.raw.get("verdicts", [])
+        self.verdicts_by_element = _multi_index(verdicts, "element_id")
+        self.verdicts_by_intent = _multi_index(verdicts, "intent_id")
+
+        narrative = self.raw.get("narrative", [])
+        self.narrative_steps = sorted(
+            narrative, key=lambda s: (s.get("sequence", 0), s.get("id", ""))
+        )
+        self.narrative_by_element = _multi_index_many(narrative, "element_ids")
+        self.narrative_by_event = _multi_index_many(narrative, "event_ids")
+
+    def known_ids(self) -> set[str]:
+        """Every ID this run's overlay has ever seen -- used the same way
+        :meth:`ArtifactStore.known_ids` is, to check drill-down targets."""
+        ids: set[str] = set(self.events_by_id)
+        for name in ("contradictions", "nondeterminism", "verdicts", "narrative"):
+            for record in self.raw.get(name, ()):
+                rid = record.get("id")
+                if isinstance(rid, str):
+                    ids.add(rid)
+        return ids
+
+
+# ==========================================================================
+# viewer/views.py
+# ==========================================================================
+
+"""Read-only views over a loaded :class:`ArtifactStore`.
+
+Every function here renders facts that already exist in the artifacts. None
+of them compute a new edge, slice, confidence or verdict -- that would be
+analysis logic living in the viewer, which is a defect: it creates a second
+source of truth that will drift from cards 1-16.
+
+Every view returns a plain, JSON-serializable structure. Every element,
+order node, decision, finding, change and doc record it names carries its
+own ``id`` (or ``element_id``), so any caller can pass that id to
+:func:`element_detail` and land on the same hub every other view would land
+on -- that reachability is the point of the viewer.
+"""
+
+
+
+
+
+# Confidence declares CERTAIN first, UNKNOWN last. Rank 0 is the strongest,
+# read directly off the enum so this cannot drift from the contract.
+_CONFIDENCE_RANK: dict[str, int] = {c.value: i for i, c in enumerate(Confidence)}
+_WORST_RANK = len(_CONFIDENCE_RANK)
+
+
+def _rank(confidence: str | None) -> int:
+    return _CONFIDENCE_RANK.get(confidence or "", _WORST_RANK)
+
+
+def _meets_min_confidence(confidence: str | None, minimum: str | None) -> bool:
+    if minimum is None:
+        return True
+    return _rank(confidence) <= _rank(minimum)
+
+
+def _confidence_of(record: dict[str, Any]) -> str | None:
+    prov = record.get("provenance") or {}
+    return prov.get("confidence")
+
+
+def _method_of(record: dict[str, Any]) -> str | None:
+    prov = record.get("provenance") or {}
+    return prov.get("method")
+
+
+# ---------------------------------------------------------------------------
+# Element browser
+# ---------------------------------------------------------------------------
+
+#: Named, precomputed signals a caller may filter the browser by. Each is a
+#: direct membership check against a fact some other card already emitted --
+#: never a synthesized verdict. `reaches_sink` / `no_sink_path` /
+#: `reachability_unknown` read the canonical `Reachability` record card 3
+#: emits (`reachability.jsonl`) when it is available; see
+#: :func:`element_reachability`. `reads_in_decision` and
+#: `decision_irrelevant_finding` are unrelated, already-direct facts
+#: (DecisionPoint.reads_ids membership and a Finding.kind, respectively).
+DECISION_SIGNALS = (
+    "reads_in_decision",  # id appears in some DecisionPoint.reads_ids
+    "reaches_sink",  # Reachability.state == REACHES_SINK (or its fallback)
+    "no_sink_path",  # Reachability.state == NO_SINK_PATH (canonical only)
+    "reachability_unknown",  # Reachability.state == UNKNOWN (or its fallback)
+    "decision_irrelevant_finding",  # a DECISION_IRRELEVANT finding names it
+)
+
+#: Shown next to any reachability answer that did not come from
+#: reachability.jsonl, so the owner always knows which route produced it.
+_REACHABILITY_FALLBACK_NOTE = (
+    "reachability.jsonl not available: approximated from slices.jsonl / "
+    "findings.jsonl, which cannot see the UNKNOWN or bias-applied cases the "
+    "canonical Reachability record captures explicitly"
+)
+
+
+def element_reachability(store: ArtifactStore, element_id: str) -> dict[str, Any]:
+    """The canonical `Reachability` record for *element_id*, or a clearly
+    labelled fallback approximation when card 3 has not emitted one.
+
+    This is the single place the viewer answers "does this element reach a
+    decision sink". Every other view and the HTML renderer call this rather
+    than deriving their own answer, so there is exactly one route to the
+    fact, not two that can quietly disagree.
+
+    A fallback can only ever claim REACHES_SINK or UNKNOWN -- never
+    NO_SINK_PATH, which only the canonical record is entitled to assert: the
+    viewer has no way to prove the absence of a path on its own.
+    """
+    if store.available.get("reachability"):
+        record = store.reachability_by_element.get(element_id)
+        if record is None:
+            return {
+                "state": "UNKNOWN",
+                "source": "reachability.jsonl",
+                "reason": "reachability.jsonl is available but has no record for this element",
+                "sink_ids": [],
+                "path_ids": [],
+                "confidence": None,
+            }
+        return {
+            "state": record.get("state"),
+            "source": "reachability.jsonl",
+            "reason": record.get("reason", ""),
+            "sink_ids": list(record.get("sink_ids") or ()),
+            "path_ids": list(record.get("path_ids") or ()),
+            "confidence": _confidence_of(record),
+        }
+
+    reaches = any(
+        s.get("reaches_sink_ids") for s in store.slices_by_root.get((element_id, "forward"), ())
+    )
+    if reaches:
+        return {
+            "state": "REACHES_SINK",
+            "source": "fallback:slices.jsonl",
+            "reason": _REACHABILITY_FALLBACK_NOTE,
+            "sink_ids": [],
+            "path_ids": [],
+            "confidence": None,
+        }
+    return {
+        "state": "UNKNOWN",
+        "source": "fallback:no_data",
+        "reason": _REACHABILITY_FALLBACK_NOTE,
+        "sink_ids": [],
+        "path_ids": [],
+        "confidence": None,
+    }
+
+
+def _has_decision_signal(store: ArtifactStore, element_id: str, signal: str) -> bool:
+    if signal == "reads_in_decision":
+        return element_id in store.decisions_reading
+    if signal == "decision_irrelevant_finding":
+        return any(
+            f.get("kind") == "DECISION_IRRELEVANT"
+            for f in store.findings_by_element.get(element_id, ())
+        )
+    if signal in ("reaches_sink", "no_sink_path", "reachability_unknown"):
+        wanted = {
+            "reaches_sink": "REACHES_SINK",
+            "no_sink_path": "NO_SINK_PATH",
+            "reachability_unknown": "UNKNOWN",
+        }[signal]
+        return element_reachability(store, element_id)["state"] == wanted
+    raise ValueError(f"unknown decision signal: {signal!r}")
+
+
+def element_summary(element: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": element.get("id"),
+        "kind": element.get("kind"),
+        "name": element.get("name"),
+        "qualname": element.get("qualname"),
+        "module": element.get("module"),
+        "confidence": _confidence_of(element),
+        "method": _method_of(element),
+        "span": element.get("span"),
+    }
+
+
+def browser_view(
+    store: ArtifactStore,
+    *,
+    kind: str | None = None,
+    module: str | None = None,
+    min_confidence: str | None = None,
+    query: str | None = None,
+    decision_signal: str | None = None,
+) -> list[dict[str, Any]]:
+    """The element browser: searchable and filterable over ``elements.jsonl``."""
+    query_lower = query.lower() if query else None
+    results: list[dict[str, Any]] = []
+    for element in store.raw["elements"]:
+        if kind is not None and element.get("kind") != kind:
+            continue
+        if module is not None:
+            m = element.get("module") or ""
+            if m != module and not m.startswith(module + "."):
+                continue
+        if not _meets_min_confidence(_confidence_of(element), min_confidence):
+            continue
+        if query_lower is not None:
+            haystack = " ".join(
+                str(element.get(f, "")) for f in ("id", "name", "qualname", "module", "docstring")
+            ).lower()
+            if query_lower not in haystack:
+                continue
+        if decision_signal is not None:
+            if not _has_decision_signal(store, element.get("id", ""), decision_signal):
+                continue
+        results.append(element_summary(element))
+    results.sort(key=lambda r: r["id"] or "")
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Cascade order -- branches, merges, loops and unordered sets, never flattened
+# ---------------------------------------------------------------------------
+
+
+def _order_node_view(store: ArtifactStore, node_id: str, seen: set[str]) -> dict[str, Any]:
+    node = store.order_by_id.get(node_id)
+    if node is None:
+        return {"id": node_id, "missing": True}
+    if node_id in seen:
+        # A CYCLE node may legitimately name itself in its own children chain
+        # via a back edge; stop recursing rather than looping forever, and
+        # say so instead of silently truncating.
+        return {"id": node_id, "kind": node.get("kind"), "cycle_back_reference": True}
+    seen = seen | {node_id}
+    decisions = [
+        d for eid in node.get("element_ids") or () for d in store.decisions_by_element.get(eid, ())
+    ]
+    return {
+        "id": node_id,
+        "kind": node.get("kind"),
+        "element_ids": list(node.get("element_ids") or ()),
+        "confidence": _confidence_of(node) if node.get("provenance") else None,
+        "decision_ids": sorted({d["id"] for d in decisions if "id" in d}),
+        "children": [_order_node_view(store, c, seen) for c in node.get("children") or ()],
+    }
+
+
+def cascade_view(store: ArtifactStore) -> list[dict[str, Any]]:
+    """The cascade in execution order, as the tree ``order.jsonl`` describes.
+
+    ``OrderKind`` is rendered verbatim -- BRANCH, MERGE, LOOP, UNORDERED and
+    CYCLE nodes keep their shape. Flattening any of them into a SEQUENCE
+    here would be exactly the defect the contract calls out.
+    """
+    return [_order_node_view(store, root_id, set()) for root_id in store.order_roots]
+
+
+def decision_point_view(store: ArtifactStore, decision_id: str) -> dict[str, Any] | None:
+    d = store.decisions_by_id.get(decision_id)
+    if d is None:
+        return None
+    return {
+        "id": d["id"],
+        "element_id": d.get("element_id"),
+        "condition_source": d.get("condition_source"),
+        "reads_ids": list(d.get("reads_ids") or ()),
+        "outcomes": [list(o) for o in d.get("outcomes") or ()],
+        "is_sink": d.get("is_sink", False),
+        "confidence": _confidence_of(d) if d.get("provenance") else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Call graph navigation
+# ---------------------------------------------------------------------------
+
+
+def _edge_view(edge: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": edge.get("id"),
+        "kind": edge.get("kind"),
+        "source_id": edge.get("source_id"),
+        "target_id": edge.get("target_id"),
+        "method": _method_of(edge),
+        "confidence": _confidence_of(edge),
+        "call_site": edge.get("call_site"),
+    }
+
+
+def _unresolved_view(u: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": u.get("id"),
+        "reason": u.get("reason"),
+        "span": u.get("span"),
+        "description": u.get("description"),
+        "attempted": list(u.get("attempted") or ()),
+        "candidate_ids": list(u.get("candidate_ids") or ()),
+        "candidate_confidence": u.get("candidate_confidence"),
+    }
+
+
+def callgraph_view(store: ArtifactStore, *, root_id: str | None = None) -> dict[str, Any]:
+    """Edges with method and confidence, and unresolved call sites with their
+    candidate sets. Filtered to one element's neighbourhood when *root_id* is
+    given; otherwise the whole graph."""
+    if root_id is None:
+        edges = store.raw["edges"]
+        unresolved = store.raw["unresolved"]
+    else:
+        edges = store.edges_out.get(root_id, []) + store.edges_in.get(root_id, [])
+        element = store.elements_by_id.get(root_id) or {}
+        path = ((element.get("span") or {}).get("path"))
+        unresolved = list(store.unresolved_by_candidate.get(root_id, []))
+        if path:
+            for u in store.unresolved_by_path.get(path, []):
+                if u not in unresolved:
+                    unresolved.append(u)
+    edges_sorted = sorted((_edge_view(e) for e in edges), key=lambda e: e["id"] or "")
+    unresolved_sorted = sorted((_unresolved_view(u) for u in unresolved), key=lambda u: u["id"] or "")
+    return {"root_id": root_id, "edges": edges_sorted, "unresolved": unresolved_sorted}
+
+
+# ---------------------------------------------------------------------------
+# Lineage: backward / forward slices
+# ---------------------------------------------------------------------------
+
+
+def lineage_view(store: ArtifactStore, root_id: str, direction: str) -> dict[str, Any]:
+    """A precomputed :class:`Slice` for *root_id* / *direction*, verbatim.
+
+    The viewer does not walk lineage edges itself -- card 4 already computed
+    the slice with its own evidence and confidence. If no slice was emitted
+    for this root and direction, that is reported as a gap, not silently
+    filled in by a BFS here.
+    """
+    matches = store.slices_by_root.get((root_id, direction), [])
+    if not matches:
+        return {
+            "root_id": root_id,
+            "direction": direction,
+            "found": False,
+            "note": "no precomputed slice for this root/direction in slices.jsonl",
+        }
+    if len(matches) > 1:
+        note = f"{len(matches)} slices found for this root/direction; all are shown"
+    else:
+        note = ""
+    return {
+        "root_id": root_id,
+        "direction": direction,
+        "found": True,
+        "note": note,
+        "slices": [
+            {
+                "id": s["id"],
+                "member_ids": list(s.get("member_ids") or ()),
+                "edge_ids": list(s.get("edge_ids") or ()),
+                "barrier_ids": list(s.get("barrier_ids") or ()),
+                "reaches_sink_ids": list(s.get("reaches_sink_ids") or ()),
+                "confidence": s.get("confidence"),
+            }
+            for s in matches
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Findings with evidence chains
+# ---------------------------------------------------------------------------
+
+
+def findings_view(store: ArtifactStore, *, kind: str | None = None) -> list[dict[str, Any]]:
+    findings = store.raw["findings"]
+    if kind is not None:
+        findings = [f for f in findings if f.get("kind") == kind]
+    out = []
+    for f in findings:
+        out.append(
+            {
+                "id": f.get("id"),
+                "kind": f.get("kind"),
+                "element_id": f.get("element_id"),
+                "span": f.get("span"),
+                "summary": f.get("summary"),
+                "hint": f.get("hint"),
+                "evidence_ids": list(f.get("evidence_ids") or ()),
+                "confidence": _confidence_of(f),
+                "method": _method_of(f),
+            }
+        )
+    out.sort(key=lambda f: f["id"] or "")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Version diff, ranked by decision impact
+# ---------------------------------------------------------------------------
+
+
+def diff_view(store: ArtifactStore) -> list[dict[str, Any]]:
+    """``changes.jsonl`` joined to ``impacts.jsonl``, ordered by rank.
+
+    ``Impact.rank`` is card 6's own ranking by decision impact; the viewer
+    sorts by that field verbatim rather than recomputing an order.
+    """
+    changes_by_id = {c["id"]: c for c in store.raw["changes"] if "id" in c}
+    rows: list[dict[str, Any]] = []
+    for impact in store.raw["impacts"]:
+        change = changes_by_id.get(impact.get("change_id", ""))
+        rows.append(
+            {
+                "change_id": impact.get("change_id"),
+                "rank": impact.get("rank"),
+                "change_kind": change.get("kind") if change else None,
+                "before_id": change.get("before_id") if change else None,
+                "after_id": change.get("after_id") if change else None,
+                "decision_paths_changed": impact.get("decision_paths_changed"),
+                "affected_ids": list(impact.get("affected_ids") or ()),
+                "features_changed": list(impact.get("features_changed") or ()),
+                "reachability_flipped": list(impact.get("reachability_flipped") or ()),
+                "findings_added": list(impact.get("findings_added") or ()),
+                "findings_removed": list(impact.get("findings_removed") or ()),
+            }
+        )
+    changed_ids_with_impact = {r["change_id"] for r in rows}
+    for change in store.raw["changes"]:
+        if change.get("id") not in changed_ids_with_impact:
+            rows.append(
+                {
+                    "change_id": change.get("id"),
+                    "rank": None,
+                    "change_kind": change.get("kind"),
+                    "before_id": change.get("before_id"),
+                    "after_id": change.get("after_id"),
+                    "decision_paths_changed": None,
+                    "affected_ids": [],
+                    "features_changed": [],
+                    "reachability_flipped": [],
+                    "findings_added": [],
+                    "findings_removed": [],
+                    "note": "no impact record emitted for this change",
+                }
+            )
+    # Unranked (no impact record) sorts after ranked changes; ranked changes
+    # sort by rank ascending -- rank 1 is the highest decision impact.
+    rows.sort(key=lambda r: (r["rank"] is None, r["rank"] if r["rank"] is not None else 0, r["change_id"] or ""))
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Documentation record: facts vs model-written prose, kept visibly separate
+# ---------------------------------------------------------------------------
+
+
+def doc_record_view(store: ArtifactStore, element_id: str) -> dict[str, Any] | None:
+    record = store.records_by_element.get(element_id)
+    if record is None:
+        return None
+    return {
+        "id": record.get("id"),
+        "element_id": record.get("element_id"),
+        "facts": {
+            "identity": record.get("identity") or {},
+            "cascade_position": record.get("cascade_position") or {},
+            "data_role": record.get("data_role") or {},
+            "decision_relevance": record.get("decision_relevance") or {},
+            "runtime": record.get("runtime") or {},
+        },
+        "finding_ids": list(record.get("finding_ids") or ()),
+        "change_ids": list(record.get("change_ids") or ()),
+        "confidence": _confidence_of(record),
+        "method": _method_of(record),
+        "model_authored": {
+            "prose": record.get("model_prose") or "",
+            "model_id": record.get("model_id") or "",
+            "is_present": bool(record.get("model_prose")),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Element detail: the drill-down hub every view lands on
+# ---------------------------------------------------------------------------
+
+
+def _order_ancestors(store: ArtifactStore, node_id: str) -> list[str]:
+    chain: list[str] = []
+    current = store.order_parent.get(node_id)
+    seen = {node_id}
+    while current is not None and current not in seen:
+        chain.append(current)
+        seen.add(current)
+        current = store.order_parent.get(current)
+    return chain
+
+
+def element_detail(store: ArtifactStore, element_id: str) -> dict[str, Any]:
+    """Everything the artifacts say about one element ID.
+
+    Every other view names element IDs; this is where each of them resolves,
+    so drill-down is total: any ID mentioned anywhere is reachable here.
+    """
+    element = store.elements_by_id.get(element_id)
+    order_node_ids = store.order_containing_element.get(element_id, [])
+    slices_rooted = {
+        direction: [
+            s["id"] for s in store.slices_by_root.get((element_id, direction), ())
+        ]
+        for direction in ("backward", "forward")
+    }
+    return {
+        "id": element_id,
+        "found": element is not None,
+        "element": element_summary(element) if element else None,
+        "reachability": element_reachability(store, element_id),
+        "outgoing_edges": sorted(
+            (_edge_view(e) for e in store.edges_out.get(element_id, [])),
+            key=lambda e: e["id"] or "",
+        ),
+        "incoming_edges": sorted(
+            (_edge_view(e) for e in store.edges_in.get(element_id, [])),
+            key=lambda e: e["id"] or "",
+        ),
+        "unresolved_as_candidate": sorted(
+            (_unresolved_view(u) for u in store.unresolved_by_candidate.get(element_id, [])),
+            key=lambda u: u["id"] or "",
+        ),
+        "order_node_ids": order_node_ids,
+        "order_ancestor_ids": {
+            nid: _order_ancestors(store, nid) for nid in order_node_ids
+        },
+        "decision_as_condition": sorted(
+            d["id"] for d in store.decisions_by_element.get(element_id, []) if "id" in d
+        ),
+        "decision_reads_this": sorted(
+            d["id"] for d in store.decisions_reading.get(element_id, []) if "id" in d
+        ),
+        "lineage_out": sorted(
+            store.lineage_out.get(element_id, []), key=lambda e: e.get("id") or ""
+        ),
+        "lineage_in": sorted(
+            store.lineage_in.get(element_id, []), key=lambda e: e.get("id") or ""
+        ),
+        "barrier_ids": sorted(
+            b["id"] for b in store.barriers_by_element.get(element_id, []) if "id" in b
+        ),
+        "slice_ids_rooted_here": slices_rooted,
+        "slice_ids_as_member": sorted(
+            {s["id"] for s in store.slices_by_member.get(element_id, []) if "id" in s}
+        ),
+        "finding_ids": sorted(
+            f["id"] for f in store.findings_by_element.get(element_id, []) if "id" in f
+        ),
+        "finding_ids_as_evidence": sorted(
+            {f["id"] for f in store.findings_by_evidence.get(element_id, []) if "id" in f}
+        ),
+        "change_ids_before": sorted(
+            c["id"] for c in store.changes_by_before.get(element_id, []) if "id" in c
+        ),
+        "change_ids_after": sorted(
+            c["id"] for c in store.changes_by_after.get(element_id, []) if "id" in c
+        ),
+        "doc_record": doc_record_view(store, element_id),
+        "intent_ids": sorted(
+            i["id"] for i in store.intents_by_element.get(element_id, []) if "id" in i
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase A -- the runtime overlay
+#
+# Every function below renders a run's already-emitted records verbatim.
+# Nothing here traces, aligns, narrates or judges mapping quality -- that is
+# cards 11-14's job. The one arithmetic exception is the mapping rate, which
+# MappingReport carries as two counts rather than a ratio; dividing them for
+# display is presentation of a fact card 12 already computed, not a new one.
+# ---------------------------------------------------------------------------
+
+
+#: `ScenarioFailure.stage`/`exception_type` -> the sentence that sends the
+#: owner to the right place. A lookup over two already-emitted fields, not a
+#: new fact about the target -- the same discipline as `_reach_badge`'s
+#: fallback labelling in phase B. See `ScenarioFailure`'s docstring: the
+#: scenario raising is not the same event as the target misbehaving, and an
+#: owner who cannot tell them apart goes looking for a bug that is not there.
+def _scenario_failure_explanation(stage: str | None, exception_type: str | None) -> str:
+    if stage == "import":
+        return (
+            "the module could not be imported: either target_root points at the "
+            "wrong directory, or the target cannot import itself. The traceback "
+            "below says which."
+        )
+    if stage == "call" and exception_type == "AttributeError":
+        return (
+            "the module imported fine, but the named function does not exist. "
+            "This is a typo in the scenario file, not a fact about the target engine."
+        )
+    if stage == "call":
+        return (
+            "the target engine itself raised during the scenario. This is the "
+            "target's own exception, not a tool failure."
+        )
+    return f"unrecognised failure stage {stage!r} -- shown verbatim below."
+
+
+def _scenario_failure_view(run: dict[str, Any]) -> dict[str, Any] | None:
+    sf = run.get("scenario_failure")
+    if not sf:
+        return None
+    return {
+        "stage": sf.get("stage", ""),
+        "exception_type": sf.get("exception_type", ""),
+        "message": sf.get("message", ""),
+        "traceback": sf.get("traceback", ""),
+        "explanation": _scenario_failure_explanation(sf.get("stage"), sf.get("exception_type")),
+    }
+
+
+#: `observer_failure.stage` ("start"/"stop") -> the sentence distinguishing
+#: the two, because they are not equally bad: a `start` failure means the
+#: run was never watched at all, so a zero-event report means nothing;
+#: `stop` means most of the run was probably observed and only the tail may
+#: be missing. Kept as a separate function from `_scenario_failure_explanation`
+#: on purpose -- these two facts must never be collapsed into one message.
+def _observer_failure_explanation(stage: str | None) -> str:
+    if stage == "start":
+        return (
+            "the observer failed before the run began: nothing was watched. A "
+            "report of zero events here means nothing about the target -- this "
+            "is a bug in the tool, not the target."
+        )
+    if stage == "stop":
+        return (
+            "the observer failed while finishing the run: most of it was "
+            "probably observed, but the tail may be missing. This is a bug in "
+            "the tool, not the target."
+        )
+    return f"unrecognised observer failure stage {stage!r} -- shown verbatim below."
+
+
+def _observer_failure_view(run: dict[str, Any]) -> dict[str, Any] | None:
+    of = run.get("observer_failure")
+    if not of:
+        return None
+    return {
+        "stage": of.get("stage", ""),
+        "exception_type": of.get("exception_type", ""),
+        "message": of.get("message", ""),
+        "traceback": of.get("traceback", ""),
+        "explanation": _observer_failure_explanation(of.get("stage")),
+    }
+
+
+def runtime_overview_view(rstore: RuntimeStore) -> dict[str, Any]:
+    """`RunRecord` verbatim. `observer_failure` and `scenario_failure` come
+    first in the returned mapping, ahead of `unguaranteed` / `blocked` --
+    they are opposite findings (the target misbehaved vs. nobody was
+    watching) and both must be visible before anything that assumes the run
+    was observed as intended. Never collapsed into one message: if both are
+    set, both are returned, distinctly."""
+    run = rstore.run_record
+    if run is None:
+        return {"available": False, "run_id": rstore.run_id}
+    return {
+        "available": True,
+        "run_id": run.get("run_id", rstore.run_id),
+        "observer_failure": _observer_failure_view(run),
+        "scenario_failure": _scenario_failure_view(run),
+        "unguaranteed": list(run.get("unguaranteed") or ()),
+        "blocked": [dict(b) for b in run.get("blocked") or ()],
+        "refused": run.get("refused", False),
+        "refusal_reason": run.get("refusal_reason", ""),
+        "scenario": run.get("scenario", ""),
+        "interpreter": run.get("interpreter", ""),
+        "controls_active": dict(run.get("controls_active") or {}),
+        "sandbox_dir": run.get("sandbox_dir", ""),
+        "graph_hash": run.get("graph_hash", ""),
+        "target_hashes": dict(run.get("target_hashes") or {}),
+    }
+
+
+def mapping_view(rstore: RuntimeStore) -> dict[str, Any]:
+    """`MappingReport` verbatim, plus the rate computed from its own two
+    counts (``mapped_events / total_events``) -- never derived elsewhere."""
+    m = rstore.mapping_report
+    if m is None:
+        return {"available": False, "run_id": rstore.run_id}
+    total = m.get("total_events", 0) or 0
+    mapped = m.get("mapped_events", 0) or 0
+    rate = (mapped / total) if total else None
+    return {
+        "available": True,
+        "run_id": m.get("run_id", rstore.run_id),
+        "total_events": total,
+        "mapped_events": mapped,
+        "unmapped_events": m.get("unmapped_events", 0),
+        "unmapped_by_reason": dict(m.get("unmapped_by_reason") or {}),
+        "mapping_rate": rate,
+    }
+
+
+def _event_summary(rstore: RuntimeStore, event: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "event_id": event.get("event_id"),
+        "run_id": event.get("run_id") or rstore.run_id,
+        "kind": event.get("kind"),
+        "element_id": event.get("element_id"),
+        "sequence": event.get("sequence"),
+        "depth": event.get("depth"),
+        "caller_event_id": event.get("caller_event_id", ""),
+        "branch_taken": event.get("branch_taken", ""),
+    }
+
+
+def observed_order_view(rstore: RuntimeStore) -> list[dict[str, Any]]:
+    """Events in observed execution order (`TraceEvent.sequence`) -- the
+    runtime counterpart to :func:`cascade_view`'s static order, rendered
+    separately rather than merged into it."""
+    return [_event_summary(rstore, e) for e in rstore.events_ordered]
+
+
+def event_detail_view(rstore: RuntimeStore, event_id: str) -> dict[str, Any] | None:
+    """One event's captured values, each with its `CaptureStatus` and
+    `original_size` visible -- a summarised/redacted/dropped value must
+    never read as a complete one."""
+    event = rstore.events_by_id.get(event_id)
+    if event is None:
+        return None
+    values: dict[str, dict[str, Any]] = {}
+    for name, vc in (event.get("values") or {}).items():
+        values[name] = {
+            "status": vc.get("status"),
+            "repr_text": vc.get("repr_text", ""),
+            "type_name": vc.get("type_name", ""),
+            "shape": vc.get("shape", ""),
+            "original_size": vc.get("original_size", 0),
+            "reason": vc.get("reason", ""),
+        }
+    prov = event.get("provenance") or {}
+    detail = _event_summary(rstore, event)
+    detail["values"] = values
+    detail["method"] = prov.get("method")
+    detail["confidence"] = prov.get("confidence")
+    detail["note"] = prov.get("note", "")
+    detail["span"] = prov.get("span")
+    return detail
+
+
+def unmapped_events_view(rstore: RuntimeStore) -> list[dict[str, Any]]:
+    """`UNMAPPED` events with their location and reason -- read from
+    `Provenance.span` / `Provenance.note`, the fields card 12's
+    `Contradiction` docstring identifies as where a runtime record must
+    carry its evidence. Never dropped: these mark where Mode B was wrong."""
+    out = []
+    for event in rstore.unmapped_events:
+        prov = event.get("provenance") or {}
+        row = _event_summary(rstore, event)
+        row["location"] = prov.get("span")
+        row["reason"] = prov.get("note", "")
+        out.append(row)
+    out.sort(key=lambda r: r["event_id"] or "")
+    return out
+
+
+def nondeterminism_view(rstore: RuntimeStore) -> list[dict[str, Any]]:
+    out = []
+    for n in rstore.raw.get("nondeterminism", []):
+        prov = n.get("provenance") or {}
+        out.append(
+            {
+                "id": n.get("id"),
+                "element_id": n.get("element_id"),
+                "kind": n.get("kind"),
+                "detail": n.get("detail"),
+                "run_id": prov.get("run_id") or rstore.run_id,
+                "event_ids": list(prov.get("event_ids") or ()),
+            }
+        )
+    out.sort(key=lambda r: r["id"] or "")
+    return out
+
+
+def contradictions_view(rstore: RuntimeStore) -> list[dict[str, Any]]:
+    """Static claim and runtime observation, side by side. Never merged: a
+    contradiction is a finding in its own right, not a correction applied
+    to the static graph."""
+    out = []
+    for c in rstore.raw.get("contradictions", []):
+        prov = c.get("provenance") or {}
+        out.append(
+            {
+                "id": c.get("id"),
+                "element_id": c.get("element_id"),
+                "claim": c.get("claim"),
+                "observation": c.get("observation"),
+                "run_id": prov.get("run_id") or rstore.run_id,
+                "event_ids": list(prov.get("event_ids") or ()),
+                "static_evidence_ids": list(c.get("static_evidence_ids") or ()),
+            }
+        )
+    out.sort(key=lambda r: r["id"] or "")
+    return out
+
+
+def verdicts_view(rstore: RuntimeStore, *, element_id: str | None = None) -> list[dict[str, Any]]:
+    """`AlignmentVerdict` records verbatim. `NOT_EXERCISED` is not filtered
+    or relabelled here -- it must render as distinct from `ALIGNED` as the
+    contract requires, and that distinction is made by the caller reading
+    `verdict` directly, never collapsed in this view."""
+    verdicts = (
+        rstore.verdicts_by_element.get(element_id, [])
+        if element_id is not None
+        else rstore.raw.get("verdicts", [])
+    )
+    out = []
+    for v in verdicts:
+        prov = v.get("provenance") or {}
+        out.append(
+            {
+                "id": v.get("id"),
+                "element_id": v.get("element_id"),
+                "intent_id": v.get("intent_id"),
+                "verdict": v.get("verdict"),
+                "expectation": v.get("expectation"),
+                "observation": v.get("observation"),
+                "evidence_ids": list(v.get("evidence_ids") or ()),
+                "run_id": prov.get("run_id") or rstore.run_id,
+                "event_ids": list(prov.get("event_ids") or ()),
+            }
+        )
+    out.sort(key=lambda r: r["id"] or "")
+    return out
+
+
+def narrative_view(rstore: RuntimeStore) -> list[dict[str, Any]]:
+    """`NarrativeStep` records in sequence, each carrying the element and
+    event IDs it is anchored to; model-written prose kept in its own,
+    separately labelled field."""
+    out = []
+    for s in rstore.narrative_steps:
+        out.append(
+            {
+                "id": s.get("id"),
+                "run_id": s.get("run_id") or rstore.run_id,
+                "sequence": s.get("sequence"),
+                "phase": s.get("phase"),
+                "text": s.get("text"),
+                "element_ids": list(s.get("element_ids") or ()),
+                "event_ids": list(s.get("event_ids") or ()),
+                "children": list(s.get("children") or ()),
+                "model_prose": s.get("model_prose", ""),
+                "model_id": s.get("model_id", ""),
+            }
+        )
+    return out
+
+
+def decision_branch_view(
+    store: ArtifactStore, rstore: RuntimeStore, decision_id: str
+) -> dict[str, Any] | None:
+    """The branch(es) observed at one `DecisionPoint`, against the branches
+    that were declared but never observed there.
+
+    `outcomes` is card 3's own static list of (label, target) pairs; "not
+    observed" is its complement against the labels seen in this run's
+    events at the decision's element -- a set difference over two
+    already-emitted fields, not an inferred fact.
+    """
+    decision = store.decisions_by_id.get(decision_id)
+    if decision is None:
+        return None
+    element_id = decision.get("element_id", "")
+    outcomes = [tuple(o) for o in decision.get("outcomes") or ()]
+    labels = [label for label, _target in outcomes]
+    observed = []
+    for event in rstore.events_by_element.get(element_id, ()):
+        if event.get("kind") not in ("BRANCH", "DECISION"):
+            continue
+        taken = event.get("branch_taken")
+        if not taken:
+            continue
+        prov = event.get("provenance") or {}
+        observed.append(
+            {
+                "event_id": event.get("event_id"),
+                "branch_taken": taken,
+                "run_id": prov.get("run_id") or rstore.run_id,
+            }
+        )
+    observed.sort(key=lambda o: o["event_id"] or "")
+    observed_labels = {o["branch_taken"] for o in observed}
+    return {
+        "decision_id": decision_id,
+        "element_id": element_id,
+        "declared_outcomes": outcomes,
+        "observed": observed,
+        "not_observed_labels": [label for label in labels if label not in observed_labels],
+    }
+
+
+# ==========================================================================
+# viewer/html_export.py
+# ==========================================================================
+
+"""A single, offline, static HTML page over a loaded :class:`ArtifactStore`.
+
+No CDN fetches, no telemetry, no JavaScript that reaches outside the page --
+everything needed to browse the map is inlined. This is the phase B viewer's
+only rendering target; phase A adds a runtime overlay to the same page later.
+
+Determinism: every list here is sorted before it is written, and nothing in
+this module reads the clock, the environment or the filesystem outside the
+artifact root already loaded into the store. Two runs over the same store
+produce byte-identical HTML.
+
+Linking discipline: an ``<a href="#el-ID">`` is only ever emitted for an ID
+that has a real ``id="el-ID"`` anchor -- i.e. an ID present in
+``elements.jsonl``, which is the only artifact this page renders one detail
+section per record for. Every other kind of ID this page mentions (order
+nodes, decisions, findings, changes, slices, barriers, lineage edges,
+unresolved records, intents -- none of which are elements) is rendered as
+plain, still-visible ``<code>`` text rather than a dangling link. See
+:func:`_ref`.
+"""
+
+
+
+
+_STYLE = """
+body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; color: #1a1a1a; }
+header { background: #16233b; color: #fff; padding: 1rem 1.5rem; }
+header h1 { margin: 0; font-size: 1.25rem; }
+nav { padding: 0.5rem 1.5rem; background: #eef1f6; position: sticky; top: 0; }
+nav a { margin-right: 1rem; }
+main { padding: 1rem 1.5rem; }
+section { margin-bottom: 2.5rem; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; font-size: 0.85rem; }
+th, td { border: 1px solid #ccc; padding: 0.3rem 0.5rem; text-align: left; vertical-align: top; }
+th { background: #f4f4f4; }
+.badge { display: inline-block; padding: 0 0.4rem; border-radius: 3px; font-size: 0.75rem; }
+.conf-CERTAIN { background: #cdebd4; }
+.conf-RESOLVED { background: #dcedc8; }
+.conf-PROBABLE { background: #fff3cd; }
+.conf-HEURISTIC { background: #ffe0b2; }
+.conf-UNKNOWN { background: #f5c6cb; }
+.reach-REACHES_SINK { background: #cdebd4; }
+.reach-NO_SINK_PATH { background: #d9edf7; }
+.reach-UNKNOWN { background: #f5c6cb; }
+.reach-fallback { border: 1px dashed #a94442; }
+.model-prose { background: #fff8e1; border-left: 4px solid #f0ad4e; padding: 0.5rem; }
+.model-prose::before { content: "MODEL-WRITTEN, not a fact: "; font-weight: bold; }
+.facts { background: #f4f8fb; border-left: 4px solid #2e6da4; padding: 0.5rem; }
+.order-UNORDERED { border-left: 4px solid #999; }
+.order-BRANCH { border-left: 4px solid #2e6da4; }
+.order-MERGE { border-left: 4px solid #5bc0de; }
+.order-LOOP { border-left: 4px solid #f0ad4e; }
+.order-CYCLE { border-left: 4px solid #d9534f; }
+.order-SEQUENCE { border-left: 4px solid #5cb85c; }
+li.order-node { margin: 0.25rem 0; padding-left: 0.5rem; }
+.missing { color: #a94442; font-style: italic; }
+.element-detail { border: 1px solid #ccc; padding: 0.75rem; margin-bottom: 1rem; }
+.runtime-section { border-top: 4px double #6a3fa0; margin-top: 2.5rem; padding-top: 1rem; }
+.run-tag { display: inline-block; background: #efe3fb; color: #5b2c86; border: 1px solid #8a5cc7;
+  font-size: 0.7rem; padding: 0 0.4rem; border-radius: 3px; margin-left: 0.35rem; }
+.runtime-evidence { background: #f7f1fc; }
+.status-FULL { background: #cdebd4; }
+.status-SUMMARIZED { background: #fff3cd; }
+.status-REDACTED { background: #ffe0b2; }
+.status-DROPPED { background: #f5c6cb; }
+.verdict-ALIGNED { background: #cdebd4; }
+.verdict-MISALIGNED { background: #f5c6cb; }
+.verdict-NOT_EXERCISED { background: #d9edf7; border: 1px dashed #2e6da4; }
+.verdict-UNVERIFIABLE { background: #eee; }
+.verdict-NO_INTENT { background: #eee; }
+.contradiction-row { background: #fdf2f2; }
+.contradiction-row td { border-color: #d9534f; }
+.unguaranteed-block { border: 2px solid #d9534f; background: #fff5f5; padding: 0.75rem 1rem;
+  margin-bottom: 1rem; }
+.scenario-failure { border: 3px solid #a94442; background: #fdeaea; padding: 0.75rem 1rem;
+  margin-bottom: 1rem; }
+.scenario-failure pre { white-space: pre-wrap; word-break: break-word; background: #fff;
+  border: 1px solid #ccc; padding: 0.5rem; max-height: 20rem; overflow: auto; }
+.observer-failure { border: 3px dashed #31708f; background: #eef6fb; padding: 0.75rem 1rem;
+  margin-bottom: 1rem; }
+.observer-failure pre { white-space: pre-wrap; word-break: break-word; background: #fff;
+  border: 1px solid #ccc; padding: 0.5rem; max-height: 20rem; overflow: auto; }
+"""
+
+
+def _ref(store: ArtifactStore, id_: str | None, label: str | None = None) -> str:
+    """Render one ID.
+
+    A drill-down link (``#el-ID``) when *id_* is a real element -- every
+    element gets a detail section, so the link always resolves. Plain
+    ``<code>`` text otherwise: the ID is still shown, never dropped, but not
+    offered as a link with nothing at the other end.
+    """
+    if not id_:
+        return ""
+    if id_ in store.elements_by_id:
+        text = escape(label or id_)
+        return f'<a href="#el-{escape(id_)}">{text}</a>'
+    return f"<code>{escape(label or id_)}</code>"
+
+
+def _refs(store: ArtifactStore, ids: Iterable[str]) -> str:
+    return ", ".join(_ref(store, i) for i in sorted(set(ids)) if i) or "&mdash;"
+
+
+def _badge(confidence: str | None) -> str:
+    if not confidence:
+        return ""
+    return f'<span class="badge conf-{escape(confidence)}">{escape(confidence)}</span>'
+
+
+# ---------------------------------------------------------------------------
+# Phase A -- runtime overlay rendering.
+#
+# Every element in this section carries a run-tag and the "runtime-evidence"
+# class so it is visually distinct from static evidence at all times, per
+# the phase A contract. Nothing here merges a runtime fact into a static
+# one; contradictions are rendered as two readings side by side (see
+# _render_contradictions), never as a silent overwrite.
+# ---------------------------------------------------------------------------
+
+
+def _run_tag(run_id: str | None) -> str:
+    run_id = run_id or "unknown-run"
+    return f'<span class="run-tag" title="RUNTIME_OBSERVED">run: {escape(run_id)}</span>'
+
+
+def _event_ref(rstore: RuntimeStore, event_id: str | None) -> str:
+    if not event_id:
+        return ""
+    if event_id in rstore.events_by_id:
+        return f'<a href="#evt-{escape(event_id)}"><code>{escape(event_id)}</code></a>'
+    return f"<code>{escape(event_id)}</code>"
+
+
+def _event_refs(rstore: RuntimeStore, ids: Iterable[str]) -> str:
+    return ", ".join(_event_ref(rstore, i) for i in sorted(set(ids)) if i) or "&mdash;"
+
+
+def _status_badge(status: str | None, original_size: int) -> str:
+    if not status:
+        return ""
+    label = escape(status)
+    if status != "FULL":
+        label += " (not the complete value)"
+        if original_size:
+            label += f", original size {original_size}"
+    return f'<span class="badge status-{escape(status)}">{label}</span>'
+
+
+def _verdict_badge(verdict: str | None) -> str:
+    if not verdict:
+        return ""
+    return f'<span class="badge verdict-{escape(verdict)}">{escape(verdict)}</span>'
+
+
+def _reach_badge(info: dict[str, Any]) -> str:
+    state = info.get("state") or "UNKNOWN"
+    source = info.get("source") or ""
+    is_fallback = source.startswith("fallback:")
+    cls = f"badge reach-{escape(state)}" + (" reach-fallback" if is_fallback else "")
+    label = escape(state) + (" (approximated)" if is_fallback else "")
+    title = escape(info.get("reason") or "")
+    return f'<span class="{cls}" title="{title}">{label}</span>'
+
+
+def _render_available(store: ArtifactStore) -> str:
+    rows = []
+    for name in sorted(store.available):
+        present = store.available[name]
+        mark = "present" if present else "missing -- view degrades"
+        rows.append(f"<tr><td>{escape(name)}.jsonl</td><td>{mark}</td></tr>")
+    errors = "".join(
+        f"<li>{escape(e.file)}:{e.line_number}: {escape(e.reason)}</li>" for e in store.errors
+    )
+    error_block = f"<p class='missing'>Load errors:</p><ul>{errors}</ul>" if errors else ""
+    return f"<table><tr><th>artifact</th><th>status</th></tr>{''.join(rows)}</table>{error_block}"
+
+
+def _render_browser(store: ArtifactStore) -> str:
+    rows = []
+    for e in views.browser_view(store):
+        reach = views.element_reachability(store, e["id"])
+        rows.append(
+            "<tr>"
+            f"<td>{_ref(store, e['id'])}</td>"
+            f"<td>{escape(e['kind'] or '')}</td>"
+            f"<td>{escape(e['module'] or '')}</td>"
+            f"<td>{escape(e['qualname'] or e['name'] or '')}</td>"
+            f"<td>{_badge(e['confidence'])}</td>"
+            f"<td>{escape(e['method'] or '')}</td>"
+            f"<td>{_reach_badge(reach)}</td>"
+            "</tr>"
+        )
+    return (
+        "<table><tr><th>id</th><th>kind</th><th>module</th><th>qualname</th>"
+        f"<th>confidence</th><th>method</th><th>decision reachability</th></tr>"
+        f"{''.join(rows)}</table>"
+    )
+
+
+def _render_order_node(store: ArtifactStore, node: dict[str, Any]) -> str:
+    if node.get("missing"):
+        return f"<li class='order-node missing'>{escape(node['id'])} (order node not found)</li>"
+    kind = node.get("kind") or "SEQUENCE"
+    members = _refs(store, node.get("element_ids") or ())
+    # Decision IDs are DecisionPoint ids, not element ids -- shown as plain
+    # text via _refs (which falls back to <code> for anything that is not a
+    # known element), never as a link with no anchor behind it.
+    decisions = _refs(store, node.get("decision_ids") or ())
+    if node.get("cycle_back_reference"):
+        # node["id"] here is an OrderNode id, not an element -- _refs
+        # correctly renders it as plain <code> text.
+        body = f"back-reference to {_refs(store, [node['id']])} (cycle closes here)"
+    else:
+        children = "".join(
+            f"<ul>{_render_order_node(store, c)}</ul>" for c in node.get("children") or ()
+        )
+        body = (
+            f"members: {members}"
+            + (f" | decisions: {decisions}" if node.get("decision_ids") else "")
+            + children
+        )
+    return (
+        f"<li class='order-node order-{escape(kind)}'><b>{escape(kind)}</b> "
+        f"({escape(node['id'])}) &mdash; {body}</li>"
+    )
+
+
+def _render_cascade(store: ArtifactStore) -> str:
+    tree = views.cascade_view(store)
+    if not tree:
+        return "<p class='missing'>order.jsonl not available or empty.</p>"
+    return "<ul>" + "".join(_render_order_node(store, n) for n in tree) + "</ul>"
+
+
+def _render_callgraph(store: ArtifactStore) -> str:
+    cg = views.callgraph_view(store)
+    edge_rows = "".join(
+        "<tr>"
+        f"<td>{_ref(store, e['source_id'])}</td><td>{escape(e['kind'] or '')}</td>"
+        f"<td>{_ref(store, e['target_id'])}</td>"
+        f"<td>{escape(e['method'] or '')}</td><td>{_badge(e['confidence'])}</td>"
+        "</tr>"
+        for e in cg["edges"]
+    )
+    unresolved_rows = "".join(
+        "<tr>"
+        f"<td>{escape(u['id'] or '')}</td><td>{escape(u['reason'] or '')}</td>"
+        f"<td>{escape((u['span'] or {}).get('path', ''))}:{(u['span'] or {}).get('line', '')}</td>"
+        f"<td>{escape(u['description'] or '')}</td><td>{_refs(store, u['candidate_ids'])}</td>"
+        f"<td>{_badge(u['candidate_confidence'])}</td>"
+        "</tr>"
+        for u in cg["unresolved"]
+    )
+    return (
+        "<h3>Edges</h3>"
+        "<table><tr><th>source</th><th>kind</th><th>target</th><th>method</th><th>confidence</th></tr>"
+        f"{edge_rows}</table>"
+        "<h3>Unresolved call sites</h3>"
+        "<table><tr><th>id</th><th>reason</th><th>location</th><th>description</th>"
+        f"<th>candidates</th><th>candidate confidence</th></tr>{unresolved_rows}</table>"
+    )
+
+
+def _render_findings(store: ArtifactStore) -> str:
+    rows = []
+    for f in views.findings_view(store):
+        rows.append(
+            "<tr>"
+            f"<td>{escape(f['id'] or '')}</td><td>{escape(f['kind'] or '')}</td>"
+            f"<td>{_ref(store, f['element_id'])}</td><td>{escape(f['summary'] or '')}</td>"
+            f"<td>{escape(f['hint'] or '')}</td><td>{_refs(store, f['evidence_ids'])}</td>"
+            f"<td>{_badge(f['confidence'])}</td>"
+            "</tr>"
+        )
+    return (
+        "<table><tr><th>id</th><th>kind</th><th>element</th><th>summary</th><th>hint</th>"
+        f"<th>evidence</th><th>confidence</th></tr>{''.join(rows)}</table>"
+    )
+
+
+def _render_diff(store: ArtifactStore) -> str:
+    rows = []
+    for r in views.diff_view(store):
+        rank = "&mdash;" if r["rank"] is None else str(r["rank"])
+        rows.append(
+            "<tr>"
+            f"<td>{escape(rank)}</td><td>{escape(r['change_kind'] or '')}</td>"
+            f"<td>{_ref(store, r['before_id'])}</td><td>{_ref(store, r['after_id'])}</td>"
+            f"<td>{'yes' if r['decision_paths_changed'] else 'no'}</td>"
+            f"<td>{_refs(store, r['affected_ids'])}</td>"
+            f"<td>{_refs(store, r['reachability_flipped'])}</td>"
+            f"<td>{escape(r.get('note', ''))}</td>"
+            "</tr>"
+        )
+    return (
+        "<table><tr><th>rank</th><th>kind</th><th>before</th><th>after</th>"
+        "<th>decision paths changed</th><th>affected</th><th>reachability flipped</th>"
+        f"<th>note</th></tr>{''.join(rows)}</table>"
+    )
+
+
+def _render_doc_record(store: ArtifactStore, record: dict[str, Any] | None) -> str:
+    if record is None:
+        return "<p class='missing'>No documentation record (records.jsonl not available, "\
+            "or the completeness gate has not run).</p>"
+    facts_rows = "".join(
+        f"<tr><th>{escape(k)}</th><td><pre>{escape(str(v))}</pre></td></tr>"
+        for k, v in sorted(record["facts"].items())
+    )
+    model = record["model_authored"]
+    model_block = (
+        f"<div class='model-prose'>{escape(model['prose'])}<br>"
+        f"<small>model: {escape(model['model_id'] or 'unknown')}</small></div>"
+        if model["is_present"]
+        else "<p class='missing'>No model-written prose (enrichment did not run for this element).</p>"
+    )
+    return (
+        f"<div class='facts'><table>{facts_rows}</table>"
+        f"<p>findings: {_refs(store, record['finding_ids'])} | "
+        f"changes: {_refs(store, record['change_ids'])} | "
+        f"confidence: {_badge(record['confidence'])}</p></div>"
+        f"{model_block}"
+    )
+
+
+def _render_element_detail(store: ArtifactStore, element_id: str) -> str:
+    d = views.element_detail(store, element_id)
+    el = d["element"]
+    if el is None:
+        header = f'<h3 id="el-{escape(element_id)}">{escape(element_id)} <span class="missing">(no Element record)</span></h3>'
+    else:
+        header = (
+            f'<h3 id="el-{escape(element_id)}">{escape(el["qualname"] or el["name"] or element_id)}'
+            f" <small>{escape(el['kind'] or '')}</small> {_badge(el['confidence'])}"
+            f" {_reach_badge(d['reachability'])}</h3>"
+            f"<p>module: {escape(el['module'] or '')} | id: <code>{escape(element_id)}</code></p>"
+        )
+    body = (
+        f"<p>reachability: {_reach_badge(d['reachability'])} "
+        f"<small>({escape(d['reachability'].get('source', ''))})</small><br>"
+        f"outgoing edges: {_refs(store, (e['target_id'] for e in d['outgoing_edges']))}<br>"
+        f"incoming edges: {_refs(store, (e['source_id'] for e in d['incoming_edges']))}<br>"
+        f"unresolved candidate for: {_refs(store, (u['id'] for u in d['unresolved_as_candidate']))}<br>"
+        f"order nodes: {_refs(store, d['order_node_ids'])}<br>"
+        f"decision (as condition owner): {_refs(store, d['decision_as_condition'])}<br>"
+        f"decision (reads this): {_refs(store, d['decision_reads_this'])}<br>"
+        f"lineage out: {_refs(store, (e['id'] for e in d['lineage_out'] if e.get('id')))}<br>"
+        f"lineage in: {_refs(store, (e['id'] for e in d['lineage_in'] if e.get('id')))}<br>"
+        f"barriers: {_refs(store, d['barrier_ids'])}<br>"
+        f"backward slice: {_refs(store, d['slice_ids_rooted_here'].get('backward', []))}<br>"
+        f"forward slice: {_refs(store, d['slice_ids_rooted_here'].get('forward', []))}<br>"
+        f"member of slices: {_refs(store, d['slice_ids_as_member'])}<br>"
+        f"findings: {_refs(store, d['finding_ids'])}<br>"
+        f"findings (as evidence): {_refs(store, d['finding_ids_as_evidence'])}<br>"
+        f"changes (before): {_refs(store, d['change_ids_before'])}<br>"
+        f"changes (after): {_refs(store, d['change_ids_after'])}<br>"
+        f"intents: {_refs(store, d['intent_ids'])}</p>"
+        f"{_render_doc_record(store, d['doc_record'])}"
+    )
+    return f"<div class='element-detail'>{header}{body}</div>"
+
+
+def _render_span(span: dict[str, Any] | None) -> str:
+    if not span:
+        return "&mdash;"
+    path = escape(str(span.get("path", "")))
+    line = span.get("line", "")
+    return f"{path}:{line}"
+
+
+def _render_scenario_failure(sf: dict[str, Any] | None) -> str:
+    """`ScenarioFailure`, rendered first and unmissable. A scenario that
+    raised means the run happened but did not do what was asked -- the
+    exact shape of lie this tool told once already (524 events, 0 mapped,
+    exit 0, from a scenario that pointed at the wrong target_root and never
+    ran a line of the target's own code). The traceback is shown verbatim,
+    including the harness's own truncation note when it applies, so a
+    cut-off traceback never reads as a complete one."""
+    if sf is None:
+        return ""
+    traceback_text = sf["traceback"] or "(no traceback captured)"
+    return (
+        "<div class='scenario-failure'>"
+        f"<h4>This run's scenario did not complete -- {escape(sf['stage'])} stage</h4>"
+        f"<p>{escape(sf['explanation'])}</p>"
+        f"<p>exception: <code>{escape(sf['exception_type'])}</code>"
+        f"{' -- ' + escape(sf['message']) if sf['message'] else ''}</p>"
+        f"<pre>{escape(traceback_text)}</pre>"
+        "<p><b>The event counts below describe a run in which this happened.</b> "
+        "They are real, observed events -- not evidence the target's own logic ran "
+        "as intended, and not suppressed.</p>"
+        "</div>"
+    )
+
+
+def _render_observer_failure(of: dict[str, Any] | None) -> str:
+    """`observer_failure` -- the opposite finding from `scenario_failure` and
+    styled deliberately unlike it (`observer-failure`, not `scenario-failure`):
+    this one says the tool may have missed the run, not that the target
+    misbehaved. Conflating the two sends an owner to the wrong codebase, which
+    is the entire reason they are rendered as two distinct blocks rather than
+    one message."""
+    if of is None:
+        return ""
+    traceback_text = of["traceback"] or "(no traceback captured)"
+    return (
+        "<div class='observer-failure'>"
+        f"<h4>The observer itself failed -- {escape(of['stage'])} stage "
+        "(this is a tool bug, not a finding about the target)</h4>"
+        f"<p>{escape(of['explanation'])}</p>"
+        f"<p>exception: <code>{escape(of['exception_type'])}</code>"
+        f"{' -- ' + escape(of['message']) if of['message'] else ''}</p>"
+        f"<pre>{escape(traceback_text)}</pre>"
+        "</div>"
+    )
+
+
+def _render_run_overview(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    overview = views.runtime_overview_view(rstore)
+    if not overview["available"]:
+        return "<p class='missing'>run.json not available for this run -- run overview cannot be shown.</p>"
+    failure_block = (
+        _render_observer_failure(overview.get("observer_failure"))
+        + _render_scenario_failure(overview.get("scenario_failure"))
+    )
+    unguaranteed_rows = "".join(
+        f"<li>{escape(u)}</li>" for u in overview["unguaranteed"]
+    ) or "<li>none disclosed by this run record</li>"
+    blocked_rows = "".join(
+        "<tr>"
+        f"<td>{escape(b.get('id', ''))}</td><td>{escape(b.get('kind', ''))}</td>"
+        f"<td>{escape(b.get('detail', ''))}</td><td>{_ref(store, b.get('element_id'))}</td>"
+        f"<td>{_event_ref(rstore, b.get('event_id'))}</td>"
+        "</tr>"
+        for b in overview["blocked"]
+    ) or "<tr><td colspan='5'>none recorded</td></tr>"
+    refusal = (
+        f"<p class='missing'><b>This run refused to start:</b> {escape(overview['refusal_reason'])}</p>"
+        if overview["refused"]
+        else ""
+    )
+    controls_rows = "".join(
+        f"<tr><td>{escape(k)}</td><td>{'active' if v else 'NOT active'}</td></tr>"
+        for k, v in sorted(overview["controls_active"].items())
+    )
+    return (
+        f"{failure_block}"
+        f"<div class='unguaranteed-block runtime-evidence'>{_run_tag(overview['run_id'])}"
+        f"{refusal}"
+        "<h4>Escape paths this harness could not close (read this first)</h4>"
+        f"<ul>{unguaranteed_rows}</ul>"
+        "<h4>Blocked attempts</h4>"
+        "<table><tr><th>id</th><th>kind</th><th>detail</th><th>element</th><th>event</th></tr>"
+        f"{blocked_rows}</table></div>"
+        f"<p class='runtime-evidence'>scenario: {escape(overview['scenario'])} | "
+        f"interpreter: {escape(overview['interpreter'])} | "
+        f"sandbox: {escape(overview['sandbox_dir'])} | "
+        f"graph_hash: {escape(overview['graph_hash'])}</p>"
+        f"<table class='runtime-evidence'><tr><th>control</th><th>status</th></tr>{controls_rows}</table>"
+    )
+
+
+def _render_mapping(rstore: RuntimeStore) -> str:
+    m = views.mapping_view(rstore)
+    if not m["available"]:
+        return "<p class='missing'>mapping.json not available -- mapping rate cannot be shown.</p>"
+    rate = m["mapping_rate"]
+    rate_text = "n/a (no events)" if rate is None else f"{rate:.4f}"
+    reasons = "".join(
+        f"<tr><td>{escape(k)}</td><td>{v}</td></tr>"
+        for k, v in sorted(m["unmapped_by_reason"].items())
+    ) or "<tr><td colspan='2'>none</td></tr>"
+    return (
+        f"<p class='runtime-evidence'>{_run_tag(m['run_id'])} "
+        f"mapped {m['mapped_events']} / {m['total_events']} events "
+        f"(rate {rate_text}); unmapped: {m['unmapped_events']}</p>"
+        "<table class='runtime-evidence'><tr><th>unmapped reason</th><th>count</th></tr>"
+        f"{reasons}</table>"
+    )
+
+
+def _render_observed_order(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = "".join(
+        "<tr class='runtime-evidence'>"
+        f"<td>{e['sequence']}</td><td>{_event_ref(rstore, e['event_id'])}</td>"
+        f"<td>{escape(e['kind'] or '')}</td><td>{_ref(store, e['element_id'])}</td>"
+        f"<td>{e['depth']}</td><td>{escape(e['branch_taken'] or '')}</td>"
+        f"<td>{_run_tag(e['run_id'])}</td>"
+        "</tr>"
+        for e in views.observed_order_view(rstore)
+    )
+    return (
+        "<table><tr><th>sequence</th><th>event</th><th>kind</th><th>element</th>"
+        f"<th>depth</th><th>branch taken</th><th>run</th></tr>{rows}</table>"
+    )
+
+
+def _render_events(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = []
+    for summary in views.observed_order_view(rstore):
+        detail = views.event_detail_view(rstore, summary["event_id"])
+        assert detail is not None
+        value_rows = "".join(
+            "<tr>"
+            f"<td>{escape(name)}</td><td>{_status_badge(v['status'], v['original_size'])}</td>"
+            f"<td><code>{escape(v['repr_text'])}</code></td><td>{escape(v['type_name'])}</td>"
+            f"<td>{escape(v['shape'])}</td><td>{escape(v['reason'])}</td>"
+            "</tr>"
+            for name, v in sorted(detail["values"].items())
+        ) or "<tr><td colspan='6'>no captured values</td></tr>"
+        rows.append(
+            f'<div class="element-detail runtime-evidence" id="evt-{escape(detail["event_id"])}">'
+            f"<p><b>{escape(detail['event_id'])}</b> {_run_tag(detail['run_id'])} "
+            f"kind: {escape(detail['kind'] or '')} | element: {_ref(store, detail['element_id'])} | "
+            f"sequence: {detail['sequence']} | depth: {detail['depth']} | "
+            f"caller: {_event_ref(rstore, detail['caller_event_id'])}"
+            f"{' | branch taken: ' + escape(detail['branch_taken']) if detail['branch_taken'] else ''}"
+            f"{' | note: ' + escape(detail['note']) if detail['note'] else ''}</p>"
+            "<table><tr><th>name</th><th>status</th><th>repr</th><th>type</th>"
+            f"<th>shape</th><th>reason</th></tr>{value_rows}</table></div>"
+        )
+    return "".join(rows) or "<p class='missing'>no events in this run.</p>"
+
+
+def _render_unmapped(rstore: RuntimeStore) -> str:
+    rows = "".join(
+        "<tr class='runtime-evidence'>"
+        f"<td>{_event_ref(rstore, u['event_id'])}</td><td>{escape(u['kind'] or '')}</td>"
+        f"<td>{_render_span(u['location'])}</td><td>{escape(u['reason'] or '')}</td>"
+        f"<td>{_run_tag(u['run_id'])}</td>"
+        "</tr>"
+        for u in views.unmapped_events_view(rstore)
+    )
+    if not rows:
+        return "<p>no UNMAPPED events in this run.</p>"
+    return (
+        "<table><tr><th>event</th><th>kind</th><th>location</th><th>reason</th>"
+        f"<th>run</th></tr>{rows}</table>"
+    )
+
+
+def _render_decision_branches(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = []
+    for decision_id in sorted(store.decisions_by_id):
+        dv = views.decision_branch_view(store, rstore, decision_id)
+        if dv is None:
+            continue
+        declared = ", ".join(f"{escape(label)} -> {escape(target)}" for label, target in dv["declared_outcomes"])
+        observed = "".join(
+            f"<li>{escape(o['branch_taken'])} (event {_event_ref(rstore, o['event_id'])}) {_run_tag(o['run_id'])}</li>"
+            for o in dv["observed"]
+        ) or "<li>not observed in this run</li>"
+        not_observed = ", ".join(escape(l) for l in dv["not_observed_labels"]) or "&mdash;"
+        rows.append(
+            "<div class='element-detail runtime-evidence'>"
+            f"<p><b>{escape(decision_id)}</b> ({_ref(store, dv['element_id'])})<br>"
+            f"declared outcomes: {declared}<br>"
+            f"observed: <ul>{observed}</ul>"
+            f"declared but not observed: {not_observed}</p></div>"
+        )
+    return "".join(rows) or "<p>no decisions.jsonl available.</p>"
+
+
+def _render_contradictions(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = "".join(
+        "<tr class='contradiction-row'>"
+        f"<td>{escape(c['id'] or '')}</td><td>{_ref(store, c['element_id'])}</td>"
+        f"<td>{escape(c['claim'] or '')}</td><td>{escape(c['observation'] or '')}</td>"
+        f"<td>{_refs(store, c['static_evidence_ids'])}</td>"
+        f"<td>{_event_refs(rstore, c['event_ids'])}</td><td>{_run_tag(c['run_id'])}</td>"
+        "</tr>"
+        for c in views.contradictions_view(rstore)
+    )
+    if not rows:
+        return "<p>no contradictions recorded for this run.</p>"
+    return (
+        "<table><tr><th>id</th><th>element</th><th>static claim</th>"
+        "<th>runtime observation</th><th>static evidence</th><th>events</th>"
+        f"<th>run</th></tr>{rows}</table>"
+    )
+
+
+def _render_nondeterminism(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = "".join(
+        "<tr class='runtime-evidence'>"
+        f"<td>{escape(n['id'] or '')}</td><td>{_ref(store, n['element_id'])}</td>"
+        f"<td>{escape(n['kind'] or '')}</td><td>{escape(n['detail'] or '')}</td>"
+        f"<td>{_event_refs(rstore, n['event_ids'])}</td><td>{_run_tag(n['run_id'])}</td>"
+        "</tr>"
+        for n in views.nondeterminism_view(rstore)
+    )
+    if not rows:
+        return "<p>no nondeterminism observed in this run.</p>"
+    return (
+        "<table><tr><th>id</th><th>element</th><th>kind</th><th>detail</th>"
+        f"<th>events</th><th>run</th></tr>{rows}</table>"
+    )
+
+
+def _render_verdicts(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    rows = "".join(
+        "<tr class='runtime-evidence'>"
+        f"<td>{escape(v['id'] or '')}</td><td>{_ref(store, v['element_id'])}</td>"
+        f"<td>{escape(v['intent_id'] or '')}</td><td>{_verdict_badge(v['verdict'])}</td>"
+        f"<td>{escape(v['expectation'] or '')}</td><td>{escape(v['observation'] or '')}</td>"
+        f"<td>{_event_refs(rstore, v['event_ids'])}</td><td>{_run_tag(v['run_id'])}</td>"
+        "</tr>"
+        for v in views.verdicts_view(rstore)
+    )
+    if not rows:
+        return "<p>no alignment verdicts recorded for this run.</p>"
+    return (
+        "<table><tr><th>id</th><th>element</th><th>intent</th><th>verdict</th>"
+        "<th>expectation</th><th>observation</th><th>events</th>"
+        f"<th>run</th></tr>{rows}</table>"
+    )
+
+
+def _render_narrative(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    items = []
+    for s in views.narrative_view(rstore):
+        model = (
+            f"<div class='model-prose'>{escape(s['model_prose'])}<br>"
+            f"<small>model: {escape(s['model_id'] or 'unknown')}</small></div>"
+            if s["model_prose"]
+            else ""
+        )
+        items.append(
+            "<li class='runtime-evidence'>"
+            f"<b>[{escape(s['phase'])}]</b> {escape(s['text'])} {_run_tag(s['run_id'])}<br>"
+            f"elements: {_refs(store, s['element_ids'])} | events: {_event_refs(rstore, s['event_ids'])}"
+            f"{model}</li>"
+        )
+    if not items:
+        return "<p>no narrative.jsonl available for this run.</p>"
+    return f"<ol>{''.join(items)}</ol>"
+
+
+def _render_runtime_section(store: ArtifactStore, rstore: RuntimeStore) -> str:
+    other_runs = [r for r in list_runs(store.root) if r != rstore.run_id]
+    other_runs_note = (
+        f"<p>other runs available but not shown here: {', '.join(escape(r) for r in other_runs)}</p>"
+        if other_runs
+        else ""
+    )
+    errors = "".join(
+        f"<li>{escape(e.file)}:{e.line_number}: {escape(e.reason)}</li>" for e in rstore.errors
+    )
+    error_block = f"<p class='missing'>Load errors:</p><ul>{errors}</ul>" if errors else ""
+    avail_rows = "".join(
+        f"<tr><td>{escape(name)}</td><td>{'present' if present else 'missing -- section degrades'}</td></tr>"
+        for name in sorted(rstore.available)
+        for present in [rstore.available[name]]
+    )
+    return f"""
+<section id="runtime" class="runtime-section">
+<h2>Runtime overlay {_run_tag(rstore.run_id)}</h2>
+{other_runs_note}
+<table><tr><th>runtime artifact</th><th>status</th></tr>{avail_rows}</table>
+{error_block}
+<h3>Run record</h3>
+{_render_run_overview(store, rstore)}
+<h3>Mapping rate</h3>
+{_render_mapping(rstore)}
+<h3>Observed execution order</h3>
+<p>Compare against the static cascade order in the "Cascade order" section above --
+shown separately, never merged.</p>
+{_render_observed_order(store, rstore)}
+<h3>Events and captured values</h3>
+{_render_events(store, rstore)}
+<h3>Unmapped events</h3>
+{_render_unmapped(rstore)}
+<h3>Decision branches: observed vs. declared</h3>
+{_render_decision_branches(store, rstore)}
+<h3>Contradictions</h3>
+{_render_contradictions(store, rstore)}
+<h3>Nondeterminism observed</h3>
+{_render_nondeterminism(store, rstore)}
+<h3>Alignment verdicts</h3>
+{_render_verdicts(store, rstore)}
+<h3>Execution narrative</h3>
+{_render_narrative(store, rstore)}
+</section>
+"""
+
+
+def render_site(store: ArtifactStore, rstore: RuntimeStore | None = None) -> str:
+    """Render the whole offline HTML page for one artifact root.
+
+    *rstore* is phase A: when given, a runtime overlay section is appended,
+    visually distinct (the ``runtime-evidence`` / ``runtime-section`` CSS
+    classes) and tagged with its run ID throughout. Omitting it renders
+    exactly the phase B page."""
+    element_ids = sorted(store.elements_by_id)
+    manifest = store.manifest
+    manifest_line = (
+        f"schema {escape(str(manifest.get('schema_version', 'unknown')))} | "
+        f"tool {escape(str(manifest.get('tool_version', 'unknown')))}"
+        if manifest
+        else "no manifest.json found"
+    )
+    title = (
+        "CASCADE-MAP &mdash; static + runtime view"
+        if rstore is not None
+        else "CASCADE-MAP &mdash; static view"
+    )
+    runtime_nav = '<a href="#runtime">Runtime overlay</a>' if rstore is not None else ""
+    runtime_section = _render_runtime_section(store, rstore) if rstore is not None else ""
+    sections = f"""
+<header><h1>{title}</h1><p>{manifest_line}</p></header>
+<nav>
+<a href="#browser">Elements</a>
+<a href="#cascade">Cascade order</a>
+<a href="#callgraph">Call graph</a>
+<a href="#findings">Findings</a>
+<a href="#diff">Version diff</a>
+<a href="#details">Element detail</a>
+<a href="#availability">Artifact status</a>
+{runtime_nav}
+</nav>
+<main>
+<section id="availability"><h2>Artifact status</h2>{_render_available(store)}</section>
+<section id="browser"><h2>Element browser</h2>{_render_browser(store)}</section>
+<section id="cascade"><h2>Cascade order</h2>{_render_cascade(store)}</section>
+<section id="callgraph"><h2>Call graph</h2>{_render_callgraph(store)}</section>
+<section id="findings"><h2>Findings</h2>{_render_findings(store)}</section>
+<section id="diff"><h2>Version diff, ranked by decision impact</h2>{_render_diff(store)}</section>
+<section id="details"><h2>Element detail</h2>
+{''.join(_render_element_detail(store, eid) for eid in element_ids)}
+</section>
+{runtime_section}
+</main>
+"""
+    return (
+        "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+        "<title>CASCADE-MAP</title>"
+        f"<style>{_STYLE}</style></head><body>{sections}</body></html>"
+    )
+
+
+# ==========================================================================
+# viewer/__init__.py
+# ==========================================================================
+
+"""CASCADE-MAP viewer -- a read-only renderer over emitted artifacts.
+
+Phase B (this module, so far): a static map over ``out/<label>/``. Phase A
+adds a runtime overlay keyed onto the same element IDs, layered on top.
+
+The viewer contains no analysis logic. Every fact it shows was produced by
+another card and is read here from disk; nothing is recomputed, and nothing
+here ever imports, execs or reads ``target_engine/`` / ``target_versions/``.
+"""
+
+
+
+
+__all__ = [
+    "ArtifactStore",
+    "LoadError",
+    "RuntimeStore",
+    "list_runs",
+    "browser_view",
+    "cascade_view",
+    "callgraph_view",
+    "contradictions_view",
+    "decision_branch_view",
+    "decision_point_view",
+    "diff_view",
+    "doc_record_view",
+    "element_detail",
+    "element_reachability",
+    "element_summary",
+    "event_detail_view",
+    "findings_view",
+    "lineage_view",
+    "mapping_view",
+    "narrative_view",
+    "nondeterminism_view",
+    "observed_order_view",
+    "runtime_overview_view",
+    "unmapped_events_view",
+    "verdicts_view",
+    "DECISION_SIGNALS",
+    "render_site",
+    "render_to_file",
+    "render_to_file_with_runtime",
+]
+
+
+def render_to_file(
+    root: str | Path, out_path: str | Path, run_id: str | None = None
+) -> ArtifactStore:
+    """Load the artifacts at *root* and write the static HTML page to
+    *out_path*. Returns the loaded :class:`ArtifactStore` so a caller (e.g.
+    card 10) can inspect ``available`` / ``errors`` without reloading -- this
+    return shape is unchanged from phase B.
+
+    *run_id* is phase A: when given, the runtime overlay for that run
+    (``runtime/<run_id>/*``) is loaded (via :func:`render_to_file_with_runtime`
+    for callers that also need the loaded :class:`RuntimeStore`) and layered
+    onto the page. Multiple run directories may exist under
+    ``root/runtime/`` (see :func:`list_runs`); picking one is the caller's
+    job, not this function's -- there is no reliable, non-clock signal in the
+    contract for "the latest" run.
+    """
+    store, _rstore = render_to_file_with_runtime(root, out_path, run_id)
+    return store
+
+
+def render_to_file_with_runtime(
+    root: str | Path, out_path: str | Path, run_id: str | None = None
+) -> tuple[ArtifactStore, RuntimeStore | None]:
+    """Same as :func:`render_to_file`, but also returns the loaded
+    :class:`RuntimeStore` (``None`` when *run_id* is not given)."""
+    store = ArtifactStore.load(root)
+    rstore = RuntimeStore.load(root, run_id) if run_id is not None else None
+    html = render_site(store, rstore)
+    Path(out_path).write_text(html, encoding="utf-8")
+    return store, rstore
+
+
+# ==========================================================================
+# cli.py
+# ==========================================================================
+
+"""Card 10 — the command line, and the only place the cards meet.
+
+Every other card was built against the contracts rather than against its
+neighbours. That is what let thirteen of them be built at once, and it means
+this module is the first place they are asked to agree. Expect integration to
+find disagreements rather than confirm their absence.
+
+Four commands:
+
+* ``analyze``  static map of a target tree. Never executes it.
+* ``diff``     compare two analysed versions.
+* ``view``     render an analysed tree as one offline HTML page.
+* ``trace``    Mode A. Not built yet, and refuses rather than pretending.
+
+**Nothing here executes, imports, execs, evals or unpickles the target.** The
+static path reads source as text and parses it with ``ast``. The one command
+that would run target code is ``trace``, which belongs to the harness and is
+the only command that ever needs the owner's explicit approval.
+"""
+
+
+
+
+EXIT_OK = 0
+EXIT_USAGE = 2
+EXIT_GATE_FAILED = 3
+EXIT_REFUSED = 4
+
+
+# ---------------------------------------------------------------------------
+# Writing artifacts
+# ---------------------------------------------------------------------------
+
+
+def _write(out_dir: Path, name: str, text: str) -> str:
+    """Write one artifact and return its content hash."""
+    path = out_dir / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _target_hashes(root: Path) -> dict[str, str]:
+    """Content hash per target file, by POSIX path relative to the root.
+
+    Read as bytes. Nothing here decodes or parses, so an unreadable or binary
+    file hashes like any other rather than breaking the run.
+    """
+    hashes: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or "__pycache__" in path.parts:
+            continue
+        hashes[path.relative_to(root).as_posix()] = hashlib.sha256(
+            path.read_bytes()
+        ).hexdigest()
+    return hashes
+
+
+def _confidence_census(records: Sequence[Any]) -> dict[str, int]:
+    """How many facts sit at each confidence level.
+
+    The single most useful number in the report. A map that is 90% HEURISTIC
+    is a different object from one that is 90% CERTAIN, and the owner should
+    not have to open the artifacts to find out which they have.
+    """
+    census = {level.value: 0 for level in Confidence}
+    for record in records:
+        provenance = getattr(record, "provenance", None)
+        if provenance is not None:
+            census[str(provenance.confidence)] += 1
+    return census
+
+
+# ---------------------------------------------------------------------------
+# Reading a Mode B graph back
+# ---------------------------------------------------------------------------
+
+
+def _rebuild(cls: type, payload: dict[str, Any]) -> Any:
+    """Reconstruct one contract dataclass from a parsed artifact row.
+
+    Generic on purpose. A hand-written reader per type would be a second
+    description of the schema, free to drift from `canonical_dumps` the moment
+    a field is added -- and the drift would be silent, because a missing field
+    just reads as a default. This walks the dataclass's own fields instead, so
+    the contract stays the single description.
+    """
+    import dataclasses
+    import typing
+
+    hints = typing.get_type_hints(cls)
+    kwargs: dict[str, Any] = {}
+    for field in dataclasses.fields(cls):
+        if field.name not in payload:
+            continue
+        value = payload[field.name]
+        hint = hints[field.name]
+        origin = typing.get_origin(hint)
+        args = typing.get_args(hint)
+        if value is None:
+            kwargs[field.name] = None
+        elif origin is tuple and args and dataclasses.is_dataclass(args[0]):
+            kwargs[field.name] = tuple(_rebuild(args[0], v) for v in value)
+        elif origin is tuple:
+            kwargs[field.name] = tuple(value)
+        elif dataclasses.is_dataclass(hint) and isinstance(value, dict):
+            kwargs[field.name] = _rebuild(hint, value)
+        elif args and any(dataclasses.is_dataclass(a) for a in args) and isinstance(value, dict):
+            inner = next(a for a in args if dataclasses.is_dataclass(a))
+            kwargs[field.name] = _rebuild(inner, value)
+        else:
+            kwargs[field.name] = value
+    return cls(**kwargs)
+
+
+def _cli__read_jsonl(out_dir: Path, name: str, cls: type) -> list[Any]:
+    path = out_dir / name
+    if not path.exists():
+        return []
+    return [
+        _rebuild(cls, json.loads(line))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def build_index(graph_dir: Path, target_root: Path) -> Any:
+    """The `StaticIndex` for a target. Used by this process **and the child**.
+
+    Shared deliberately. The first Mode A run mapped 0 of 524 events because
+    the child collected against an empty index while this process materialised
+    against a full one — the collector keys events to elements as it observes
+    them, so an index the child does not have is an index the recording never
+    saw. Two call sites building "the same" index independently is how that
+    happens.
+    """
+
+    manifest_path = graph_dir / "manifest.json"
+    sinks = (
+        tuple(json.loads(manifest_path.read_text(encoding="utf-8")).get("sink_ids", []))
+        if manifest_path.exists()
+        else ()
+    )
+    return StaticIndex(
+        root=str(target_root),
+        elements=_cli__read_jsonl(graph_dir, "elements.jsonl", Element),
+        edges=_cli__read_jsonl(graph_dir, "edges.jsonl", Edge),
+        decisions=_cli__read_jsonl(graph_dir, "decisions.jsonl", DecisionPoint),
+        cfg_blocks=_cli__read_jsonl(graph_dir, "cfg_blocks.jsonl", CFGBlock),
+        cfg_edges=_cli__read_jsonl(graph_dir, "cfg_edges.jsonl", CFGEdge),
+        lineage=_cli__read_jsonl(graph_dir, "lineage.jsonl", LineageEdge),
+        order_nodes=_cli__read_jsonl(graph_dir, "order.jsonl", OrderNode),
+        sink_element_ids=sinks,
+    )
+
+
+# ---------------------------------------------------------------------------
+# analyze
+# ---------------------------------------------------------------------------
+
+
+def analyze(
+    root: Path,
+    out_dir: Path,
+    *,
+    entry_ids: Sequence[str] = (),
+    sink_ids: Sequence[str] = (),
+    config_paths: Sequence[str] = (),
+    cache_dir: Path | None = None,
+    strict_gate: bool = True,
+) -> tuple[int, dict[str, Any]]:
+    """Run the static pipeline over *root* and write artifacts to *out_dir*.
+
+    Returns an exit code and a summary. The gate failing is a non-zero exit:
+    an incomplete map that reports success is worse than one that refuses,
+    because the owner acts on it either way.
+    """
+    started = time.time()
+    summary: dict[str, Any] = {}
+    artifacts: dict[str, str] = {}
+
+    # Card 1 — inventory.
+    elements, unresolved = inventory(str(root), cache_dir=cache_dir)
+    summary["elements"] = len(elements)
+
+    # Card 2 — resolution.
+    resolver = Resolver(root, config_paths=tuple(config_paths))
+    edges, resolve_unresolved = resolver.resolve(elements)
+    unresolved = list(unresolved) + list(resolve_unresolved)
+    summary["edges"] = len(edges)
+
+    # Card 3 — CFG, ordering, decisions, reachability, detected candidates.
+    analyzer = CascadeAnalyzer(root, sink_ids=tuple(sink_ids), unresolved=unresolved)
+    (
+        blocks,
+        cfg_edges,
+        order_nodes,
+        decisions,
+        reachability,
+        candidates,
+        cascade_unresolved,
+    ) = analyzer.order(elements, edges, tuple(entry_ids))
+    unresolved = list(unresolved) + list(cascade_unresolved)
+    summary["decisions"] = len(decisions)
+
+    # Card 4 — lineage and slices.
+    tracer = LineageTracer(root, sink_ids=tuple(sink_ids))
+    lineage_edges, barriers = tracer.trace_values(elements, edges)
+    slices = tracer.default_slices()
+    summary["lineage_edges"] = len(lineage_edges)
+    summary["barriers"] = len(barriers)
+
+    # Card 5 — findings.
+    findings = Findings(
+        elements=elements,
+        edges=edges,
+        unresolved=unresolved,
+        cfg_blocks=blocks,
+        cfg_edges=cfg_edges,
+        decision_points=decisions,
+        lineage_edges=lineage_edges,
+        barriers=barriers,
+        slices=slices,
+        reachability=reachability,
+        entry_ids=tuple(entry_ids),
+    ).find()
+    summary["findings"] = len(findings)
+
+    # Card 16 — documentation records, then the gate.
+    builder = DocumentationBuilder(
+        elements=elements,
+        edges=edges,
+        order_nodes=order_nodes,
+        decisions=decisions,
+        lineage_edges=lineage_edges,
+        slices=slices,
+        findings=findings,
+        decision_sink_ids=tuple(sink_ids),
+    )
+    records = builder.records()
+    offenders = builder.completeness_gate(records)
+    summary["incomplete_records"] = len(offenders)
+
+    for name, payload in (
+        ("elements.jsonl", canonical_jsonl(elements)),
+        ("edges.jsonl", canonical_jsonl(edges)),
+        ("unresolved.jsonl", canonical_jsonl(unresolved)),
+        ("cfg_blocks.jsonl", canonical_jsonl(blocks)),
+        ("cfg_edges.jsonl", canonical_jsonl(cfg_edges)),
+        ("order.jsonl", canonical_jsonl(order_nodes)),
+        ("decisions.jsonl", canonical_jsonl(decisions)),
+        ("reachability.jsonl", canonical_jsonl(reachability)),
+        ("candidates.jsonl", canonical_jsonl(candidates)),
+        ("lineage.jsonl", canonical_jsonl(lineage_edges)),
+        ("barriers.jsonl", canonical_jsonl(barriers)),
+        ("slices.jsonl", canonical_jsonl(slices)),
+        ("findings.jsonl", canonical_jsonl(findings)),
+        ("records.jsonl", canonical_jsonl(records)),
+    ):
+        artifacts[name] = _write(out_dir, name, payload)
+
+    summary["unresolved"] = len(unresolved)
+    summary["confidence"] = _confidence_census(list(edges) + list(lineage_edges))
+    summary["detected"] = [
+        {"role": c.role, "element_id": c.element_id,
+         "confidence": str(c.provenance.confidence)}
+        for c in candidates
+    ]
+
+    # manifest.json is inside the byte-identical guarantee; run_meta.json is
+    # deliberately outside it, and holds everything that legitimately varies.
+    _write(
+        out_dir,
+        "manifest.json",
+        canonical_dumps(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "artifacts": artifacts,
+                "target_hashes": _target_hashes(root),
+                "entry_ids": sorted(entry_ids),
+                "sink_ids": sorted(sink_ids),
+            }
+        )
+        + "\n",
+    )
+    (out_dir / "run_meta.json").write_text(
+        json.dumps(
+            {
+                "tool_version": __version__,
+                "python": platform.python_version(),
+                "target_root": str(root.resolve()),
+                "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "elapsed_seconds": round(time.time() - started, 1),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    if offenders and strict_gate:
+        return EXIT_GATE_FAILED, summary
+    return EXIT_OK, summary
+
+
+# ---------------------------------------------------------------------------
+# trace — Mode A
+# ---------------------------------------------------------------------------
+
+
+def trace(
+    graph_dir: Path,
+    scenario_file: Path,
+    scenario: str,
+    out_root: Path,
+) -> tuple[int, str]:
+    """Run the target under the harness and write the runtime overlay.
+
+    The harness runs in a **child process**, and that is not an optimisation.
+
+    Card 11's sandbox never auto-clears its enforcement once a run starts:
+    clearing it at block exit left a window in which a thread outliving the
+    run escaped every control, so it now ends only at process exit. That is
+    the right call for containment, and it means the harness owns its process
+    for good — the first attempt at this command died trying to `mkdir` its own
+    output directory afterwards, blocked by its own sandbox.
+
+    So the child runs the target and writes its recording and run record
+    *inside* the sandbox, which it legitimately owns. This parent stays clean
+    and does the materialising and writing. Nothing is widened to make room for
+    the tool: the alternative was declaring our output directory a permitted
+    write root, which would have let the target write there too.
+    """
+    import subprocess
+
+
+    spec_doc = json.loads(scenario_file.read_text(encoding="utf-8"))
+    target_root = Path(spec_doc["target_root"]).resolve()
+    if scenario not in spec_doc.get("scenarios", {}):
+        known = ", ".join(sorted(spec_doc.get("scenarios", {}))) or "none"
+        return EXIT_USAGE, f"no scenario named {scenario!r}. Declared: {known}"
+
+    elements = _cli__read_jsonl(graph_dir, "elements.jsonl", Element)
+    if not elements:
+        return EXIT_USAGE, (
+            f"no Mode B graph in {graph_dir}. Mode A always builds on a completed "
+            f"static graph — run `cascade-map analyze` first."
+        )
+
+    sandbox_root = (out_root / "sandbox").resolve()
+    sandbox_root.mkdir(parents=True, exist_ok=True)
+    recordings = sandbox_root / "recordings"
+    recordings.mkdir(parents=True, exist_ok=True)
+    record_out = sandbox_root / "run_record.json"
+
+    child = _CHILD_SOURCE.format(
+        spec=json.dumps(spec_doc),
+        scenario=json.dumps(scenario),
+        graph_dir=json.dumps(str(graph_dir.resolve())),
+        sandbox=json.dumps(str(sandbox_root)),
+        recordings=json.dumps(str(recordings)),
+        record_out=json.dumps(str(record_out)),
+        src=json.dumps(str(Path(__file__).resolve().parents[1])),
+        self_file=json.dumps(str(Path(__file__).resolve())),
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", child], capture_output=True, text=True, timeout=1800
+    )
+    if not record_out.exists():
+        detail = (completed.stderr or completed.stdout or "").strip()[-2000:]
+        return EXIT_REFUSED, f"the harness produced no run record.\n\n{detail}"
+
+    run = _rebuild(RunRecord, json.loads(record_out.read_text(encoding="utf-8")))
+    if run.refused:
+        return EXIT_REFUSED, (
+            f"REFUSED: {run.refusal_reason}\n\n"
+            f"A refusal is a correct outcome, not a warning to work around. "
+            f"Nothing was executed."
+        )
+
+    index = build_index(graph_dir, target_root)
+    tracer = Tracer(index, recordings_dir=recordings)
+    result = tracer.result(run)
+    order_nodes = _cli__read_jsonl(graph_dir, "order.jsonl", OrderNode)
+    decisions = _cli__read_jsonl(graph_dir, "decisions.jsonl", DecisionPoint)
+    narrative = Narrator().narrate(result.events, order_nodes, decisions, run)
+
+    run_dir = out_root / "runtime" / run.run_id
+    tracer.emit(result, run_dir)
+    _write(run_dir, "run.json", canonical_dumps(run) + "\n")
+    _write(run_dir, "narrative.jsonl", canonical_jsonl(narrative))
+
+    failure = run.scenario_failure
+    total, mapped = result.mapping.total_events, result.mapping.mapped_events
+    rate = f"{100 * mapped // total}%" if total else "nothing was observed"
+    lines = [
+        f"Wrote {run_dir}",
+        "",
+        f"  run id         {run.run_id}",
+        f"  events         {total:,}",
+        f"  mapped         {mapped:,} ({rate})",
+        f"  unmapped       {total - mapped:,}   <- where the static map was wrong",
+        f"  contradictions {len(result.contradictions):,}   <- observation vs static claim",
+        f"  nondeterminism {len(result.nondeterminism):,}",
+        f"  blocked        {len(run.blocked):,}   <- side effects the harness stopped",
+        "",
+    ]
+    if failure is not None:
+        # Before anything else. A scenario that never ran produces a report
+        # that reads exactly like a run whose analysis was wrong, and an owner
+        # would go hunting the wrong bug.
+        if failure.stage == "import":
+            headline = (
+                "YOUR SCENARIO DID NOT RUN — the module could not be imported."
+            )
+            hint = (
+                "Either `target_root` in your scenario file points at the wrong "
+                "directory, or the target cannot import itself. The traceback "
+                "below says which."
+            )
+        elif failure.exception_type == "AttributeError":
+            headline = (
+                "YOUR SCENARIO DID NOT RUN — the module imported, but the named "
+                "function does not exist."
+            )
+            hint = "Check the `function` field in your scenario file."
+        else:
+            headline = "YOUR TARGET RAISED. The run completed; the scenario did not."
+            hint = "This is your engine's own exception, not a tool failure."
+        lines = [
+            headline,
+            "",
+            f"  {failure.exception_type}: {failure.message}",
+            "",
+            f"  {hint}",
+            "",
+            "Everything below describes a run in which that happened. Read the "
+            "event counts with that in mind.",
+            "",
+        ] + lines
+
+    if run.unguaranteed:
+        lines.append("WHAT THIS RUN COULD NOT GUARANTEE:")
+        lines += [f"  - {item}" for item in run.unguaranteed]
+        lines.append("")
+    return EXIT_OK, "\n".join(lines)
+
+
+#: How the child gets this tool's own code into scope. A named seam, not an
+#: inlined block: `tools/amalgamate.py` replaces this one assignment, because
+#: the single-file build has no `cascade_map` package for the child to import —
+#: only the one file, which it loads by path. Anything that needs the two
+#: shapes to differ belongs here and nowhere else.
+_CHILD_PROLOGUE = '\nimport importlib.util, json, sys\nfrom pathlib import Path\n\n_spec = importlib.util.spec_from_file_location("_cascade_map_single", {self_file})\n_mod = importlib.util.module_from_spec(_spec)\nsys.modules["_cascade_map_single"] = _mod\n_spec.loader.exec_module(_mod)\n\ncanonical_dumps = _mod.canonical_dumps\nHarness = _mod.Harness\nHarnessRefusal = _mod.HarnessRefusal\nRunConfig = _mod.RunConfig\nScenarioSpec = _mod.ScenarioSpec\ncompute_graph_hash = _mod.compute_graph_hash\ncompute_target_hashes = _mod.compute_target_hashes\nStaticIndex = _mod.StaticIndex\nTracer = _mod.Tracer\nbuild_index = _mod.build_index\n'
+
+#: Runs in a child interpreter. Writes its record inside the sandbox, which is
+#: the only place it is allowed to write once the harness has taken the process.
+_CHILD_SOURCE = _CHILD_PROLOGUE + """
+spec_doc = json.loads({spec!r}) if isinstance({spec!r}, str) else {spec}
+target_root = Path(spec_doc["target_root"]).resolve()
+config = RunConfig(
+    target_root=target_root,
+    mode_b_out_dir=Path({graph_dir}),
+    sandbox_root=Path({sandbox}),
+    scenarios={{
+        name: ScenarioSpec(name=name, module=body["module"],
+                           function=body.get("function", ""),
+                           args=tuple(body.get("args", ())))
+        for name, body in spec_doc["scenarios"].items()
+    }},
+    declared_process_names=frozenset(spec_doc.get("declared_process_names", ())),
+    env_passthrough=frozenset(spec_doc.get("env_passthrough", ())),
+)
+index = build_index(Path({graph_dir}), target_root)
+tracer = Tracer(index, recordings_dir=Path({recordings}))
+graph_hash = compute_graph_hash(compute_target_hashes(target_root))
+try:
+    run = Harness(config).start({scenario}, graph_hash, tracer)
+except HarnessRefusal as exc:
+    print("refusal:", exc, file=sys.stderr)
+    raise SystemExit(4)
+Path({record_out}).write_text(canonical_dumps(run) + "\\n", encoding="utf-8")
+"""
+
+
+# ---------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------
+
+
+def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
+    """The owner-facing summary. Honest about what it could not work out."""
+    lines = [
+        f"Wrote {out_dir}",
+        "",
+        f"  elements      {summary['elements']:>8,}",
+        f"  call edges    {summary['edges']:>8,}",
+        f"  lineage edges {summary['lineage_edges']:>8,}",
+        f"  decisions     {summary['decisions']:>8,}",
+        f"  findings      {summary['findings']:>8,}",
+        f"  unresolved    {summary['unresolved']:>8,}   <- reported, never dropped",
+        f"  barriers      {summary['barriers']:>8,}   <- value flow stops being traceable",
+        "",
+        "Confidence of the edges the map is built from:",
+    ]
+    census = summary["confidence"]
+    total = sum(census.values()) or 1
+    for level in ("CERTAIN", "RESOLVED", "PROBABLE", "HEURISTIC", "UNKNOWN"):
+        count = census.get(level, 0)
+        lines.append(f"  {level:<10} {count:>8,}  {100 * count // total:>3}%")
+
+    detected = summary.get("detected") or []
+    if detected:
+        lines += ["", "Detected, NOT confirmed — these are proposals for you:"]
+        for item in detected:
+            lines.append(
+                f"  {item['role']:<14} {item['element_id']}  ({item['confidence']})"
+            )
+        lines.append("  Set them in docs/design/TARGET_PROFILE.md to make them facts.")
+
+    if exit_code == EXIT_GATE_FAILED:
+        lines += [
+            "",
+            f"GATE FAILED: {summary['incomplete_records']:,} elements have an "
+            "incomplete documentation record.",
+            "The artifacts were still written so you can see what is missing.",
+        ]
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="cascade-map",
+        description="Map a Python decision engine. The static commands never "
+        "execute the target.",
+    )
+    parser.add_argument("--version", action="version", version=__version__)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    run = sub.add_parser("analyze", help="static map of a target tree")
+    run.add_argument("root", type=Path)
+    run.add_argument("--out", type=Path, default=Path("out/latest"))
+    run.add_argument("--entry", action="append", default=[], metavar="ID",
+                     help="entry point element id; repeatable. Detected if omitted.")
+    run.add_argument("--sink", action="append", default=[], metavar="ID",
+                     help="decision sink element id; repeatable. Detected if omitted.")
+    run.add_argument("--config", action="append", default=[], metavar="PATH",
+                     help="config file that wires components by name; repeatable")
+    run.add_argument("--cache", type=Path, default=None)
+    run.add_argument("--no-gate", action="store_true",
+                     help="write artifacts even if the completeness gate fails, "
+                          "and exit 0. The gate still reports.")
+
+    cmp_ = sub.add_parser("diff", help="compare two analysed output directories")
+    cmp_.add_argument("before", type=Path)
+    cmp_.add_argument("after", type=Path)
+    cmp_.add_argument("--out", type=Path, default=Path("out/diff"))
+
+    show = sub.add_parser("view", help="render an analysed tree as offline HTML")
+    show.add_argument("out_dir", type=Path)
+    show.add_argument("--html", type=Path, default=None)
+
+    run_a = sub.add_parser("trace", help="Mode A — run the target under the harness")
+    run_a.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
+    run_a.add_argument("--scenarios", type=Path, required=True,
+                       help="JSON file declaring target_root and named scenarios")
+    run_a.add_argument("--scenario", required=True)
+    run_a.add_argument("--out", type=Path, default=Path("out/latest"))
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+
+    if args.command == "analyze":
+        if not args.root.is_dir():
+            print(f"not a directory: {args.root}", file=sys.stderr)
+            return EXIT_USAGE
+        code, summary = analyze(
+            args.root,
+            args.out,
+            entry_ids=tuple(args.entry),
+            sink_ids=tuple(args.sink),
+            config_paths=tuple(args.config),
+            cache_dir=args.cache,
+            strict_gate=not args.no_gate,
+        )
+        print(_report(summary, args.out, code))
+        return EXIT_OK if args.no_gate else code
+
+    if args.command == "diff":
+        changes, impacts = diff_snapshots(
+            load_snapshot(args.before), load_snapshot(args.after)
+        )
+        args.out.mkdir(parents=True, exist_ok=True)
+        _write(args.out, "changes.jsonl", canonical_jsonl(changes))
+        _write(args.out, "impacts.jsonl", canonical_jsonl(impacts))
+        moved = sum(1 for i in impacts if i.decision_paths_changed)
+        print(f"Wrote {args.out}\n  changes {len(changes):,}\n  impacts {len(impacts):,}")
+        print(f"  {moved:,} of them change a path to a decision")
+        return EXIT_OK
+
+    if args.command == "view":
+        # Imported by name, not as a module object: `viewer.render_to_file`
+        # needs a `viewer` namespace to exist, and in the single-file build
+        # there are no module namespaces -- only globals.
+
+        target = args.html or (args.out_dir / "index.html")
+        render_to_file(args.out_dir, target)
+        print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
+        return EXIT_OK
+
+    code, message = trace(args.graph_dir, args.scenarios, args.scenario, args.out)
+    print(message, file=sys.stderr if code else sys.stdout)
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

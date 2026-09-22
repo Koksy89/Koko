@@ -18,10 +18,32 @@ or modify them.
 
 ## Status
 
-**Both modes are complete and gated.** 1187 tests, 0 failing.
+**Both modes are complete and gated.** 1162 tests, 0 failing.
 
 `cascade-map analyze` reads your engine and never executes it. `cascade-map trace` runs
 it inside the safety harness and records what it did. See `docs/STATUS.md`.
+
+## The whole tool in one file
+
+If you do not want to install anything, take **[`dist/cascade_map.py`](dist/cascade_map.py)**.
+One file, no package, no dependencies beyond the standard library; Python 3.11 or newer.
+
+    python3 cascade_map.py analyze /path/to/metatron_engine --out out/first
+    python3 cascade_map.py view out/first
+    python3 cascade_map.py trace out/first --scenarios scenarios.json --scenario baseline
+
+It is generated from the package by `tools/amalgamate.py`, not written separately, so
+there is no second implementation to drift. `tests/test_amalgamate.py` runs both shapes
+over the fixture corpus and requires their `analyze`, `view` and `trace` output to match
+byte for byte — that test exists because two earlier attempts produced a single file that
+ran without complaint and answered differently.
+
+Regenerate it with:
+
+    python3.12 tools/amalgamate.py --out dist/cascade_map.py
+
+The builder needs 3.12+ (before 3.12 Python's tokenizer cannot see the names inside
+f-strings, which the rename pass has to); the file it writes runs on 3.11+.
 
 ## Setup
 
@@ -34,7 +56,7 @@ Requires Python 3.11 or newer (develop on 3.12).
     pip install -e ".[dev]"
     pytest
 
-81 tests should pass. They all cover the engine guard; there is nothing else to test yet.
+1162 tests should pass, 0 fail.
 
 ## Putting your engine in place
 
