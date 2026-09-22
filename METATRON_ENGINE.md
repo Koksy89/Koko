@@ -92,7 +92,7 @@ python3 metatron_engine.py analyze ROOT --out DIR [options]
 | `--entry ID` | declare an entry point by element id; repeatable | when auto-detection guesses wrong |
 | `--sink ID` | declare a final-decision element by id; repeatable | **strongly recommended** — see below |
 | `--config PATH` | a JSON/config file that wires components by name; repeatable | when your engine names classes/functions in config |
-| `--cache DIR` | keep an incremental cache here | on a large engine you re-analyse often |
+| `--cache DIR` | move the incremental cache (default `./.cascade_map/cache`) | to keep it off a network drive, or out of your repo |
 | `--no-gate` | write the map even if the completeness check fails, and exit 0 | rarely; the gate exists for a reason |
 
 **About `--sink`.** A "sink" is where your final decision comes out — the function or
@@ -570,10 +570,12 @@ sort by rank, read the ones where `decision_paths_changed` is true, ignore the r
   look like" without checking out and re-analysing.
 - **Name output directories after versions, never `latest`.** `out\latest` is a default
   for experiments; for version control it destroys the thing you need.
-- **Use `--cache` on a large engine.** `--cache .metatron-cache` makes re-analysis skip
-  unchanged files by content hash. Without the flag there is no cache and every run is a
-  full re-analysis. The cache is never a source of truth — it is keyed on content hash
-  and regenerated on demand — so never commit it.
+- **The incremental cache is already on.** It defaults to `.cascade_map/cache` under
+  whatever directory you run the command from; `--cache DIR` only moves it. Unchanged
+  files are skipped by content hash, so a re-analysis after editing a few files is
+  near-instant while the first analysis of an engine is not. The cache is never a source
+  of truth — it is keyed on content hash and regenerated on demand — so never commit it,
+  and deleting it is always safe.
 - **Run it on every meaningful change, not just releases.** The impact answer is most
   useful when the change set is small enough to read.
 
@@ -746,7 +748,7 @@ the module could not be imported (check `target_root`), the named function does 
 failure). This distinction exists because a crashed scenario otherwise produces a report
 that reads exactly like a run whose analysis was wrong, and you would hunt the wrong bug.
 
-**Slow on a very large engine** — add `--cache .metatron-cache`.
+**Slow on a very large engine** — the first analysis is the slow one; the cache is on by default, so the second is far faster. If the first run is slower than you can live with, tell me: the ingestion stage has a known quadratic cost in file length that is fixable.
 
 ---
 
