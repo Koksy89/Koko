@@ -94,5 +94,23 @@ check('the gate runs before the sweep dispatches',
 check('the PCA record carries frozen mu/sdv/w', 'mu=[float(x) for x in _mu]' in src)
 check('the PCA record carries replication steps', 'standardise each input' in src)
 
+# ── the PCA composites that actually reach shipped strategies ───────────────
+print('\nthe PCA composites are documented where they are actually made')
+import ast as _a
+_src = open(ENGINE, encoding='utf-8').read()
+_t = _a.parse(_src)
+_sites = [n for n in _a.walk(_t) if isinstance(n, _a.Call)
+          and getattr(n.func, 'id', '') == 'laz_featdoc__document_now']
+check('every document_now site exists', len(_sites) >= 2, str(len(_sites)))
+check('the V2.13 PARENT path documents its composites',
+      'god:pca_document_parent' in _src)
+check('it is keyed by the POOL NAME, not a manifest key',
+      "laz_featdoc__document_now(\n                                    _pname," in _src)
+check('it freezes mu, sdv and w with the record',
+      _src.count('manifest_file=f') >= 2 and "w=[float(x) for x in _w]" in _src)
+check('it names the production module that recomputes it',
+      'production_module=f' in _src)
+check('the record cannot cost the run', 'god:pca_document_parent' in _src)
+
 print(f'\n{"ALL PASS" if not fails else "FAILURES: "+", ".join(fails)}')
 sys.exit(1 if fails else 0)

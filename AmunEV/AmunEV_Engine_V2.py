@@ -84717,6 +84717,7 @@ _LAZ_MODULE_API = {
  'laz_docs': ('write_all','names','text'),
  'laz_audit': ('run','run_all','gate','KINDS','SCRIPTS'),
  'laz_production': ('export','coverage','term_lineage','strategy_record'),
+ 'laz_deploy': ('emit','row','preflight','sql','namespace','pca_manifest','pca_module','column_name','threshold','condition','leaves'),
  'laz_combine_all': ('run','build_bet_book','merge_from','BET_BOOK'),
 }
 # Populated by the engine builder: module -> {clean name: prefixed global}.
@@ -104177,7 +104178,21 @@ def laz_mode3___sweep_one_base(bt, rung_ix=None):
                             import json as _jp, os as _op
                             _OWp = _m('laz_owner')
                             _pp = _op.path.join((_OWp.LAZ_OWNER['paths'].get('output_dir') or _op.getcwd()), f'laz_pca_{sport}.json')
-                            _jp.dump({f'pc_{i}': _PCD[f'pc_{i}'] for i in range(_ci)}, open(_pp, 'w'), indent=1)
+                            # MERGE, NEVER OVERWRITE. This legacy worker path used to
+                            # dump its own {pc_0..pc_N} straight over the file, erasing
+                            # the parent's content-hashed manifest -- and with it every
+                            # transform production needs to recompute a composite. Each
+                            # worker did it in turn, so the last one to finish decided
+                            # what survived.
+                            _old_pc = {}
+                            try:
+                                with open(_pp) as _pf0:
+                                    _old_pc = _jp.load(_pf0) or {}
+                            except Exception:
+                                _old_pc = {}
+                            _old_pc.update({f'pc_{i}': _PCD[f'pc_{i}'] for i in range(_ci)})
+                            with open(_pp, 'w') as _pf1:
+                                _jp.dump(_old_pc, _pf1, indent=1)
                             log(f'  [mode3] PCA manifest: {_ci} composites frozen -> laz_pca_{sport}.json (the production transform)')
                         except Exception as _pe2:
                             laz_sink__swallow('mode3:pca_manifest', _pe2)
@@ -107779,6 +107794,37 @@ def laz_mode3__find(sport, stride=1, min_n=100, rounds=300, target=None, ladder=
                             _pc = np.full(len(d), np.nan, dtype=np.float32)
                             _pc[_fok] = (((_full[_fok] - _mu) / _sdv) @ _w).astype(np.float32)
                             pool[_pname] = _pc
+                            # [GOD-1] DOCUMENTED AT CREATION, KEYED BY THE POOL NAME.
+                            # Only the legacy worker path carried this record, and the
+                            # parent path -- the one that actually runs, and the one whose
+                            # composites reach shipped strategies -- created them silently.
+                            # Every pc_* that ever reached a strategy came from here.
+                            try:
+                                laz_featdoc__document_now(
+                                    _pname,
+                                    origin=('PCA composite over a correlated cluster (|r| >= '
+                                            f'{_thr:.2f}), fitted on the IN-SAMPLE rows only'),
+                                    recipe=('pc = ((X - mu) / sdv) @ w  where X is the column '
+                                            'stack of `terms` IN THE ORDER GIVEN; mu, sdv and w '
+                                            'are FROZEN at fit time and never refitted'),
+                                    inputs=list(_grp),
+                                    causality='live (every input is causal; the transform is frozen)',
+                                    resolves_at=0.0,
+                                    replication_steps=[
+                                        f'1. compute the input terms in this order: {list(_grp)}',
+                                        '2. if ANY input is missing or non-finite on this tick, the '
+                                        'composite is None -- never 0: the fit dropped exactly those rows',
+                                        '3. standardise each input: (x - mu[i]) / sdv[i], with the FROZEN mu/sdv below',
+                                        '4. project: dot the standardised row with w',
+                                        '5. emit float32 -- the thresholds were fitted to the float32 value',
+                                        f'6. the name IS the definition: pc_ + sha256("|".join(sorted(terms)))[:8] = {_pname}'],
+                                    extra=dict(mu=[float(x) for x in _mu], sdv=[float(x) for x in _sdv],
+                                               w=[float(x) for x in _w], terms=list(_grp),
+                                               n_fit=int(_fit.sum()),
+                                               manifest_file=f'laz_pca_{sport}.json',
+                                               production_module=f'laz_pca_features_{laz_deploy__sport(sport)}.py'))
+                            except Exception as _gd2:
+                                laz_sink__swallow('god:pca_document_parent', _gd2)
                             _man[_pname] = dict(terms=list(_grp), mu=[float(x) for x in _mu], sdv=[float(x) for x in _sdv], w=[float(x) for x in _w], n_fit=int(_fit.sum()), explained=float(_s_[0] ** 2 / max(float((_s_ ** 2).sum()), 1e-12)), corr_thresh=_thr, fitted_on='IS rows only (match-start split, earlier half)')
                             _made += 1
                         if _man:
@@ -115875,6 +115921,17 @@ def laz_xl__write(A, sport, mode, run_log=None, sim=None, path=None, log=print, 
     except Exception as _e:
         log(f'[xl] SAVE FAILED: {type(_e).__name__}: {str(_e)[:100]}')
         raise
+    # [DEPLOY] THE ONE-STOP STEP. The workbook is what the owner reads; this is what
+    # production loads. Both are written here, from the same A, at the same moment, so
+    # the book and the live registry can never describe different strategies.
+    # Guarded: a defect here must never cost the run the strategies it just found.
+    try:
+        if mode == 3 and A is not None and len(A):
+            laz_deploy__emit(A, sport, log=log)
+    except Exception as _de:
+        laz_sink__swallow('xl:deploy', _de)
+        log(f'[deploy] FAILED {type(_de).__name__}: {str(_de)[:110]} - the workbook is '
+            'unaffected; no production bundle was written for this run')
     try:
         if _prov is not None and out:
             _sidecar = str(out) + '.provenance.json'
@@ -118391,6 +118448,1393 @@ def laz_production__export(sport, out_dir=None, n_ref_matches=50, stride=1, log=
     return paths
 laz_production___PROD_SNAPSHOT_FEATURES = ['abs_lead', 'ao', 'away_player_total_games', 'both_cannon', 'both_low', 'cb_prog', 'combined_avg_matchgoals', 'consec_loser_odds_high', 'down1', 'draw_odds', 'early_first_goal', 'efb_line', 'efb_need', 'efb_prog', 'efb_u_flat', 'elo_advantage_loser', 'elo_away', 'elo_leader', 'elo_loser', 'fat_adv_leader', 'fav_rt', 'first_goal_prog', 'gap_abs', 'gap_rel', 'goal_num', 'goal_scored', 'h2h_exp', 'h2h_wall', 'h2h_wr_loser', 'h_score', 'ho', 'home_player_wr', 'hour', 'hp_avggoals_scored_5', 'is_first_half', 'lag_score', 'lam', 'ld_o', 'lead_net10', 'lead_streak', 'leader_exp', 'leader_form10', 'leader_games_24h', 'leader_odds_now', 'leader_odds_rt', 'leader_player_wr', 'league', 'line', 'line_vs_h2h', 'line_vs_pair', 'lmin', 'loser_form10', 'loser_form20', 'loser_form5', 'loser_odds_now', 'loser_odds_rt', 'loser_player_wr', 'loser_runmax', 'losing_team_rt', 'min_rest_min', 'minute', 'opp_velocity', 'overround', 'p_und_mod', 'pair_g10', 'pair_g5', 'pm_ratio', 'prematch_dog_odds', 'prematch_draw_odds', 'price_rank_in_match', 'prog', 'prog_t', 'proj_gap_n', 'recovery_x', 'role_reversal', 'rt_score_difference', 's00', 'sd_abs', 'secs_since_score', 'spread', 'tg', 'tied', 'time_at_this_price', 'trailer_at_high', 'u_drift', 'u_flat', 'u_rank', 'wall_min', 'wall_min_rel', 'wall_pair', 'wall_prod', 'wall_sum', 'wl', 'a_score', 'anchor', 'anchor_ge', 'any_set1', 'away_odds', 'bb_line_flat', 'bb_line_move', 'bb_line_open', 'bb_line_vel', 'bb_ml_spread', 'bb_need_frac', 'bb_prog_score', 'bb_q', 'bb_sd_abs', 'bb_tp_vel_n', 'bb_u_drift', 'bb_u_flat', 'cold_form', 'conc_bottom_q', 'feed_gap', 'h2h_gap', 'need_frac_min', 'price_flat', 'steam_down', 'rest_hp', 'rest_ap', 'rest_lead', 'rest_trail']
 laz_production___PROD_SNAPSHOT_RAW = ['match_id', 'match_name', 'first_timestamp', 'timestamp', 'league', 'league_minutes', 'phase', 'period', 'phase_minute', 'period_length', 'market_status', 'h_score', 'a_score', 'home_odds', 'draw_odds', 'away_odds', 'prematch_home_odds', 'prematch_away_odds', 'total_goals_handicap', 'total_goals_over', 'total_goals_under', 'total_points_handicap', 'total_points_over', 'total_points_under', 'favourite_prematch', 'underdog_prematch', 'first_observed_home_odds', 'first_observed_draw_odds', 'first_observed_away_odds']
+# ==========================================================================
+# LAZ_BRAIN MODULE: laz_deploy
+# §laz_deploy   <- grep this anchor to land here
+# OBJECTIVE : THE ENGINE EMITS WHAT PRODUCTION LOADS. NOTHING IN BETWEEN.
+# PURPOSE   : Every strategy this run validated is turned, at the moment the book is
+#             written, into the exact rows, columns and code the live stack reads --
+#             laz_strategy_registry, laz_feature_namespace, the rt_allsports_laz_features
+#             columns and the generated feature module -- and each one is proved against
+#             the live loader's OWN rules before it is written.
+# HOW       : laz_deploy__emit(A, sport) reads each leg's element_doc (written at
+#             acceptance, the only lossless record of what was measured), renders it into
+#             production grammar, runs the eight load-time gates the live evaluators
+#             enforce, and writes a bundle that is either loadable in full or names
+#             exactly which strategy is not and why.
+# VALUE     : Before this, the bundle the engine wrote could not load AT ALL: conditions
+#             were dicts where production parses strings, market was None where production
+#             demands a settleable market, and bet_role carried mined family names that
+#             resolve_side answers None to -- so every strategy would have either killed
+#             the sport at startup or silently never fired.
+# IF SKIPPED: The book is a spreadsheet. Going live means a human retyping 270 strategies
+#             into SQL, and every typo is a bet the engine never measured.
+# ==========================================================================
+"""laz_deploy.py — FROM VALIDATED TO LIVE, IN ONE STEP.
+
+THE CONTRACT THIS FILE IMPLEMENTS is not invented here. It is transcribed from the
+production stack itself, and every rule below names the file and the line it comes from:
+
+  <sport>_lazarus_efb_strategies.py  RegistryEvaluator._load
+      SELECT strategy, conditions, market, min_odds, max_odds,
+             tier, family, entry_window, bet_role[, bet_team]
+        FROM laz_strategy_registry WHERE sport=%s AND enabled
+      SELECT feature, column_name FROM laz_feature_namespace WHERE sport=%s
+
+  <sport>_db_insert_n_update.py      feature_columns()
+      every laz_feature_namespace.column_name MUST already be a column of
+      rt_allsports_laz_features, or the sport refuses to start.
+
+  laz_features.py                    resolve_side / price_for_side / resolve_for_condition
+
+FIVE WAYS A ROW KILLS PRODUCTION, all of them load-time and all of them fatal to the
+WHOLE SPORT, not just the offending strategy:
+
+  1. `unparseable condition {c!r}`      — one clause the _COND regex cannot read
+  2. `market {m!r} not settleable here` — a market the evaluator cannot settle
+  3. `{feat!r} has no namespace row`    — a condition term with no laz_feature_namespace row
+  4. `namespace names columns absent`   — a column_name rt_allsports_laz_features lacks
+  5. `ZERO enabled <sport> strategies`  — the whole insert failed and nobody noticed
+
+AND ONE THAT IS WORSE THAN FATAL, because it raises nothing at all:
+
+  6. a bet_role resolve_side does not know. It returns None, the evaluator `continue`s,
+     and the strategy never fires for the rest of its life. No log line, no exception,
+     no bet. The engine's own family names (`prop:late_lead_hold`, `spec:Leader`,
+     `tg_under`, `q1_winner`) are ALL of this kind.
+
+So nothing is written here that has not first been run through the same gates the live
+loader runs. A strategy that cannot pass them is not quietly dropped and not quietly
+shipped: it goes to the quarantine file with the exact production error it would have
+raised, and it never reaches the registry SQL.
+"""
+
+# ── THE PRODUCTION GRAMMAR, TRANSCRIBED ───────────────────────────────────────
+# Verbatim from every evaluator's _COND. The threshold alternative is the tight part:
+# `-?\d+(?:\.\d+)?` matches NEITHER scientific notation (1e-05), NOR inf/-inf/nan, NOR a
+# bare fraction (.5). repr(float) produces all three, and the engine's seed text used
+# repr -- so a cut of 1e-05 or a `>= -inf` clause is a sport-wide outage.
+laz_deploy__COND_RE = r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(<=|>=|==|=|<|>)\s*(-?\d+(?:\.\d+)?|True|False)\s*$'
+laz_deploy__NUM_RE = r'^-?\d+(?:\.\d+)?$'
+laz_deploy__IDENT_RE = r'^[A-Za-z_][A-Za-z0-9_]*$'
+
+# Postgres truncates an identifier at 63 BYTES, with a NOTICE, not an error. A
+# laz_feature_namespace.column_name longer than that never matches the column the ALTER
+# actually created, feature_columns() raises `namespace names columns absent`, and the
+# sport refuses to start. Three basketball terms are already over the limit today.
+laz_deploy__PG_MAX_IDENT = 63
+
+# WHAT resolve_side CAN ANSWER (laz_features.py). Anything else returns None and the
+# strategy silently never fires. This list is the whole of it.
+laz_deploy__ROLE_FIXED = ('Draw', 'Total_Under', 'Total_Goals_Under', 'Total_Points_Under')
+laz_deploy__ROLE_LIVE = ('leader', 'trailer', 'fav_trailer', 'dog_leader',
+                         'pm_favourite', 'pm_underdog', 'shortened', 'drifted')
+laz_deploy__ROLES = laz_deploy__ROLE_LIVE + laz_deploy__ROLE_FIXED
+
+# WHAT EACH SPORT'S EVALUATOR CAN SETTLE, from its own SETTLEABLE_MARKETS.
+# A market outside this set raises at load and takes the sport down with it.
+laz_deploy__SETTLEABLE = {
+    'basketball':  ('total_points_under', 'trail_ml', 'lead_ml', 'match_winner'),
+    'ebasketball': ('total_points_under', 'match_winner'),
+    'football':    ('match_winner', 'total_goals_under', 'total_goals_over'),
+    'efootball':   ('match_winner', 'total_goals_under', 'total_goals_over'),
+    'tennis':      ('match_winner',),
+    'etennis':     ('match_winner',),
+    'tabletennis': ('match_winner', 'total_points_under', 'total_points_over'),
+    'esports':     ('match_winner',),
+}
+# The sport label the engine uses -> the sport label production's RegistryEvaluator.SPORT
+# uses. `efbig` is the engine's big-frame eFootball run; production knows it as eFootball.
+laz_deploy__SPORT_ALIAS = {'efbig': 'efootball', 'realfootball': 'football',
+                           'real_football': 'football', 'table_tennis': 'tabletennis',
+                           'e_tennis': 'etennis', 'e_basketball': 'ebasketball'}
+
+# ── BASE -> (MARKET, ROLE), FROM THE ENGINE'S OWN REGISTRIES ─────────────────
+# A strategy's BASE is the half of its specification the conditions do not carry: which
+# ticks are eligible, which side is backed, and on what market it settles. Production
+# expresses that as exactly two registry columns, `market` and `bet_role`, and can
+# express nothing else -- so a base whose mask says more than those two columns can say
+# is not deployable, however good its numbers are.
+#
+# THE MEASUREMENT THIS RESTS ON is laz_features.py's own header, which states the share
+# of the engine's 447,314 bets that went to each side per family:
+#     leader   100.0% of 76,000+  lead_ml, dog_leading, tg_under, tg_under_lag,
+#                                 q4_moneyline and the spec: families
+#     leader   100.0% of 50,928   every strategy with NO recorded family
+#     trailer  100.0% of 21,607   trail_ml, fav_trailing
+# and resolve_side's two refinements: dog_leading is dog_leader (the leader must ALSO be
+# the pre-match underdog) and fav_trailing is fav_trailer, its exact mirror. Both are in
+# the family name itself, and plain leader/trailer drops half the rule.
+
+# The engine's base OUTCOME (laz_propose__BASES) or registry `market` -> what production
+# settles. Everything absent from this table is a market NO evaluator settles: a spread,
+# an Asian handicap, a draw-no-bet, both-teams-to-score, a double chance, or any period,
+# set, map or half market. Those are refused by name rather than bent into a moneyline,
+# because a strategy measured on the first half settled as a full match is a different
+# bet that happens to share a price.
+laz_deploy__OUTCOME_MARKET = {
+    'match_ml': 'match_winner', 'moneyline': 'match_winner', 'match_winner': 'match_winner',
+    'match_total': '@total', 'totals': '@total', 'total_goals_handicap': '@total',
+    'total_goals_under': '@total_under', 'total_points_under': '@total_under',
+    'total_goals_over': '@total_over', 'total_points_over': '@total_over',
+    'lead_ml': 'lead_ml', 'trail_ml': 'trail_ml',
+}
+# '@total' needs a direction. It comes from the base's own name, never from a default:
+# an UNDER strategy registered as an OVER settles on the opposite event.
+laz_deploy__TOTAL_UNDER_TOKENS = ('under', 'tg_under', 'wall_under', 'garbage_under')
+laz_deploy__TOTAL_OVER_TOKENS = ('over', 'tg_over')
+laz_deploy__TOTAL_MARKET = {
+    'basketball': ('total_points_under', None), 'ebasketball': ('total_points_under', None),
+    'tabletennis': ('total_points_under', 'total_points_over'),
+    'football': ('total_goals_under', 'total_goals_over'),
+    'efootball': ('total_goals_under', 'total_goals_over'),
+}
+
+# ── THE BASE MASKS PRODUCTION CAN REPRODUCE EXACTLY ──────────────────────────
+# A mask is deployable ONLY when resolve_side reproduces it with nothing left over.
+# `_lead(C)` and `_trail(C)` at their default bounds (el 0.0-1.2, k=0) are the whole of
+# the leader and trailer rules, so they map cleanly. `_lead(C, 0.4, 0.7)` is NOT: its
+# elapsed window is a second predicate, and shipping it as plain `leader` fires on every
+# leading tick of the match instead of the middle third -- a different strategy with the
+# same name.
+#
+# THE RESIDUAL IS STATED, NOT DROPPED. Each partial base below records what resolve_side
+# cannot say, so the quarantine entry names the exact missing predicate rather than
+# "not supported". Two of them would be one clause away from shipping if the engine's
+# `el` and production's `prog` were measured to agree; that measurement has not been
+# made, and asserting it here would move every windowed strategy onto a clock nobody
+# has checked.
+laz_deploy__BASE_MASK = {
+    # ── exact: the mask IS the role ──────────────────────────────────────────
+    'lead_ml': dict(role='leader', residual=()),
+    'trail_ml': dict(role='trailer', residual=()),
+    'sets_leader': dict(role='leader', residual=()),
+    'sets_trailer': dict(role='trailer', residual=()),
+    'maps_leader': dict(role='leader', residual=()),
+    'maps_trailer': dict(role='trailer', residual=()),
+    'dog_leading': dict(role='dog_leader', residual=()),
+    'fav_trailing': dict(role='fav_trailer', residual=()),
+    'pm_favourite': dict(role='pm_favourite', residual=()),
+    'pm_underdog': dict(role='pm_underdog', residual=()),
+    'SHORTENED': dict(role='shortened', residual=()),
+    'shortener_vs_open': dict(role='shortened', residual=()),
+    'DRIFTED': dict(role='drifted', residual=()),
+    'drifter_vs_open': dict(role='drifted', residual=()),
+    'model_pick': dict(role=None, residual=('the side a gradient-boosted scorer picks; '
+                                            'production runs no model',)),
+    # ── partial: a role plus a predicate production has no column for ────────
+    'late_lead_hold': dict(role='leader', residual=('elapsed in [0.85, 1.2]', 'margin > 3')),
+    'mid_leader': dict(role='leader', residual=('elapsed in [0.4, 0.7]',)),
+    'mid_trailer': dict(role='trailer', residual=('elapsed in [0.4, 0.7]',)),
+    'early_trailer': dict(role='trailer', residual=('elapsed in [0.0, 0.25]',)),
+    'q3_run_leader': dict(role='leader', residual=('elapsed in [0.5, 0.75]', 'margin > 9')),
+    'two_goal_leader': dict(role='leader', residual=('elapsed in [0.3, 1.2]', 'margin > 1')),
+    'dog_leading_late': dict(role='dog_leader', residual=('elapsed in [0.75, 1.2]',)),
+    'dog_leading_mid': dict(role='dog_leader', residual=('elapsed in [0.4, 0.7]',)),
+    'fav_leading_early': dict(role=None, residual=('the pre-match FAVOURITE while LEADING; '
+                                                   'resolve_side has no fav_leader role',)),
+    'fav_trailing_early': dict(role='fav_trailer', residual=('elapsed in [0.0, 0.35]',)),
+    'q4_close_trailer': dict(role='trailer', residual=('elapsed >= 0.75', 'margin <= 6')),
+    'fresh_lead': dict(role='leader', residual=('seconds since the lead last changed <= 60; '
+                                                'laz_features computes no lead-change clock',)),
+    'held_lead': dict(role='leader', residual=('seconds since the lead last changed >= 600; '
+                                               'laz_features computes no lead-change clock',)),
+    'quiet_leader': dict(role='leader', residual=('secs_since_score >= 300',)),
+    'volatile_fav': dict(role='pm_favourite', residual=('lead changes in the last 300s >= 2; '
+                                                        'laz_features computes no lead-change count',)),
+    'first_scorer_hold': dict(role=None, residual=('the side that scored FIRST, held from the '
+                                                   'event; laz_features computes no first-scorer flag',)),
+    'one_goal_leader_late': dict(role='leader', residual=('a one-goal lead, late',)),
+    'possession_lead': dict(role='leader', residual=('a possession-based lead',)),
+    'deciding_map': dict(role='leader', residual=('the deciding map only',)),
+    'h1_leader_hold': dict(role='leader', residual=('the first-half leader',)),
+    'map1_leader_match': dict(role='leader', residual=('the map-1 leader',)),
+    'set1_winner_match': dict(role='leader', residual=('the set-1 winner',)),
+    'fav_lost_map1': dict(role=None, residual=('the favourite that lost map 1',)),
+    'fav_lost_set1': dict(role=None, residual=('the favourite that lost set 1',)),
+    'level_early_draw': dict(role='Draw', residual=('elapsed early, scores level',)),
+    'level_late_draw': dict(role='Draw', residual=('elapsed late, scores level',)),
+    'draw_hold': dict(role='Draw', residual=()),
+}
+
+# THE MARKET THE MEASURED FAMILIES SETTLE ON. laz_features' header measured WHICH SIDE
+# each of these families backed, which settles the role; the market is read off the
+# family's own name, and only where the name states it outright. `spec:Draw_Trap` is the
+# reason the measurement outranks the name: it carries "Draw" and the engine bet the
+# LEADER on 100% of its bets, so it is a moneyline on the leader, not a draw.
+laz_deploy__FAMILY_MARKET = {
+    'lead_ml': 'moneyline', 'trail_ml': 'moneyline', 'q4_moneyline': 'moneyline',
+    'dog_leading': 'moneyline', 'fav_trailing': 'moneyline',
+    'pm_favourite': 'moneyline', 'pm_underdog': 'moneyline',
+    'SHORTENED': 'moneyline', 'DRIFTED': 'moneyline',
+    'spec:HT_Leader_1': 'moneyline', 'spec:Draw_Trap': 'moneyline',
+    'spec:Loser_1G': 'moneyline', 'spec:Early_Hammer': 'moneyline',
+    'spec:Leader': 'moneyline', 'spec:HT_Underdog_Fade': 'moneyline',
+    'tg_under': '@total_under', 'tg_under_lag': '@total_under', 'tg_over': '@total_over',
+    'spec:TG_Historical_vs_Handicap_Under': '@total_under',
+}
+
+# The families laz_features MEASURED, for a record whose base is not in the mask table.
+laz_deploy__FAMILY_ROLE = {
+    'lead_ml': 'leader', 'q4_moneyline': 'leader', 'tg_under': 'leader',
+    'tg_under_lag': 'leader', 'tg_over': 'leader',
+    'spec:HT_Leader_1': 'leader', 'spec:Draw_Trap': 'leader', 'spec:Loser_1G': 'leader',
+    'spec:Early_Hammer': 'leader', 'spec:Leader': 'leader',
+    'spec:HT_Underdog_Fade': 'leader',
+    'spec:TG_Historical_vs_Handicap_Under': 'leader',
+    'dog_leading': 'dog_leader',
+    'trail_ml': 'trailer', 'fav_trailing': 'fav_trailer',
+    'pm_favourite': 'pm_favourite', 'pm_underdog': 'pm_underdog',
+    'SHORTENED': 'shortened', 'DRIFTED': 'drifted',
+}
+
+
+def laz_deploy__sport(sport):
+    """The production sport label for an engine sport label."""
+    s = str(sport or '').strip().lower()
+    return laz_deploy__SPORT_ALIAS.get(s, s)
+
+
+def laz_deploy__column_name(feature, taken=None):
+    """The laz_feature_namespace.column_name for a feature, safe for Postgres.
+
+    A name of 63 bytes or less that is already a valid identifier is used AS IS, so the
+    91 book features keep the column names production already has and nothing existing
+    moves. A longer name -- every deep manufactured X_ term -- is shortened to
+    54 chars + '_' + 8 hex of the sha1 of the FULL name: deterministic across runs,
+    collision-free by construction, and exactly 63 bytes.
+
+    Without this the ALTER creates a silently truncated column, the namespace row keeps
+    the full name, feature_columns() finds them different and the sport will not start.
+    """
+    import re as _re, hashlib as _hh
+    f = str(feature)
+    if not _re.match(laz_deploy__IDENT_RE, f):
+        # Not an identifier at all -- hash the whole thing behind a legal prefix.
+        return 'f_' + _hh.sha1(f.encode('utf-8')).hexdigest()[:16]
+    if len(f.encode('utf-8')) <= laz_deploy__PG_MAX_IDENT:
+        c = f
+    else:
+        c = f[:54] + '_' + _hh.sha1(f.encode('utf-8')).hexdigest()[:8]
+    # Postgres folds an unquoted identifier to lower case. Two features differing only in
+    # case would then be one column; disambiguate rather than lose one.
+    if c.lower() != c:
+        low = c.lower()
+        if taken is not None and low in taken and taken[low] != f:
+            low = low[:54] + '_' + _hh.sha1(f.encode('utf-8')).hexdigest()[:8]
+        c = low
+    if taken is not None:
+        taken[c] = f
+    return c
+
+
+def laz_deploy__threshold(v):
+    """A threshold token production's _COND regex is GUARANTEED to match, or None.
+
+    `-?\\d+(?:\\.\\d+)?` is narrower than it looks. It rejects:
+        1e-05   repr(1e-5)              -- a real cut value, the search produces them
+        -inf    the V2.27 open-clause text
+        nan     a cut that never fitted
+        .5      a bare fraction
+    Every one of those is `unparseable condition` at load, which takes the sport down.
+
+    So the value is rendered as a plain decimal with enough places to be exact for a
+    float64 (17 significant digits round-trips), then trimmed of trailing zeros. A value
+    too small or too large to write that way is refused here rather than at 03:00 in
+    production.
+    """
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if f != f or f in (float('inf'), float('-inf')):
+        return None          # NaN and infinities have no legal token
+    import re as _re
+    for nd in (0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 17):
+        s = f'{f:.{nd}f}'
+        if nd:
+            s = s.rstrip('0').rstrip('.')
+        if s in ('', '-', '-0'):
+            s = '0'
+        if not _re.match(laz_deploy__NUM_RE, s):
+            continue
+        if float(s) == f:
+            return s
+    # No exact decimal rendering -- do not ship an approximation of a fitted threshold.
+    return None
+
+
+def laz_deploy__condition(term, op, value):
+    """One clause in production grammar, or (None, reason).
+
+    The op set is production's: <=, >=, <, >, ==, =. An UNPARSED clause, a compound
+    clause and a range clause all fail here, by design: the basketball, football and
+    eBasketball evaluators have no range form, so a range shipped to them is a load-time
+    RuntimeError for the entire sport.
+    """
+    import re as _re
+    t = str(term or '').strip()
+    o = str(op or '').strip()
+    if not _re.match(laz_deploy__IDENT_RE, t):
+        return None, f'term {t!r} is not a bare identifier (production _COND group 1)'
+    if o not in ('<=', '>=', '<', '>', '==', '='):
+        return None, f'operator {o!r} is not one production parses'
+    if isinstance(value, bool):
+        tok = 'True' if value else 'False'
+    else:
+        tok = laz_deploy__threshold(value)
+    if tok is None:
+        return None, (f'threshold {value!r} has no token matching {laz_deploy__NUM_RE} '
+                      '(scientific notation, inf and nan are all unparseable at load)')
+    txt = f'{t} {o} {tok}'
+    if not _re.match(laz_deploy__COND_RE, txt):
+        return None, f'rendered clause {txt!r} still fails the production regex'
+    return txt, None
+
+
+def laz_deploy___clean(v):
+    """A missing value, whatever shape it arrived in.
+
+    A base that never existed reaches this file as the STRING 'nan', because the book
+    frame is a DataFrame and str(NaN) is 'nan'. Treated as a real base name it matches
+    nothing, and the 50,928 bets laz_features measured for family-less strategies -- all
+    of them the leader, 100.0% -- would be withheld for having no role.
+    """
+    t = str(v or '').strip()
+    return '' if t.lower() in ('nan', 'none', 'null', '<na>', 'na') else t
+
+
+def laz_deploy___outcome_of(base):
+    """The engine's own outcome for a base, from whichever registry declares it."""
+    b = str(base or '')
+    # `prop:late_lead_hold` and `spec:Leader` are the proposer's and the spec sheet's own
+    # namespaces over the SAME base. The prefix says where the strategy came from, not
+    # what it settles, so it is stripped before every registry lookup -- leaving it on is
+    # how a perfectly ordinary moneyline base came back as 'no outcome'.
+    cands = [b] + ([b.split(':', 1)[1]] if ':' in b else [])
+    REG = _m('laz_registry')
+    BASES = ((getattr(REG, 'BASES', None) or {}) if REG is not None else {})
+    for c in cands:
+        B = BASES.get(c) or {}
+        if B.get('market'):
+            return str(B['market'])
+    PB = globals().get('laz_propose__BASES') or {}
+    for fam in PB.values():
+        for e in (fam or ()):
+            if str(e.get('name')) in cands:
+                return str(e.get('outcome') or '')
+    return ''
+
+
+def laz_deploy__market(rec, sport, doc=None):
+    """The production market for a leg, or (None, reason).
+
+    Resolved from the base's declared OUTCOME, never from a default. A base whose
+    outcome is a spread, a handicap, a draw-no-bet, both-teams-to-score, a double
+    chance, or any half, quarter, set or map market has no production equivalent, and
+    saying `match_winner` because that is what most strategies are would settle the bet
+    on an event the strategy was never measured on.
+    """
+    sp = laz_deploy__sport(sport)
+    allowed = laz_deploy__SETTLEABLE.get(sp)
+    if not allowed:
+        return None, f'no production evaluator is known for sport {sp!r}'
+    raw = laz_deploy___clean(str((doc or {}).get('market') or rec.get('market') or ''))
+    base = laz_deploy___clean(str((doc or {}).get('base') or rec.get('base') or ''))
+    fam = laz_deploy___clean(str(rec.get('family') or ''))
+    outcome = laz_deploy___outcome_of(base)
+    if not outcome:
+        # A family laz_features MEASURED carries its own market; consulted only after the
+        # base registries, which are the engine's own declaration.
+        for k in (base, fam):
+            if k in laz_deploy__FAMILY_MARKET:
+                outcome = laz_deploy__FAMILY_MARKET[k]
+                break
+        else:
+            outcome = laz_deploy___outcome_of(fam)
+    if not outcome and not base and not fam:
+        # laz_features measured every family-less strategy at 100% LEADER over 50,928
+        # bets -- a side bet, so the side market.
+        outcome = 'moneyline'
+    # A tg_ base is a totals base whatever any column says.
+    if base.startswith('tg_') and not outcome:
+        outcome = 'total_goals_under' if 'under' in base else (
+            'total_goals_over' if 'over' in base else '@total')
+    tried = []
+    for key in (raw if raw in allowed else None, outcome, raw,
+                (base if base in laz_deploy__OUTCOME_MARKET else None)):
+        if not key:
+            continue
+        tried.append(key)
+        if key in allowed:
+            return key, None
+        m = key if key.startswith('@') else laz_deploy__OUTCOME_MARKET.get(key)
+        if m is None:
+            continue
+        if not m.startswith('@'):
+            if m in allowed:
+                return m, None
+            continue
+        under, over = laz_deploy__TOTAL_MARKET.get(sp, (None, None))
+        low = (base + ' ' + raw).lower()
+        want = None
+        if any(t in low for t in laz_deploy__TOTAL_UNDER_TOKENS):
+            want = under
+        elif any(t in low for t in laz_deploy__TOTAL_OVER_TOKENS):
+            want = over
+        if m == '@total_under':
+            want = under
+        elif m == '@total_over':
+            want = over
+        if want is None:
+            return None, (f'base {base!r} settles a total but its own name does not say '
+                          'UNDER or OVER; registering the wrong direction settles the bet '
+                          'on the opposite event')
+        if want in allowed:
+            return want, None
+        return None, (f'{sp} does not settle {want!r}; it settles {sorted(allowed)}')
+    return None, (f'market {raw!r} / outcome {outcome!r} (base {base!r}) is not one {sp} '
+                  f'settles; it settles {sorted(allowed)}. Tried {tried or "nothing"}')
+
+
+def laz_deploy__role(rec, sport, market, doc=None):
+    """The production bet_role for a leg, or (None, reason).
+
+    A role production cannot resolve is the worst outcome in this file, because it
+    raises nothing: resolve_side answers None, the evaluator's `continue` runs, and the
+    strategy never fires again for the rest of its life -- no log line, no exception, no
+    bet. So a role is returned only when the base's mask is reproduced EXACTLY, and the
+    residual is named when it is not.
+    """
+    if market in ('total_points_under',):
+        return 'Total_Points_Under', None
+    if market in ('total_goals_under',):
+        return 'Total_Goals_Under', None
+    if market in ('total_points_over', 'total_goals_over'):
+        # laz_features' _ROLE_FIXED carries no OVER role and price_for_side prices no
+        # OVER side, so the evaluator would answer None on every tick.
+        return None, ('production has no OVER role: _ROLE_FIXED and price_for_side both '
+                      'stop at the UNDER, so an over strategy never resolves a side')
+    if market == 'lead_ml':
+        return 'leader', None
+    if market == 'trail_ml':
+        return 'trailer', None
+    base = laz_deploy___clean(str((doc or {}).get('base') or rec.get('base') or ''))
+    fam = laz_deploy___clean(str(rec.get('family') or ''))
+    for key in (base, fam):
+        mk = laz_deploy__BASE_MASK.get(key)
+        if mk is None and ':' in key:
+            mk = laz_deploy__BASE_MASK.get(key.split(':', 1)[1])
+        if mk is None:
+            continue
+        if mk['residual']:
+            return None, (f'base {key!r} arms on more than a role: production would have to '
+                          'reproduce ' + '; '.join(mk['residual']) +
+                          '. Shipping it as ' + repr(mk['role'] or 'a role') +
+                          ' alone fires on ticks the strategy was never measured on')
+        return mk['role'], None
+    for key in (fam, base):
+        if key in laz_deploy__FAMILY_ROLE:
+            return laz_deploy__FAMILY_ROLE[key], None
+        if ':' in key and key.split(':', 1)[1] in laz_deploy__FAMILY_ROLE:
+            return laz_deploy__FAMILY_ROLE[key.split(':', 1)[1]], None
+    if not fam and not base:
+        # laz_features measured every family-less strategy at 100% leader over 50,928 bets.
+        return 'leader', None
+    return None, (f'family {fam!r} / base {base!r} is in neither the measured role table nor '
+                  'the reproducible base masks; resolve_side would answer None and the '
+                  'strategy would silently never fire')
+
+
+def laz_deploy__band(rec, doc=None):
+    """(min_odds, max_odds) as floats production can compare, or (None, None, reason)."""
+    b = (doc or {}).get('band') or {}
+    lo, hi = b.get('lo'), b.get('hi')
+    if lo is None or hi is None:
+        import re as _re
+        m = _re.match(r'^\s*([0-9.]+(?:e[+-]?\d+)?)\s*-\s*([0-9.]+(?:e[+-]?\d+)?)\s*$',
+                      str(rec.get('band') or rec.get('rung') or ''))
+        if not m:
+            return None, None, 'no band on the record and none in the element doc'
+        lo, hi = m.group(1), m.group(2)
+    try:
+        lo, hi = float(lo), float(hi)
+    except (TypeError, ValueError):
+        return None, None, f'band {lo!r}-{hi!r} is not numeric'
+    # NaN is not a bound. Every NaN comparison is False, so `price < min_odds` is False
+    # for a NaN floor and the bet is placed at ANY price -- the exact hole the evaluator's
+    # own `price != price` guard exists to close one level further down.
+    if lo != lo or hi != hi:
+        return None, None, 'band carries NaN; a NaN bound admits every price'
+    if lo <= 0 or hi <= 0:
+        return None, None, f'band {lo}-{hi} is not a positive price range'
+    if hi < lo:
+        return None, None, f'band {lo}-{hi} is inverted; nothing can satisfy it'
+    return lo, hi, None
+
+
+def laz_deploy__doc_of(rec):
+    """The element doc written at acceptance, as a dict. {} when the row predates it."""
+    d = rec.get('element_doc')
+    if isinstance(d, dict):
+        return d
+    if isinstance(d, str) and d.strip():
+        try:
+            return json.loads(d)
+        except Exception:
+            return {}
+    return {}
+
+
+def laz_deploy__clauses(rec, doc):
+    """The leg's clauses as (term, op, value) triples, preferring the acceptance record.
+
+    element_doc.clauses is the ONLY lossless source: it was parsed inside the worker from
+    the chain the leg was measured on, before the threshold went through a
+    float->string->float trip. The `conditions` string on the book row is what survived,
+    and re-parsing it is how the engine and production came apart in the first place.
+    """
+    out, bad = [], []
+    cl = doc.get('clauses')
+    if cl:
+        for c in cl:
+            if str(c.get('op') or '') == 'UNPARSED':
+                bad.append(str(c.get('raw'))[:120])
+                continue
+            v = c.get('value')
+            if v is None and c.get('lo') is not None and c.get('hi') is not None:
+                bad.append(f"{c.get('term')} is a RANGE ({c.get('lo')}, {c.get('hi')}); "
+                           'no production evaluator for this sport parses a range form')
+                continue
+            out.append((c.get('term'), c.get('op'), v))
+        return out, bad
+    PC = globals().get('laz_release__parse_conditions')
+    txt = str(rec.get('conditions') or '')
+    if PC is None or not txt.strip():
+        return [], ['no element doc and no readable conditions text on the record']
+    for c in PC(txt, keep_unparsed=True):
+        if str(c.get('op') or '') == 'UNPARSED':
+            bad.append(str(c.get('raw'))[:120])
+            continue
+        out.append((c.get('term'), c.get('op'), c.get('value')))
+    return out, bad
+
+
+laz_deploy__X_TOK = r'__(x|over|minus|plus)__'
+
+
+def laz_deploy__split_top(body):
+    """laz_features._split_top, ported exactly.
+
+    `X_` marks an operand that is itself an interaction, and an interaction is always
+    binary, so each `X_` seen claims exactly ONE later operator. Walk left to right
+    counting unclaimed markers; the first operator found while the count is zero is the
+    top-level one.
+
+    A depth counter does NOT work -- `X_` has no closing marker -- and trying the
+    operators in a fixed order is the defect laz_features' own docstring records: two of
+    the book's three nested terms happened to parse and the third returned None, which is
+    a strategy silently never firing with nothing to show why. Reading the term any other
+    way here would put a DIFFERENT set of leaves in the namespace than production reads.
+    """
+    import re as _re
+    tok = _re.compile(laz_deploy__X_TOK)
+    pending, i = 0, 0
+    while i < len(body):
+        if body.startswith('X_', i):
+            pending += 1
+            i += 2
+            continue
+        m = tok.match(body, i)
+        if m:
+            if pending > 0:
+                pending -= 1
+            else:
+                return body[:i], m.group(1), body[m.end():]
+            i = m.end()
+            continue
+        i += 1
+    return None
+
+
+def laz_deploy__leaves(name):
+    """The base features a manufactured X_ term is built from.
+
+    laz_features.interaction() reads each operand out of the tick's feature dict,
+    recursing while the operand is itself an X_ term. So an X_ term is computable in
+    production exactly when every LEAF is; a term with one leaf production does not
+    build evaluates to None forever, and the strategy on it never fires.
+    """
+    n = str(name)
+    if not n.startswith('X_'):
+        return [n]
+    parts = laz_deploy__split_top(n[2:])
+    if parts is None:
+        return [n[2:]]
+    left, _op, right = parts
+    return laz_deploy__leaves(left) + laz_deploy__leaves(right)
+
+
+laz_deploy___PCA_CACHE = {}
+laz_deploy___CATALOGUE_CACHE = {}
+
+
+def laz_deploy__row(rec, sport, log=None):
+    """Turn one validated leg into a laz_strategy_registry row, or say why it cannot be.
+
+    Returns dict(ok=bool, row=..., reasons=[...], doc=...). A row is produced ONLY when
+    every load-time gate the live evaluator enforces has already passed here.
+    """
+    sp = laz_deploy__sport(sport)
+    doc = laz_deploy__doc_of(rec)
+    name = str(rec.get('strategy_name') or doc.get('strategy') or '').strip()
+    reasons = []
+    if not name:
+        return dict(ok=False, row=None, reasons=['the leg carries no strategy name'], doc=doc)
+
+    trips, bad = laz_deploy__clauses(rec, doc)
+    reasons += bad
+    unknown, pcbad = [], []
+    conds, terms = [], []
+    for t, o, v in trips:
+        txt, why = laz_deploy__condition(t, o, v)
+        if txt is None:
+            reasons.append(f'{t} {o} {v!r}: {why}')
+            continue
+        conds.append(txt)
+        terms.append(str(t))
+    # A registry row with no conditions passes every tick's condition loop trivially and
+    # fires on the FIRST tick of every match in the sport. That is not the strategy that
+    # was measured; it is a bet on everything.
+    if not conds:
+        reasons.append('no clause survives into production grammar; a zero-condition row '
+                       'fires on the first tick of every match')
+
+    # G14. Every condition term must be a term production can COMPUTE. A term it cannot
+    # build makes resolve_for_condition answer None on every tick, the condition loop
+    # breaks, and the strategy never fires -- with no error anywhere, which is precisely
+    # the failure mode this whole file exists to make impossible. The quarantine entry
+    # names the term, so it can be built into laz_features and shipped on the next run.
+    # LAZ_DEPLOY_STRICT_TERMS=0 ships them anyway, knowing they will not fire.
+    catalogue = laz_deploy___CATALOGUE_CACHE.get(sp)
+    if catalogue is None:
+        try:
+            _pf, _pr = laz_production___load_production_catalogue()
+            catalogue = set(_pf) | set(_pr)
+        except Exception as _ce:
+            laz_sink__swallow('deploy:catalogue', _ce)
+            catalogue = set()
+        laz_deploy___CATALOGUE_CACHE[sp] = catalogue
+    if catalogue and os.environ.get('LAZ_DEPLOY_STRICT_TERMS', '1') != '0':
+        pcn = laz_deploy___PCA_CACHE.get(sp) or {}
+        flat = []
+        for t in terms:
+            flat += (laz_deploy__leaves(t) if t.startswith('X_') else [t])
+        unknown[:] = sorted({t for t in flat if t not in catalogue and not t.startswith('pc_')})
+        if unknown:
+            reasons.append('production computes no ' + ', '.join(unknown[:6])
+                           + (' (+%d more)' % (len(unknown) - 6) if len(unknown) > 6 else '')
+                           + '; the condition would answer None on every tick and the '
+                             'strategy would never fire')
+        pcbad[:] = sorted({leaf for t in terms if t in pcn for i in pcn[t]['terms']
+                        for leaf in laz_deploy__leaves(i) if leaf not in catalogue})
+        if pcbad:
+            reasons.append('a PCA composite here is built from ' + ', '.join(pcbad[:6])
+                           + ', which production does not compute; the composite would be '
+                             'None on every tick')
+
+    # G13. A pc_* composite is a number only its frozen transform can produce. With the
+    # transform in hand production recomputes it exactly, tick by tick, and the condition
+    # holds or does not exactly as it did in the sweep. Without it the term is a name with
+    # no definition, and every strategy conditioning on one was excluded for that reason.
+    pcas = laz_deploy___PCA_CACHE.get(sp) or {}
+    for t in terms:
+        if str(t).startswith('pc_') and str(t) not in pcas:
+            reasons.append(f'{t}: a PCA composite with no frozen transform in '
+                           f'laz_pca_{sp}.json; production cannot compute it')
+        elif str(t).startswith('pc_'):
+            missing = [x for x in pcas[str(t)]['terms'] if str(x).startswith('pc_')
+                       and x not in pcas]
+            if missing:
+                reasons.append(f'{t}: its own inputs {missing} have no frozen transform')
+
+    market, why = laz_deploy__market(rec, sp, doc)
+    if market is None:
+        reasons.append(why)
+    role, why = (laz_deploy__role(rec, sp, market, doc) if market else (None, None))
+    if market and role is None:
+        reasons.append(why)
+    lo, hi, why = laz_deploy__band(rec, doc)
+    if why:
+        reasons.append(why)
+
+    rt = str(doc.get('text_rebuild') or rec.get('text_rebuild') or 'untested')
+    if rt not in ('exact', 'untested'):
+        # The leg is honestly validated -- the owner's numbers decide that -- but its
+        # shipping text rebuilds a DIFFERENT set of bets than the one it was measured on.
+        # Shipping it means production places bets the search never measured.
+        reasons.append(f'round-trip: the shipping text does not rebuild the measured bets ({rt})')
+
+    if reasons:
+        return dict(ok=False, row=None, reasons=reasons, doc=doc,
+                    blocking_terms=sorted(set(unknown) | set(pcbad)),
+                    blocking_base=(str((doc or {}).get('base') or rec.get('base') or '')
+                                   if any('base ' in str(r) or 'family ' in str(r)
+                                          or 'settles' in str(r) for r in reasons) else None))
+
+    return dict(ok=True, doc=doc, reasons=[], row=dict(
+        sport=sp, strategy=name, conditions=conds, market=market,
+        min_odds=lo, max_odds=hi,
+        tier=(laz_deploy___clean(str(rec.get('tier'))) or None),
+        # A missing family reaches the frame as the STRING 'nan'; written through it
+        # becomes a real family name in the registry that matches nothing.
+        family=(laz_deploy___clean(str(rec.get('family'))) or None),
+        entry_window=laz_deploy___window(rec),
+        bet_role=role, enabled=True,
+        terms=sorted(set(terms)),
+        spec_sha=str(doc.get('spec_sha') or rec.get('spec_sha') or ''),
+        bets_sha=str((doc.get('measured') or {}).get('bets_sha') or ''),
+        n_bets=(doc.get('measured') or {}).get('n_bets'),
+        oos_win=rec.get('oos_win'), oos_roi=rec.get('oos_roi'), odds=rec.get('odds')))
+
+
+def laz_deploy___window(rec):
+    """entry_window, in seconds, as an int production can compare, or None."""
+    for k in ('entry_window', 'window_sec', 'hold_sec'):
+        v = rec.get(k)
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f == f and f > 0:
+            return int(round(f))
+    return None
+
+
+# ── PCA COMPOSITES: THE TRANSFORM IS FROZEN, SO PRODUCTION CAN RECOMPUTE IT ───
+def laz_deploy__pca_manifest(sport, out_dir=None):
+    """The PCA transforms this run froze, from laz_pca_<sport>.json.
+
+    THE REASON THIS IS HERE. pc_<i> composites reached shipped strategies with nothing
+    production could join them to, and every strategy conditioning on one was excluded.
+    They do not have to be. A principal component is a FROZEN LINEAR MAP -- the cluster's
+    terms, a mean, a standard deviation and a loading vector, all fitted once on the
+    in-sample rows and never refitted -- so a live tick can compute exactly the same
+    number the sweep did:
+
+        pc = (((x - mu) / sdv) . w)  as float32, over the terms in their frozen order
+
+    The condition then either holds on this tick or it does not, which is all the
+    strategy ever asked. Nothing is approximated and nothing is refitted live; if any
+    input term is missing on a tick the component is None, never 0, which is the same
+    rule the fit used when it dropped non-finite rows.
+    """
+    OW = _m('laz_owner')
+    d = out_dir or (OW.LAZ_OWNER['paths'].get('output_dir') if OW else None) or os.getcwd()
+    p = os.path.join(d, f'laz_pca_{laz_deploy__sport(sport)}.json')
+    if not os.path.exists(p):
+        p = os.path.join(d, f'laz_pca_{sport}.json')
+    if not os.path.exists(p):
+        return {}
+    try:
+        with open(p) as fh:
+            man = json.load(fh)
+    except Exception as e:
+        laz_sink__swallow('deploy:pca_manifest', e)
+        return {}
+    out = {}
+    for k, v in (man or {}).items():
+        try:
+            terms = [str(x) for x in v['terms']]
+            mu = [float(x) for x in v['mu']]
+            sdv = [float(x) for x in v['sdv']]
+            w = [float(x) for x in v['w']]
+        except Exception:
+            continue
+        if not (len(terms) == len(mu) == len(sdv) == len(w)) or not terms:
+            continue
+        if any(s == 0 or s != s for s in sdv) or any(x != x for x in mu + w):
+            continue
+        out[str(k)] = dict(terms=terms, mu=mu, sdv=sdv, w=w,
+                           n_fit=v.get('n_fit'), sport=laz_deploy__sport(sport))
+    return out
+
+
+def laz_deploy__pca_module(pcas, sport):
+    """The production module that computes this run's PCA composites live.
+
+    Written as SOURCE, not as a description of source, because a recipe a human retypes
+    is a recipe that drifts. It imports nothing but the standard library, takes the same
+    feature dict the evaluator already has, and returns the same float32 the sweep
+    measured on.
+    """
+    sp = laz_deploy__sport(sport)
+    L = ['# laz_pca_features_%s.py — GENERATED BY THE ENGINE. DO NOT EDIT BY HAND.' % sp,
+         '#',
+         '# Every transform below was FROZEN when the engine fitted it on the in-sample',
+         '# rows of this run and is reproduced here exactly: the cluster terms in their',
+         '# fitted order, the per-term mean and standard deviation, and the first',
+         '# principal component loading.  pc = (((x - mu) / sdv) . w), emitted as the',
+         '# same float32 the sweep measured on.',
+         '#',
+         '# A tick on which ANY input term is missing or non-finite yields None, never 0:',
+         '# the fit itself dropped exactly those rows, so a 0 would be a value the engine',
+         '# never saw and the condition would test a number that does not exist.',
+         '#',
+         f'# engine   : {laz_xl___engine_sha256() or "unknown"}',
+         f'# sport    : {sp}',
+         f'# composites: {len(pcas)}',
+         '',
+         'import math as _math',
+         '',
+         'PCA = {']
+    for k in sorted(pcas):
+        v = pcas[k]
+        L.append(f'    {k!r}: dict(')
+        L.append(f'        terms={v["terms"]!r},')
+        L.append(f'        mu={v["mu"]!r},')
+        L.append(f'        sdv={v["sdv"]!r},')
+        L.append(f'        w={v["w"]!r},')
+        L.append(f'        n_fit={v.get("n_fit")!r}),')
+    L += ['}', '',
+          '',
+          'def _f32(x):',
+          '    """The engine emitted float32. Rounding here and not there would put a',
+          '    value on the other side of a threshold fitted to the float32."""',
+          '    import struct',
+          '    return struct.unpack("<f", struct.pack("<f", x))[0]',
+          '',
+          '',
+          'def compute(f):',
+          '    """Fold every frozen composite into the feature dict `f`, in place.',
+          '',
+          '    Call this AFTER the sport features and the book features are merged, so',
+          '    every input term is present, and BEFORE conditions are evaluated.',
+          '    Returns `f`.',
+          '    """',
+          '    for name, spec in PCA.items():',
+          '        acc = 0.0',
+          '        ok = True',
+          '        for t, mu, sd, w in zip(spec["terms"], spec["mu"], spec["sdv"], spec["w"]):',
+          '            v = f.get(t)',
+          '            if v is None:',
+          '                ok = False',
+          '                break',
+          '            try:',
+          '                v = float(v)',
+          '            except (TypeError, ValueError):',
+          '                ok = False',
+          '                break',
+          '            if v != v or v in (float("inf"), float("-inf")):',
+          '                ok = False',
+          '                break',
+          '            acc += ((v - mu) / sd) * w',
+          '        f[name] = _f32(acc) if (ok and not _math.isinf(acc) and acc == acc) else None',
+          '    return f',
+          '']
+    return '\n'.join(L)
+
+
+# ── THE GATES, RUN THE WAY PRODUCTION RUNS THEM ──────────────────────────────
+def laz_deploy__preflight(rows, ns, sport):
+    """Replay every load-time rule the live stack applies, against the bundle itself.
+
+    This is deliberately a SECOND, independent pass. laz_deploy__row already refused
+    anything that could not pass; this proves it over the written bundle, in the loader's
+    own order, so a defect introduced between the two is caught here rather than at
+    startup in production.
+    """
+    import re as _re
+    sp = laz_deploy__sport(sport)
+    allowed = set(laz_deploy__SETTLEABLE.get(sp) or ())
+    cond_re = _re.compile(laz_deploy__COND_RE, _re.IGNORECASE)
+    failures, seen = [], {}
+    nsmap = {r['feature']: r['column_name'] for r in ns}
+    cols = {}
+    for r in ns:
+        c = r['column_name']
+        if len(c.encode('utf-8')) > laz_deploy__PG_MAX_IDENT:
+            failures.append(dict(where='namespace', name=r['feature'], rule='G11',
+                                 production_error='namespace names columns absent from '
+                                                  'rt_allsports_laz_features',
+                                 detail=f'column_name {c!r} is {len(c)} bytes; Postgres '
+                                        f'truncates at {laz_deploy__PG_MAX_IDENT}'))
+        if c in cols and cols[c] != r['feature']:
+            failures.append(dict(where='namespace', name=r['feature'], rule='G11',
+                                 production_error='two features share one column',
+                                 detail=f'{r["feature"]!r} and {cols[c]!r} both map to {c!r}'))
+        cols[c] = r['feature']
+    for row in rows:
+        nm = row['strategy']
+        if nm in seen:
+            failures.append(dict(where='registry', name=nm, rule='G0',
+                                 production_error='duplicate primary key',
+                                 detail='two rows carry the same (sport, strategy)'))
+        seen[nm] = True
+        if row['market'] not in allowed:
+            failures.append(dict(where='registry', name=nm, rule='G4',
+                                 production_error=f'{nm}: market {row["market"]!r} not settleable here',
+                                 detail=f'{sp} settles {sorted(allowed)}'))
+        if not row['conditions']:
+            failures.append(dict(where='registry', name=nm, rule='G10',
+                                 production_error='(no error -- it fires on every match)',
+                                 detail='a row with zero conditions passes the condition loop'))
+        for c in row['conditions']:
+            m = cond_re.match(c)
+            if not m:
+                failures.append(dict(where='registry', name=nm, rule='G1',
+                                     production_error=f'{nm}: unparseable condition {c!r}',
+                                     detail='RegistryEvaluator._load raises and the sport '
+                                            'loads ZERO strategies'))
+                continue
+            feat = m.group(1)
+            if feat not in nsmap:
+                failures.append(dict(where='registry', name=nm, rule='G5',
+                                     production_error=f'{nm}: {feat!r} has no namespace row for {sp}',
+                                     detail='every condition term needs a laz_feature_namespace row'))
+        if row['bet_role'] not in laz_deploy__ROLES:
+            failures.append(dict(where='registry', name=nm, rule='G7',
+                                 production_error='(no error -- it never fires)',
+                                 detail=f'bet_role {row["bet_role"]!r} is not one resolve_side '
+                                        f'answers; it returns None and the evaluator continues'))
+        for k in ('min_odds', 'max_odds'):
+            v = row.get(k)
+            if v is None or v != v:
+                failures.append(dict(where='registry', name=nm, rule='G9',
+                                     production_error='(no error -- every price passes)',
+                                     detail=f'{k} is {v!r}; a NaN bound compares False and admits all'))
+        if (row.get('min_odds') is not None and row.get('max_odds') is not None
+                and row['max_odds'] < row['min_odds']):
+            failures.append(dict(where='registry', name=nm, rule='G9',
+                                 production_error='(no error -- it never fires)',
+                                 detail=f'max_odds {row["max_odds"]} < min_odds {row["min_odds"]}'))
+    if rows and not failures:
+        pass
+    if not rows:
+        failures.append(dict(where='registry', name='*', rule='G3',
+                             production_error=f'ZERO enabled {sp} strategies in laz_strategy_registry',
+                             detail='the evaluator refuses to construct rather than run an empty book'))
+    return failures
+
+
+def laz_deploy___sql_str(s):
+    if s is None:
+        return 'NULL'
+    return "'" + str(s).replace("'", "''") + "'"
+
+
+def laz_deploy___sql_num(v):
+    if v is None:
+        return 'NULL'
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 'NULL'
+    return 'NULL' if f != f else repr(f)
+
+
+def laz_deploy__sql(rows, ns, sport):
+    """The whole deployment as one idempotent, transactional script."""
+    sp = laz_deploy__sport(sport)
+    L = [f'-- laz_deploy: {sp} — GENERATED BY THE ENGINE. Idempotent; safe to re-run.',
+         f'-- engine {laz_xl___engine_sha256() or "unknown"}',
+         f'-- {len(rows)} strategies · {len(ns)} feature columns',
+         '--',
+         '-- ORDER MATTERS. The feature columns must exist before the namespace names',
+         '-- them (feature_columns() checks information_schema), and the namespace must',
+         '-- name every term before a strategy conditions on it (RegistryEvaluator._load',
+         '-- raises on the first term it cannot find, and the sport then loads nothing).',
+         'BEGIN;',
+         '']
+    L.append('-- 1. the feature columns. rt_allsports_laz_features is all double precision.')
+    for r in ns:
+        L.append(f'ALTER TABLE rt_allsports_laz_features '
+                 f'ADD COLUMN IF NOT EXISTS "{r["column_name"]}" double precision;')
+    L += ['', '-- 2. the namespace: production feature name -> its column.']
+    L.append('CREATE TABLE IF NOT EXISTS laz_feature_namespace ('
+             'sport text NOT NULL, feature text NOT NULL, column_name text NOT NULL, '
+             'PRIMARY KEY (sport, feature));')
+    for r in ns:
+        L.append('INSERT INTO laz_feature_namespace (sport, feature, column_name) VALUES ('
+                 f'{laz_deploy___sql_str(sp)}, {laz_deploy___sql_str(r["feature"])}, '
+                 f'{laz_deploy___sql_str(r["column_name"])}) '
+                 'ON CONFLICT (sport, feature) DO UPDATE SET column_name = EXCLUDED.column_name;')
+    L += ['', '-- 3. the strategies. `conditions` is text[]: one clause per element, each',
+          '--    of them matching the evaluator\'s _COND regex exactly.']
+    L.append('CREATE TABLE IF NOT EXISTS laz_strategy_registry ('
+             'sport text NOT NULL, strategy text NOT NULL, conditions text[] NOT NULL, '
+             'market text, min_odds double precision, max_odds double precision, '
+             'tier text, family text, entry_window integer, bet_role text, '
+             'bet_team text, enabled boolean NOT NULL DEFAULT false, '
+             'PRIMARY KEY (sport, strategy));')
+    L.append('-- Everything this run did NOT re-validate is retired, so the live book is')
+    L.append('-- this run\'s book and not an accumulation of every run that ever ran.')
+    names = ', '.join(laz_deploy___sql_str(r['strategy']) for r in rows) or "''"
+    L.append(f'UPDATE laz_strategy_registry SET enabled = false WHERE sport = '
+             f'{laz_deploy___sql_str(sp)} AND strategy NOT IN ({names});')
+    for r in rows:
+        arr = 'ARRAY[' + ', '.join(laz_deploy___sql_str(c) for c in r['conditions']) + ']::text[]'
+        L.append('INSERT INTO laz_strategy_registry (sport, strategy, conditions, market, '
+                 'min_odds, max_odds, tier, family, entry_window, bet_role, enabled) VALUES ('
+                 f'{laz_deploy___sql_str(sp)}, {laz_deploy___sql_str(r["strategy"])}, {arr}, '
+                 f'{laz_deploy___sql_str(r["market"])}, {laz_deploy___sql_num(r["min_odds"])}, '
+                 f'{laz_deploy___sql_num(r["max_odds"])}, {laz_deploy___sql_str(r["tier"])}, '
+                 f'{laz_deploy___sql_str(r["family"])}, '
+                 f'{("NULL" if r["entry_window"] is None else int(r["entry_window"]))}, '
+                 f'{laz_deploy___sql_str(r["bet_role"])}, true) '
+                 'ON CONFLICT (sport, strategy) DO UPDATE SET '
+                 'conditions = EXCLUDED.conditions, market = EXCLUDED.market, '
+                 'min_odds = EXCLUDED.min_odds, max_odds = EXCLUDED.max_odds, '
+                 'tier = EXCLUDED.tier, family = EXCLUDED.family, '
+                 'entry_window = EXCLUDED.entry_window, bet_role = EXCLUDED.bet_role, '
+                 'enabled = true;')
+    L += ['', '-- 4. provenance: what each shipped row was MEASURED on, so a live bet can',
+          '--    always be traced back to the exact search that validated it.']
+    L.append('CREATE TABLE IF NOT EXISTS laz_strategy_provenance ('
+             'sport text NOT NULL, strategy text NOT NULL, spec_sha text, bets_sha text, '
+             'n_bets integer, oos_win double precision, oos_roi double precision, '
+             'odds double precision, engine_sha text, emitted_at timestamptz, '
+             'PRIMARY KEY (sport, strategy));')
+    eng = laz_deploy___sql_str(laz_xl___engine_sha256())
+    for r in rows:
+        L.append('INSERT INTO laz_strategy_provenance (sport, strategy, spec_sha, bets_sha, '
+                 'n_bets, oos_win, oos_roi, odds, engine_sha, emitted_at) VALUES ('
+                 f'{laz_deploy___sql_str(sp)}, {laz_deploy___sql_str(r["strategy"])}, '
+                 f'{laz_deploy___sql_str(r["spec_sha"])}, {laz_deploy___sql_str(r["bets_sha"])}, '
+                 f'{("NULL" if r.get("n_bets") is None else int(r["n_bets"]))}, '
+                 f'{laz_deploy___sql_num(r.get("oos_win"))}, {laz_deploy___sql_num(r.get("oos_roi"))}, '
+                 f'{laz_deploy___sql_num(r.get("odds"))}, {eng}, now()) '
+                 'ON CONFLICT (sport, strategy) DO UPDATE SET spec_sha = EXCLUDED.spec_sha, '
+                 'bets_sha = EXCLUDED.bets_sha, n_bets = EXCLUDED.n_bets, '
+                 'oos_win = EXCLUDED.oos_win, oos_roi = EXCLUDED.oos_roi, '
+                 'odds = EXCLUDED.odds, engine_sha = EXCLUDED.engine_sha, '
+                 'emitted_at = EXCLUDED.emitted_at;')
+    L += ['', 'COMMIT;', '']
+    return '\n'.join(L)
+
+
+def laz_deploy__namespace(terms, pcas=None):
+    """The laz_feature_namespace rows for a set of condition terms.
+
+    Every term a shipped strategy conditions on gets a row, whatever its shape --
+    a book feature, a manufactured X_ interaction, a PCA composite. A term with no row
+    is `{feat!r} has no namespace row` at load, and the sport loads nothing at all.
+    """
+    taken, out = {}, []
+    for t in sorted(set(str(x) for x in terms)):
+        out.append(dict(feature=t, column_name=laz_deploy__column_name(t, taken),
+                        kind=('pca' if (pcas or {}).get(t) else
+                              'manufactured' if t.startswith('X_') else 'feature')))
+    return out
+
+
+def laz_deploy__runbook(sport, rows, ns, pcas, failures, quarantined, paths):
+    """The operator's page: what was written, what to run, and in what order."""
+    sp = laz_deploy__sport(sport)
+    L = [f'# GO LIVE — {sp.upper()}', '',
+         f'Engine `{laz_xl___engine_sha256() or "unknown"}`  ·  '
+         f'{len(rows)} strategies deployable  ·  {len(quarantined)} withheld  ·  '
+         f'{len(ns)} feature columns  ·  {len(pcas)} PCA composites', '',
+         '## What this bundle is', '',
+         'Everything the live stack needs to run this run\'s strategies, generated at the',
+         'moment they were validated. Nothing here is retyped, re-derived or approximated:',
+         'each strategy\'s clauses, thresholds and price band come from the record written',
+         'inside the search worker the instant the strategy was accepted.', '',
+         '## Run it', '', '```bash',
+         '# 1. schema, namespace, strategies and provenance, in one transaction',
+         'psql "$BETSMITH_DSN" -v ON_ERROR_STOP=1 -f deploy.sql', '',
+         '# 2. the generated PCA module, if this run froze any composites',
+         f'cp laz_pca_features_{sp}.py  /opt/betsmith/', '',
+         '# 3. prove the database now matches this bundle (reads only)',
+         'python3 verify_live.py "$BETSMITH_DSN"', '```', '',
+         '## Wire the PCA module in (once)', '']
+    if pcas:
+        L += ['In `' + sp + '_lazarus_efb_strategies.py`, beside the existing book merge:',
+              '', '```python',
+              f'import laz_pca_features_{sp} as _PCA',
+              '...',
+              '    g = self._book.merge(st, g, period_len=...)',
+              '    g = _PCA.compute(g)          # <- frozen transforms, after the merge',
+              '```', '',
+              'It must run AFTER the book merge (its inputs are book features) and BEFORE',
+              'the condition loop. It adds only its own `pc_*` keys and never overwrites one.', '']
+    else:
+        L += ['This run froze no PCA composites, so no module was generated.', '']
+    L += ['## The gates every shipped row already passed', '',
+          '| # | Rule | What production does when it is violated |',
+          '|---|---|---|',
+          '| G1 | every clause matches the evaluator\'s `_COND` regex | `unparseable condition` — the sport loads **zero** strategies |',
+          '| G2 | every threshold is a plain decimal | same; `1e-05`, `inf` and `nan` are all unparseable |',
+          '| G4 | the market is in this sport\'s `SETTLEABLE_MARKETS` | `market not settleable here` — the sport loads **zero** strategies |',
+          '| G5 | every condition term has a namespace row | `has no namespace row` — the sport loads **zero** strategies |',
+          '| G6 | every namespace column exists on `rt_allsports_laz_features` | `namespace names columns absent` — the sport will not start |',
+          '| G7 | `bet_role` is one `resolve_side` answers | **nothing at all** — the strategy silently never fires again |',
+          '| G9 | the price band is finite and ordered | **nothing at all** — a NaN bound admits every price |',
+          '| G10 | at least one condition survives | **nothing at all** — it fires on the first tick of every match |',
+          '| G11 | every column name is ≤ 63 bytes and unique | Postgres truncates with a notice; the namespace stops matching |',
+          '| G12 | the shipping text rebuilds the measured bets | **nothing at all** — production places bets the search never measured |',
+          '',
+          'G7, G9, G10 and G12 raise no error anywhere. They are the reason this file',
+          'exists: a registry that loads cleanly is not the same thing as a registry that',
+          'bets what the engine measured.', '']
+    if failures:
+        L += ['## PREFLIGHT FAILED', '',
+              'The bundle was written, but these rows would break production. Do not load it.', '']
+        for f in failures[:60]:
+            L.append(f'- **{f["name"]}** ({f["rule"]}) — `{f["production_error"]}` · {f["detail"]}')
+        L.append('')
+    else:
+        L += ['## Preflight', '',
+              'Every rule above was re-checked against the written bundle, in the loader\'s',
+              'own order, and passed.', '']
+    if quarantined:
+        L += [f'## Withheld — {len(quarantined)} strategies', '',
+              'Validated by this run, but not shippable unchanged. Each is here with the',
+              'exact reason; none of them is in `deploy.sql`, because one bad row takes the',
+              'whole sport down at load. See `quarantine.csv` for the full list.', '']
+        import collections as _c
+        why = _c.Counter()
+        for q in quarantined:
+            for r in q['reasons']:
+                why[str(r).split(';')[0].split('(')[0].strip()[:90]] += 1
+        for w, n in why.most_common(15):
+            L.append(f'- {n} × {w}')
+        L.append('')
+        term_n, base_n = _c.Counter(), _c.Counter()
+        for q in quarantined:
+            for t in (q.get('blocking_terms') or ()):
+                term_n[t] += 1
+            if q.get('blocking_base'):
+                base_n[q['blocking_base']] += 1
+        if term_n:
+            L += ['### Build these features and the strategies come back', '',
+                  'Each line is one feature to implement in `laz_features.py`, and the',
+                  'number of withheld strategies that would then ship. Nothing else about',
+                  'them has to change: they are already validated, already documented and',
+                  'already in `quarantine.json` with their exact clauses.', '',
+                  '| feature | strategies recovered |', '|---|---|']
+            for t, n in term_n.most_common(25):
+                L.append(f'| `{t}` | {n} |')
+            L.append('')
+        if base_n:
+            L += ['### Bases production cannot arm', '',
+                  'These need a market or a side production can express, not a feature.',
+                  'A base with a residual (a window, a margin, a clock) would need that',
+                  'predicate as an ordinary condition before it could ship.', '',
+                  '| base | strategies withheld | what is missing |', '|---|---|---|']
+            for b, n in base_n.most_common(25):
+                mk = laz_deploy__BASE_MASK.get(b) or laz_deploy__BASE_MASK.get(
+                    b.split(':', 1)[1] if ':' in b else b) or {}
+                res = '; '.join(mk.get('residual') or ()) or 'no settleable production market'
+                L.append(f'| `{b}` | {n} | {res} |')
+            L.append('')
+    L += ['## Files', '']
+    for k in sorted(paths):
+        L.append(f'- `{os.path.basename(paths[k])}` — {k}')
+    L.append('')
+    return '\n'.join(L)
+
+
+laz_deploy__VERIFY_SRC = '''#!/usr/bin/env python3
+"""verify_live.py — prove the live database matches this bundle. READS ONLY.
+
+Run it after deploy.sql. It re-applies every gate the evaluators apply, against what is
+actually in the database now, and exits non-zero on the first thing that would break a
+sport at load. It opens no market, places no bet and writes nothing.
+"""
+import json, os, re, sys
+
+COND = re.compile(r"^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(<=|>=|==|=|<|>)\\s*"
+                  r"(-?\\d+(?:\\.\\d+)?|True|False)\\s*$", re.IGNORECASE)
+HERE = os.path.dirname(os.path.abspath(__file__))
+MAN = json.load(open(os.path.join(HERE, "MANIFEST.json")))
+SPORT = MAN["sport"]
+SETTLEABLE = set(MAN["settleable_markets"])
+ROLES = set(MAN["resolvable_roles"])
+
+
+def main(dsn):
+    import psycopg2
+    bad = []
+    with psycopg2.connect(dsn) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT feature, column_name FROM laz_feature_namespace WHERE sport=%s",
+                    (SPORT,))
+        ns = dict(cur.fetchall())
+        cur.execute("SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'rt_allsports_laz_features'")
+        have = {r[0] for r in cur.fetchall()}
+        for f, c in ns.items():
+            if c not in have:
+                bad.append("G6 %s -> column %s absent from rt_allsports_laz_features" % (f, c))
+        cur.execute("SELECT strategy, conditions, market, min_odds, max_odds, bet_role "
+                    "FROM laz_strategy_registry WHERE sport=%s AND enabled", (SPORT,))
+        rows = cur.fetchall()
+    if not rows:
+        bad.append("G3 zero enabled %s strategies -- the evaluator refuses to start" % SPORT)
+    expected = {s["strategy"]: s for s in MAN["strategies"]}
+    for name, conds, market, lo, hi, role in rows:
+        if market not in SETTLEABLE:
+            bad.append("G4 %s market %r not settleable" % (name, market))
+        if not conds:
+            bad.append("G10 %s has no conditions -- fires on every match" % name)
+        for c in (conds or []):
+            m = COND.match(c)
+            if not m:
+                bad.append("G1 %s unparseable condition %r" % (name, c))
+            elif m.group(1) not in ns:
+                bad.append("G5 %s term %r has no namespace row" % (name, m.group(1)))
+        if role not in ROLES:
+            bad.append("G7 %s bet_role %r -- resolve_side answers None, never fires" % (name, role))
+        for k, v in (("min_odds", lo), ("max_odds", hi)):
+            if v is None or float(v) != float(v):
+                bad.append("G9 %s %s is %r -- admits every price" % (name, k, v))
+        e = expected.get(name)
+        if e is None:
+            bad.append("DRIFT %s is enabled in the database but not in this bundle" % name)
+        elif sorted(e["conditions"]) != sorted(conds or []):
+            bad.append("DRIFT %s conditions differ from the bundle" % name)
+    for name in expected:
+        if name not in {r[0] for r in rows}:
+            bad.append("DRIFT %s is in the bundle but not enabled in the database" % name)
+    if bad:
+        print("FAIL (%d)" % len(bad))
+        for b in bad:
+            print("  " + b)
+        return 1
+    print("OK  %d strategies - %d feature columns - every gate passed" % (len(rows), len(ns)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else os.environ["BETSMITH_DSN"]))
+'''
+
+
+def laz_deploy__emit(A, sport, out_dir=None, log=print):
+    """THE ONE-STOP STEP: every validated strategy, as production loads it.
+
+    Called from laz_xl__write, so it happens on every run that produces a book, at the
+    same moment and from the same frame. Returns a dict of the paths written.
+
+    Nothing here can fail a run. A defect in this module must never cost the owner the
+    strategies the search spent hours finding, so every stage is guarded and the failure
+    is recorded in the bundle rather than raised into the workbook writer.
+    """
+    OW = _m('laz_owner')
+    sp = laz_deploy__sport(sport)
+    base = out_dir or os.path.join(
+        (OW.LAZ_OWNER['paths'].get('output_dir') if OW else None) or os.getcwd(),
+        'production', sp)
+    os.makedirs(base, exist_ok=True)
+
+    recs = []
+    try:
+        for _, r in A.iterrows():
+            recs.append({k: r[k] for k in A.columns})
+    except Exception as e:
+        laz_sink__swallow('deploy:rows', e)
+        return {}
+
+    pcas = laz_deploy__pca_manifest(sport, out_dir=(OW.LAZ_OWNER['paths'].get('output_dir')
+                                                    if OW else None))
+    laz_deploy___PCA_CACHE[sp] = pcas
+    shipped, quarantined = [], []
+    for rec in recs:
+        try:
+            v = laz_deploy__row(rec, sp, log=log)
+        except Exception as e:
+            laz_sink__swallow('deploy:row', e)
+            v = dict(ok=False, row=None, doc={},
+                     reasons=[f'row rendering raised {type(e).__name__}: {str(e)[:120]}'])
+        if v['ok']:
+            shipped.append(v['row'])
+        else:
+            quarantined.append(dict(strategy=str(rec.get('strategy_name') or ''),
+                                    family=str(rec.get('family') or ''),
+                                    base=str(rec.get('base') or ''),
+                                    market=str(rec.get('market') or ''),
+                                    band=str(rec.get('band') or ''),
+                                    oos_win=rec.get('oos_win'), oos_roi=rec.get('oos_roi'),
+                                    bets=rec.get('bets'),
+                                    reasons=v['reasons'],
+                                    blocking_terms=v.get('blocking_terms') or [],
+                                    blocking_base=v.get('blocking_base'),
+                                    element_doc=v.get('doc') or {}))
+
+    # A PCA composite is shippable only when every one of its own inputs is. Otherwise
+    # the module would compute it from a term production cannot produce, and the
+    # composite would be None on every tick -- a strategy that never fires.
+    used = sorted({t for r in shipped for t in r['terms']})
+    pc_used = {k: v for k, v in pcas.items() if k in used}
+    pc_inputs = sorted({t for v in pc_used.values() for t in v['terms']})
+    ns = laz_deploy__namespace(sorted(set(used) | set(pc_inputs)), pcas=pcas)
+    failures = laz_deploy__preflight(shipped, ns, sp)
+
+    paths = {}
+    def _w(key, name, text):
+        p = os.path.join(base, name)
+        try:
+            with open(p, 'w') as fh:
+                fh.write(text)
+            paths[key] = p
+        except Exception as e:
+            laz_sink__swallow('deploy:write:' + name, e)
+
+    _w('the whole deployment, one transaction, idempotent',
+       'deploy.sql', laz_deploy__sql(shipped, ns, sp))
+    if pc_used:
+        _w('the frozen PCA transforms, as importable production code',
+           f'laz_pca_features_{sp}.py', laz_deploy__pca_module(pc_used, sp))
+    _w('re-checks the live database against this bundle; reads only',
+       'verify_live.py', laz_deploy__VERIFY_SRC)
+
+    man = dict(
+        schema='amunev.deploy/1', sport=sp,
+        engine_sha256=laz_xl___engine_sha256(),
+        engine_version=str(globals().get('LAZ_ENGINE_VERSION') or ''),
+        emitted_utc=pd.Timestamp.now('UTC').isoformat(),
+        settleable_markets=sorted(laz_deploy__SETTLEABLE.get(sp) or ()),
+        resolvable_roles=sorted(laz_deploy__ROLES),
+        n_validated=len(recs), n_deployable=len(shipped), n_withheld=len(quarantined),
+        n_feature_columns=len(ns), n_pca=len(pc_used),
+        preflight='PASS' if not failures else 'FAIL',
+        preflight_failures=failures,
+        feature_namespace=ns,
+        pca={k: dict(terms=v['terms'], n_fit=v.get('n_fit')) for k, v in pc_used.items()},
+        strategies=[dict(strategy=r['strategy'], conditions=r['conditions'],
+                         market=r['market'], bet_role=r['bet_role'],
+                         min_odds=r['min_odds'], max_odds=r['max_odds'],
+                         tier=r['tier'], family=r['family'],
+                         entry_window=r['entry_window'], spec_sha=r['spec_sha'],
+                         bets_sha=r['bets_sha'], n_bets=r['n_bets'])
+                    for r in shipped])
+    _w('the machine-readable bundle: every row, column and hash',
+       'MANIFEST.json', json.dumps(man, indent=1, sort_keys=True, default=str))
+    try:
+        _w('every validated strategy this run withheld, and the exact reason',
+           'quarantine.csv',
+           pd.DataFrame([dict(strategy=q['strategy'], family=q['family'], base=q['base'],
+                              market=q['market'], band=q['band'], bets=q['bets'],
+                              oos_win=q['oos_win'], oos_roi=q['oos_roi'],
+                              reasons=' | '.join(str(x) for x in q['reasons']))
+                         for q in quarantined]).to_csv(index=False))
+        _w('the same, with each strategy\'s full acceptance record attached',
+           'quarantine.json', json.dumps(quarantined, indent=1, sort_keys=True, default=str))
+    except Exception as e:
+        laz_sink__swallow('deploy:quarantine', e)
+    _w('the operator page: what to run, in what order, and what each gate protects',
+       'RUNBOOK.md', laz_deploy__runbook(sp, shipped, ns, pc_used, failures, quarantined, paths))
+
+    verdict = 'PASS' if not failures else f'FAIL ({len(failures)})'
+    log(f'[deploy] {sp}: {len(shipped)}/{len(recs)} strategies deployable · '
+        f'{len(ns)} feature columns · {len(pc_used)} PCA composites · '
+        f'{len(quarantined)} withheld · preflight {verdict} -> {base}')
+    if failures:
+        for f in failures[:5]:
+            log(f'[deploy]   {f["rule"]} {f["name"]}: {f["production_error"]}')
+    return paths
+
 # ==========================================================================
 # LAZ_BRAIN MODULE: laz_workbook
 # §laz_workbook   <- grep this anchor to land here
