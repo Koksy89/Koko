@@ -29,6 +29,7 @@ execs, evals or unpickles anything.
 
 from __future__ import annotations
 
+import heapq
 import json
 from pathlib import Path
 from typing import Any
@@ -291,32 +292,143 @@ def _layers_from_order(store: ArtifactStore) -> dict[str, int]:
     return layers
 
 
+def _strongly_connected_components(
+    node_ids: list[str], adjacency: dict[str, list[str]]
+) -> dict[str, int]:
+    """Tarjan's algorithm, iterative (no recursion-depth risk), assigning
+    every id in *node_ids* an integer SCC index.
+
+    *node_ids* must already be sorted by the caller -- the order components
+    are discovered in, and therefore the SCC indices themselves, are a
+    direct function of that seed order, which is what keeps this
+    deterministic across runs and ``PYTHONHASHSEED`` values.
+    """
+    index_of: dict[str, int] = {}
+    lowlink: dict[str, int] = {}
+    on_stack: set[str] = set()
+    stack: list[str] = []
+    scc_of: dict[str, int] = {}
+    counters = {"index": 0, "scc": 0}
+
+    for root in node_ids:
+        if root in index_of:
+            continue
+        # (node, iterator-over-its-successors) per stack frame.
+        work: list[tuple[str, Any]] = [(root, iter(adjacency.get(root, ())))]
+        index_of[root] = lowlink[root] = counters["index"]
+        counters["index"] += 1
+        stack.append(root)
+        on_stack.add(root)
+        while work:
+            node, successors = work[-1]
+            descended = False
+            for successor in successors:
+                if successor not in index_of:
+                    index_of[successor] = lowlink[successor] = counters["index"]
+                    counters["index"] += 1
+                    stack.append(successor)
+                    on_stack.add(successor)
+                    work.append((successor, iter(adjacency.get(successor, ()))))
+                    descended = True
+                    break
+                if successor in on_stack:
+                    lowlink[node] = min(lowlink[node], index_of[successor])
+            if descended:
+                continue
+            work.pop()
+            if work:
+                parent = work[-1][0]
+                lowlink[parent] = min(lowlink[parent], lowlink[node])
+            if lowlink[node] == index_of[node]:
+                scc_id = counters["scc"]
+                counters["scc"] += 1
+                while True:
+                    member = stack.pop()
+                    on_stack.discard(member)
+                    scc_of[member] = scc_id
+                    if member == node:
+                        break
+    return scc_of
+
+
+def _condensed_layers(
+    scc_ids: list[int], condensed_edges: set[tuple[int, int]], scc_floor: dict[int, int]
+) -> dict[int, int]:
+    """Longest-path layer per SCC, over the condensation DAG (guaranteed
+    acyclic by construction). Kahn's algorithm with a min-heap frontier, so
+    the processing order -- and therefore every layer value -- is a pure
+    function of the SCC ids and edges, never of dict/set iteration order.
+    """
+    successors: dict[int, list[int]] = {scc_id: [] for scc_id in scc_ids}
+    in_degree: dict[int, int] = {scc_id: 0 for scc_id in scc_ids}
+    for source, target in condensed_edges:
+        successors[source].append(target)
+        in_degree[target] += 1
+
+    pending: dict[int, int] = {scc_id: 0 for scc_id in scc_ids}
+    ready = [scc_id for scc_id in scc_ids if in_degree[scc_id] == 0]
+    heapq.heapify(ready)
+    condensed_layer: dict[int, int] = {}
+    while ready:
+        node = heapq.heappop(ready)
+        condensed_layer[node] = max(scc_floor.get(node, 0), pending[node])
+        for successor in sorted(successors[node]):
+            pending[successor] = max(pending[successor], condensed_layer[node] + 1)
+            in_degree[successor] -= 1
+            if in_degree[successor] == 0:
+                heapq.heappush(ready, successor)
+    return condensed_layer
+
+
 def _longest_path_layers(
     node_ids: list[str], edges: list[tuple[str, str]], base: dict[str, int]
 ) -> dict[str, int]:
     """Fallback layering for nodes ``_layers_from_order`` did not place.
 
-    A capped, deterministic longest-path relaxation (Bellman-Ford shape)
-    over *edges*, restricted to *node_ids*. The cap makes it safe on a
-    cyclic call graph -- recursion is real in the target -- without an
-    unbounded loop; it simply stops improving once the cap is reached,
-    which is an approximation disclosed in the builder's report, not a
-    silent wrong answer (a layer number carries no confidence and is never
-    read as one).
+    Longest path from a root, computed on the **condensation** of *edges*
+    into strongly-connected components, not on the raw graph. Recursion and
+    mutual recursion are real in the target and produce real cycles; a
+    naive relaxation loop over a cyclic graph has no fixed point, and even
+    capped at N iterations to terminate at all, it still inflates every
+    node reachable from the cycle to roughly N layers -- verification
+    measured a ~260-node graph laid out across ~460 columns from exactly
+    this, which does not read as an approximation, it reads as a blank
+    canvas. Collapsing each SCC to one layer before taking the longest path
+    is exact for a DAG and bounded for a cyclic one (every node in one
+    recursive cluster shares a single column), and it stays presentation,
+    not analysis: no confidence is claimed and no edge is added or removed,
+    only a column index is chosen for nodes that already exist.
+
+    Pure stdlib (Tarjan's SCC algorithm + Kahn's topological sort) rather
+    than ``networkx``: this module is card 15's only code path so far that
+    would have exercised that dependency, and it was not actually
+    installed in the environment this fix was verified in despite being
+    declared in ``pyproject.toml`` -- see this builder's report.
     """
+    adjacency: dict[str, list[str]] = {}
+    for source, target in edges:
+        adjacency.setdefault(source, []).append(target)
+
+    scc_of = _strongly_connected_components(node_ids, adjacency)
+
+    condensed_edges: set[tuple[int, int]] = set()
+    for source, target in edges:
+        source_scc, target_scc = scc_of.get(source), scc_of.get(target)
+        if source_scc is not None and target_scc is not None and source_scc != target_scc:
+            condensed_edges.add((source_scc, target_scc))
+
+    scc_floor: dict[int, int] = {}
+    for node_id in node_ids:
+        floor = base.get(node_id, 0)
+        scc_id = scc_of[node_id]
+        if floor > scc_floor.get(scc_id, 0):
+            scc_floor[scc_id] = floor
+
+    condensed_layer = _condensed_layers(sorted(set(scc_of.values())), condensed_edges, scc_floor)
+
     layers = dict(base)
     for node_id in node_ids:
-        layers.setdefault(node_id, 0)
-    cap = min(max(len(node_ids), 1), 500)
-    changed = True
-    iterations = 0
-    while changed and iterations < cap:
-        changed = False
-        iterations += 1
-        for source, target in edges:
-            if layers[source] + 1 > layers[target]:
-                layers[target] = layers[source] + 1
-                changed = True
+        layers[node_id] = condensed_layer[scc_of[node_id]]
     return layers
 
 
@@ -688,18 +800,29 @@ def build_blueprint_data(
 
 _STYLE = """<style>
 :root[data-theme="dark"] {
-  --bg:#0d1017; --grid:#1a2028; --panel:#141922; --panel-border:#262e3b;
-  --text:#d7dde5; --text-dim:#8b95a5; --accent:#5aa9ff; --sink:#ffb648;
-  --node-bg:#1a212d; --node-border:#333f57; --node-header:#26314a;
+  --bg:#0a0c11; --grid-minor:#171d28; --grid-major:#232b3a; --panel:#12161f; --panel-border:#262e3b;
+  --text:#e3e8f0; --text-dim:#8b95a5; --accent:#5aa9ff; --accent-dark:#2e6fc2; --sink:#ffb648;
+  --node-bg:#1c2330; --node-bg-2:#161c28; --node-border:#3a4763; --node-header:#26314a;
   --amber:#e0a326; --red:#e5484d; --green:#3fce7c; --purple:#a970ff;
 }
 :root[data-theme="light"] {
-  --bg:#f3f5f9; --grid:#e2e7f0; --panel:#ffffff; --panel-border:#d2d9e5;
-  --text:#1a2130; --text-dim:#5c6675; --accent:#1c6fd9; --sink:#c9761a;
-  --node-bg:#ffffff; --node-border:#c7cfdc; --node-header:#eaf0fb;
+  --bg:#eef1f7; --grid-minor:#dde3ee; --grid-major:#c7cfdf; --panel:#ffffff; --panel-border:#d2d9e5;
+  --text:#1a2130; --text-dim:#5c6675; --accent:#1c6fd9; --accent-dark:#144e9e; --sink:#c9761a;
+  --node-bg:#ffffff; --node-bg-2:#f3f6fb; --node-border:#c7cfdc; --node-header:#eaf0fb;
   --amber:#9a6a06; --red:#c2262b; --green:#187a44; --purple:#6b3fc9;
 }
 * { box-sizing:border-box; }
+/* Structural fix for a real defect found in verification: an ID-selector
+   rule that also sets `display` (e.g. `#empty-state { display:flex; }`)
+   is an *author* rule and beats the UA stylesheet's `[hidden]{display:none}`
+   regardless of specificity, because author origin always outranks UA
+   origin in the cascade. `#empty-state` painted at full opacity over the
+   whole canvas while `hidden` was set and elementFromPoint() never reached
+   the graph underneath -- a blank-looking page with no console error. This
+   one rule, with `!important`, makes every element on this page obey
+   `hidden` unconditionally, so no other `display:` rule -- present or
+   added later -- can repeat the same failure. */
+[hidden] { display:none !important; }
 html,body { margin:0; height:100%; }
 body { font-family:-apple-system,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); }
 #app { display:flex; flex-direction:column; height:100vh; }
@@ -707,23 +830,32 @@ header#topbar { display:flex; align-items:center; gap:1rem; padding:.5rem 1rem;
   background:var(--panel); border-bottom:1px solid var(--panel-border); z-index:60; }
 header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 #tabs { display:flex; gap:.25rem; }
-.tab-btn { background:transparent; border:1px solid var(--panel-border); color:var(--text);
-  padding:.3rem .7rem; border-radius:6px; cursor:pointer; font-size:.8rem; }
-.tab-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.tab-btn { background:linear-gradient(180deg, var(--node-bg), var(--node-bg-2)); border:1px solid var(--panel-border);
+  color:var(--text-dim); padding:.35rem .8rem; border-radius:6px; cursor:pointer; font-size:.8rem;
+  font-weight:600; transition:border-color .12s, color .12s, box-shadow .12s; }
+.tab-btn:hover { color:var(--text); border-color:var(--accent); }
+.tab-btn.active { background:linear-gradient(180deg, var(--accent), var(--accent-dark));
+  color:#fff; border-color:var(--accent); box-shadow:0 0 10px rgba(90,169,255,.45); }
 #topbar-right { margin-left:auto; display:flex; align-items:center; gap:.5rem; position:relative; }
 #search-box { background:var(--node-bg); color:var(--text); border:1px solid var(--panel-border);
-  border-radius:6px; padding:.3rem .5rem; width:16rem; font-size:.8rem; }
+  border-radius:6px; padding:.35rem .6rem; width:16rem; font-size:.8rem; transition:border-color .12s, box-shadow .12s; }
+#search-box:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px rgba(90,169,255,.25); }
 #search-results { position:absolute; top:2.3rem; right:6.5rem; width:22rem; max-height:18rem;
-  overflow:auto; background:var(--panel); border:1px solid var(--panel-border); border-radius:6px; z-index:80; }
+  overflow:auto; background:var(--panel); border:1px solid var(--panel-border); border-radius:6px; z-index:80;
+  box-shadow:0 8px 24px rgba(0,0,0,.4); }
 .search-result { padding:.35rem .5rem; cursor:pointer; font-size:.75rem; border-bottom:1px solid var(--panel-border); }
 .search-result:hover { background:var(--node-header); }
 .search-empty { padding:.35rem .5rem; font-size:.75rem; color:var(--text-dim); }
-#theme-toggle, #report-link { background:var(--node-bg); border:1px solid var(--panel-border);
-  color:var(--text); border-radius:6px; padding:.3rem .6rem; cursor:pointer; font-size:.75rem; text-decoration:none; }
-#toolbar { display:flex; align-items:center; gap:.4rem; padding:.35rem 1rem; background:var(--panel);
+#theme-toggle, #report-link { background:linear-gradient(180deg, var(--node-bg), var(--node-bg-2));
+  border:1px solid var(--panel-border); color:var(--text); border-radius:6px; padding:.35rem .7rem;
+  cursor:pointer; font-size:.75rem; text-decoration:none; transition:border-color .12s, color .12s; }
+#theme-toggle:hover, #report-link:hover { border-color:var(--accent); color:var(--accent); }
+#toolbar { display:flex; align-items:center; gap:.4rem; padding:.4rem 1rem; background:var(--panel);
   border-bottom:1px solid var(--panel-border); flex-wrap:wrap; font-size:.75rem; z-index:55; }
-#toolbar button { background:var(--node-bg); border:1px solid var(--panel-border); color:var(--text);
-  border-radius:6px; padding:.25rem .55rem; cursor:pointer; font-size:.75rem; }
+#toolbar button { background:linear-gradient(180deg, var(--node-bg), var(--node-bg-2)); border:1px solid var(--panel-border);
+  color:var(--text); border-radius:6px; padding:.3rem .6rem; cursor:pointer; font-size:.75rem;
+  transition:border-color .12s, color .12s, box-shadow .12s; }
+#toolbar button:hover { border-color:var(--accent); color:var(--accent); box-shadow:0 0 6px rgba(90,169,255,.25); }
 #filter-summary { margin-left:.4rem; color:var(--text-dim); }
 #filter-summary.filters-active { color:var(--amber); font-weight:600; }
 #filters-panel { background:var(--node-bg); border:1px solid var(--panel-border); border-radius:6px;
@@ -733,40 +865,55 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 #canvas-wrap { position:relative; flex:1; overflow:hidden; }
 #viewport { position:absolute; inset:0; overflow:hidden; cursor:grab; touch-action:none; }
 #grid-bg { position:absolute; inset:-3000px; background-image:
-  linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); }
+  linear-gradient(var(--grid-minor) 1px, transparent 1px),
+  linear-gradient(90deg, var(--grid-minor) 1px, transparent 1px),
+  linear-gradient(var(--grid-major) 1.5px, transparent 1.5px),
+  linear-gradient(90deg, var(--grid-major) 1.5px, transparent 1.5px); }
 #world { position:absolute; left:0; top:0; transform-origin:0 0; }
 #wires-svg { position:absolute; left:0; top:0; overflow:visible; pointer-events:none; }
-.wire { fill:none; pointer-events:stroke; stroke-width:2px; cursor:pointer; }
-.wire-secondary { stroke-width:1.3px; }
-.wire.dim { opacity:.12; }
-.wire.selected, .wire.path-highlight { opacity:1; filter:drop-shadow(0 0 3px var(--accent)); }
-.wire-conf-CERTAIN { stroke:var(--green); stroke-width:3px; }
-.wire-conf-RESOLVED { stroke:var(--accent); }
-.wire-conf-PROBABLE { stroke:var(--amber); stroke-dasharray:9 5; }
-.wire-conf-HEURISTIC { stroke:var(--amber); stroke-dasharray:2 4; opacity:.9; }
-.wire-conf-UNKNOWN { stroke:var(--red); stroke-dasharray:2 4; }
-.node { position:absolute; background:var(--node-bg); border:1px solid var(--node-border);
-  border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,.35); overflow:hidden; user-select:none; cursor:grab; }
-.node.dim { opacity:.18; }
-.node.selected { outline:2px solid var(--accent); outline-offset:2px; }
-.node.path-highlight { outline:2px solid var(--sink); outline-offset:2px; }
-.node-header { background:var(--kind-color, var(--node-header)); color:#fff; font-size:.62rem;
-  font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:.2rem .4rem; }
-.node-body { padding:.28rem .4rem; font-size:.76rem; font-weight:600; white-space:nowrap;
+.wire { fill:none; pointer-events:stroke; stroke-width:2.2px; cursor:pointer; stroke-linecap:round; }
+.wire-secondary { stroke-width:1.5px; }
+.wire.dim { opacity:.1; }
+.wire.selected, .wire.path-highlight { opacity:1; filter:drop-shadow(0 0 4px var(--accent)) drop-shadow(0 0 1px var(--accent)); }
+/* Confidence is this tool's whole thesis, so it is never colour alone:
+   solid vs. dashed vs. dotted is the shape encoding, stroke-width and glow
+   intensity fall with confidence, and CERTAIN is the only level that glows
+   by default (visible without hovering or selecting). */
+.wire-conf-CERTAIN { stroke:var(--green); stroke-width:3.4px;
+  filter:drop-shadow(0 0 3px rgba(63,206,124,.65)); }
+.wire-conf-RESOLVED { stroke:var(--accent); stroke-width:2.6px; }
+.wire-conf-PROBABLE { stroke:var(--amber); stroke-width:2.1px; stroke-dasharray:10 6; }
+.wire-conf-HEURISTIC { stroke:var(--amber); stroke-width:1.8px; stroke-dasharray:2 5; opacity:.92; }
+.wire-conf-UNKNOWN { stroke:var(--red); stroke-width:1.8px; stroke-dasharray:2 5; opacity:.92; }
+.node { position:absolute; background:linear-gradient(165deg, var(--node-bg) 0%, var(--node-bg-2) 100%);
+  border:1px solid var(--node-border); border-radius:10px;
+  box-shadow:0 3px 10px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04);
+  overflow:hidden; user-select:none; cursor:grab; transition:box-shadow .12s, border-color .12s; }
+.node:hover { border-color:var(--accent); box-shadow:0 4px 14px rgba(0,0,0,.5), 0 0 0 1px var(--accent); }
+.node.dim { opacity:.1; }
+.node.selected { outline:2px solid var(--accent); outline-offset:2px; box-shadow:0 0 0 5px rgba(90,169,255,.2); }
+.node.path-highlight { outline:2px solid var(--sink); outline-offset:2px; box-shadow:0 0 0 5px rgba(255,182,72,.22); }
+.node-header { background:var(--kind-color, var(--node-header));
+  background-image:linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,0));
+  color:#fff; font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+  padding:.22rem .45rem; border-bottom:1px solid rgba(0,0,0,.25); text-shadow:0 1px 1px rgba(0,0,0,.35); }
+.node-body { padding:.3rem .45rem; font-size:.78rem; font-weight:600; white-space:nowrap;
   overflow:hidden; text-overflow:ellipsis; }
-.node-badges { display:flex; gap:.2rem; flex-wrap:wrap; padding:0 .4rem .3rem; }
-.badge { font-size:.58rem; padding:0 .3rem; border-radius:3px; border:1px solid var(--panel-border); white-space:nowrap; }
-.reach-badge.reach-REACHES_SINK { background:rgba(63,206,124,.18); border-color:var(--green); }
+.node-badges { display:flex; gap:.2rem; flex-wrap:wrap; padding:0 .45rem .35rem; }
+.badge { font-size:.58rem; padding:.05rem .35rem; border-radius:3px; border:1px solid var(--panel-border);
+  white-space:nowrap; background:rgba(127,127,127,.08); }
+.reach-badge.reach-REACHES_SINK { background:rgba(63,206,124,.2); border-color:var(--green); color:var(--green); }
 .reach-badge.reach-NO_SINK_PATH { border-style:dashed; }
-.reach-badge.reach-UNKNOWN { border-style:dotted; border-color:var(--red); }
-.node.reach-NO_SINK_PATH { opacity:.82; }
+.reach-badge.reach-UNKNOWN { border-style:dotted; border-color:var(--red); color:var(--red); }
+.node.reach-NO_SINK_PATH { opacity:.8; }
 .node.reach-UNKNOWN { border-style:dotted; }
 .kind-DECISION { clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%); display:flex; flex-direction:column;
-  align-items:center; justify-content:center; text-align:center; }
-.kind-DECISION .node-header { background:transparent; color:var(--text); }
-.node-sink { box-shadow:0 0 0 3px var(--sink), 0 2px 6px rgba(0,0,0,.35); }
+  align-items:center; justify-content:center; text-align:center;
+  background:linear-gradient(165deg, var(--kind-color, var(--node-header)) 0%, var(--node-bg-2) 130%); }
+.kind-DECISION .node-header { background:transparent; color:var(--text); border-bottom:none; text-shadow:none; }
+.node-sink { box-shadow:0 0 0 3px var(--sink), 0 0 14px rgba(255,182,72,.5), 0 3px 10px rgba(0,0,0,.45); }
 .node-sink::after { content:'SINK'; position:absolute; top:1px; right:3px; font-size:.52rem;
-  color:var(--sink); font-weight:800; }
+  color:var(--sink); font-weight:800; text-shadow:0 0 4px rgba(255,182,72,.6); }
 .node-module-agg { border-style:dashed; }
 .node-ghost { opacity:.5; border-style:dashed; }
 .node-loudest { box-shadow:0 0 0 3px var(--red); }
@@ -778,14 +925,37 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 .change-BODY_CHANGED { border-color:var(--amber); }
 .change-DECORATORS_CHANGED { border-color:var(--purple); }
 .change-AMBIGUOUS { border-style:dotted; border-color:var(--red); }
-.pin { position:absolute; width:8px; height:8px; border-radius:50%; background:var(--text-dim); top:50%; transform:translateY(-50%); }
-.pin-in { left:-4px; }
-.pin-out { right:-4px; }
-.pin-outcome { right:-4px; background:var(--sink); }
+/* D5/D6: a module aggregate's change-count badges reuse the exact same
+   colours as the per-element `.change-*` border treatments above, so the
+   legend entry for "wire confidence + node reachability + version diff"
+   covers both the expanded and the collapsed reading with one key. */
+.change-badge.change-ADDED { border-color:var(--green); color:var(--green); }
+.change-badge.change-REMOVED { border-color:var(--text-dim); color:var(--text-dim); border-style:dashed; }
+.change-badge.change-RENAMED { border-color:var(--accent); color:var(--accent); }
+.change-badge.change-MOVED { border-color:var(--purple); color:var(--purple); }
+.change-badge.change-SIGNATURE_CHANGED, .change-badge.change-BODY_CHANGED { border-color:var(--amber); color:var(--amber); }
+.change-badge.change-DECORATORS_CHANGED { border-color:var(--purple); color:var(--purple); }
+.change-badge.change-AMBIGUOUS { border-style:dotted; border-color:var(--red); color:var(--red); }
+.change-loudest-badge { border-color:var(--red); color:#fff; background:var(--red); font-weight:700; }
+/* Pins are where wires actually attach (bezier control points read these
+   same coordinates), so they need to read as connectors, not decoration:
+   an input pin is a hollow ring the wire runs into; an output pin is a
+   filled, glowing dot the wire leaves from -- the same shape language a
+   node-based editor like this is modelled on uses. */
+.pin { position:absolute; width:11px; height:11px; border-radius:50%; top:50%;
+  transform:translateY(-50%); z-index:2; box-shadow:0 0 0 2px var(--node-bg); }
+.pin-in { left:-6px; background:var(--node-bg); border:2px solid var(--text-dim); }
+.pin-out { right:-6px; background:var(--accent); border:2px solid var(--node-bg);
+  box-shadow:0 0 0 2px var(--node-bg), 0 0 6px rgba(90,169,255,.7); }
+.pin-outcome { right:-6px; background:var(--sink); border:2px solid var(--node-bg);
+  box-shadow:0 0 0 2px var(--node-bg), 0 0 6px rgba(255,182,72,.7); }
 #empty-state { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   text-align:center; padding:2rem; font-size:1rem; color:var(--text-dim); background:var(--bg); z-index:20; }
 #detail-panel { position:absolute; right:0; top:0; bottom:0; width:23rem; background:var(--panel);
-  border-left:1px solid var(--panel-border); overflow:auto; padding:.8rem; z-index:70; }
+  border-left:1px solid var(--panel-border); box-shadow:-8px 0 24px rgba(0,0,0,.35);
+  overflow-y:auto; overflow-x:hidden; padding:.8rem; z-index:70; }
+#detail-panel h2 { font-size:1rem; word-break:break-word; margin:.2rem 3.5rem .3rem 0; }
+#detail-panel .detail-id { word-break:break-word; color:var(--text-dim); font-size:.72rem; margin-bottom:.4rem; }
 #detail-close { float:right; background:var(--node-bg); border:1px solid var(--panel-border);
   color:var(--text); border-radius:6px; cursor:pointer; }
 .detail-row { display:flex; gap:.4rem; font-size:.76rem; padding:.18rem 0; border-bottom:1px solid var(--panel-border); }
@@ -811,12 +981,17 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 .condition-source { background:var(--node-bg); padding:.4rem; border-radius:4px; white-space:pre-wrap;
   word-break:break-word; font-size:.73rem; }
 .change-box { border:1px solid var(--panel-border); border-radius:6px; padding:.3rem; margin:.3rem 0; }
-#legend { position:absolute; left:.5rem; bottom:.5rem; background:var(--panel); border:1px solid var(--panel-border);
-  border-radius:8px; padding:.5rem .7rem; font-size:.66rem; max-width:19rem; z-index:30; }
-#legend h3 { margin:.1rem 0 .3rem; font-size:.7rem; }
-.legend-row { display:flex; align-items:center; gap:.35rem; margin:.15rem 0; }
-.legend-swatch { width:1.5rem; height:0; display:inline-block; border-top-width:3px; }
-.legend-swatch.wire-conf-CERTAIN { border-top:3px solid var(--green); }
+#legend { position:absolute; left:.6rem; bottom:.6rem; width:27rem; max-width:calc(100% - 1.2rem);
+  background:var(--panel); border:1px solid var(--panel-border); border-radius:10px;
+  box-shadow:0 10px 28px rgba(0,0,0,.45); font-size:.68rem; z-index:30; overflow:hidden; }
+#legend-header { background:linear-gradient(180deg, var(--node-header), transparent);
+  padding:.4rem .7rem; font-weight:700; font-size:.68rem; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--text-dim); border-bottom:1px solid var(--panel-border); }
+#legend-body { display:grid; grid-template-columns:1fr 1fr; gap:0 1rem; padding:.55rem .7rem .65rem; }
+.legend-col h4 { margin:0 0 .3rem; font-size:.64rem; text-transform:uppercase; letter-spacing:.03em; color:var(--accent); }
+.legend-row { display:flex; align-items:flex-start; gap:.4rem; margin:.22rem 0; line-height:1.3; }
+.legend-swatch { width:1.5rem; height:0; display:inline-block; margin-top:.4rem; flex-shrink:0; }
+.legend-swatch.wire-conf-CERTAIN { border-top:3px solid var(--green); filter:drop-shadow(0 0 2px rgba(63,206,124,.6)); }
 .legend-swatch.wire-conf-RESOLVED { border-top:2px solid var(--accent); }
 .legend-swatch.wire-conf-PROBABLE { border-top:2px dashed var(--amber); }
 .legend-swatch.wire-conf-HEURISTIC { border-top:2px dotted var(--amber); }
@@ -877,9 +1052,11 @@ _BODY = """<div id="app">
 <div id="detail-content"></div>
 </aside>
 <div id="legend">
-<h3>Legend</h3>
-<div id="legend-confidence"></div>
-<div id="legend-reachability"></div>
+<div id="legend-header">Legend &mdash; what this canvas encodes</div>
+<div id="legend-body">
+<div class="legend-col"><h4>Wire confidence</h4><div id="legend-confidence"></div></div>
+<div class="legend-col"><h4>Node reachability</h4><div id="legend-reachability"></div></div>
+</div>
 </div>
 <div id="shortcuts-help">/ search &middot; Esc clear search &middot; F fit &middot; 1/2/3 tabs</div>
 </div>"""
@@ -899,6 +1076,15 @@ var KIND_COLORS = {
   LOCAL:'#9aa6b8', PARAMETER:'#c9b458', CONTAINER_KEY:'#c98458', ATTRIBUTE:'#67c9a4',
   FILE:'#8993a4', CONFIG_KEY:'#c98458', BARRIER:'#e5484d'
 };
+//: Which ChangeKind, if several are present among a collapsed module's
+//: members, gets the aggregate card's own border/glow treatment. This
+//: picks ONE visual accent for the card; it never replaces the per-kind
+//: counts shown as badges, which are the actual rollup of facts -- see
+//: `renderTab`'s module aggregation and the D5 note in this file's history.
+var CHANGE_KIND_PRIORITY = [
+  'AMBIGUOUS', 'REMOVED', 'ADDED', 'SIGNATURE_CHANGED', 'BODY_CHANGED',
+  'DECORATORS_CHANGED', 'RENAMED', 'MOVED'
+];
 
 var root = document.documentElement;
 var viewport = document.getElementById('viewport');
@@ -918,12 +1104,15 @@ function cssSafe(s) { return String(s || 'UNKNOWN').replace(/[^A-Za-z0-9_-]/g, '
 
 // ---- theme ----
 function loadTheme() {
+  // The owner asked for "a highly visually aesthetic flow chart similar to
+  // that from Unreal Engine 5.0" -- Blueprint is dark, so this page opens
+  // dark unconditionally, not from `prefers-color-scheme`. The toggle
+  // below and the localStorage remembered choice still both work either
+  // direction; only the *default*, on a machine that has never opened this
+  // page before, is fixed.
   try {
     var saved = window.localStorage.getItem('cascade_blueprint_theme');
     if (saved === 'dark' || saved === 'light') return saved;
-  } catch (e) {}
-  try {
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
   } catch (e) {}
   return 'dark';
 }
@@ -1001,7 +1190,12 @@ function computeLayout(tab) {
           layer: n.layer, members: [], confidence: null,
           reachability: { state:'UNKNOWN', source:'collapsed',
             reason:'module collapsed -- expand to see per-element reachability', sink_ids:[], path_ids:[] },
-          finding_count: 0, is_sink: false
+          finding_count: 0, is_sink: false,
+          // D5: a module aggregate must still show that its collapsed
+          // members changed. change_counts is a rollup of *facts* (how many
+          // members earned each ChangeKind on the member's own card); it
+          // is never turned into an invented single status like "MODIFIED".
+          change_counts: {}, changed_member_count: 0, loudest: false
         };
       }
       agg.count += 1;
@@ -1009,11 +1203,24 @@ function computeLayout(tab) {
       agg.members.push(n.id);
       agg.layer = Math.min(agg.layer, n.layer);
       agg.finding_count += (n.finding_count || 0);
+      (n.changes || []).forEach(function (c) {
+        agg.change_counts[c.kind] = (agg.change_counts[c.kind] || 0) + 1;
+        agg.changed_member_count += 1;
+        if (c.decision_paths_changed || (c.reachability_flipped && c.reachability_flipped.length)) {
+          agg.loudest = true;
+        }
+      });
     } else {
       visible.push(n);
     }
   });
-  var aggList = Object.keys(moduleAgg).sort().map(function (k) { return moduleAgg[k]; });
+  var aggList = Object.keys(moduleAgg).sort().map(function (k) {
+    var agg = moduleAgg[k];
+    for (var i = 0; i < CHANGE_KIND_PRIORITY.length; i++) {
+      if (agg.change_counts[CHANGE_KIND_PRIORITY[i]]) { agg.strongest_change_kind = CHANGE_KIND_PRIORITY[i]; break; }
+    }
+    return agg;
+  });
   var displayNodes = visible.concat(aggList);
 
   var displayIdOf = {};
@@ -1048,13 +1255,31 @@ function computeLayout(tab) {
   Object.keys(byLayer).forEach(function (l) {
     byLayer[l].sort(function (a, b) { return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; });
   });
+  var orderedLayers = Object.keys(byLayer).map(Number).sort(function (a, b) { return a - b; });
 
+  // A layer is a column of unbounded height by construction (every node
+  // that could not be placed more precisely lands at layer 0), and a real
+  // target collapses many small, mutually independent modules onto that
+  // one column. Left uncapped, "Fit" has to shrink the whole canvas to fit
+  // one 18,000px-tall column and every node becomes illegible. Wrapping
+  // each layer into a roughly-square block of sub-columns bounds both
+  // width and height to about sqrt(node count) -- the same reasoning as
+  // the layer computation itself: this is packing, not analysis, and it
+  // never changes which layer (hence which drawn wires) a node has.
+  var rowsPerSubcol = Math.max(6, Math.ceil(Math.sqrt(Math.max(1, displayNodes.length))));
   var pos = {};
-  Object.keys(byLayer).map(Number).sort(function (a, b) { return a - b; }).forEach(function (l) {
-    byLayer[l].forEach(function (n, i) {
+  var xCursor = 0;
+  orderedLayers.forEach(function (l) {
+    var members = byLayer[l];
+    var subcols = Math.max(1, Math.ceil(members.length / rowsPerSubcol));
+    members.forEach(function (n, i) {
       var saved = state.positions[tab][n.id];
-      pos[n.id] = saved ? { x: saved.x, y: saved.y } : { x: l * COL_GAP, y: i * ROW_GAP };
+      if (saved) { pos[n.id] = { x: saved.x, y: saved.y }; return; }
+      var subcol = Math.floor(i / rowsPerSubcol);
+      var row = i % rowsPerSubcol;
+      pos[n.id] = { x: xCursor + subcol * COL_GAP, y: row * ROW_GAP };
     });
+    xCursor += subcols * COL_GAP;
   });
 
   var byId = {};
@@ -1085,6 +1310,13 @@ function buildNodeEl(n, p, tab) {
   var reachState = n.reachability ? n.reachability.state : 'UNKNOWN';
   wrap.classList.add('reach-' + cssSafe(reachState));
   (n.changes || []).forEach(function (c) { wrap.classList.add('change-' + cssSafe(c.kind)); });
+  // D5: a collapsed module aggregate carries no `.changes` of its own --
+  // its members' changes were rolled up into `change_counts` and
+  // `strongest_change_kind` when the module was collapsed (see
+  // computeLayout). The aggregate's card gets the same `change-<kind>`
+  // treatment its loudest member earned, so collapse never reads as "no
+  // changes here" when the data says otherwise.
+  if (n.strongest_change_kind) wrap.classList.add('change-' + cssSafe(n.strongest_change_kind));
   wrap.style.left = p.x + 'px';
   wrap.style.top = p.y + 'px';
   wrap.style.width = size.w + 'px';
@@ -1099,6 +1331,17 @@ function buildNodeEl(n, p, tab) {
   if (n.confidence) badges.appendChild(el('span', 'badge wire-conf-' + cssSafe(n.confidence), n.confidence));
   badges.appendChild(reachBadge(reachState));
   if (n.finding_count) badges.appendChild(el('span', 'badge', n.finding_count + ' finding' + (n.finding_count > 1 ? 's' : '')));
+  if (n.change_counts) {
+    // One badge per ChangeKind actually present among the collapsed
+    // module's members -- "3 ADDED, 1 BODY_CHANGED" is a count of facts;
+    // it is deliberately never collapsed into one invented word.
+    Object.keys(n.change_counts).sort().forEach(function (kind) {
+      badges.appendChild(el('span', 'badge change-badge change-' + cssSafe(kind), n.change_counts[kind] + ' ' + kind));
+    });
+    if (n.loudest) {
+      badges.appendChild(el('span', 'badge change-badge change-loudest-badge', '\\u26a0 decision path changed'));
+    }
+  }
   wrap.appendChild(badges);
 
   wrap.appendChild(el('div', 'pin pin-in'));
@@ -1186,17 +1429,27 @@ function renderTab(tab) {
   world.style.height = (maxY + 400) + 'px';
   layout.wires.forEach(function (w) { wiresG.appendChild(buildWireEl(w, layout, tab)); });
 
-  applyCameraTransform();
   updateSelectionHighlight();
   updateEmptyState(tab);
+  // Every call site that changes what is laid out (initial paint, a tab
+  // switch, expand/collapse, a filter change) calls renderTab only for the
+  // active tab -- see the comment on `nodesLayer`/`wiresG` being shared,
+  // single DOM containers, further down. Node dragging and search do not
+  // call renderTab at all, so fitting here cannot fight either of those.
+  // A stale camera pointed at empty space above-left of the content was
+  // verification's D3.
+  fitToContent();
 }
 
 // ---- camera: pan, zoom, fit ----
 function applyCameraTransform() {
   world.style.transform = 'translate(' + state.camera.x + 'px,' + state.camera.y + 'px) scale(' + state.camera.scale + ')';
   var bg = document.getElementById('grid-bg');
-  var size = Math.max(4, 40 * state.camera.scale);
-  bg.style.backgroundSize = size + 'px ' + size + 'px';
+  var minor = Math.max(4, 40 * state.camera.scale);
+  var major = minor * 5;
+  var minorSize = minor + 'px ' + minor + 'px';
+  var majorSize = major + 'px ' + major + 'px';
+  bg.style.backgroundSize = minorSize + ', ' + minorSize + ', ' + majorSize + ', ' + majorSize;
   bg.style.backgroundPosition = state.camera.x + 'px ' + state.camera.y + 'px';
   updateLOD();
   cullNodes();
@@ -1602,7 +1855,7 @@ function buildFilterUI() {
     var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
     cb.addEventListener('change', function () {
       state.filters.kinds[k] = !cb.checked;
-      ['execution', 'lineage', 'diff'].forEach(renderTab);
+      renderTab(state.tab); // filters/collapse are global state; only the visible tab needs (re)painting
       updateFilterSummary();
     });
     label.appendChild(cb);
@@ -1620,23 +1873,23 @@ function buildFilterUI() {
   });
   confSel.addEventListener('change', function () {
     state.filters.minConfidenceIndex = confSel.value === '' ? null : Number(confSel.value);
-    ['execution', 'lineage', 'diff'].forEach(renderTab);
+    renderTab(state.tab); // filters/collapse are global state; only the visible tab needs (re)painting
     updateFilterSummary();
   });
   document.getElementById('filter-decision-reach').addEventListener('change', function (ev) {
     state.filters.onlyDecisionReach = ev.target.checked;
-    ['execution', 'lineage', 'diff'].forEach(renderTab);
+    renderTab(state.tab); // filters/collapse are global state; only the visible tab needs (re)painting
     updateFilterSummary();
   });
   document.getElementById('filter-findings').addEventListener('change', function (ev) {
     state.filters.onlyFindings = ev.target.checked;
-    ['execution', 'lineage', 'diff'].forEach(renderTab);
+    renderTab(state.tab); // filters/collapse are global state; only the visible tab needs (re)painting
     updateFilterSummary();
   });
   document.getElementById('btn-clear-filters').addEventListener('click', function () {
     state.filters = defaultFilters();
     syncFilterUI();
-    ['execution', 'lineage', 'diff'].forEach(renderTab);
+    renderTab(state.tab); // filters/collapse are global state; only the visible tab needs (re)painting
     updateFilterSummary();
   });
 }
