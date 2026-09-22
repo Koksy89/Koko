@@ -29,6 +29,7 @@ import pytest
 from cascade_map import cli
 from cascade_map.contracts.interfaces import (
     SCHEMA_VERSION,
+    canonical_dumps,
     ChangeKind,
     Confidence,
     ElementFingerprint,
@@ -49,7 +50,6 @@ from cascade_map.ledger import (
     _from_jsonable,
     _span_text,
     assign_ordinals,
-    ledger_dumps,
     qualify_id,
     render_history_report,
     render_track_report,
@@ -230,7 +230,7 @@ def _record(label: str, when: str, source: str) -> VersionRecord:
         version_time=when, version_time_source=source, ordinal=-1,
         tool_version="0", schema_version=SCHEMA_VERSION, mode=1,
         artifact_dir=f"out/id::{label}", counts={}, confidence_census={},
-        stage_seconds={}, total_seconds=0.0, runtime_run_ids=(),
+        stage_millis={}, total_millis=0, runtime_run_ids=(),
         provenance=Provenance(method=Method.AST_DIRECT, confidence=Confidence.UNKNOWN),
     )
 
@@ -866,10 +866,10 @@ def _blank_wallclock(text: str) -> str:
     document = json.loads(text)
     for record in document["versions"]:
         record["discovered_at"] = ""
-        record["stage_seconds"] = {}
-        record["total_seconds"] = 0.0
+        record["stage_millis"] = {}
+        record["total_millis"] = 0
     for comparison in document["comparisons"]:
-        comparison["analysis_seconds_delta"] = {}
+        comparison["analysis_millis_delta"] = {}
     return json.dumps(document, sort_keys=True, indent=1)
 
 
@@ -930,9 +930,62 @@ def test_the_ledger_round_trips_through_json(tmp_path: Path) -> None:
     assert isinstance(sample.provenance.method, Method)
 
 
-def test_ledger_dumps_sorts_keys_and_keeps_seconds_stable() -> None:
-    payload = {"b": 1, "a": {"d": 0.123456789, "c": 2}}
-    assert ledger_dumps(payload) == '{"a":{"c":2,"d":0.123},"b":1}'
+def test_the_ledger_holds_no_floats_and_uses_the_one_serialiser(
+    tmp_path: Path,
+) -> None:
+    """`canonical_dumps` refuses floats outright, so a float anywhere in a
+    ledger record would raise rather than be rounded by a second serialiser."""
+    _place_pair(tmp_path, "dif_signature")
+    _result, ledger = track(_settings(tmp_path), root=tmp_path)
+    assert ledger.versions
+    for record in ledger.versions:
+        assert isinstance(record.total_millis, int)
+        assert record.stage_millis
+        assert all(isinstance(v, int) for v in record.stage_millis.values())
+        canonical_dumps(record)
+    assert ledger.comparisons
+    for comparison in ledger.comparisons:
+        assert all(isinstance(v, int) for v in comparison.analysis_millis_delta.values())
+        canonical_dumps(comparison)
+
+    def _no_floats(node) -> None:
+        assert not isinstance(node, float), f"a float reached the ledger: {node!r}"
+        if isinstance(node, dict):
+            for value in node.values():
+                _no_floats(value)
+        elif isinstance(node, list):
+            for value in node:
+                _no_floats(value)
+
+    _no_floats(json.loads(ledger.to_json()))
+
+
+def test_a_version_timestamp_is_labelled_as_a_filesystem_fact(tmp_path: Path) -> None:
+    """A date read off the disk is never AST_DIRECT: copying a tree rewrites
+    mtime and an archive extract stamps everything at once."""
+    _place_pair(tmp_path, "dif_signature")
+    _result, ledger = track(_settings(tmp_path), root=tmp_path)
+    assert ledger.versions
+    for record in ledger.versions:
+        assert record.provenance.method is Method.FILE_METADATA
+        assert record.provenance.confidence is not Confidence.CERTAIN
+    # The element fingerprints stay AST facts, because that is what they are.
+    fingerprints = ledger.fingerprints(ledger.versions[0].id)
+    assert fingerprints
+    for fingerprint in fingerprints:
+        assert fingerprint.provenance.method is Method.AST_DIRECT
+
+
+def test_an_owner_declared_order_is_not_a_filesystem_fact(tmp_path: Path) -> None:
+    _place_pair(tmp_path, "dif_signature")
+    settings = _settings(
+        tmp_path, ORDER=["dif_signature_2026-02-03", "dif_signature_2026-01-14"]
+    )
+    _result, ledger = track(settings, root=tmp_path)
+    assert ledger.versions
+    for record in ledger.versions:
+        assert record.provenance.method is Method.CONFIG_STRING_MATCH
+        assert record.provenance.confidence is Confidence.CERTAIN
 
 
 def test_a_ledger_from_another_schema_is_refused(tmp_path: Path) -> None:
@@ -974,10 +1027,10 @@ def test_from_jsonable_rebuilds_a_fingerprint_exactly() -> None:
         confidence=Confidence.CERTAIN,
         provenance=Provenance(method=Method.AST_DIRECT, confidence=Confidence.CERTAIN),
     )
-    rebuilt = _from_jsonable(ElementFingerprint, json.loads(ledger_dumps(fingerprint)))
+    rebuilt = _from_jsonable(ElementFingerprint, json.loads(canonical_dumps(fingerprint)))
     assert rebuilt.reachability is ReachabilityState.REACHES_SINK
     assert rebuilt.provenance.method is Method.AST_DIRECT
-    assert ledger_dumps(rebuilt) == ledger_dumps(fingerprint)
+    assert canonical_dumps(rebuilt) == canonical_dumps(fingerprint)
 
 
 # ---------------------------------------------------------------------------
@@ -1017,6 +1070,7 @@ def test_track_report_prints_the_whole_history(
     out = capsys.readouterr().out
     assert "History — 2 version(s), 1 comparison(s)" in out
     assert "tree hash" in out
+    assert "this tool took 0." in out
     assert "never how fast your engine runs" in out
     assert "runtime is not measured for this version" in out
 

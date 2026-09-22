@@ -265,11 +265,11 @@ def test_track_builds_the_same_ledger(single_file: Path, tmp_path: Path) -> None
         )
         for record in document["versions"]:
             record["discovered_at"] = ""
-            record["stage_seconds"] = {}
-            record["total_seconds"] = 0.0
+            record["stage_millis"] = {}
+            record["total_millis"] = 0
             record["artifact_dir"] = Path(record["artifact_dir"]).name
         for comparison in document["comparisons"]:
-            comparison["analysis_seconds_delta"] = {}
+            comparison["analysis_millis_delta"] = {}
         return json.dumps(document, sort_keys=True, indent=1)
 
     assert normalized(package_root) == normalized(single_root)

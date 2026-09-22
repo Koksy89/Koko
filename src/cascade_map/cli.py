@@ -282,11 +282,13 @@ def analyze(
     started = time.time()
     summary: dict[str, Any] = {}
     artifacts: dict[str, str] = {}
-    stage_seconds: dict[str, float] = {}
+    stage_millis: dict[str, int] = {}
     _stage_started = started
 
     def _stage(name: str) -> None:
-        """Record how long the stage that just finished took.
+        """Record how long the stage that just finished took, in whole
+        milliseconds -- an int, because `canonical_dumps` rejects floats and
+        the project keeps one serialiser.
 
         This measures **this tool**, not the owner's engine. A static map
         cannot time code it refuses to execute; card 18 stores these per
@@ -296,7 +298,7 @@ def analyze(
         """
         nonlocal _stage_started
         now = time.time()
-        stage_seconds[name] = round(now - _stage_started, 3)
+        stage_millis[name] = int(round((now - _stage_started) * 1000))
         _stage_started = now
 
     # Card 1 — inventory.
@@ -412,8 +414,8 @@ def analyze(
 
     _stage("write")
     summary["unresolved"] = len(unresolved)
-    summary["stage_seconds"] = stage_seconds
-    summary["total_seconds"] = round(time.time() - started, 3)
+    summary["stage_millis"] = stage_millis
+    summary["total_millis"] = int(round((time.time() - started) * 1000))
     summary["confidence"] = _confidence_census(list(edges) + list(lineage_edges))
     summary["detected"] = [
         {"role": c.role, "element_id": c.element_id,
