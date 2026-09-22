@@ -1,0 +1,13 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+
+[packages]
+flask = "==2.3.3"
+gunicorn = "*"
+
+[dev-packages]
+black = ">=23.0"
+
+[requires]
+python_version = "3.11"

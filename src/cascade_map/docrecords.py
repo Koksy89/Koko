@@ -278,6 +278,7 @@ class DocumentationBuilder:
         alignment_verdicts: Sequence[AlignmentVerdict] = (),
         narrative_steps: Sequence[NarrativeStep] = (),
         has_runtime_overlay: bool = False,
+        dependencies: Mapping[str, dict[str, Any]] | None = None,
     ) -> None:
         self._elements = list(elements)
         self._edges = list(edges)
@@ -294,6 +295,13 @@ class DocumentationBuilder:
         self._has_runtime = bool(
             has_runtime_overlay or trace_events or alignment_verdicts or narrative_steps
         )
+
+        # Card 17's per-element dependency answer, passed in rather than
+        # derived: this builder never reads a file. Optional exactly as the
+        # runtime overlay is optional -- a run with no manifests and no
+        # environment leaves it empty and the completeness gate must not fail
+        # for that.
+        self._dependencies: Mapping[str, dict[str, Any]] = dict(dependencies or {})
 
         self._element_by_id = {el.id: el for el in self._elements}
         self._callers: dict[str, list[str]] = {}
@@ -355,6 +363,7 @@ class DocumentationBuilder:
             change_ids=change_ids,
             provenance=provenance,
             runtime=runtime,
+            dependencies=dict(self._dependencies.get(element.id, {})),
         )
 
     def _identity(self, element: Element) -> dict[str, Any]:

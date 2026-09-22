@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any, Iterable, Protocol, Sequence
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -58,6 +58,9 @@ __all__ = [
     "VersionChange",
     "Impact",
     "DocRecord",
+    "VersionRecord",
+    "ElementFingerprint",
+    "VersionComparison",
     "PackageRequirement",
     "InstalledPackage",
     "PackageUsage",
@@ -96,6 +99,7 @@ __all__ = [
     "DiffCard",
     "DocsCard",
     "DependencyCard",
+    "LedgerCard",
     "RunObserver",
     "HarnessCard",
     "TracerCard",
@@ -943,6 +947,146 @@ class InterpreterRequirement:
 
 
 # ---------------------------------------------------------------------------
+# Card 18 — the version ledger
+# ---------------------------------------------------------------------------
+#
+# Longitudinal tracking. The owner drops each new version of the engine into a
+# folder; the tool works out the order, analyses only what it has not already
+# analysed, compares each version against the one before it element by element,
+# and accumulates the whole history in one JSON ledger.
+#
+# The ledger is an INDEX, not a copy. It holds a fingerprint per element per
+# version -- enough to compare exactly without re-reading the source -- and
+# points at the full artifact directory for anything deeper. That is what makes
+# "never re-run a version you have already run" true rather than aspirational.
+#
+# A version is identified by the content hash of its tree, never by its folder
+# name and never by its timestamp. Rename the folder and it is the same
+# version; change one byte and it is a new one. Everything else about identity
+# is a label for humans.
+
+
+@dataclass(frozen=True, slots=True)
+class VersionRecord:
+    """One analysed version of the target, and what it cost to analyse.
+
+    `version_time` is best-effort and `version_time_source` says how it was
+    obtained, because filesystem timestamps lie: copying a tree rewrites mtime,
+    some filesystems have no true creation time, and an archive extract stamps
+    everything with the moment it was unpacked. A date parsed out of a folder
+    name is often the only honest signal. The tool reports which signal it used
+    and never presents a guessed ordering as a fact -- where it cannot tell, it
+    says so and asks the owner to set `ordinal` in the settings.
+    """
+
+    id: str
+    """The tree's content hash. Stable, rename-proof, and the ledger's key."""
+
+    label: str
+    source_path: str
+    tree_hash: str
+    discovered_at: str
+    """When this tool first saw this version. A fact about the tool, not the
+    code, and never used for ordering."""
+
+    version_time: str
+    version_time_source: str
+    """`filename` | `directory_mtime` | `file_mtime_max` | `git_commit` |
+    `owner_declared` | `unknown`. Never empty."""
+
+    ordinal: int
+    """Position in the history, from 0. `-1` means the order could not be
+    established and the owner must declare it."""
+
+    tool_version: str
+    schema_version: str
+    mode: int
+    artifact_dir: str
+    counts: dict[str, int]
+    """elements, edges, lineage_edges, decisions, findings, unresolved,
+    barriers -- the same figures the summary prints."""
+
+    confidence_census: dict[str, int]
+    stage_seconds: dict[str, float]
+    """How long each analysis stage took. This measures THIS TOOL, not the
+    owner's engine. A static map cannot time someone else's code, and a field
+    that implied otherwise would be the most damaging kind of wrong."""
+
+    total_seconds: float
+    runtime_run_ids: tuple[str, ...]
+    """Mode A runs recorded against this version, if any. Observed execution
+    timing lives there and is the only place engine performance is measured."""
+
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class ElementFingerprint:
+    """One element, in one version, compressed to what a comparison needs.
+
+    This is the "every single element" guarantee made storable. Every element
+    of every analysed version gets one, so a later comparison is exact and
+    complete without re-reading a line of the owner's source.
+    """
+
+    id: str
+    version_id: str
+    element_id: str
+    kind: ElementKind
+    content_hash: str
+    normalized_body_hash: str
+    """Same-bytes vs same-logic. A reformat changes the first and not the
+    second, and the difference is what stops a whitespace commit reading as a
+    hundred behaviour changes."""
+
+    signature: str
+    span: SourceSpan
+    reachability: ReachabilityState
+    confidence: Confidence
+    provenance: Provenance
+
+
+@dataclass(frozen=True, slots=True)
+class VersionComparison:
+    """Two versions, compared element by element, with coverage proved.
+
+    `unaccounted_element_ids` is the honesty mechanism. Every element in either
+    version must end up in exactly one classification. If any does not, it is
+    named here rather than quietly dropped, and a comparison that names any is
+    incomplete and says so. "Every single element" is a claim, and this is the
+    field that makes it checkable instead of rhetorical.
+    """
+
+    id: str
+    before_version_id: str
+    after_version_id: str
+    change_counts: dict[str, int]
+    change_ids: tuple[str, ...]
+    impact_ids: tuple[str, ...]
+    elements_before: int
+    elements_after: int
+    elements_accounted_for: int
+    unaccounted_element_ids: tuple[str, ...]
+    decision_paths_changed: int
+    """Changes that move a path to a final decision. The figure the owner acts
+    on; everything else is context."""
+
+    reachability_flipped: tuple[str, ...]
+    findings_added: tuple[str, ...]
+    findings_removed: tuple[str, ...]
+    analysis_seconds_delta: dict[str, float]
+    """Change in how long THIS TOOL took per stage. A proxy for the target's
+    size and shape, never for the target's speed."""
+
+    runtime_delta: dict[str, Any]
+    """Observed execution differences, when both versions have a Mode A run
+    against a comparable scenario. Empty otherwise -- and empty means "not
+    measured", which the report must say rather than render as "no change"."""
+
+    provenance: Provenance
+
+
+# ---------------------------------------------------------------------------
 # Card 16 — documentation records
 # ---------------------------------------------------------------------------
 
@@ -1385,6 +1529,27 @@ class DependencyCard(Protocol):
     ) -> Sequence[InterpreterRequirement]: ...
 
     def findings(self) -> Sequence[Finding]: ...
+
+
+class LedgerCard(Protocol):
+    """Card 18 — the version ledger.
+
+    `analyse_new` must be a no-op for a version already in the ledger, keyed on
+    the tree's content hash. Re-running an unchanged version is the one thing
+    this card exists to avoid.
+    """
+
+    def discover(self, versions_dir: str) -> Sequence[VersionRecord]: ...
+
+    def analyse_new(
+        self, discovered: Sequence[VersionRecord]
+    ) -> Sequence[VersionRecord]: ...
+
+    def fingerprints(self, version_id: str) -> Sequence[ElementFingerprint]: ...
+
+    def compare(self, before_id: str, after_id: str) -> VersionComparison: ...
+
+    def save(self, path: str) -> None: ...
 
 
 class RunObserver(Protocol):

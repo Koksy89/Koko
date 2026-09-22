@@ -39,6 +39,7 @@ from cascade_map.contracts.interfaces import (
     canonical_dumps,
     canonical_jsonl,
 )
+from cascade_map.dependencies import Dependencies
 from cascade_map.diff import diff_snapshots, load_snapshot
 from cascade_map.docrecords import DocumentationBuilder
 from cascade_map.findings import Findings
@@ -203,6 +204,7 @@ def analyze(
     config_paths: Sequence[str] = (),
     cache_dir: Path | None = None,
     strict_gate: bool = True,
+    env_root: Path | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Run the static pipeline over *root* and write artifacts to *out_dir*.
 
@@ -245,6 +247,24 @@ def analyze(
     summary["lineage_edges"] = len(lineage_edges)
     summary["barriers"] = len(barriers)
 
+    # Card 17 — dependency and version applicability. Declared, installed and
+    # used are gathered separately and joined; with no --env the installed
+    # half is absent and every artifact and the summary say so.
+    dependencies = Dependencies(
+        root,
+        environment_root=env_root,
+        elements=elements,
+        edges=edges,
+        reachability=reachability,
+    )
+    package_requirements = dependencies.requirements()
+    installed_packages = dependencies.installed()
+    package_usage = dependencies.usage()
+    interpreter_requirements = dependencies.interpreter_requirements()
+    dependency_findings = dependencies.findings()
+    unresolved = list(unresolved) + list(dependencies.unresolved())
+    summary["dependencies"] = dependencies.summary()
+
     # Card 5 — findings.
     findings = Findings(
         elements=elements,
@@ -259,6 +279,7 @@ def analyze(
         reachability=reachability,
         entry_ids=tuple(entry_ids),
     ).find()
+    findings = tuple(sorted([*findings, *dependency_findings], key=lambda f: f.id))
     summary["findings"] = len(findings)
 
     # Card 16 — documentation records, then the gate.
@@ -271,6 +292,7 @@ def analyze(
         slices=slices,
         findings=findings,
         decision_sink_ids=tuple(sink_ids),
+        dependencies=dependencies.doc_dependencies(),
     )
     records = builder.records()
     offenders = builder.completeness_gate(records)
@@ -291,6 +313,10 @@ def analyze(
         ("slices.jsonl", canonical_jsonl(slices)),
         ("findings.jsonl", canonical_jsonl(findings)),
         ("records.jsonl", canonical_jsonl(records)),
+        ("requirements.jsonl", canonical_jsonl(package_requirements)),
+        ("installed.jsonl", canonical_jsonl(installed_packages)),
+        ("package_usage.jsonl", canonical_jsonl(package_usage)),
+        ("interpreter.jsonl", canonical_jsonl(interpreter_requirements)),
     ):
         artifacts[name] = _write(out_dir, name, payload)
 
@@ -568,6 +594,8 @@ def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
         count = census.get(level, 0)
         lines.append(f"  {level:<10} {count:>8,}  {100 * count // total:>3}%")
 
+    lines += _dependency_lines(summary)
+
     detected = summary.get("detected") or []
     if detected:
         lines += ["", "Detected, NOT confirmed — these are proposals for you:"]
@@ -585,6 +613,57 @@ def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
             "The artifacts were still written so you can see what is missing.",
         ]
     return "\n".join(lines)
+
+
+def _dependency_lines(summary: dict[str, Any]) -> list[str]:
+    """The dependency section of the report.
+
+    Silence when ``--env`` was not given would be a lie by omission: a run
+    that checked nothing must not read like a run that found nothing. The
+    absent case names the flag.
+    """
+    payload = summary.get("dependencies")
+    if not payload:
+        return []
+    counts = payload["findings"]
+    lines = [
+        "",
+        "Dependencies — declared, installed and used are three separate answers:",
+        f"  declared      {payload['requirements']:>8,}   "
+        f"<- from {len(payload['manifests'])} manifest(s)",
+    ]
+    if payload["environment_located"]:
+        lines.append(
+            f"  installed     {payload['installed']:>8,}   "
+            f"<- read as text from {payload['environment']}"
+        )
+    else:
+        lines += [
+            "  installed            -   <- NOT CHECKED: no environment was read",
+            "     Pass --env PATH (.venv-target in production) to read it. Until "
+            "then nothing",
+            "     here says your installed versions are right; it says they were "
+            "not looked at.",
+        ]
+    lines.append(f"  used          {payload['distributions_used']:>8,}   "
+                 "<- distributions the code actually imports")
+    if payload["reaching_sink"]:
+        lines.append(
+            "  on a path to the decision: " + ", ".join(payload["reaching_sink"])
+        )
+    disagreements = [(kind, n) for kind, n in sorted(counts.items()) if n]
+    if disagreements:
+        lines.append("  Disagreements:")
+        for kind, number in disagreements:
+            lines.append(f"    {kind:<24} {number:>6,}")
+    elif payload["environment_located"]:
+        lines.append("  No disagreement between what is declared, installed and used.")
+    if not payload["manifests"]:
+        lines.append(
+            "  No manifest was found, so nothing is reported as undeclared — there "
+            "is nothing to have declared it in."
+        )
+    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -640,6 +719,11 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--config", action="append", default=[], metavar="PATH",
                      help="config file that wires components by name; repeatable")
     run.add_argument("--cache", type=Path, default=None)
+    run.add_argument("--env", type=Path, default=None, metavar="PATH",
+                     help="interpreter tree whose installed package metadata to "
+                          "read (.venv-target in production). Read as text; nothing "
+                          "under it is imported. Without it the installed half of "
+                          "the dependency map is absent and the report says so.")
     run.add_argument("--no-gate", action="store_true",
                      help="write artifacts even if the completeness gate fails, "
                           "and exit 0. The gate still reports.")
@@ -689,6 +773,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             config_paths=tuple(args.config),
             cache_dir=args.cache,
             strict_gate=not args.no_gate,
+            env_root=args.env,
         )
         print(_report(summary, args.out, code))
         return EXIT_OK if args.no_gate else code

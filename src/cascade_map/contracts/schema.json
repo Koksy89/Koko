@@ -583,6 +583,86 @@
       ],
       "type": "object"
     },
+    "ElementFingerprint": {
+      "additionalProperties": false,
+      "description": "One element, in one version, compressed to what a comparison needs. This is the \"every single element\" guarantee made storable. Every element of every analysed version gets one, so a later comparison is exact and complete without re-reading a line of the owner's source.",
+      "properties": {
+        "confidence": {
+          "enum": [
+            "CERTAIN",
+            "RESOLVED",
+            "PROBABLE",
+            "HEURISTIC",
+            "UNKNOWN"
+          ],
+          "type": "string"
+        },
+        "content_hash": {
+          "type": "string"
+        },
+        "element_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "PACKAGE",
+            "MODULE",
+            "CLASS",
+            "FUNCTION",
+            "METHOD",
+            "PROPERTY",
+            "ASSIGNMENT",
+            "PARAMETER",
+            "IMPORT",
+            "DATA_FILE",
+            "CONFIG_KEY",
+            "BLOB",
+            "FEATURE"
+          ],
+          "type": "string"
+        },
+        "normalized_body_hash": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "reachability": {
+          "enum": [
+            "REACHES_SINK",
+            "NO_SINK_PATH",
+            "UNKNOWN"
+          ],
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/SourceSpan"
+        },
+        "version_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "confidence",
+        "content_hash",
+        "element_id",
+        "id",
+        "kind",
+        "normalized_body_hash",
+        "provenance",
+        "reachability",
+        "signature",
+        "span",
+        "version_id"
+      ],
+      "type": "object"
+    },
     "ElementKind": {
       "description": "",
       "enum": [
@@ -1854,6 +1934,195 @@
         "provenance"
       ],
       "type": "object"
+    },
+    "VersionComparison": {
+      "additionalProperties": false,
+      "description": "Two versions, compared element by element, with coverage proved. `unaccounted_element_ids` is the honesty mechanism. Every element in either version must end up in exactly one classification. If any does not, it is named here rather than quietly dropped, and a comparison that names any is incomplete and says so. \"Every single element\" is a claim, and this is the field that makes it checkable instead of rhetorical.",
+      "properties": {
+        "after_version_id": {
+          "type": "string"
+        },
+        "analysis_seconds_delta": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "before_version_id": {
+          "type": "string"
+        },
+        "change_counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "change_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "decision_paths_changed": {
+          "type": "integer"
+        },
+        "elements_accounted_for": {
+          "type": "integer"
+        },
+        "elements_after": {
+          "type": "integer"
+        },
+        "elements_before": {
+          "type": "integer"
+        },
+        "findings_added": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "findings_removed": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "impact_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "reachability_flipped": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "runtime_delta": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "unaccounted_element_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "after_version_id",
+        "analysis_seconds_delta",
+        "before_version_id",
+        "change_counts",
+        "change_ids",
+        "decision_paths_changed",
+        "elements_accounted_for",
+        "elements_after",
+        "elements_before",
+        "findings_added",
+        "findings_removed",
+        "id",
+        "impact_ids",
+        "provenance",
+        "reachability_flipped",
+        "runtime_delta",
+        "unaccounted_element_ids"
+      ],
+      "type": "object"
+    },
+    "VersionRecord": {
+      "additionalProperties": false,
+      "description": "One analysed version of the target, and what it cost to analyse. `version_time` is best-effort and `version_time_source` says how it was obtained, because filesystem timestamps lie: copying a tree rewrites mtime, some filesystems have no true creation time, and an archive extract stamps everything with the moment it was unpacked. A date parsed out of a folder name is often the only honest signal. The tool reports which signal it used and never presents a guessed ordering as a fact -- where it cannot tell, it says so and asks the owner to set `ordinal` in the settings.",
+      "properties": {
+        "artifact_dir": {
+          "type": "string"
+        },
+        "confidence_census": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "discovered_at": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "integer"
+        },
+        "ordinal": {
+          "type": "integer"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "runtime_run_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "type": "string"
+        },
+        "source_path": {
+          "type": "string"
+        },
+        "stage_seconds": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "tool_version": {
+          "type": "string"
+        },
+        "total_seconds": {},
+        "tree_hash": {
+          "type": "string"
+        },
+        "version_time": {
+          "type": "string"
+        },
+        "version_time_source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_dir",
+        "confidence_census",
+        "counts",
+        "discovered_at",
+        "id",
+        "label",
+        "mode",
+        "ordinal",
+        "provenance",
+        "runtime_run_ids",
+        "schema_version",
+        "source_path",
+        "stage_seconds",
+        "tool_version",
+        "total_seconds",
+        "tree_hash",
+        "version_time",
+        "version_time_source"
+      ],
+      "type": "object"
     }
   },
   "$id": "https://cascade-map/schema.json",
@@ -1922,6 +2191,21 @@
     "interpreter.jsonl": {
       "format": "jsonl",
       "record": "InterpreterRequirement",
+      "sortKey": "id"
+    },
+    "ledger/comparisons.jsonl": {
+      "format": "jsonl",
+      "record": "VersionComparison",
+      "sortKey": "id"
+    },
+    "ledger/fingerprints.jsonl": {
+      "format": "jsonl",
+      "record": "ElementFingerprint",
+      "sortKey": "id"
+    },
+    "ledger/versions.jsonl": {
+      "format": "jsonl",
+      "record": "VersionRecord",
       "sortKey": "id"
     },
     "lineage.jsonl": {
@@ -2001,6 +2285,6 @@
     }
   },
   "description": "Generated from cascade_map.contracts.interfaces. Do not edit by hand: run python -m cascade_map.contracts._generate_schema.",
-  "schemaVersion": "1.1.0",
+  "schemaVersion": "1.2.0",
   "title": "CASCADE-MAP artifacts"
 }

@@ -1,0 +1,5 @@
+# runtime pins for the engine
+pandas>=2.0,<3.0
+requests==2.31.0
+click==8.1.7
+-r extra-requirements.txt
