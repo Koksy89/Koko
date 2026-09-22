@@ -73,8 +73,22 @@ LEGEND = {
     ],
     "reachability": [
         {"state": "REACHES_SINK", "style": "accented border + → sink badge"},
-        {"state": "NO_SINK_PATH", "style": "dimmed + no-path badge -- NOT the same as deleted"},
+        {"state": "NO_SINK_PATH", "style": "dashed border + no-path badge -- full brightness, NOT the same as deleted"},
         {"state": "UNKNOWN", "style": "dotted border + ? badge -- could not tell, not a verdict"},
+    ],
+    "diff": [
+        {"kind": "ADDED", "style": "green border, glowing"},
+        {"kind": "REMOVED", "style": "faded, dashed grey border -- present in the graph you loaded, gone in the other"},
+        {"kind": "RENAMED", "style": "accent-coloured border"},
+        {"kind": "MOVED", "style": "purple border"},
+        {"kind": "SIGNATURE_CHANGED / BODY_CHANGED", "style": "amber border"},
+        {"kind": "DECORATORS_CHANGED", "style": "purple border"},
+        {"kind": "AMBIGUOUS", "style": "dotted red border -- several equally-good matches, none chosen"},
+        {"kind": "decision path changed", "style": "red glowing outline + ⚠ badge -- the loudest mark on the page"},
+        {"kind": "collapsed module", "style": "shows a count per ChangeKind among its members, plus its own "
+                                              "border in the strongest kind present, plus the ⚠ mark if any "
+                                              "member changes a decision path -- a rollup of the same facts, "
+                                              "never a new one"},
     ],
 }
 
@@ -890,7 +904,14 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
   box-shadow:0 3px 10px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04);
   overflow:hidden; user-select:none; cursor:grab; transition:box-shadow .12s, border-color .12s; }
 .node:hover { border-color:var(--accent); box-shadow:0 4px 14px rgba(0,0,0,.5), 0 0 0 1px var(--accent); }
-.node.dim { opacity:.1; }
+/* !important: dimming is an interaction state (highlighting a selection's
+   neighbours), not a fact about the element, and it must always win over
+   every other opacity rule on this page (reach-NO_SINK_PATH, ghost,
+   REMOVED, ...) regardless of which of those also applies to this node --
+   the same reasoning as the `[hidden]` rule above, for the same reason:
+   verification already found one opacity/specificity fight on this page
+   that silently produced the wrong visible state. */
+.node.dim { opacity:.1 !important; }
 .node.selected { outline:2px solid var(--accent); outline-offset:2px; box-shadow:0 0 0 5px rgba(90,169,255,.2); }
 .node.path-highlight { outline:2px solid var(--sink); outline-offset:2px; box-shadow:0 0 0 5px rgba(255,182,72,.22); }
 .node-header { background:var(--kind-color, var(--node-header));
@@ -903,22 +924,55 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 .badge { font-size:.58rem; padding:.05rem .35rem; border-radius:3px; border:1px solid var(--panel-border);
   white-space:nowrap; background:rgba(127,127,127,.08); }
 .reach-badge.reach-REACHES_SINK { background:rgba(63,206,124,.2); border-color:var(--green); color:var(--green); }
-.reach-badge.reach-NO_SINK_PATH { border-style:dashed; }
+.reach-badge.reach-NO_SINK_PATH { border-style:dashed; background:rgba(139,149,165,.14); }
 .reach-badge.reach-UNKNOWN { border-style:dotted; border-color:var(--red); color:var(--red); }
-.node.reach-NO_SINK_PATH { opacity:.8; }
-.node.reach-UNKNOWN { border-style:dotted; }
-.kind-DECISION { clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%); display:flex; flex-direction:column;
-  align-items:center; justify-content:center; text-align:center;
+/* D8: NO_SINK_PATH and UNKNOWN must be distinguishable from REACHES_SINK
+   at a glance without reading as "deleted" -- ghosts and REMOVED changes
+   already own that visual language (see .node-ghost / .change-REMOVED,
+   opacity .45-.5). Verification measured .8 opacity as unreadable at fit
+   zoom on a dark canvas; the badge text and the border style now carry
+   the distinction, so opacity barely moves and can never be confused
+   with "gone". */
+.node.reach-NO_SINK_PATH { opacity:.97; border-style:dashed; }
+.node.reach-UNKNOWN { opacity:.97; border-style:dotted; }
+/* D7: a true 4-point diamond only has usable width at its vertical
+   centre -- label text and badges drawn with the old
+   `polygon(50% 0,100% 50%,50% 100%,0 50%)` overflowed the shape at any
+   zoom. A chamfered octagon keeps the same "not a rectangle, it is a
+   branch" read (still diamond-ish, per the original brief) while giving a
+   real rectangular safe area in the middle for content -- see the
+   percentage padding below, which is sized to that safe area, not to the
+   full bounding box. */
+.kind-DECISION { clip-path:polygon(26% 0,74% 0,100% 26%,100% 74%,74% 100%,26% 100%,0 74%,0 26%);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
+  /* Fixed px, not a percentage: this node is `position:absolute` and its
+     containing block is `#world`, which is thousands of px wide -- a
+     percentage padding resolves against *that* width, not this node's own
+     158px, and inflated this box to ~1250px before this fix. Values below
+     are chosen to match what 17%/15% of DECISION_SIZE (158px) meant. */
+  padding:27px 24px; gap:.15rem;
   background:linear-gradient(165deg, var(--kind-color, var(--node-header)) 0%, var(--node-bg-2) 130%); }
-.kind-DECISION .node-header { background:transparent; color:var(--text); border-bottom:none; text-shadow:none; }
+.kind-DECISION .node-header { background:transparent; color:var(--text); border-bottom:none;
+  text-shadow:none; padding:0; font-size:.56rem; }
+.kind-DECISION .node-body { white-space:normal; overflow-wrap:anywhere; font-size:.64rem; line-height:1.15;
+  max-height:2.3em; overflow:hidden; padding:0; }
+.kind-DECISION .node-badges { justify-content:center; padding:.1rem 0 0; max-width:100%; }
+.kind-DECISION .badge { font-size:.5rem; padding:0 .25rem; max-width:4.6rem; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
 .node-sink { box-shadow:0 0 0 3px var(--sink), 0 0 14px rgba(255,182,72,.5), 0 3px 10px rgba(0,0,0,.45); }
 .node-sink::after { content:'SINK'; position:absolute; top:1px; right:3px; font-size:.52rem;
   color:var(--sink); font-weight:800; text-shadow:0 0 4px rgba(255,182,72,.6); }
 .node-module-agg { border-style:dashed; }
-.node-ghost { opacity:.5; border-style:dashed; }
+/* `.node.node-ghost` / `.node.change-REMOVED`, not the bare class: a
+   ghost or removed node's `reachability.state` is UNKNOWN (see
+   `_ghost_node` in blueprint.py), and `.node.reach-UNKNOWN` is itself a
+   two-class selector. A single-class `.node-ghost` would lose that
+   specificity fight and render at full brightness -- "gone" must win over
+   "reachability unknown" for opacity, always. */
+.node.node-ghost { opacity:.5; border-style:dashed; }
 .node-loudest { box-shadow:0 0 0 3px var(--red); }
 .change-ADDED { border-color:var(--green); box-shadow:0 0 8px var(--green); }
-.change-REMOVED { opacity:.45; border-style:dashed; }
+.node.change-REMOVED { opacity:.45; border-style:dashed; }
 .change-RENAMED { border-color:var(--accent); }
 .change-MOVED { border-color:var(--purple); }
 .change-SIGNATURE_CHANGED { border-color:var(--amber); }
@@ -951,17 +1005,28 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
   box-shadow:0 0 0 2px var(--node-bg), 0 0 6px rgba(255,182,72,.7); }
 #empty-state { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   text-align:center; padding:2rem; font-size:1rem; color:var(--text-dim); background:var(--bg); z-index:20; }
-#detail-panel { position:absolute; right:0; top:0; bottom:0; width:23rem; background:var(--panel);
+/* D10: every long-id context in this panel uses `overflow-wrap:anywhere`
+   with `word-break:normal`, never the legacy `word-break:break-word` --
+   `break-word` breaks *anywhere* it needs to, including mid-word, which is
+   what produced "...@d / ecision0". `overflow-wrap:anywhere` only breaks
+   as a last resort and prefers the `<wbr>` opportunities `elWithBreaks()`
+   inserts at `::`/`.`/`_` boundaries, so a long id wraps at a natural seam
+   whenever one exists and only falls back to an arbitrary break when it
+   truly must. */
+#detail-panel { position:absolute; right:0; top:0; bottom:0; width:23rem; max-width:92vw; background:var(--panel);
   border-left:1px solid var(--panel-border); box-shadow:-8px 0 24px rgba(0,0,0,.35);
-  overflow-y:auto; overflow-x:hidden; padding:.8rem; z-index:70; }
-#detail-panel h2 { font-size:1rem; word-break:break-word; margin:.2rem 3.5rem .3rem 0; }
-#detail-panel .detail-id { word-break:break-word; color:var(--text-dim); font-size:.72rem; margin-bottom:.4rem; }
+  overflow-y:auto; overflow-x:hidden; padding:.8rem; z-index:70; overflow-wrap:anywhere; word-break:normal; }
+#detail-panel h2 { font-size:1rem; overflow-wrap:anywhere; word-break:normal; margin:.2rem 3.5rem .3rem 0; }
+#detail-panel .detail-id { overflow-wrap:anywhere; word-break:normal; color:var(--text-dim); font-size:.72rem; margin-bottom:.4rem; }
 #detail-close { float:right; background:var(--node-bg); border:1px solid var(--panel-border);
   color:var(--text); border-radius:6px; cursor:pointer; }
 .detail-row { display:flex; gap:.4rem; font-size:.76rem; padding:.18rem 0; border-bottom:1px solid var(--panel-border); }
 .detail-label { color:var(--text-dim); width:8.5rem; flex-shrink:0; }
-.detail-value { word-break:break-word; }
-.id-link { background:none; border:none; color:var(--accent); cursor:pointer; padding:0; font:inherit; text-decoration:underline; }
+.detail-value { overflow-wrap:anywhere; word-break:normal; min-width:0; }
+#detail-content ul { margin:.3rem 0; padding-left:1.1rem; }
+#detail-content li { overflow-wrap:anywhere; word-break:normal; margin:.15rem 0; }
+.id-link { background:none; border:none; color:var(--accent); cursor:pointer; padding:0; font:inherit;
+  text-decoration:underline; white-space:normal; overflow-wrap:anywhere; word-break:normal; text-align:left; }
 .id-link-unresolved { color:var(--text-dim); text-decoration:none; cursor:default; }
 .model-prose { background:rgba(224,163,38,.12); border-left:3px solid var(--amber); padding:.4rem; margin:.4rem 0; font-size:.74rem; }
 .model-prose-label { font-weight:700; margin-bottom:.2rem; }
@@ -989,6 +1054,10 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
   color:var(--text-dim); border-bottom:1px solid var(--panel-border); }
 #legend-body { display:grid; grid-template-columns:1fr 1fr; gap:0 1rem; padding:.55rem .7rem .65rem; }
 .legend-col h4 { margin:0 0 .3rem; font-size:.64rem; text-transform:uppercase; letter-spacing:.03em; color:var(--accent); }
+#legend-diff-details { border-top:1px solid var(--panel-border); }
+#legend-diff-details summary { cursor:pointer; padding:.4rem .7rem; font-size:.66rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:.03em; color:var(--accent); }
+#legend-diff { padding:0 .7rem .6rem; max-height:14rem; overflow-y:auto; }
 .legend-row { display:flex; align-items:flex-start; gap:.4rem; margin:.22rem 0; line-height:1.3; }
 .legend-swatch { width:1.5rem; height:0; display:inline-block; margin-top:.4rem; flex-shrink:0; }
 .legend-swatch.wire-conf-CERTAIN { border-top:3px solid var(--green); filter:drop-shadow(0 0 2px rgba(63,206,124,.6)); }
@@ -1057,6 +1126,9 @@ _BODY = """<div id="app">
 <div class="legend-col"><h4>Wire confidence</h4><div id="legend-confidence"></div></div>
 <div class="legend-col"><h4>Node reachability</h4><div id="legend-reachability"></div></div>
 </div>
+<details id="legend-diff-details"><summary>Version diff encodings</summary>
+<div id="legend-diff"></div>
+</details>
 </div>
 <div id="shortcuts-help">/ search &middot; Esc clear search &middot; F fit &middot; 1/2/3 tabs</div>
 </div>"""
@@ -1067,7 +1139,7 @@ _SCRIPT = """
 var dataEl = document.getElementById('cascade-blueprint-data');
 var DATA = JSON.parse(dataEl.textContent);
 
-var NODE_W = 220, NODE_H = 72, DECISION_SIZE = 130;
+var NODE_W = 220, NODE_H = 72, DECISION_SIZE = 158;
 var COL_GAP = 300, ROW_GAP = 110;
 var MODULE_COLLAPSE_THRESHOLD = DATA.module_collapse_threshold || 150;
 var KIND_COLORS = {
@@ -1101,6 +1173,27 @@ function el(tag, cls, text) {
   return e;
 }
 function cssSafe(s) { return String(s || 'UNKNOWN').replace(/[^A-Za-z0-9_-]/g, '_'); }
+// D10: element/decision ids are one long token with no spaces
+// ("mode_b.cfg_shapes::branching::@decision0"), so the browser's own line
+// breaking has no natural opportunity and falls back to breaking
+// mid-character wherever a line happens to end. This splits on the id
+// grammar's own delimiters (`::`, `.`, `_`) and inserts a real `<wbr>`
+// (a browser-native, zero-width break *opportunity*, not a forced break)
+// after each one -- via DOM nodes, never innerHTML, so a hostile id
+// string is exactly as inert here as everywhere else on this page.
+function elWithBreaks(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  var parts = String(text === undefined || text === null ? '' : text).split(/(::|[._])/);
+  parts.forEach(function (part) {
+    if (part === '') return;
+    e.appendChild(document.createTextNode(part));
+    if (part === '::' || part === '.' || part === '_') {
+      e.appendChild(document.createElement('wbr'));
+    }
+  });
+  return e;
+}
 
 // ---- theme ----
 function loadTheme() {
@@ -1537,8 +1630,15 @@ function fitToContent() {
     (rect.width - pad * 2) / Math.max(1, maxX - minX),
     (rect.height - pad * 2) / Math.max(1, maxY - minY))));
   state.camera.scale = scale;
-  state.camera.x = pad - minX * scale;
-  state.camera.y = pad - minY * scale;
+  // D9: `pad - min*scale` pins the content's top-left corner at a fixed
+  // (pad, pad) regardless of which axis the scale came from, so the
+  // *other* axis -- whichever was not the limiting one -- is left with
+  // unused space pushed entirely to the right/bottom instead of split
+  // evenly. Centre both axes: place the fitted content's midpoint at the
+  // viewport's midpoint.
+  var contentW = (maxX - minX) * scale, contentH = (maxY - minY) * scale;
+  state.camera.x = (rect.width - contentW) / 2 - minX * scale;
+  state.camera.y = (rect.height - contentH) / 2 - minY * scale;
   applyCameraTransform();
 }
 
@@ -1634,11 +1734,12 @@ document.getElementById('detail-close').addEventListener('click', closeDetail);
 function fieldRow(label, value) {
   var row = el('div', 'detail-row');
   row.appendChild(el('span', 'detail-label', label));
-  row.appendChild(el('span', 'detail-value', value === null || value === undefined || value === '' ? '\\u2014' : value));
+  var display = value === null || value === undefined || value === '' ? '\\u2014' : value;
+  row.appendChild(elWithBreaks('span', 'detail-value', display));
   return row;
 }
 function idLink(id, tab, labelText) {
-  var btn = el('button', 'id-link', labelText || id);
+  var btn = elWithBreaks('button', 'id-link', labelText || id);
   btn.type = 'button';
   var g = getGraph(tab);
   var present = false;
@@ -1752,8 +1853,8 @@ function renderDetailForNode(n, tab) {
   var panel = document.getElementById('detail-content');
   panel.innerHTML = '';
   panel.appendChild(document.getElementById('detail-close'));
-  panel.appendChild(el('h2', null, n.name || n.id));
-  panel.appendChild(el('div', 'detail-id', n.id));
+  panel.appendChild(elWithBreaks('h2', null, n.name || n.id));
+  panel.appendChild(elWithBreaks('div', 'detail-id', n.id));
   panel.appendChild(fieldRow('kind', n.kind));
   panel.appendChild(fieldRow('module', n.module));
   if (n.confidence) panel.appendChild(fieldRow('confidence', n.confidence + (n.method ? ' (' + n.method + ')' : '')));
@@ -1781,6 +1882,18 @@ function renderDetailForNode(n, tab) {
     panel.appendChild(ul);
   }
   if (n.is_module_agg) {
+    if (n.change_counts && Object.keys(n.change_counts).length) {
+      panel.appendChild(el('h3', null, 'version diff (rolled up from ' + n.changed_member_count + ' changed member' +
+        (n.changed_member_count === 1 ? '' : 's') + ')'));
+      var rollupParts = Object.keys(n.change_counts).sort().map(function (kind) {
+        return n.change_counts[kind] + ' ' + kind;
+      });
+      panel.appendChild(el('p', null, rollupParts.join(', ') + '.'));
+      if (n.loudest) {
+        panel.appendChild(el('p', 'missing-note', '\\u26a0 at least one member changes a path to a decision.'));
+      }
+      panel.appendChild(el('p', 'missing-note', 'expand the module for the per-element detail below.'));
+    }
     panel.appendChild(el('h3', null, 'members (' + n.count + ')'));
     var mul = el('ul');
     n.members.slice().sort().forEach(function (m) { var li = el('li'); li.appendChild(idLink(m, tab)); mul.appendChild(li); });
@@ -2002,6 +2115,13 @@ function buildLegend() {
     row.appendChild(reachBadge(item.state));
     row.appendChild(document.createTextNode(' -- ' + item.style));
     reachWrap.appendChild(row);
+  });
+  var diffWrap = document.getElementById('legend-diff');
+  (DATA.legend.diff || []).forEach(function (item) {
+    var row = el('div', 'legend-row');
+    row.appendChild(el('span', 'badge change-badge', item.kind));
+    row.appendChild(document.createTextNode(' -- ' + item.style));
+    diffWrap.appendChild(row);
   });
 }
 function showDiagnostics() {

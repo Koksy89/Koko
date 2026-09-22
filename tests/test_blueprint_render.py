@@ -166,6 +166,54 @@ def diff_html(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return html_path
 
 
+@pytest.fixture(scope="module")
+def corpus_diff_html(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Corpus-scale (modules auto-collapsed by default) with a diff spread
+    across many elements in many different modules, reproducing D5:
+    verification found only 12 of 113 painted nodes on a real diff carried
+    any change information, because collapsed module aggregates rolled
+    nothing up from their members.
+    """
+    import random
+
+    root = tmp_path_factory.mktemp("bp_corpus_diff")
+    graph_dir = root / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    store = ArtifactStore.load(graph_dir)
+    element_ids = sorted(store.elements_by_id)
+
+    prov = Provenance(method=Method.STRUCTURAL_MATCH, confidence=Confidence.CERTAIN)
+    kinds = [
+        ChangeKind.ADDED, ChangeKind.BODY_CHANGED, ChangeKind.SIGNATURE_CHANGED,
+        ChangeKind.RENAMED, ChangeKind.REMOVED, ChangeKind.AMBIGUOUS,
+    ]
+    rng = random.Random(1)
+    sample = rng.sample(element_ids, min(30, len(element_ids)))
+    changes = []
+    impacts = []
+    for i, eid in enumerate(sample):
+        kind = kinds[i % len(kinds)]
+        before_id = eid if kind != ChangeKind.ADDED else ""
+        after_id = eid if kind != ChangeKind.REMOVED else ""
+        cid = f"c{i}"
+        changes.append(VersionChange(
+            id=cid, kind=kind, before_id=before_id, after_id=after_id, provenance=prov,
+            candidate_ids=(eid,) if kind == ChangeKind.AMBIGUOUS else (),
+        ))
+        impacts.append(Impact(
+            id=f"i{i}", change_id=cid, affected_ids=(eid,), decision_paths_changed=(i % 5 == 0),
+            features_changed=(), reachability_flipped=(), findings_added=(), findings_removed=(), rank=i + 1,
+        ))
+    diff_root = graph_dir / "diff"
+    diff_root.mkdir()
+    (diff_root / "changes.jsonl").write_text(canonical_jsonl(changes), encoding="utf-8")
+    (diff_root / "impacts.jsonl").write_text(canonical_jsonl(impacts), encoding="utf-8")
+
+    html_path = root / "blueprint.html"
+    render_blueprint_to_file(graph_dir, html_path, diff_root=diff_root)
+    return html_path
+
+
 # ---------------------------------------------------------------------------
 # D1: the empty-state overlay must never paint while `hidden`
 # ---------------------------------------------------------------------------
