@@ -172,7 +172,7 @@ Three decisions are encoded here, settled as Q5, Q6 and Q7 in OPEN_QUESTIONS.md:
 
 
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -325,6 +325,14 @@ class Method(StrEnum):
     NAME_HEURISTIC = "NAME_HEURISTIC"
     DATAFLOW = "DATAFLOW"
     CFG_REACHABILITY = "CFG_REACHABILITY"
+    FILE_METADATA = "FILE_METADATA"
+    """Read from the filesystem, not from the code: a modification time, a
+    directory listing, a git log entry. Granted for card 18, which dates a
+    version from its files. Confidence is rarely better than PROBABLE here --
+    copying a tree rewrites mtime and an archive extract stamps everything at
+    once -- and calling such a fact AST_DIRECT would claim a certainty the
+    filesystem does not have."""
+
     STRUCTURAL_MATCH = "STRUCTURAL_MATCH"
     RUNTIME_OBSERVED = "RUNTIME_OBSERVED"
     MODEL_PROPOSED = "MODEL_PROPOSED"
@@ -1154,12 +1162,18 @@ class VersionRecord:
     barriers -- the same figures the summary prints."""
 
     confidence_census: dict[str, int]
-    stage_seconds: dict[str, float]
-    """How long each analysis stage took. This measures THIS TOOL, not the
+    stage_millis: dict[str, int]
+    """How long each analysis stage took, in whole milliseconds. Integers, not
+    floats: `canonical_dumps` rejects floats because their text form is not
+    reliably stable, and a second serialiser written to work around that is a
+    second way for the bytes to drift. Milliseconds are finer than any decision
+    anyone makes from this number.
+
+    This measures THIS TOOL, not the
     owner's engine. A static map cannot time someone else's code, and a field
     that implied otherwise would be the most damaging kind of wrong."""
 
-    total_seconds: float
+    total_millis: int
     runtime_run_ids: tuple[str, ...]
     """Mode A runs recorded against this version, if any. Observed execution
     timing lives there and is the only place engine performance is measured."""
@@ -1221,8 +1235,9 @@ class VersionComparison:
     reachability_flipped: tuple[str, ...]
     findings_added: tuple[str, ...]
     findings_removed: tuple[str, ...]
-    analysis_seconds_delta: dict[str, float]
-    """Change in how long THIS TOOL took per stage. A proxy for the target's
+    analysis_millis_delta: dict[str, int]
+    """Change in how long THIS TOOL took per stage, in whole milliseconds. A
+    proxy for the target's
     size and shape, never for the target's speed."""
 
     runtime_delta: dict[str, Any]
@@ -17085,8 +17100,8 @@ edges, slices and findings a diff needs -- and :meth:`Ledger.compare` refuses,
 naming the directory, rather than diff against an empty graph and report every
 element as ``REMOVED``.
 
-What ``stage_seconds`` measures
--------------------------------
+What ``stage_millis`` measures
+------------------------------
 
 How long **this tool** took, per stage, per version. That is a real signal
 about the target's size and shape and it is not a fact about the engine's
@@ -17098,12 +17113,13 @@ those words and never as "no change".
 Serialization
 -------------
 
-:func:`cascade_map.contracts.interfaces.canonical_dumps` rejects floats, and
-``stage_seconds``/``total_seconds``/``analysis_seconds_delta`` are floats in the
-contract. The ledger therefore uses :func:`ledger_dumps`, which is
-``canonical_dumps`` plus an explicit float rule: every float is rounded to
-three decimals at construction, so the bytes are stable for a given value. See
-the card's report for the contract change this would otherwise want.
+One serialiser: :func:`cascade_map.contracts.interfaces.canonical_dumps`, like
+every other card. It rejects floats, so the analysis timings are whole
+milliseconds -- ``stage_millis``, ``total_millis``, ``analysis_millis_delta``.
+A second serialiser written to permit floats would be a second way for the
+bytes to drift, and milliseconds are finer than any decision anyone makes from
+these numbers. Seconds appear only in the printed summary, where "22.4s" is
+what a human wants to read.
 """
 
 
@@ -17125,7 +17141,6 @@ __all__ = [
     "qualify_id",
     "version_time_of",
     "assign_ordinals",
-    "ledger_dumps",
 ]
 
 TOOL_VERSION_UNKNOWN = "unknown"
@@ -17246,46 +17261,14 @@ class Settings:
 
 
 # ---------------------------------------------------------------------------
-# Serialization -- canonical_dumps plus an explicit float rule
+# Serialization
 # ---------------------------------------------------------------------------
 
-_SECONDS_PLACES = 3
 
-
-def _round_seconds(value: float) -> float:
-    return round(float(value), _SECONDS_PLACES)
-
-
-def ledger_dumps(payload: Any) -> str:
-    """Canonical JSON for the ledger: sorted keys, ASCII, no spare whitespace.
-
-    Identical to :func:`canonical_dumps` except that floats are permitted,
-    because the contract types the analysis timings as floats. Every float
-    reaching here has already been rounded by :func:`_round_seconds`, so two
-    runs over the same measurements produce the same bytes.
-    """
-    return json.dumps(
-        _to_jsonable(payload),
-        sort_keys=True,
-        ensure_ascii=True,
-        separators=(",", ":"),
-    )
-
-
-def _to_jsonable(node: Any) -> Any:
-    if isinstance(node, StrEnum):
-        return str(node)
-    if isinstance(node, float):
-        return _round_seconds(node)
-    if is_dataclass(node) and not isinstance(node, type):
-        return {f.name: _to_jsonable(getattr(node, f.name)) for f in fields(node)}
-    if isinstance(node, Mapping):
-        return {str(key): _to_jsonable(value) for key, value in node.items()}
-    if isinstance(node, (set, frozenset)):
-        return [_to_jsonable(value) for value in sorted(node)]
-    if isinstance(node, (list, tuple)):
-        return [_to_jsonable(value) for value in node]
-    return node
+def _millis(seconds: float) -> int:
+    """Whole milliseconds. The contract types every duration here as an int so
+    that `canonical_dumps` -- the project's one serialiser -- can write it."""
+    return int(round(seconds * 1000))
 
 
 def _from_jsonable(cls: type, payload: Mapping[str, Any]) -> Any:
@@ -17344,7 +17327,6 @@ _RESOLVED_HINTS: dict[str, Any] = {
     "bool": bool,
     "tuple[str, ...]": tuple[str, ...],
     "dict[str, int]": dict[str, int],
-    "dict[str, float]": dict[str, float],
     "dict[str, Any]": dict[str, Any],
 }
 
@@ -17527,17 +17509,18 @@ TIME_SOURCE_CONFIDENCE: dict[str, Confidence] = {
 }
 
 TIME_SOURCE_METHOD: dict[str, Method] = {
-    # No `Method` member describes "read off the filesystem" -- see the card's
-    # contract change request. `NAME_HEURISTIC` is exact for a date parsed out
-    # of a folder name; `CONFIG_STRING_MATCH` is exact for a declared ORDER;
-    # the rest carry AST_DIRECT with a note saying what was actually read, and
-    # a confidence that never claims more than a timestamp is worth.
+    # Every one of these is read off the filesystem -- a directory entry's
+    # name, a reflog line, an mtime -- so they carry `FILE_METADATA` and never
+    # `AST_DIRECT`, which would claim a certainty the filesystem does not have.
+    # `version_time_source` carries the finer distinction between them, and
+    # `TIME_SOURCE_CONFIDENCE` carries what each is worth. A declared ORDER is
+    # the exception: it comes from the owner's settings, not from the disk.
     "owner_declared": Method.CONFIG_STRING_MATCH,
-    "filename": Method.NAME_HEURISTIC,
-    "git_commit": Method.AST_DIRECT,
-    "file_mtime_max": Method.AST_DIRECT,
-    "directory_mtime": Method.AST_DIRECT,
-    "unknown": Method.AST_DIRECT,
+    "filename": Method.FILE_METADATA,
+    "git_commit": Method.FILE_METADATA,
+    "file_mtime_max": Method.FILE_METADATA,
+    "directory_mtime": Method.FILE_METADATA,
+    "unknown": Method.FILE_METADATA,
 }
 
 
@@ -17819,9 +17802,9 @@ class Ledger:
         self._versions: dict[str, VersionRecord] = {}
         self._fingerprints: dict[str, tuple[ElementFingerprint, ...]] = {}
         self._comparisons: dict[str, VersionComparison] = {}
-        #: version id -> wall-clock seconds this tool spent analysing it. A
+        #: version id -> whole milliseconds this tool spent analysing it. A
         #: fact about Metatron, never about the engine's speed.
-        self.analysis_seconds: dict[str, float] = {}
+        self.analysis_millis: dict[str, int] = {}
         self.order_status: str = "unestablished"
         self.order_reason: str = "nothing discovered yet"
         #: label -> the label it duplicates, for trees with identical content.
@@ -17892,7 +17875,7 @@ class Ledger:
         """Write the ledger. One record per line inside the JSON envelope:
         readable in a diff, compact in a big history, and byte-identical for
         identical input because every list is sorted and every record goes
-        through :func:`ledger_dumps`."""
+        through :func:`canonical_dumps`, the project's one serialiser."""
         file = self.resolve(path)
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(self.to_json(), encoding="utf-8", newline="\n")
@@ -17918,7 +17901,7 @@ class Ledger:
             if name in scalars:
                 lines.append(f'"{name}":{json.dumps(scalars[name])}{tail}')
                 continue
-            rows = [ledger_dumps(record) for record in sections[name]]
+            rows = [canonical_dumps(record) for record in sections[name]]
             body = ",\n".join(rows)
             lines.append(f'"{name}":[' + ("\n" + body + "\n" if rows else "") + f"]{tail}")
         lines.append("}")
@@ -17973,7 +17956,7 @@ class Ledger:
                 continue
             started = time.time()
             self._versions[record.id] = self._analyse_one(record)
-            self.analysis_seconds[record.id] = _round_seconds(time.time() - started)
+            self.analysis_millis[record.id] = _millis(time.time() - started)
             analysed.append(self._versions[record.id])
         return _sorted_records(analysed)
 
@@ -18009,12 +17992,10 @@ class Ledger:
 
         before_record = self._versions[before_id]
         after_record = self._versions[after_id]
-        stages = sorted(set(before_record.stage_seconds) | set(after_record.stage_seconds))
-        seconds_delta = {
-            stage: _round_seconds(
-                after_record.stage_seconds.get(stage, 0.0)
-                - before_record.stage_seconds.get(stage, 0.0)
-            )
+        stages = sorted(set(before_record.stage_millis) | set(after_record.stage_millis))
+        millis_delta = {
+            stage: after_record.stage_millis.get(stage, 0)
+            - before_record.stage_millis.get(stage, 0)
             for stage in stages
         }
 
@@ -18041,7 +18022,7 @@ class Ledger:
             ),
             findings_added=findings_added,
             findings_removed=findings_removed,
-            analysis_seconds_delta=seconds_delta,
+            analysis_millis_delta=millis_delta,
             runtime_delta=self._runtime_delta(before_record, after_record, match_map),
             provenance=Provenance(
                 method=Method.STRUCTURAL_MATCH,
@@ -18072,8 +18053,8 @@ class Ledger:
             artifact_dir=self.relative(self.artifact_dir(digest)),
             counts={},
             confidence_census={},
-            stage_seconds={},
-            total_seconds=0.0,
+            stage_millis={},
+            total_millis=0,
             runtime_run_ids=(),
             provenance=Provenance(
                 method=TIME_SOURCE_METHOD[source_kind],
@@ -18086,10 +18067,10 @@ class Ledger:
         out_dir = self.resolve(record.artifact_dir)
         started = time.time()
         summary = self._analyse(self.resolve(record.source_path), out_dir, self.settings)
-        total = _round_seconds(time.time() - started)
-        stage_seconds = {
-            str(stage): _round_seconds(value)
-            for stage, value in dict(summary.get("stage_seconds", {})).items()
+        total = _millis(time.time() - started)
+        stage_millis = {
+            str(stage): int(value)
+            for stage, value in dict(summary.get("stage_millis", {})).items()
         }
         counts = {
             name: int(summary.get(name, 0))
@@ -18104,8 +18085,8 @@ class Ledger:
             confidence_census={
                 str(k): int(v) for k, v in dict(summary.get("confidence", {})).items()
             },
-            stage_seconds=stage_seconds,
-            total_seconds=_round_seconds(summary.get("total_seconds", total)),
+            stage_millis=stage_millis,
+            total_millis=int(summary.get("total_millis", total)),
         )
         self._fingerprints[record.id] = self._build_fingerprints(analysed)
         return analysed
@@ -18553,7 +18534,7 @@ class TrackResult:
     order_status: str
     order_reason: str
     duplicate_labels: dict[str, str]
-    analysed_seconds: dict[str, float]
+    analysed_millis: dict[str, int]
     runtime_notes: dict[str, str]
     mode: int
     trace_notes: tuple[str, ...] = ()
@@ -18613,7 +18594,7 @@ def track(
         order_status=ledger.order_status,
         order_reason=ledger.order_reason,
         duplicate_labels=dict(sorted(ledger.duplicate_labels.items())),
-        analysed_seconds=dict(ledger.analysis_seconds),
+        analysed_millis=dict(ledger.analysis_millis),
         runtime_notes=runtime_notes,
         mode=settings.mode,
         trace_notes=trace_notes,
@@ -18701,8 +18682,8 @@ def render_track_report(result: TrackResult) -> str:
     for record in result.records:
         phrase = TIME_SOURCE_PHRASE.get(record.version_time_source, "unknown")
         if record.id in result.new_version_ids:
-            seconds = result.analysed_seconds.get(record.id, record.total_seconds)
-            status = f"NEW   analysed in {seconds:.1f}s"
+            millis = result.analysed_millis.get(record.id, record.total_millis)
+            status = f"NEW   analysed in {millis / 1000:.1f}s"
         else:
             status = "      known, not re-run"
         ordinal = f"#{record.ordinal}" if record.ordinal >= 0 else "#?"
@@ -18822,8 +18803,9 @@ def render_history_report(ledger: Ledger) -> str:
             "  confidence    "
             + (", ".join(f"{k} {v:,}" for k, v in sorted(record.confidence_census.items()))
                or "(none)"),
-            f"  this tool took {record.total_seconds:.3f}s: "
-            + (", ".join(f"{k} {v:.3f}s" for k, v in sorted(record.stage_seconds.items()))
+            f"  this tool took {record.total_millis / 1000:.3f}s: "
+            + (", ".join(f"{k} {v / 1000:.3f}s"
+                         for k, v in sorted(record.stage_millis.items()))
                or "(not recorded)"),
             "                 ^ how long METATRON took, never how fast your engine runs",
             "  Mode A runs   "
@@ -31511,11 +31493,13 @@ def analyze(
     started = time.time()
     summary: dict[str, Any] = {}
     artifacts: dict[str, str] = {}
-    stage_seconds: dict[str, float] = {}
+    stage_millis: dict[str, int] = {}
     _stage_started = started
 
     def _stage(name: str) -> None:
-        """Record how long the stage that just finished took.
+        """Record how long the stage that just finished took, in whole
+        milliseconds -- an int, because `canonical_dumps` rejects floats and
+        the project keeps one serialiser.
 
         This measures **this tool**, not the owner's engine. A static map
         cannot time code it refuses to execute; card 18 stores these per
@@ -31525,7 +31509,7 @@ def analyze(
         """
         nonlocal _stage_started
         now = time.time()
-        stage_seconds[name] = round(now - _stage_started, 3)
+        stage_millis[name] = int(round((now - _stage_started) * 1000))
         _stage_started = now
 
     # Card 1 — inventory.
@@ -31641,8 +31625,8 @@ def analyze(
 
     _stage("write")
     summary["unresolved"] = len(unresolved)
-    summary["stage_seconds"] = stage_seconds
-    summary["total_seconds"] = round(time.time() - started, 3)
+    summary["stage_millis"] = stage_millis
+    summary["total_millis"] = int(round((time.time() - started) * 1000))
     summary["confidence"] = _confidence_census(list(edges) + list(lineage_edges))
     summary["detected"] = [
         {"role": c.role, "element_id": c.element_id,

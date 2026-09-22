@@ -27,6 +27,7 @@ are the same thing.
 7b. [The blueprint canvas](#7b-the-blueprint-canvas)
 8. [Findings — the eight things it looks for](#8-findings--the-eight-things-it-looks-for)
 9. [Version control and change impact](#9-version-control-and-change-impact)
+9b. [`track` — the version ledger](#9b-track--the-version-ledger)
 10. [Mode A — watching it run](#10-mode-a--watching-it-run)
 11. [Safety: what it will and will not do](#11-safety-what-it-will-and-will-not-do)
 12. [Known gaps — read this before you rely on something](#12-known-gaps--read-this-before-you-rely-on-something)
@@ -139,6 +140,17 @@ python3 metatron_engine.py diff BEFORE_DIR AFTER_DIR --out DIR
 
 Both arguments are **analysed output directories**, not source folders. See
 [section 9](#9-version-control-and-change-impact).
+
+### `track` — the whole history, incrementally
+
+```
+python3 metatron_engine.py track [--versions DIR] [--report] [flags]
+```
+
+Point it at a folder of version folders and it analyses only the ones it has never
+analysed, compares consecutive versions element by element, and keeps one JSON ledger.
+Configured by the `METATRON_SETTINGS` dict at the top of this file; every setting has a
+flag that overrides it. See [section 9b](#9b-track--the-version-ledger).
 
 ### `trace` — watch it actually run (Mode A)
 
@@ -643,6 +655,198 @@ sort by rank, read the ones where `decision_paths_changed` is true, ignore the r
 
 If you want this to run automatically on every commit, it is a short git hook — say the
 word and I'll write it for your setup.
+
+---
+
+## 9b. `track` — the version ledger
+
+Section 9 is the manual loop: analyse, analyse, diff. `track` is the same loop run for
+you across a whole folder of versions, and it never repeats work it has already done.
+
+```
+versions/
+  amun_v2/                <- a whole engine tree
+  amun_v3/
+  amun_2026-01-14/
+  amun_2026-02-03/
+```
+
+```
+python3 metatron_engine.py track
+```
+
+Two of those folders carry a date and two do not, which is exactly the case where the
+tool refuses to invent an order (see below). With
+`"ORDER": ["amun_v2", "amun_v3", "amun_2026-01-14", "amun_2026-02-03"]` set:
+
+```
+Ledger out/metatron_ledger.json — 4 version(s) known, 1 new
+
+  amun_2026-02-03    #3  NEW   analysed in 22.4s   (order declared in ORDER)
+  amun_2026-01-14    #2        known, not re-run   (order declared in ORDER)
+  amun_v3            #1        known, not re-run   (order declared in ORDER)
+  amun_v2            #0        known, not re-run   (order declared in ORDER)
+
+amun_2026-01-14 -> amun_2026-02-03
+  1,284 elements before, 1,301 after, 1,304 accounted for, 0 unaccounted
+  changed        48   (19 ADDED, 2 REMOVED, 2 RENAMED, 13 MOVED, 12 BODY_CHANGED)
+  unchanged   1,254
+  ambiguous       2   <- equally good matches, all listed, none claimed
+  decision paths  6   <- changes that touch a route to your final decision
+  reachability    2 flipped
+  findings       +3 / -1
+  runtime        not measured (MODE 1; set MODE 2 to observe execution)
+```
+
+(An engine-sized illustration; the arithmetic is the real thing's — see
+"every single element" below for where 1,304 comes from.)
+
+### `METATRON_SETTINGS`
+
+A plain dict at the top of this file. Edit it in place; no flags needed for the common
+case.
+
+```python
+METATRON_SETTINGS = {
+    "MODE": 1,                              # 1 = static only. 2 = static + Mode A tracing.
+    "VERSIONS_DIR": "versions",             # one sub-folder per version
+    "OUT_DIR": "out",                       # one sub-directory per version, named by its id
+    "LEDGER": "out/metatron_ledger.json",   # the history file
+    "SINKS": [],                            # your final-decision element(s) — the highest-value setting here
+    "ENTRIES": [],                          # entry point(s); detected when empty
+    "CONFIGS": [],                          # config files that wire components, relative to each version root
+    "ENV": ".venv-target",                  # interpreter whose installed packages to read, as TEXT
+    "ORDER": [],                            # explicit ordering, oldest first; empty = work it out and report how
+    "SCENARIOS": "scenarios.json",          # MODE 2 only
+    "SCENARIO": "baseline",                 # MODE 2 only
+}
+```
+
+**These are data, never code.** Nothing here is ever `exec`'d, and an unknown key is an
+error that names the typo:
+
+```
+unknown setting "SINK". Did you mean "SINKS"? Valid settings: CONFIGS, ENTRIES, ...
+```
+
+A misspelled `"SINK"` that quietly did nothing is how you end up trusting a map built
+without the setting you thought you had applied. Every key also has a flag —
+`--versions`, `--out`, `--ledger`, `--mode`, `--sink`, `--entry`, `--config`, `--env`,
+`--order`, `--scenarios`, `--scenario` — and the merged result is validated as a whole,
+so a typo in the dict is caught even on a fully flag-driven run.
+
+There is deliberately **no worker or core count**. Ingestion parallelises across files
+and the right degree is what the machine knows; a number written on one machine is wrong
+on every other one.
+
+### Identity is the tree's content hash, never the folder name
+
+Every version is identified by a SHA-256 over the path and bytes of every file in it
+(`.git`, `__pycache__` and the other caches excluded). Rename the folder and it is the
+same version. Change one byte and it is a new one. Two folders with identical content are
+one version, analysed once, and the report says `DUPLICATE of ...`.
+
+### Ordering is best-effort and always names its signal
+
+`version_time_source` is recorded on every version and printed on every line. In
+descending order of honesty:
+
+| Source | What it read |
+|---|---|
+| `owner_declared` | your `ORDER` setting |
+| `filename` | a date in the folder name — `amun_2026-02-03` |
+| `git_commit` | the commit time, read as text from `.git/logs/HEAD` |
+| `file_mtime_max` | the newest file mtime in the tree |
+| `directory_mtime` | the directory's own mtime |
+| `unknown` | nothing |
+
+**Filesystem timestamps lie.** Copying a tree rewrites mtime, some filesystems have no
+creation time at all, and extracting an archive stamps every file with the moment you
+unpacked it — so three versions unzipped in one sitting look simultaneous. Where the
+order cannot be established honestly, every `ordinal` is `-1`, **nothing is compared**,
+and it says so and asks for `ORDER`:
+
+```
+ORDER NOT ESTABLISHED — every ordinal is -1 and NOTHING WAS COMPARED.
+  ['alpha', 'beta'] share a timestamp ('2023-11-14T22:13:20Z'), so their relative
+  order is not established by anything on disk.
+```
+
+It refuses in three cases: any version with no signal at all; two versions sharing a
+timestamp; and a mix of trusted signals (a name, a commit) with filesystem ones, because
+comparing those two kinds against each other is a guess. A comparison against the wrong
+"previous version" produces a confident, detailed, completely wrong answer, and that is
+worse than no answer.
+
+`git` is never invoked inside a version tree. A repository's own config can make git
+execute commands (`core.fsmonitor`, pagers, aliases), so the reflog is read as plain
+text instead.
+
+### A version already in the ledger is never analysed again
+
+The ledger is an **index, not a copy**: one fingerprint per element per version — id,
+kind, content hash, normalised body hash, signature, span, reachability, confidence. That
+is everything a comparison needs, so an old version is never re-read. A second `track`
+with nothing new does no analysis at all:
+
+```
+Ledger out/metatron_ledger.json — 4 version(s) known, 0 new
+...
+Nothing new. No version was analysed and no tree was read beyond hashing it.
+```
+
+Add a fifth version and only the fifth is analysed. The full artifacts stay on disk under
+`OUT_DIR/<version id>/` — the ledger points at them, and `track` refuses to compare, by
+name, rather than diff against artifacts you have deleted.
+
+### "Every single element" — checkable, not rhetorical
+
+Each comparison carries its own proof:
+
+```
+1,284 elements before, 1,301 after, 1,304 accounted for, 0 unaccounted
+```
+
+`accounted for` counts element **identities**, so an element present in both versions —
+unchanged, or matched through a rename or a move — counts once, not twice. Above,
+1,284 + 1,301 with 1,281 matched pairs is 1,304 identities, and all 1,304 are accounted
+for.
+
+Every element of either version must land in **exactly one** classification — `ADDED`,
+`REMOVED`, `RENAMED`, `MOVED`, `SIGNATURE_CHANGED`, `BODY_CHANGED`,
+`DECORATORS_CHANGED`, `UNCHANGED` or `AMBIGUOUS`. Anything that does not is named
+individually in `unaccounted_element_ids` as `before:<id>` or `after:<id>`, an element
+claimed by *two* classifications counts as a failure just as much as one claimed by none,
+and a run that produces any exits non-zero. `AMBIGUOUS` stays a first-class answer: where
+two candidates match equally well, both are listed and neither is claimed.
+
+A reformat is not a hundred behaviour changes. Bodies are compared as token streams with
+comments and whitespace stripped, and the hash of that is what the ledger stores.
+
+### Analysis time is not engine speed
+
+`stage_millis` and `total_millis` record how long **METATRON** took, per stage, per
+version. That is a real signal about your engine's size and shape — a version that
+doubles the analysis time has grown or tangled — and it is not a fact about how fast your
+engine runs. Nothing that refuses to execute your code can time it.
+
+Engine performance comes only from MODE 2. When both versions have a Mode A run of the
+same scenario, `runtime_delta` compares them. When they do not, it is empty, and empty is
+always printed as **not measured**, never as "no change":
+
+```
+runtime        not measured (MODE 1; set MODE 2 to observe execution)
+runtime        not measured (MODE 2, but no completed Mode A run for ['amun_v3'])
+runtime        scenario baseline: 18,204 -> 19,001 events, 12 newly executed, ...
+```
+
+Even then it counts events, not durations — how much ran, never how fast.
+
+### `track --report`
+
+Prints the whole history rather than only what this run did: every version with its
+id, tree hash, time and signal, counts, confidence census and per-stage timings, and
+every comparison the ledger holds.
 
 ---
 
