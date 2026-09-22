@@ -46,6 +46,73 @@ from cascade_map.findings import Findings
 from cascade_map.ingest import inventory
 from cascade_map.lineage import LineageTracer
 from cascade_map.resolve import Resolver
+from cascade_map.ledger import (
+    SETTING_DEFAULTS,
+    LedgerError,
+    Settings,
+    SettingsError,
+    render_history_report,
+    render_track_report,
+    track,
+)
+
+# ---------------------------------------------------------------------------
+# METATRON_SETTINGS — edit this dict, run `track`, read the ledger.
+# ---------------------------------------------------------------------------
+#
+# These are DATA. Nothing here is ever exec'd, and an unknown key is an error
+# naming the typo rather than a silent no-op — a misspelled "SINK" that does
+# nothing is how an owner ends up trusting a map built without the setting they
+# thought they had applied. Every key can still be overridden by a flag, so
+# scripting stays possible.
+#
+# Deliberately absent: worker/core count. Ingestion parallelises across files
+# and the right degree is what the machine knows, not what a config file
+# written on a different machine guessed.
+
+METATRON_SETTINGS = {
+    # 1 = static only (never executes your engine).
+    # 2 = static + runtime tracing inside the harness. 2 always includes 1:
+    #     Mode A refuses to start without a completed static map.
+    "MODE": 1,
+
+    # The folder holding your versions. One sub-folder per version.
+    #   versions/
+    #     amun_2026-01-14/        <- a whole engine tree
+    #     amun_2026-02-03/
+    #     amun_v3/
+    "VERSIONS_DIR": "versions",
+
+    # Where maps are written. One sub-directory per version, named by its id.
+    "OUT_DIR": "out",
+
+    # The history file. Created on first run, appended to for ever after.
+    "LEDGER": "out/metatron_ledger.json",
+
+    # Your final-decision element(s). The single highest-value setting here:
+    # everything the tool says about "what drives the decision" is measured
+    # against these. Left empty, it guesses by name and labels the guess.
+    "SINKS": [],
+
+    # Entry point(s). Detected when empty.
+    "ENTRIES": [],
+
+    # Config files that wire components by name, relative to each version root.
+    "CONFIGS": [],
+
+    # Card 17: the interpreter whose installed packages to read, as TEXT.
+    # Nothing here is ever imported or executed.
+    "ENV": ".venv-target",
+
+    # Explicit ordering, for when the tool cannot establish it from the files.
+    # Folder names, oldest first. Empty = work it out and report how.
+    "ORDER": [],
+
+    # MODE 2 only.
+    "SCENARIOS": "scenarios.json",
+    "SCENARIO": "baseline",
+}
+
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -215,16 +282,34 @@ def analyze(
     started = time.time()
     summary: dict[str, Any] = {}
     artifacts: dict[str, str] = {}
+    stage_seconds: dict[str, float] = {}
+    _stage_started = started
+
+    def _stage(name: str) -> None:
+        """Record how long the stage that just finished took.
+
+        This measures **this tool**, not the owner's engine. A static map
+        cannot time code it refuses to execute; card 18 stores these per
+        version because a version that doubles the analysis time has grown or
+        tangled, which is a fact about the target's size and shape and nothing
+        at all about its speed.
+        """
+        nonlocal _stage_started
+        now = time.time()
+        stage_seconds[name] = round(now - _stage_started, 3)
+        _stage_started = now
 
     # Card 1 — inventory.
     elements, unresolved = inventory(str(root), cache_dir=cache_dir)
     summary["elements"] = len(elements)
+    _stage("inventory")
 
     # Card 2 — resolution.
     resolver = Resolver(root, config_paths=tuple(config_paths))
     edges, resolve_unresolved = resolver.resolve(elements)
     unresolved = list(unresolved) + list(resolve_unresolved)
     summary["edges"] = len(edges)
+    _stage("resolve")
 
     # Card 3 — CFG, ordering, decisions, reachability, detected candidates.
     analyzer = CascadeAnalyzer(root, sink_ids=tuple(sink_ids), unresolved=unresolved)
@@ -239,6 +324,7 @@ def analyze(
     ) = analyzer.order(elements, edges, tuple(entry_ids))
     unresolved = list(unresolved) + list(cascade_unresolved)
     summary["decisions"] = len(decisions)
+    _stage("cascade")
 
     # Card 4 — lineage and slices.
     tracer = LineageTracer(root, sink_ids=tuple(sink_ids))
@@ -246,6 +332,7 @@ def analyze(
     slices = tracer.default_slices()
     summary["lineage_edges"] = len(lineage_edges)
     summary["barriers"] = len(barriers)
+    _stage("lineage")
 
     # Card 17 — dependency and version applicability. Declared, installed and
     # used are gathered separately and joined; with no --env the installed
@@ -264,6 +351,7 @@ def analyze(
     dependency_findings = dependencies.findings()
     unresolved = list(unresolved) + list(dependencies.unresolved())
     summary["dependencies"] = dependencies.summary()
+    _stage("dependencies")
 
     # Card 5 — findings.
     findings = Findings(
@@ -281,6 +369,7 @@ def analyze(
     ).find()
     findings = tuple(sorted([*findings, *dependency_findings], key=lambda f: f.id))
     summary["findings"] = len(findings)
+    _stage("findings")
 
     # Card 16 — documentation records, then the gate.
     builder = DocumentationBuilder(
@@ -297,6 +386,7 @@ def analyze(
     records = builder.records()
     offenders = builder.completeness_gate(records)
     summary["incomplete_records"] = len(offenders)
+    _stage("records")
 
     for name, payload in (
         ("elements.jsonl", canonical_jsonl(elements)),
@@ -320,7 +410,10 @@ def analyze(
     ):
         artifacts[name] = _write(out_dir, name, payload)
 
+    _stage("write")
     summary["unresolved"] = len(unresolved)
+    summary["stage_seconds"] = stage_seconds
+    summary["total_seconds"] = round(time.time() - started, 3)
     summary["confidence"] = _confidence_census(list(edges) + list(lineage_edges))
     summary["detected"] = [
         {"role": c.role, "element_id": c.element_id,
@@ -696,6 +789,51 @@ def _crosslink_report_to_blueprint(report_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# track — settings, flags, and the Mode A seam
+# ---------------------------------------------------------------------------
+
+
+def _settings_from_args(args: Any) -> Settings:
+    """METATRON_SETTINGS, with any flag the caller passed overriding it.
+
+    The merged dict is validated as a whole, so a typo in the shipped dict is
+    an error even on a fully flag-driven run. `Settings.from_mapping` names the
+    offending key and the nearest real one.
+    """
+    merged = dict(METATRON_SETTINGS)
+    overrides = {
+        "MODE": args.mode,
+        "VERSIONS_DIR": str(args.versions) if args.versions else None,
+        "OUT_DIR": str(args.out) if args.out else None,
+        "LEDGER": str(args.ledger) if args.ledger else None,
+        "SINKS": args.sink,
+        "ENTRIES": args.entry,
+        "CONFIGS": args.config,
+        "ENV": str(args.env) if args.env else None,
+        "ORDER": args.order,
+        "SCENARIOS": str(args.scenarios) if args.scenarios else None,
+        "SCENARIO": args.scenario,
+    }
+    for key, value in overrides.items():
+        if value is not None:
+            merged[key] = value
+    return Settings.from_mapping(merged)
+
+
+def _track_trace(
+    graph_dir: Path, scenarios: Path, scenario: str, out_root: Path
+) -> tuple[int, str]:
+    """The one seam through which `track` can reach Mode A.
+
+    Named rather than inlined so that a test can prove the wiring without a
+    single line of the target ever executing: MODE 2 is the only path in this
+    tool that runs owner code, and it runs it through `trace`, which is the
+    harness's own entry point and refuses when it cannot guarantee isolation.
+    """
+    return trace(graph_dir, scenarios, scenario, out_root)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -749,6 +887,35 @@ def _build_parser() -> argparse.ArgumentParser:
     blue.add_argument("--run", default=None, metavar="RUN_ID",
                       help="a run id under graph_dir/runtime/; layers the runtime overlay on")
 
+    hist = sub.add_parser(
+        "track",
+        help="analyse every version in VERSIONS_DIR that has not been analysed "
+             "already, compare consecutive versions, and update the ledger",
+    )
+    hist.add_argument("--versions", type=Path, default=None, metavar="DIR",
+                      help="overrides VERSIONS_DIR")
+    hist.add_argument("--out", type=Path, default=None, help="overrides OUT_DIR")
+    hist.add_argument("--ledger", type=Path, default=None, help="overrides LEDGER")
+    hist.add_argument("--mode", type=int, choices=(1, 2), default=None,
+                      help="overrides MODE. 2 executes your engine inside the "
+                           "harness; 1 never executes anything.")
+    hist.add_argument("--sink", action="append", default=None, metavar="ID",
+                      help="overrides SINKS; repeatable")
+    hist.add_argument("--entry", action="append", default=None, metavar="ID",
+                      help="overrides ENTRIES; repeatable")
+    hist.add_argument("--config", action="append", default=None, metavar="PATH",
+                      help="overrides CONFIGS; repeatable")
+    hist.add_argument("--env", type=Path, default=None, metavar="PATH",
+                      help="overrides ENV")
+    hist.add_argument("--order", action="append", default=None, metavar="LABEL",
+                      help="overrides ORDER, oldest first; repeatable")
+    hist.add_argument("--scenarios", type=Path, default=None,
+                      help="overrides SCENARIOS (MODE 2 only)")
+    hist.add_argument("--scenario", default=None,
+                      help="overrides SCENARIO (MODE 2 only)")
+    hist.add_argument("--report", action="store_true",
+                      help="print the whole history, not only what this run did")
+
     run_a = sub.add_parser("trace", help="Mode A — run the target under the harness")
     run_a.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
     run_a.add_argument("--scenarios", type=Path, required=True,
@@ -788,6 +955,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         moved = sum(1 for i in impacts if i.decision_paths_changed)
         print(f"Wrote {args.out}\n  changes {len(changes):,}\n  impacts {len(impacts):,}")
         print(f"  {moved:,} of them change a path to a decision")
+        return EXIT_OK
+
+    if args.command == "track":
+        try:
+            settings = _settings_from_args(args)
+            result, ledger = track(
+                settings,
+                root=Path.cwd(),
+                trace=_track_trace if settings.mode == 2 else None,
+            )
+        except (SettingsError, LedgerError) as exc:
+            print(str(exc), file=sys.stderr)
+            return EXIT_USAGE
+        print(render_track_report(result))
+        if args.report:
+            print()
+            print(render_history_report(ledger))
+        incomplete = [c for c in result.comparisons if c.unaccounted_element_ids]
+        if incomplete:
+            # Every element of both versions must land in exactly one
+            # classification. One that does not is named in the ledger, and a
+            # run that produced one does not report success.
+            return EXIT_GATE_FAILED
         return EXIT_OK
 
     if args.command == "view":

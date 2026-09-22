@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any, Iterable, Protocol, Sequence
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -178,6 +178,14 @@ class Method(StrEnum):
     NAME_HEURISTIC = "NAME_HEURISTIC"
     DATAFLOW = "DATAFLOW"
     CFG_REACHABILITY = "CFG_REACHABILITY"
+    FILE_METADATA = "FILE_METADATA"
+    """Read from the filesystem, not from the code: a modification time, a
+    directory listing, a git log entry. Granted for card 18, which dates a
+    version from its files. Confidence is rarely better than PROBABLE here --
+    copying a tree rewrites mtime and an archive extract stamps everything at
+    once -- and calling such a fact AST_DIRECT would claim a certainty the
+    filesystem does not have."""
+
     STRUCTURAL_MATCH = "STRUCTURAL_MATCH"
     RUNTIME_OBSERVED = "RUNTIME_OBSERVED"
     MODEL_PROPOSED = "MODEL_PROPOSED"
@@ -1007,12 +1015,18 @@ class VersionRecord:
     barriers -- the same figures the summary prints."""
 
     confidence_census: dict[str, int]
-    stage_seconds: dict[str, float]
-    """How long each analysis stage took. This measures THIS TOOL, not the
+    stage_millis: dict[str, int]
+    """How long each analysis stage took, in whole milliseconds. Integers, not
+    floats: `canonical_dumps` rejects floats because their text form is not
+    reliably stable, and a second serialiser written to work around that is a
+    second way for the bytes to drift. Milliseconds are finer than any decision
+    anyone makes from this number.
+
+    This measures THIS TOOL, not the
     owner's engine. A static map cannot time someone else's code, and a field
     that implied otherwise would be the most damaging kind of wrong."""
 
-    total_seconds: float
+    total_millis: int
     runtime_run_ids: tuple[str, ...]
     """Mode A runs recorded against this version, if any. Observed execution
     timing lives there and is the only place engine performance is measured."""
@@ -1074,8 +1088,9 @@ class VersionComparison:
     reachability_flipped: tuple[str, ...]
     findings_added: tuple[str, ...]
     findings_removed: tuple[str, ...]
-    analysis_seconds_delta: dict[str, float]
-    """Change in how long THIS TOOL took per stage. A proxy for the target's
+    analysis_millis_delta: dict[str, int]
+    """Change in how long THIS TOOL took per stage, in whole milliseconds. A
+    proxy for the target's
     size and shape, never for the target's speed."""
 
     runtime_delta: dict[str, Any]

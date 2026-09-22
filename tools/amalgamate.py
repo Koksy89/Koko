@@ -61,7 +61,7 @@ ORDER = [
     "ingest/python_module.py", "ingest/data_files.py", "ingest/cache.py",
     "ingest/inventory.py",
     "resolve.py", "cascade.py", "lineage.py", "findings.py", "diff.py",
-    "dependencies.py", "docrecords.py", "enrichment.py",
+    "dependencies.py", "ledger.py", "docrecords.py", "enrichment.py",
     "harness/errors.py", "harness/hashing.py", "harness/config.py",
     "harness/sandbox.py", "harness/harness.py",
     "tracer/limits.py", "tracer/capture.py", "tracer/static_index.py",
@@ -321,6 +321,70 @@ def _strip_internal_imports(source: str, path: Path) -> tuple[str, set[str]]:
     return "\n".join(kept), hoisted
 
 
+def _lift_settings(source: str) -> tuple[str, str]:
+    """Cut `METATRON_SETTINGS` and its comment block out of cli.py.
+
+    The owner edits this dict in place, and `cli.py` is the last module in
+    `ORDER`, so leaving it where it is buries the one thing they have to change
+    thirty thousand lines down. The build lifts it to the top of the generated
+    file instead.
+
+    AST-driven, like every other edit here: the assignment's own line span, then
+    upwards over the contiguous comment block introducing it. Nothing is matched
+    by text, so a string that happens to contain "METATRON_SETTINGS" is
+    untouched. The build fails if the result does not hold exactly one
+    module-level definition of the name -- see `_check_settings`.
+    """
+    for node in ast.parse(source).body:
+        if not (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "METATRON_SETTINGS"
+        ):
+            continue
+        lines = source.splitlines()
+        start = node.lineno - 1
+        while start > 0:
+            candidate = lines[start - 1].strip()
+            if candidate.startswith("#") or candidate == "":
+                start -= 1
+            else:
+                break
+        end = node.end_lineno or node.lineno
+        block = "\n".join(lines[start:end]).strip("\n")
+        remainder = "\n".join(lines[:start] + lines[end:])
+        return remainder, block + "\n"
+    raise SystemExit(
+        "cli.py no longer defines METATRON_SETTINGS at module level. That dict is "
+        "the owner's whole configuration surface and the single file is meant to "
+        "open on it. Restore it or update this tool."
+    )
+
+
+def _check_settings(text: str) -> None:
+    """Exactly one METATRON_SETTINGS, and it is near the top."""
+    found = [
+        node
+        for node in ast.parse(text).body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == "METATRON_SETTINGS"
+    ]
+    if len(found) != 1:
+        raise SystemExit(
+            f"the generated file defines METATRON_SETTINGS {len(found)} times. "
+            f"Exactly one is correct: two would mean the owner edits a dict that "
+            f"the later definition overwrites."
+        )
+    if found[0].lineno > 200:
+        raise SystemExit(
+            f"METATRON_SETTINGS landed at line {found[0].lineno}. It is the first "
+            f"thing the owner edits and belongs at the top of the file."
+        )
+
+
 def _replace_child_prologue(source: str) -> str:
     """Swap cli.py's package-import child prologue for the by-path one."""
     for node in ast.parse(source).body:
@@ -460,10 +524,12 @@ def build() -> str:
 
     bodies: list[str] = []
     hoisted: set[str] = {"import sys"}
+    settings_block = ""
     for path in files:
         source = path.read_text(encoding="utf-8")
         if path.name == "cli.py":
             source = _replace_child_prologue(source)
+            source, settings_block = _lift_settings(source)
         source = _rename_names(source, renames.get(path, {}))
         body, imports = _strip_internal_imports(source, path)
         hoisted |= imports
@@ -507,10 +573,13 @@ __version__ = "0.0.0"
         + "\n".join(sorted(i for i in hoisted if i))
         + "\n"
         + alias_block
+        + "\n\n"
+        + settings_block
         + "".join(bodies)
         + '\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n'
     )
     _check_globals(text, aliases)
+    _check_settings(text)
     return text
 
 

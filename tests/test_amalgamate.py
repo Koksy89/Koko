@@ -29,6 +29,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 CORPUS = ROOT / "tests" / "fixtures" / "mode_b"
+FIXTURES = ROOT / "tests" / "fixtures"
 
 #: Written per run and expected to differ: wall-clock and elapsed time.
 VOLATILE = {"run_meta.json"}
@@ -234,3 +235,45 @@ def test_trace_output_matches_the_package(single_file: Path, tmp_path: Path) -> 
     # The sandbox is the harness's, not ours; leave nothing behind.
     shutil.rmtree(package_out / "sandbox", ignore_errors=True)
     shutil.rmtree(single_out / "sandbox", ignore_errors=True)
+
+
+@needs_312
+def test_track_builds_the_same_ledger(single_file: Path, tmp_path: Path) -> None:
+    """Card 18 through both shapes. The ledger is the artifact an owner keeps
+    for the life of the project, so the two builds must write the same bytes --
+    everything except the two fields that are wall-clock by definition."""
+    versions = FIXTURES / "versions" / "dif_impact_rank"
+
+    def workspace(name: str) -> Path:
+        root = tmp_path / name
+        (root / "versions").mkdir(parents=True)
+        shutil.copytree(versions / "before", root / "versions" / "eng_2026-01-14")
+        shutil.copytree(versions / "after", root / "versions" / "eng_2026-02-03")
+        return root
+
+    package_root = workspace("pkg")
+    single_root = workspace("one")
+    args = ["track", "--sink", "engine::decide", "--env", "no-such-env"]
+    package_run = _run_package(args, package_root)
+    single_run = _run_single(single_file, args, single_root)
+    assert package_run.returncode == 0, package_run.stderr
+    assert single_run.returncode == 0, single_run.stderr
+
+    def normalized(root: Path) -> str:
+        document = json.loads(
+            (root / "out" / "metatron_ledger.json").read_text(encoding="utf-8")
+        )
+        for record in document["versions"]:
+            record["discovered_at"] = ""
+            record["stage_seconds"] = {}
+            record["total_seconds"] = 0.0
+            record["artifact_dir"] = Path(record["artifact_dir"]).name
+        for comparison in document["comparisons"]:
+            comparison["analysis_seconds_delta"] = {}
+        return json.dumps(document, sort_keys=True, indent=1)
+
+    assert normalized(package_root) == normalized(single_root)
+    assert "0 unaccounted" in package_run.stdout
+    assert package_run.stdout.replace(str(package_root), "X") == (
+        single_run.stdout.replace(str(single_root), "X")
+    )

@@ -291,12 +291,19 @@ def _normalized_body(source: str | None) -> str | None:
     """Comment- and whitespace-insensitive token sequence of `source`. Purely
     lexical (`tokenize`, never `ast.parse`/`compile`/`exec`): nothing here
     executes target code. Returns None if `source` is None or does not
-    tokenize, so the caller can fall back rather than assert a wrong answer."""
+    tokenize, so the caller can fall back rather than assert a wrong answer.
+
+    The caught name is `tokenize.TokenError`. It was `tokenize.TokenizeError`,
+    which does not exist, so evaluating the `except` clause raised
+    `AttributeError` and the documented fallback never ran -- found by card 18
+    the first time a real fragment failed to tokenize: a module element whose
+    span is the first line of a triple-quoted docstring, and a JSON data file
+    whose span text is `{`."""
     if source is None:
         return None
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
-    except (tokenize.TokenizeError, IndentationError, SyntaxError):
+    except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
         return None
     kept = [t.string for t in tokens if t.type not in _SKIP_TOKEN_TYPES]
     return " ".join(kept)
