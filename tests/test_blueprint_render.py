@@ -27,6 +27,7 @@ Nothing here writes into `tests/fixtures/`; every artifact goes to
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,22 @@ CORPUS = ROOT / "tests" / "fixtures" / "mode_b"
 #: This is a floor comfortably below that, not the exact number, so a small
 #: corpus change does not make the test flaky.
 _MIN_VISIBLE_NODES_ON_CORPUS = 40
+
+#: D11: verification measured the pre-fix layout landing Fit at scale
+#: 0.088 (a "grey speck", unreadable without nine zoom-ins). This is the
+#: floor this builder can actually hold post-fix, checked on the real
+#: fixture corpus in every mode combination below -- not an aspirational
+#: number, a measured one (post-fix runs landed 0.28-0.64).
+_MIN_FIT_SCALE = 0.2
+
+_SCALE_RE = re.compile(r"matrix\(([-0-9.]+),")
+
+
+def _fit_scale(page) -> float:
+    transform = page.eval_on_selector("#world", "el => getComputedStyle(el).transform")
+    match = _SCALE_RE.match(transform)
+    assert match, f"unexpected transform: {transform!r}"
+    return float(match.group(1))
 
 
 def _chromium_executable() -> str | None:
@@ -296,6 +313,39 @@ def test_world_is_not_a_single_wildly_elongated_strip(browser, corpus_html: Path
 
 
 # ---------------------------------------------------------------------------
+# D11: aspect ratio alone does not catch "too small to read" -- a direct
+# floor on the actual fit scale, in every mode combination.
+# ---------------------------------------------------------------------------
+
+
+def test_fit_scale_is_readable_in_stage_mode(browser, corpus_html: Path) -> None:
+    loaded = _open(browser, corpus_html)
+    scale = _fit_scale(loaded.page)
+    assert scale >= _MIN_FIT_SCALE, f"stage mode fit scale {scale} is unreadable"
+
+
+def test_fit_scale_is_readable_in_full_graph_mode(browser, corpus_html: Path) -> None:
+    loaded = _open(browser, corpus_html)
+    page = loaded.page
+    page.click("#btn-toggle-stage-mode")
+    page.wait_for_timeout(500)
+    scale = _fit_scale(page)
+    assert scale >= _MIN_FIT_SCALE, f"full-graph mode fit scale {scale} is unreadable"
+
+
+def test_fit_scale_is_readable_with_a_diff_loaded_in_both_modes(browser, corpus_diff_html: Path) -> None:
+    loaded = _open(browser, corpus_diff_html)
+    page = loaded.page
+    stage_scale = _fit_scale(page)
+    assert stage_scale >= _MIN_FIT_SCALE, f"stage mode (diff loaded) fit scale {stage_scale} is unreadable"
+
+    page.click("#btn-toggle-stage-mode")
+    page.wait_for_timeout(500)
+    full_scale = _fit_scale(page)
+    assert full_scale >= _MIN_FIT_SCALE, f"full-graph mode (diff loaded) fit scale {full_scale} is unreadable"
+
+
+# ---------------------------------------------------------------------------
 # D3: fit happens on first paint and after layout changes
 # ---------------------------------------------------------------------------
 
@@ -435,6 +485,22 @@ def test_theme_toggle_switches_to_light_and_back(browser, small_html: Path) -> N
     page.select_option("#palette-picker", "blueprint-dark")
     page.wait_for_timeout(200)
     assert page.eval_on_selector(":root", "el => el.getAttribute('data-palette')") == "blueprint-dark"
+
+
+def test_flow_readout_collapse_toggles_and_is_remembered(browser, corpus_html: Path) -> None:
+    loaded = _open(browser, corpus_html)
+    page = loaded.page
+    assert page.eval_on_selector("#flow-readout-body", "el => el.hidden") is False
+    page.click("#flow-readout-header")
+    page.wait_for_timeout(200)
+    assert page.eval_on_selector("#flow-readout-body", "el => el.hidden") is True
+    # a reload (same context, same localStorage) must remember the
+    # collapsed state -- persisted the same way the palette is. A fresh
+    # `browser.new_page()` would use a fresh, isolated context instead, so
+    # this reloads the same page rather than opening a second one.
+    page.reload()
+    page.wait_for_timeout(500)
+    assert page.eval_on_selector("#flow-readout-body", "el => el.hidden") is True
 
 
 # ---------------------------------------------------------------------------

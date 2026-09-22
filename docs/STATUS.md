@@ -268,3 +268,61 @@ Total suite: **1162 passed, 29 skipped, 3 xfailed, 0 failed.**
   lines across 34 modules before it was established that the owner wanted one
   file. Nothing was wasted — the amalgamation reuses all of it — but the
   question costs one sentence and was never asked.
+
+## Card 15 phase C — blueprint canvas — DONE
+
+An interactive node canvas, `metatron blueprint`: one offline HTML file, three
+tabs (execution / lineage / diff) sharing camera and selection, stage cards
+derived from card 3's cascade order, pan/zoom/drag/search, module collapse,
+filters, four palettes. Suite: **1235 passed, 28 skipped, 3 xfailed, 0 failed.**
+
+Measured, not reported: fit scale 0.358 stage mode / 0.282 full graph; world
+3960x2620; zero page and console errors; `elementFromPoint` over a node returns
+that node; worst contrast per palette 3.31 / 3.61 / 4.37 / 4.92 with body text
+above 5.2:1.
+
+Flow-vs-order classification is the substantive feature: every execution edge is
+labelled FORWARD / WITHIN / BACKWARD / UNORDERED against the derived cascade
+order, backward edges route as distinct return wires, and a readout gives totals
+and per-stage-pair counts. On the corpus, 19 / 77 / 1 / 35 -- the single BACKWARD
+being a real circular import the classification found on its own.
+
+### Lessons
+
+- **A card can pass every test it has and not work at all.** 32 data tests
+  passed while the page rendered a blank canvas: `#empty-state { display:flex }`
+  beat the UA stylesheet's `[hidden] { display:none }`, so an opaque overlay
+  covered the graph in the canvas's own background colour. Nothing in Python
+  could see it. The fix that matters is not the CSS line, it is
+  `tests/test_blueprint_render.py`: drive the real page in a real browser and
+  assert that pointing at a node's centre hits that node.
+- **Fourth instance of "a failure that renders as success."** After the crashed
+  scenario, the failed observer, and the viewer showing both as clean runs. The
+  build instructions named the pattern and it happened anyway -- naming a defect
+  class does not prevent it; a test that can observe it does.
+- **The same shape reappeared twice more in one card.** Filter handlers painting
+  all three tabs into one shared container so the DOM held whichever tab was
+  last in an array; and the Diff tab rendering 113 nodes of which only 12
+  carried change information, because collapsed modules rolled nothing up --
+  which at default collapse would have read as "nothing changed" on a real
+  engine.
+- **A proxy metric passes what it cannot express.** The guard on layout was
+  "aspect ratio < 6:1". A 3060x9450 canvas is 3.1:1 and opens at 8.8% zoom,
+  where nothing is legible. Aspect ratio cannot express "too small to read".
+  Replaced with a floor on the measured fit scale, which is the actual
+  requirement.
+- **Recursion has no fixed point in longest-path layering.** Capped iteration
+  inflated everything downstream of a cycle to ~458 layers, 137,330px wide.
+  Layering the condensation into strongly-connected components fixes it
+  properly: max layer 458 -> 4.
+- **Percentage padding on an absolutely-positioned element resolves against the
+  positioned ancestor's width.** On a multi-thousand-pixel canvas that turned a
+  158px node into 1250px. Three CSS bugs in this card (this, a specificity
+  accident, and a re-parented close button destroyed on the second render) were
+  all invisible to data tests and all found by driving the page.
+- **Verify the shipped artifact, not a rebuild of it.** `test_amalgamate.py`
+  builds its own copy in a temp dir, so five green tests say nothing about
+  whether the committed `dist/cascade_map.py` is current. Rebuild and `cmp`.
+- **Do not name what the analysis did not name.** Stages are `Stage 3` plus
+  their member list, never `Feature Engineering` -- the same discipline card 14
+  had to be corrected on.

@@ -1247,15 +1247,24 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 .wire-flow-BACKWARD.wire-conf-CERTAIN, .wire-flow-BACKWARD.wire-conf-RESOLVED { filter:drop-shadow(0 0 3px rgba(229,72,77,.6)); }
 #flow-readout { position:absolute; right:.6rem; top:.6rem; width:22rem; max-width:calc(100% - 1.2rem);
   background:var(--panel); border:1px solid var(--red); border-radius:10px;
-  box-shadow:0 10px 28px rgba(0,0,0,.45); font-size:.68rem; z-index:35; max-height:60vh;
-  display:flex; flex-direction:column; }
-#flow-readout-header { background:linear-gradient(180deg, rgba(229,72,77,.25), transparent);
+  box-shadow:0 10px 28px rgba(0,0,0,.45); font-size:.68rem; z-index:35; max-height:min(60vh, calc(100vh - 8rem));
+  display:flex; flex-direction:column; overflow:hidden; }
+/* A plain <button>, not a <details>: its collapsed state is remembered in
+   localStorage the same way the palette is, which `<details open>` cannot
+   drive from JS as cleanly. Always visible, `flex-shrink:0`, so at a short
+   viewport the heading can never scroll out of view the way it did before
+   -- the actual D11-adjacent bug was `#flow-pairs` missing `min-height:0`,
+   which let its content inflate the whole flex column instead of scrolling
+   internally. */
+#flow-readout-header { flex-shrink:0; width:100%; display:flex; align-items:center; justify-content:space-between;
+  background:linear-gradient(180deg, rgba(229,72,77,.25), transparent); border:none; cursor:pointer;
   padding:.4rem .7rem; font-weight:700; font-size:.68rem; letter-spacing:.03em; text-transform:uppercase;
-  color:var(--text); border-bottom:1px solid var(--panel-border); }
-#flow-totals { display:flex; gap:.5rem; padding:.5rem .7rem; flex-wrap:wrap; }
+  color:var(--text); border-bottom:1px solid var(--panel-border); font-family:inherit; }
+#flow-readout-body { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+#flow-totals { flex-shrink:0; display:flex; gap:.5rem; padding:.5rem .7rem; flex-wrap:wrap; }
 .flow-total-chip { border:1px solid var(--panel-border); border-radius:6px; padding:.15rem .5rem; font-size:.66rem; }
 .flow-total-chip.flow-total-BACKWARD { border-color:var(--red); color:var(--red); font-weight:700; }
-#flow-pairs { overflow-y:auto; padding:0 .5rem .5rem; }
+#flow-pairs { flex:1 1 auto; min-height:0; overflow-y:auto; padding:0 .5rem .5rem; }
 .flow-pair-row { display:flex; justify-content:space-between; gap:.4rem; padding:.25rem .3rem; border-radius:4px;
   cursor:pointer; font-size:.66rem; }
 .flow-pair-row:hover { background:var(--node-header); }
@@ -1335,15 +1344,28 @@ _BODY = """<div id="app">
 </div>
 </div>
 <div id="empty-state" hidden></div>
-</div>
+<!-- Every overlay below is `position:absolute` and anchors to *this*
+     container -- `#canvas-wrap` is the region below the header/toolbar,
+     so `top:0`/`top:.6rem` here means "just under the toolbar", not "the
+     very top of the page". These used to be siblings of `#canvas-wrap`
+     instead of children of it, so their containing block was `#app`
+     (full page height): `#detail-panel`'s `top:0` rendered it starting
+     at the page's own top edge, covering the search box and palette
+     picker in the header, and `#flow-readout`'s `top:.6rem` landed it
+     behind the header entirely -- found while checking why its own
+     button was unclickable. -->
 <aside id="detail-panel" hidden>
 <button type="button" id="detail-close">&times;</button>
 <div id="detail-content"></div>
 </aside>
 <div id="flow-readout" hidden>
-<div id="flow-readout-header">Flow vs. cascade order</div>
+<button type="button" id="flow-readout-header">
+<span>Flow vs. cascade order</span><span id="flow-readout-caret">&#9662;</span>
+</button>
+<div id="flow-readout-body">
 <div id="flow-totals"></div>
 <div id="flow-pairs"></div>
+</div>
 </div>
 <div id="legend">
 <div id="legend-header">Legend &mdash; what this canvas encodes</div>
@@ -1356,6 +1378,7 @@ _BODY = """<div id="app">
 </details>
 </div>
 <div id="shortcuts-help">/ search &middot; Esc clear search &middot; F fit &middot; 1/2/3 tabs</div>
+</div>
 </div>"""
 
 _SCRIPT = """
@@ -2609,8 +2632,27 @@ document.addEventListener('keydown', function (ev) {
   if (ev.key === '3') { switchTab('diff'); return; }
 });
 
-// ---- legend & diagnostics ----
 // ---- round 4, R2: the permanent flow readout ----
+function loadFlowReadoutCollapsed() {
+  try {
+    return window.localStorage.getItem('cascade_blueprint_flow_collapsed') === '1';
+  } catch (e) { return false; }
+}
+function saveFlowReadoutCollapsed(collapsed) {
+  try { window.localStorage.setItem('cascade_blueprint_flow_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+}
+function applyFlowReadoutCollapsed(collapsed) {
+  document.getElementById('flow-readout-body').hidden = collapsed;
+  document.getElementById('flow-readout-caret').textContent = collapsed ? '\\u25b8' : '\\u25be';
+}
+document.getElementById('flow-readout-header').addEventListener('click', function () {
+  var collapsed = !document.getElementById('flow-readout-body').hidden;
+  applyFlowReadoutCollapsed(collapsed);
+  saveFlowReadoutCollapsed(collapsed);
+});
+applyFlowReadoutCollapsed(loadFlowReadoutCollapsed());
+
+// ---- legend & diagnostics ----
 function renderFlowReadout() {
   var ex = DATA.execution;
   var totalsWrap = document.getElementById('flow-totals');

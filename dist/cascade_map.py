@@ -24280,9 +24280,14 @@ _blueprint__STYLE = """<style>
   --amber:#e6ab2e; --red:#ff5470; --green:#3fce7c; --purple:#a970ff;
 }
 :root[data-palette="silver-milk"] {
-  --bg:#f7f5f0; --grid-minor:#e9e5d9; --grid-major:#d2ccb8; --panel:#ffffff; --panel-border:#c9c4b0;
-  --text:#2b2b28; --text-dim:#6e6c62; --accent:#005fa8; --accent-dark:#00447a; --sink:#8a5708;
-  --node-bg:#ffffff; --node-bg-2:#f1ede2; --node-border:#b8b2a0; --node-header:#e6e1d2;
+  /* D12: the first pass read as cream/tan, not silver and milk white --
+     every one of these was a *warm* neutral (e.g. bg #f7f5f0 has more red
+     than blue). Every neutral below is now cool (blue channel >= green
+     channel >= red channel), so the surface reads as milk white and the
+     structure as silver/graphite, with exactly one saturated accent. */
+  --bg:#f6f8fa; --grid-minor:#e5e9ee; --grid-major:#ccd3dc; --panel:#ffffff; --panel-border:#ccd3dc;
+  --text:#20242b; --text-dim:#5c6472; --accent:#0063d1; --accent-dark:#00468f; --sink:#8a5708;
+  --node-bg:#ffffff; --node-bg-2:#eef1f5; --node-border:#b7bfc9; --node-header:#e4e8ee;
   --amber:#7a5405; --red:#c2262b; --green:#187a44; --purple:#6b3fc9;
 }
 :root[data-palette="high-contrast"] {
@@ -24525,15 +24530,24 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 .wire-flow-BACKWARD.wire-conf-CERTAIN, .wire-flow-BACKWARD.wire-conf-RESOLVED { filter:drop-shadow(0 0 3px rgba(229,72,77,.6)); }
 #flow-readout { position:absolute; right:.6rem; top:.6rem; width:22rem; max-width:calc(100% - 1.2rem);
   background:var(--panel); border:1px solid var(--red); border-radius:10px;
-  box-shadow:0 10px 28px rgba(0,0,0,.45); font-size:.68rem; z-index:35; max-height:60vh;
-  display:flex; flex-direction:column; }
-#flow-readout-header { background:linear-gradient(180deg, rgba(229,72,77,.25), transparent);
+  box-shadow:0 10px 28px rgba(0,0,0,.45); font-size:.68rem; z-index:35; max-height:min(60vh, calc(100vh - 8rem));
+  display:flex; flex-direction:column; overflow:hidden; }
+/* A plain <button>, not a <details>: its collapsed state is remembered in
+   localStorage the same way the palette is, which `<details open>` cannot
+   drive from JS as cleanly. Always visible, `flex-shrink:0`, so at a short
+   viewport the heading can never scroll out of view the way it did before
+   -- the actual D11-adjacent bug was `#flow-pairs` missing `min-height:0`,
+   which let its content inflate the whole flex column instead of scrolling
+   internally. */
+#flow-readout-header { flex-shrink:0; width:100%; display:flex; align-items:center; justify-content:space-between;
+  background:linear-gradient(180deg, rgba(229,72,77,.25), transparent); border:none; cursor:pointer;
   padding:.4rem .7rem; font-weight:700; font-size:.68rem; letter-spacing:.03em; text-transform:uppercase;
-  color:var(--text); border-bottom:1px solid var(--panel-border); }
-#flow-totals { display:flex; gap:.5rem; padding:.5rem .7rem; flex-wrap:wrap; }
+  color:var(--text); border-bottom:1px solid var(--panel-border); font-family:inherit; }
+#flow-readout-body { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+#flow-totals { flex-shrink:0; display:flex; gap:.5rem; padding:.5rem .7rem; flex-wrap:wrap; }
 .flow-total-chip { border:1px solid var(--panel-border); border-radius:6px; padding:.15rem .5rem; font-size:.66rem; }
 .flow-total-chip.flow-total-BACKWARD { border-color:var(--red); color:var(--red); font-weight:700; }
-#flow-pairs { overflow-y:auto; padding:0 .5rem .5rem; }
+#flow-pairs { flex:1 1 auto; min-height:0; overflow-y:auto; padding:0 .5rem .5rem; }
 .flow-pair-row { display:flex; justify-content:space-between; gap:.4rem; padding:.25rem .3rem; border-radius:4px;
   cursor:pointer; font-size:.66rem; }
 .flow-pair-row:hover { background:var(--node-header); }
@@ -24613,15 +24627,28 @@ _BODY = """<div id="app">
 </div>
 </div>
 <div id="empty-state" hidden></div>
-</div>
+<!-- Every overlay below is `position:absolute` and anchors to *this*
+     container -- `#canvas-wrap` is the region below the header/toolbar,
+     so `top:0`/`top:.6rem` here means "just under the toolbar", not "the
+     very top of the page". These used to be siblings of `#canvas-wrap`
+     instead of children of it, so their containing block was `#app`
+     (full page height): `#detail-panel`'s `top:0` rendered it starting
+     at the page's own top edge, covering the search box and palette
+     picker in the header, and `#flow-readout`'s `top:.6rem` landed it
+     behind the header entirely -- found while checking why its own
+     button was unclickable. -->
 <aside id="detail-panel" hidden>
 <button type="button" id="detail-close">&times;</button>
 <div id="detail-content"></div>
 </aside>
 <div id="flow-readout" hidden>
-<div id="flow-readout-header">Flow vs. cascade order</div>
+<button type="button" id="flow-readout-header">
+<span>Flow vs. cascade order</span><span id="flow-readout-caret">&#9662;</span>
+</button>
+<div id="flow-readout-body">
 <div id="flow-totals"></div>
 <div id="flow-pairs"></div>
+</div>
 </div>
 <div id="legend">
 <div id="legend-header">Legend &mdash; what this canvas encodes</div>
@@ -24634,6 +24661,7 @@ _BODY = """<div id="app">
 </details>
 </div>
 <div id="shortcuts-help">/ search &middot; Esc clear search &middot; F fit &middot; 1/2/3 tabs</div>
+</div>
 </div>"""
 
 _SCRIPT = """
@@ -24984,35 +25012,77 @@ function computeLayout(tab) {
   // width and height to about sqrt(node count) -- the same reasoning as
   // the layer computation itself: this is packing, not analysis, and it
   // never changes which layer (hence which drawn wires) a node has.
-  var rowsPerSubcol = Math.max(6, Math.ceil(Math.sqrt(Math.max(1, displayNodes.length))));
+  var rowsPerSubcol = Math.max(3, Math.ceil(Math.sqrt(Math.max(1, displayNodes.length))));
+  var ROW_GUTTER = 24, BAND_GUTTER = 60;
+
+  // Pass 1: each layer's *actual* content height, from the real size of
+  // whatever is in it (a STAGE card is ~4x a plain element row) -- never a
+  // flat ROW_GAP-based guess. D11 found the guess wasted ~900px per band
+  // (a 1250px band pitch for ~320px-tall content), landing Fit at scale
+  // 0.088 -- a grey speck, not a readable canvas.
+  var layerInfo = {};
+  var totalCols = 0, heightSum = 0;
+  orderedLayers.forEach(function (l) {
+    var members = byLayer[l];
+    var itemH = NODE_H;
+    members.forEach(function (n) { itemH = Math.max(itemH, sizeOf(n).h); });
+    var pitch = itemH + ROW_GUTTER;
+    var subcols = Math.max(1, Math.ceil(members.length / rowsPerSubcol));
+    var rowsUsed = Math.max(1, Math.min(members.length, rowsPerSubcol));
+    var height = rowsUsed * pitch;
+    layerInfo[l] = { subcols: subcols, pitch: pitch, height: height };
+    totalCols += subcols;
+    heightSum += height;
+  });
+
   // The mirror-image problem: stage mode (round 4, R1) can produce dozens
   // of stages -- each its own layer with exactly one card, so the
   // sub-column packing above never triggers -- and a fixture corpus with
   // no single wired entry point turns every independent program into its
   // own stage. Left as one row, that is the same "Fit shrinks everything
   // to illegibility" failure D2 already named, just along the other axis.
-  // Past a threshold, wrap columns into bands too, capping both dimensions
-  // to roughly sqrt(layer count) regardless of which axis the excess is on.
-  var WRAP_LAYER_THRESHOLD = 15;
-  var wrapCols = orderedLayers.length > WRAP_LAYER_THRESHOLD
-    ? Math.max(6, Math.ceil(Math.sqrt(orderedLayers.length)))
-    : Infinity;
-  var bandHeight = rowsPerSubcol * ROW_GAP + 260;
-  var pos = {};
-  var xCursor = 0, colsInBand = 0, band = 0;
+  // Past a threshold, wrap columns into bands, choosing the band width so
+  // the whole canvas approaches the ~16:9 a real viewport presents --
+  // using each axis's real pixel pitch (a column is ~300px, a row is
+  // however tall its content actually is), not raw counts.
+  var TARGET_ASPECT = 16 / 9;
+  var avgLayerHeight = heightSum / Math.max(1, orderedLayers.length);
+  var numBands = orderedLayers.length > 1 ? Math.max(1, Math.round(
+    Math.sqrt(totalCols * COL_GAP * (1 / TARGET_ASPECT) / Math.max(1, avgLayerHeight))
+  )) : 1;
+  var wrapCols = Math.max(1, Math.ceil(totalCols / numBands));
+
+  // Pass 2: assign each layer to a band, then give every band exactly the
+  // height its tallest layer actually needs, plus one gutter -- not a
+  // guess repeated per band.
+  var layerBand = {};
+  var bandMaxHeight = [];
+  var colsInBand = 0, band = 0;
   orderedLayers.forEach(function (l) {
+    layerBand[l] = band;
+    bandMaxHeight[band] = Math.max(bandMaxHeight[band] || 0, layerInfo[l].height);
+    colsInBand += layerInfo[l].subcols;
+    if (colsInBand >= wrapCols) { colsInBand = 0; band += 1; }
+  });
+  var bandYOffset = [0];
+  for (var bandIndex = 1; bandIndex < bandMaxHeight.length; bandIndex++) {
+    bandYOffset[bandIndex] = bandYOffset[bandIndex - 1] + bandMaxHeight[bandIndex - 1] + BAND_GUTTER;
+  }
+
+  var pos = {};
+  var xCursor = 0, curBand = 0;
+  orderedLayers.forEach(function (l) {
+    if (layerBand[l] !== curBand) { xCursor = 0; curBand = layerBand[l]; }
     var members = byLayer[l];
-    var subcols = Math.max(1, Math.ceil(members.length / rowsPerSubcol));
+    var info = layerInfo[l];
     members.forEach(function (n, i) {
       var saved = state.positions[tab][n.id];
       if (saved) { pos[n.id] = { x: saved.x, y: saved.y }; return; }
       var subcol = Math.floor(i / rowsPerSubcol);
       var row = i % rowsPerSubcol;
-      pos[n.id] = { x: xCursor + subcol * COL_GAP, y: row * ROW_GAP + band * bandHeight };
+      pos[n.id] = { x: xCursor + subcol * COL_GAP, y: row * info.pitch + bandYOffset[curBand] };
     });
-    xCursor += subcols * COL_GAP;
-    colsInBand += subcols;
-    if (colsInBand >= wrapCols) { colsInBand = 0; xCursor = 0; band += 1; }
+    xCursor += info.subcols * COL_GAP;
   });
 
   var byId = {};
@@ -25845,8 +25915,27 @@ document.addEventListener('keydown', function (ev) {
   if (ev.key === '3') { switchTab('diff'); return; }
 });
 
-// ---- legend & diagnostics ----
 // ---- round 4, R2: the permanent flow readout ----
+function loadFlowReadoutCollapsed() {
+  try {
+    return window.localStorage.getItem('cascade_blueprint_flow_collapsed') === '1';
+  } catch (e) { return false; }
+}
+function saveFlowReadoutCollapsed(collapsed) {
+  try { window.localStorage.setItem('cascade_blueprint_flow_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+}
+function applyFlowReadoutCollapsed(collapsed) {
+  document.getElementById('flow-readout-body').hidden = collapsed;
+  document.getElementById('flow-readout-caret').textContent = collapsed ? '\\u25b8' : '\\u25be';
+}
+document.getElementById('flow-readout-header').addEventListener('click', function () {
+  var collapsed = !document.getElementById('flow-readout-body').hidden;
+  applyFlowReadoutCollapsed(collapsed);
+  saveFlowReadoutCollapsed(collapsed);
+});
+applyFlowReadoutCollapsed(loadFlowReadoutCollapsed());
+
+// ---- legend & diagnostics ----
 function renderFlowReadout() {
   var ex = DATA.execution;
   var totalsWrap = document.getElementById('flow-totals');

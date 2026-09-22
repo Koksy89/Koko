@@ -19,11 +19,12 @@ are the same thing.
 
 1. [Requirements and install](#1-requirements-and-install)
 2. [Quickstart](#2-quickstart)
-3. [The four commands](#3-the-four-commands)
+3. [The commands](#3-the-commands)
 4. [The ideas everything rests on](#4-the-ideas-everything-rests-on)
 5. [What `analyze` actually does, stage by stage](#5-what-analyze-actually-does-stage-by-stage)
 6. [Every output file, explained](#6-every-output-file-explained)
 7. [Reading the numbers it prints](#7-reading-the-numbers-it-prints)
+7b. [The blueprint canvas](#7b-the-blueprint-canvas)
 8. [Findings — the eight things it looks for](#8-findings--the-eight-things-it-looks-for)
 9. [Version control and change impact](#9-version-control-and-change-impact)
 10. [Mode A — watching it run](#10-mode-a--watching-it-run)
@@ -76,7 +77,7 @@ mixed — that is by design and is what you asked for.
 
 ---
 
-## 3. The four commands
+## 3. The commands
 
 ### `analyze` — build the map
 
@@ -116,6 +117,18 @@ Renders the analysed directory into one offline HTML page (default `DIR/index.ht
 Everything on that page was produced by `analyze`; the viewer computes nothing of its
 own. That separation is deliberate: if a number on screen looks wrong, it is wrong in the
 data file, and you can go read the data file.
+
+### `blueprint` — the interactive node canvas
+
+```
+python3 metatron_engine.py blueprint GRAPH_DIR [--html PATH] [--diff DIFF_DIR] [--run RUN_ID]
+```
+
+The visual one. Default output is `GRAPH_DIR/blueprint.html`. `--diff` takes a
+`diff` output directory and lights up the Diff tab; `--run` takes a run id from `trace`
+and overlays what actually executed. Both are optional, and when you leave one out the
+matching tab says so and names the command that produces it. Full detail in
+[section 7b](#7b-the-blueprint-canvas).
 
 ### `diff` — compare two versions
 
@@ -374,6 +387,107 @@ The message mentions `docs/design/TARGET_PROFILE.md`, which belongs to the devel
 repository — with the single file, use the command-line flags instead.
 
 ---
+
+## 7b. The blueprint canvas
+
+`view` gives you the report: tables, records, every fact in text. `blueprint` gives you
+the picture. One offline HTML file, no internet, no install, opened straight from disk.
+
+### Three tabs, one canvas
+
+They share the camera and the selection, so you can look at a function's call flow, press
+`2`, and see the same function's data lineage without hunting for it again.
+
+| Tab | Key | Shows |
+|---|---|---|
+| **Execution** | `1` | stage cards in cascade order, wired stage to stage |
+| **Lineage** | `2` | values flowing from raw data into decision inputs, with barriers as visible dead ends |
+| **Diff** | `3` | the same graph repainted with what changed between two versions |
+
+### Stages, tasks, detail
+
+The Execution tab opens as **stage cards**: a rounded card per stage, holding its steps as
+a numbered list in execution order, with arrows between stages. Click a step to select it;
+click **Expand** on a stage to explode it into the per-element graph with every wire;
+**Show full graph** does that for everything at once.
+
+The stages come from the execution order the analyser derived — they are not a grouping
+invented for the picture. A stage is called `Stage 3`, never `Feature Engineering`: naming
+your phases is your job, and a tool that guesses at it is making a claim it cannot support.
+Where an element sits in no derived order, its card says so and falls back to its module.
+
+### Flow vs. cascade order — the part worth learning
+
+A cascade is meant to run forward. Everywhere it doesn't is worth knowing about, so the
+canvas is built to show exactly that. Every connection is classified against the real
+execution order:
+
+| Class | Meaning |
+|---|---|
+| `FORWARD` | into a later stage — the cascade doing what it should |
+| `WITHIN` | inside one stage |
+| `BACKWARD` | **into an earlier stage — the cascade doubling back** |
+| `UNORDERED` | one end sits in no derived order, so no direction is claimed |
+
+Backward connections are drawn as distinct return wires routed clear of the forward lanes,
+and the **Flow vs. cascade order** panel keeps a live tally with a per-stage-pair breakdown
+— `Stage 4 → Stage 2: 7 calls back`. Click a count to frame those wires. There is a
+one-click **only backward edges** filter.
+
+That panel is your alignment tool. Straighten the cascade, re-run, watch the backward
+count fall. `UNORDERED` is a real fourth answer, not a rounding of the other three: where
+the order genuinely could not be derived, the tool says so rather than picking a direction.
+
+### What the picture encodes
+
+Nothing here is decoration. **Wire style carries confidence** — solid and bright for what
+was read straight off your code, dashed for an assumption, dotted amber for a name or
+config-string match that might be wrong, dotted red for unresolved. **Node style carries
+reachability** — accented when it reaches a decision, a `no path` badge when it provably
+cannot, a `?` badge when the tool could not tell. Every encoding is paired with a shape,
+dash pattern or badge as well as a colour, so it survives colour-blindness and greyscale
+printing, and the legend states all of it in words in whichever palette is active.
+
+### Palettes
+
+Picker in the top-right; your choice is remembered.
+
+| Palette | Feel |
+|---|---|
+| **Blueprint Dark** | the default: deep canvas, glowing wires |
+| **AI Blue** | deep navy and cyan |
+| **Silver & Milk** | milk-white surface, silver and graphite structure |
+| **High Contrast** | maximum legibility, and for printing |
+
+A palette changes hues, never meanings: the confidence dash patterns and relative weights
+are identical in all four, verified by test. Worst measured contrast ratio per palette:
+Blueprint Dark 3.31, AI Blue 3.61, Silver & Milk 4.37, High Contrast 4.92; body text is
+above 5.2:1 everywhere.
+
+### Getting around
+
+| Action | How |
+|---|---|
+| pan | drag the canvas |
+| zoom | scroll, or `+` / `-` |
+| fit everything | `F` |
+| search | `/`, then Enter to fly to it |
+| clear / deselect | `Esc` |
+| switch tabs | `1` `2` `3` |
+| detail | click a node or a step |
+| wire detail | click a wire |
+
+Filters cover element kind, edge kind, a confidence floor, "only reaches a decision",
+"only findings", and "only backward edges". Filter state is always visible and **Clear
+filters** is always one click — you should never be looking at a filtered graph believing
+it is the whole graph.
+
+### Scale
+
+Whole modules collapse to a single card, and above 150 nodes they collapse by default, so
+a 116,000-line engine stays navigable. The page opens framed and readable rather than
+zoomed out to a smear — there is a test asserting the opening zoom level, because an
+earlier build shipped one that opened at 8.8%.
 
 ## 8. Findings — the eight things it looks for
 
