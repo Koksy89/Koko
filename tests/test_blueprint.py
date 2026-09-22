@@ -247,6 +247,116 @@ def test_execution_nodes_claiming_to_be_elements_exist_in_elements_jsonl(tmp_pat
 
 
 # ---------------------------------------------------------------------------
+# Round 4, R1/R2: stages and flow classification -- determinism and
+# link-integrity, over the real corpus
+# ---------------------------------------------------------------------------
+
+
+def test_stage_member_counts_are_a_complete_partition_of_execution_elements(tmp_path: Path) -> None:
+    graph_dir = tmp_path / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    store_ = ArtifactStore.load(graph_dir)
+    data = build_blueprint_data(store_)
+    stages = data["execution"]["stages"]
+    assert stages, "the real corpus produced no stages"
+
+    all_members: list[str] = []
+    seen_ids: set[str] = set()
+    for stage in stages:
+        assert stage["id"] not in seen_ids, f"duplicate stage id {stage['id']}"
+        seen_ids.add(stage["id"])
+        assert stage["member_ids"], f"empty stage {stage['id']} should not have been emitted"
+        all_members.extend(stage["member_ids"])
+
+    # every member id appears in exactly one stage -- a complete partition,
+    # never a double-count and never a drop.
+    assert len(all_members) == len(set(all_members))
+    execution_element_ids = {n["id"] for n in data["execution"]["nodes"] if n["is_element"]}
+    assert set(all_members) == execution_element_ids
+
+    # `stage_of` (used for flow classification) agrees with the stages
+    # list itself -- one source of truth, not two that could drift.
+    stage_of = data["execution"]["stage_of"]
+    for index, stage in enumerate(stages):
+        for member_id in stage["member_ids"]:
+            assert stage_of[member_id] == index
+
+
+def test_stage_names_never_claim_a_phase_card_3_did_not_name(tmp_path: Path) -> None:
+    """STATUS.md records this exact defect (card 14 printed "ingestion" /
+    "data engineering" as fact from position alone). A stage is either
+    positional ("Stage N") or a real module path -- never an invented
+    phase name."""
+    graph_dir = tmp_path / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    store_ = ArtifactStore.load(graph_dir)
+    data = build_blueprint_data(store_)
+    stages = data["execution"]["stages"]
+    assert stages
+    for stage in stages:
+        if stage["rule"] == "fallback_module":
+            member_modules = {
+                (store_.elements_by_id.get(m) or {}).get("module") for m in stage["member_ids"]
+            }
+            assert member_modules == {stage["name"]}, (stage["name"], member_modules)
+        else:
+            assert stage["name"].startswith("Stage "), stage
+
+
+def test_flow_classification_covers_every_wire_exactly_once(tmp_path: Path) -> None:
+    graph_dir = tmp_path / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    store_ = ArtifactStore.load(graph_dir)
+    data = build_blueprint_data(store_)
+    wires = data["execution"]["wires"]
+    assert wires, "the real corpus produced no execution wires"
+    totals = data["execution"]["flow_totals"]
+    assert sum(totals.values()) == len(wires)
+    for wire in wires:
+        assert wire["flow"] in ("FORWARD", "BACKWARD", "WITHIN", "UNORDERED")
+
+
+def test_known_mutual_import_is_classified_backward(tmp_path: Path) -> None:
+    """`mode_b.res_import_cycle.a` and `.b` import each other -- a real
+    circular dependency already in the corpus, not a synthetic fixture."""
+    graph_dir = tmp_path / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    store_ = ArtifactStore.load(graph_dir)
+    data = build_blueprint_data(store_)
+    backward = [
+        w for w in data["execution"]["wires"]
+        if w["flow"] == "BACKWARD" and "res_import_cycle" in w["source_id"]
+    ]
+    assert backward, "expected a BACKWARD-classified wire in mode_b.res_import_cycle"
+
+
+def test_stage_pairs_reference_only_real_stage_indices(tmp_path: Path) -> None:
+    graph_dir = tmp_path / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    store_ = ArtifactStore.load(graph_dir)
+    data = build_blueprint_data(store_)
+    stages = data["execution"]["stages"]
+    pairs = data["execution"]["stage_pairs"]
+    assert pairs, "expected at least one cross-stage wire in the real corpus"
+    wire_ids = {w["id"] for w in data["execution"]["wires"]}
+    for pair in pairs:
+        assert 0 <= pair["from"] < len(stages)
+        assert 0 <= pair["to"] < len(stages)
+        assert pair["direction"] in ("FORWARD", "BACKWARD")
+        assert pair["wire_ids"], pair
+        assert set(pair["wire_ids"]) <= wire_ids
+
+
+def test_stage_and_flow_data_is_deterministic_across_two_builds(tmp_path: Path) -> None:
+    graph_dir = tmp_path / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    store_ = ArtifactStore.load(graph_dir)
+    first = json.dumps(build_blueprint_data(store_)["execution"], sort_keys=True)
+    second = json.dumps(build_blueprint_data(store_)["execution"], sort_keys=True)
+    assert first == second
+
+
+# ---------------------------------------------------------------------------
 # 5. Escaping: a hostile string must be inert in the output
 # ---------------------------------------------------------------------------
 

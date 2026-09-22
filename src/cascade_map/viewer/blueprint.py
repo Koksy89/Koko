@@ -451,6 +451,157 @@ def _longest_path_layers(
 # ---------------------------------------------------------------------------
 
 
+#: card 3's own id for "the cascade, from its entry point" (see cascade.py,
+#: `make_id("@order", "@cascade")`). Its children are the engine's phases in
+#: execution order -- the one grouping round 4 was told to use, because it
+#: is card 3's fact, not a guess made here.
+CASCADE_ROOT_ID = "@order::@cascade"
+
+
+def _stage_member_ids(
+    store: ArtifactStore, node_id: str, execution_ids: set[str], seen: set[str]
+) -> list[str]:
+    """Every execution-kind element under *node_id* in the order tree, in
+    the order card 3 already gave them -- own `element_ids` first, then
+    each child's subtree, in child order. `seen` guards the same cycles
+    :func:`_order_node_view`/cascade_view already have to guard."""
+    if node_id in seen:
+        return []
+    seen.add(node_id)
+    node = store.order_by_id.get(node_id)
+    if node is None:
+        return []
+    out = [eid for eid in node.get("element_ids") or () if eid in execution_ids]
+    for child in node.get("children") or ():
+        out.extend(_stage_member_ids(store, child, execution_ids, seen))
+    return out
+
+
+def _build_stages(
+    store: ArtifactStore, element_ids: list[str]
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Stages for the Execution tab's grouped default view (round 4, R1).
+
+    The top-level children of :data:`CASCADE_ROOT_ID` are the engine's
+    phases, already ordered by card 3 -- used verbatim, never re-derived.
+    An element the order tree never placed (common in this fixture corpus,
+    where most programs are standalone and wired to no detected entry
+    point) falls back to a group named after its own module, marked
+    ``rule: "fallback_module"`` so the card never claims to be a cascade
+    phase it is not. Nothing here invents a phase name: every stage is
+    either "Stage N" (positional -- card 3 does not name phases; see
+    STATUS.md's card 14 lesson) or a real module path.
+    """
+    execution_ids = set(element_ids)
+    cascade_node = store.order_by_id.get(CASCADE_ROOT_ID)
+    if cascade_node and cascade_node.get("children"):
+        stage_node_ids = list(cascade_node["children"])
+        rule = "order:@cascade"
+    else:
+        stage_node_ids = sorted(store.order_roots)
+        rule = "order:roots"
+
+    stages: list[dict[str, Any]] = []
+    covered: set[str] = set()
+    for node_id in stage_node_ids:
+        seen: set[str] = set()
+        raw_members = _stage_member_ids(store, node_id, execution_ids, seen)
+        ordered_unique: list[str] = []
+        seen_members: set[str] = set()
+        for eid in raw_members:
+            if eid in covered or eid in seen_members:
+                continue
+            seen_members.add(eid)
+            ordered_unique.append(eid)
+        if not ordered_unique:
+            continue
+        covered.update(ordered_unique)
+        node = store.order_by_id.get(node_id) or {}
+        prov = node.get("provenance") or {}
+        stages.append({
+            "id": node_id, "name": f"Stage {len(stages) + 1}", "rule": rule,
+            "order_node_id": node_id, "order_kind": node.get("kind"),
+            "member_ids": ordered_unique, "confidence": prov.get("confidence"),
+        })
+
+    remaining = [eid for eid in element_ids if eid not in covered]
+    by_module: dict[str, list[str]] = {}
+    for eid in remaining:
+        module = (store.elements_by_id.get(eid) or {}).get("module") or "(no module)"
+        by_module.setdefault(module, []).append(eid)
+    for module in sorted(by_module):
+        stages.append({
+            "id": f"@stage:fallback:{module}", "name": module, "rule": "fallback_module",
+            "order_node_id": None, "order_kind": None,
+            "member_ids": sorted(by_module[module]), "confidence": None,
+        })
+
+    stage_of: dict[str, int] = {}
+    for index, stage in enumerate(stages):
+        for eid in stage["member_ids"]:
+            stage_of[eid] = index
+    return stages, stage_of
+
+
+#: `Confidence` order, weakest first is highest index -- reused to combine
+#: several wires' confidence into one stage-pair's "weakest link" figure,
+#: the same rule `combine()` in contracts/interfaces.py applies everywhere
+#: else. Built from the enum, not hand-copied, so it cannot drift from it.
+_FLOW_CONFIDENCE_RANK = {level.value: index for index, level in enumerate(Confidence)}
+
+
+def _classify_and_summarize_flow(
+    wires: list[dict[str, Any]], stage_of: dict[str, int]
+) -> tuple[dict[str, int], list[dict[str, Any]]]:
+    """Classify every wire against the stage order (round 4, R2): FORWARD
+    (into a later stage), BACKWARD (into an earlier one), WITHIN (same
+    stage) or UNORDERED (either end has no stage -- a decision node, or an
+    element the order tree never placed and fallback grouping still could
+    not date -- never silently folded into one of the other three).
+
+    This is classification of edges and stage indices card 3 and this
+    module's own :func:`_build_stages` already produced -- no new edge, no
+    new fact, no guessed direction.
+    """
+    pair_buckets: dict[tuple[int, int], dict[str, Any]] = {}
+    totals = {"FORWARD": 0, "BACKWARD": 0, "WITHIN": 0, "UNORDERED": 0}
+    for wire in wires:
+        source_stage = stage_of.get(wire["source_id"])
+        target_stage = stage_of.get(wire["target_id"])
+        if source_stage is None or target_stage is None:
+            flow = "UNORDERED"
+        elif source_stage == target_stage:
+            flow = "WITHIN"
+        elif source_stage < target_stage:
+            flow = "FORWARD"
+        else:
+            flow = "BACKWARD"
+        wire["flow"] = flow
+        wire["source_stage"] = source_stage
+        wire["target_stage"] = target_stage
+        totals[flow] += 1
+        if flow in ("FORWARD", "BACKWARD"):
+            key = (source_stage, target_stage)
+            bucket = pair_buckets.setdefault(key, {
+                "from": source_stage, "to": target_stage, "direction": flow,
+                "count": 0, "wire_ids": [], "confidence_rank": len(_FLOW_CONFIDENCE_RANK),
+            })
+            bucket["count"] += 1
+            bucket["wire_ids"].append(wire["id"])
+            rank = _FLOW_CONFIDENCE_RANK.get(wire.get("confidence") or "", len(_FLOW_CONFIDENCE_RANK))
+            if rank < bucket["confidence_rank"]:
+                bucket["confidence_rank"] = rank
+
+    rank_to_level = {index: level for level, index in _FLOW_CONFIDENCE_RANK.items()}
+    pairs = []
+    for bucket in pair_buckets.values():
+        bucket["wire_ids"] = sorted(bucket["wire_ids"])
+        bucket["confidence"] = rank_to_level.get(bucket.pop("confidence_rank"))
+        pairs.append(bucket)
+    pairs.sort(key=lambda p: (p["from"], p["to"]))
+    return totals, pairs
+
+
 def _build_execution(store: ArtifactStore) -> dict[str, Any]:
     element_ids = sorted(
         eid for eid, element in store.elements_by_id.items()
@@ -516,9 +667,13 @@ def _build_execution(store: ArtifactStore) -> dict[str, Any]:
             else:
                 omitted += 1
 
+    sorted_wires = sorted(wires, key=lambda wire: wire["id"] or "")
+    stages, stage_of = _build_stages(store, element_ids)
+    flow_totals, stage_pairs = _classify_and_summarize_flow(sorted_wires, stage_of)
+
     return {
         "nodes": nodes,
-        "wires": sorted(wires, key=lambda wire: wire["id"] or ""),
+        "wires": sorted_wires,
         "omitted_wire_count": omitted,
         "omitted_note": (
             "a wire is not drawn when an endpoint is outside "
@@ -526,6 +681,10 @@ def _build_execution(store: ArtifactStore) -> dict[str, Any]:
             "an order-tree node this canvas does not resolve to a single element -- "
             "the raw target is still visible in that node's or decision's own detail panel"
         ),
+        "stages": stages,
+        "stage_of": stage_of,
+        "flow_totals": flow_totals,
+        "stage_pairs": stage_pairs,
     }
 
 
@@ -813,17 +972,46 @@ def build_blueprint_data(
 # ---------------------------------------------------------------------------
 
 _STYLE = """<style>
-:root[data-theme="dark"] {
+/* round 4, R3: four named palettes, picked by `data-palette` on <html>.
+   Every rule elsewhere in this stylesheet reads only these custom
+   properties -- never a literal colour -- so a palette changes hues and
+   nothing else: confidence keeps its dash patterns and relative stroke
+   widths, reachability keeps its badges and border styles, diff keeps its
+   marks, in every palette. --amber/--red/--green/--purple are the
+   *semantic* colours (confidence, reachability, diff, findings) and are
+   deliberately kept close to the same hue family across palettes, so a
+   colour never means something different in one palette than another;
+   --accent/--sink/--bg/--panel/--node-* are the *identity* colours that
+   actually change per palette.
+*/
+:root[data-palette="blueprint-dark"] {
   --bg:#0a0c11; --grid-minor:#171d28; --grid-major:#232b3a; --panel:#12161f; --panel-border:#262e3b;
   --text:#e3e8f0; --text-dim:#8b95a5; --accent:#5aa9ff; --accent-dark:#2e6fc2; --sink:#ffb648;
   --node-bg:#1c2330; --node-bg-2:#161c28; --node-border:#3a4763; --node-header:#26314a;
   --amber:#e0a326; --red:#e5484d; --green:#3fce7c; --purple:#a970ff;
 }
-:root[data-theme="light"] {
-  --bg:#eef1f7; --grid-minor:#dde3ee; --grid-major:#c7cfdf; --panel:#ffffff; --panel-border:#d2d9e5;
-  --text:#1a2130; --text-dim:#5c6675; --accent:#1c6fd9; --accent-dark:#144e9e; --sink:#c9761a;
-  --node-bg:#ffffff; --node-bg-2:#f3f6fb; --node-border:#c7cfdc; --node-header:#eaf0fb;
-  --amber:#9a6a06; --red:#c2262b; --green:#187a44; --purple:#6b3fc9;
+:root[data-palette="ai-blue"] {
+  --bg:#050b16; --grid-minor:#0d1b2e; --grid-major:#173a5c; --panel:#081729; --panel-border:#1c4468;
+  --text:#e5f6ff; --text-dim:#86b3d1; --accent:#2dd4ff; --accent-dark:#0f7fa8; --sink:#ffb648;
+  --node-bg:#0c2138; --node-bg-2:#081729; --node-border:#20517a; --node-header:#123a5c;
+  --amber:#e6ab2e; --red:#ff5470; --green:#3fce7c; --purple:#a970ff;
+}
+:root[data-palette="silver-milk"] {
+  /* D12: the first pass read as cream/tan, not silver and milk white --
+     every one of these was a *warm* neutral (e.g. bg #f7f5f0 has more red
+     than blue). Every neutral below is now cool (blue channel >= green
+     channel >= red channel), so the surface reads as milk white and the
+     structure as silver/graphite, with exactly one saturated accent. */
+  --bg:#f6f8fa; --grid-minor:#e5e9ee; --grid-major:#ccd3dc; --panel:#ffffff; --panel-border:#ccd3dc;
+  --text:#20242b; --text-dim:#5c6472; --accent:#0063d1; --accent-dark:#00468f; --sink:#8a5708;
+  --node-bg:#ffffff; --node-bg-2:#eef1f5; --node-border:#b7bfc9; --node-header:#e4e8ee;
+  --amber:#7a5405; --red:#c2262b; --green:#187a44; --purple:#6b3fc9;
+}
+:root[data-palette="high-contrast"] {
+  --bg:#000000; --grid-minor:#1c1c1c; --grid-major:#3a3a3a; --panel:#000000; --panel-border:#ffffff;
+  --text:#ffffff; --text-dim:#d8d8d8; --accent:#20e0ff; --accent-dark:#0aa8c9; --sink:#ff9d00;
+  --node-bg:#000000; --node-bg-2:#161616; --node-border:#ffffff; --node-header:#1c1c1c;
+  --amber:#ffcf33; --red:#ff4136; --green:#2ecc40; --purple:#c58aff;
 }
 * { box-sizing:border-box; }
 /* Structural fix for a real defect found in verification: an ID-selector
@@ -860,10 +1048,10 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 .search-result { padding:.35rem .5rem; cursor:pointer; font-size:.75rem; border-bottom:1px solid var(--panel-border); }
 .search-result:hover { background:var(--node-header); }
 .search-empty { padding:.35rem .5rem; font-size:.75rem; color:var(--text-dim); }
-#theme-toggle, #report-link { background:linear-gradient(180deg, var(--node-bg), var(--node-bg-2));
+#palette-picker, #report-link { background:linear-gradient(180deg, var(--node-bg), var(--node-bg-2));
   border:1px solid var(--panel-border); color:var(--text); border-radius:6px; padding:.35rem .7rem;
   cursor:pointer; font-size:.75rem; text-decoration:none; transition:border-color .12s, color .12s; }
-#theme-toggle:hover, #report-link:hover { border-color:var(--accent); color:var(--accent); }
+#palette-picker:hover, #report-link:hover { border-color:var(--accent); color:var(--accent); }
 #toolbar { display:flex; align-items:center; gap:.4rem; padding:.4rem 1rem; background:var(--panel);
   border-bottom:1px solid var(--panel-border); flex-wrap:wrap; font-size:.75rem; z-index:55; }
 #toolbar button { background:linear-gradient(180deg, var(--node-bg), var(--node-bg-2)); border:1px solid var(--panel-border);
@@ -1046,6 +1234,32 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 .condition-source { background:var(--node-bg); padding:.4rem; border-radius:4px; white-space:pre-wrap;
   word-break:break-word; font-size:.73rem; }
 .change-box { border:1px solid var(--panel-border); border-radius:6px; padding:.3rem; margin:.3rem 0; }
+/* round 4, R1/R2: stage cards and the flow readout. */
+.kind-STAGE { border-radius:14px; display:flex; flex-direction:column; align-items:stretch; }
+.kind-STAGE .node-header { text-align:center; }
+.stage-rule-note { padding:0 .5rem; font-size:.6rem; color:var(--text-dim); font-style:italic; }
+.stage-list { list-style:decimal; margin:.2rem 0 0; padding:0 .6rem 0 1.5rem; overflow-y:auto; flex:1;
+  font-size:.68rem; line-height:1.5; }
+.stage-list-item { cursor:pointer; overflow-wrap:anywhere; }
+.stage-list-item:hover { color:var(--accent); }
+.stage-list-more { color:var(--text-dim); font-style:italic; list-style:none; margin-left:-1.5rem; }
+.wire-flow-BACKWARD { stroke:var(--red) !important; stroke-width:2.6px !important; stroke-dasharray:6 4 !important; }
+.wire-flow-BACKWARD.wire-conf-CERTAIN, .wire-flow-BACKWARD.wire-conf-RESOLVED { filter:drop-shadow(0 0 3px rgba(229,72,77,.6)); }
+#flow-readout { position:absolute; right:.6rem; top:.6rem; width:22rem; max-width:calc(100% - 1.2rem);
+  background:var(--panel); border:1px solid var(--red); border-radius:10px;
+  box-shadow:0 10px 28px rgba(0,0,0,.45); font-size:.68rem; z-index:35; max-height:60vh;
+  display:flex; flex-direction:column; }
+#flow-readout-header { background:linear-gradient(180deg, rgba(229,72,77,.25), transparent);
+  padding:.4rem .7rem; font-weight:700; font-size:.68rem; letter-spacing:.03em; text-transform:uppercase;
+  color:var(--text); border-bottom:1px solid var(--panel-border); }
+#flow-totals { display:flex; gap:.5rem; padding:.5rem .7rem; flex-wrap:wrap; }
+.flow-total-chip { border:1px solid var(--panel-border); border-radius:6px; padding:.15rem .5rem; font-size:.66rem; }
+.flow-total-chip.flow-total-BACKWARD { border-color:var(--red); color:var(--red); font-weight:700; }
+#flow-pairs { overflow-y:auto; padding:0 .5rem .5rem; }
+.flow-pair-row { display:flex; justify-content:space-between; gap:.4rem; padding:.25rem .3rem; border-radius:4px;
+  cursor:pointer; font-size:.66rem; }
+.flow-pair-row:hover { background:var(--node-header); }
+.flow-pair-row.flow-pair-BACKWARD { color:var(--red); font-weight:600; }
 #legend { position:absolute; left:.6rem; bottom:.6rem; width:27rem; max-width:calc(100% - 1.2rem);
   background:var(--panel); border:1px solid var(--panel-border); border-radius:10px;
   box-shadow:0 10px 28px rgba(0,0,0,.45); font-size:.68rem; z-index:30; overflow:hidden; }
@@ -1087,7 +1301,7 @@ _BODY = """<div id="app">
 <input id="search-box" type="text" placeholder="search id / name / module ( / )" autocomplete="off">
 <div id="search-results" hidden></div>
 <a id="report-link" href="#" hidden>Tabular report &rarr;</a>
-<button type="button" id="theme-toggle">theme</button>
+<select id="palette-picker" title="colour palette"></select>
 </div>
 </header>
 <div id="toolbar">
@@ -1097,11 +1311,17 @@ _BODY = """<div id="app">
 <button type="button" id="btn-zoom-out">-</button>
 <button type="button" id="btn-expand-all">Expand all modules</button>
 <button type="button" id="btn-collapse-all">Collapse all modules</button>
+<span id="stage-controls" hidden>
+<button type="button" id="btn-toggle-stage-mode">Show full graph</button>
+<button type="button" id="btn-expand-all-stages">Expand all stages</button>
+<button type="button" id="btn-collapse-all-stages">Collapse all stages</button>
+</span>
 <details id="filters-panel"><summary>Filters</summary>
 <div id="filter-kinds"></div>
 <div><label>min confidence <select id="filter-min-conf"></select></label></div>
 <label class="filter-chip"><input type="checkbox" id="filter-decision-reach"> only elements that reach a decision</label>
 <label class="filter-chip"><input type="checkbox" id="filter-findings"> only elements with findings</label>
+<label class="filter-chip" id="filter-backward-chip" hidden><input type="checkbox" id="filter-backward"> only backward edges</label>
 </details>
 <button type="button" id="btn-clear-filters">Clear filters</button>
 <span id="filter-summary"></span>
@@ -1120,6 +1340,11 @@ _BODY = """<div id="app">
 <button type="button" id="detail-close">&times;</button>
 <div id="detail-content"></div>
 </aside>
+<div id="flow-readout" hidden>
+<div id="flow-readout-header">Flow vs. cascade order</div>
+<div id="flow-totals"></div>
+<div id="flow-pairs"></div>
+</div>
 <div id="legend">
 <div id="legend-header">Legend &mdash; what this canvas encodes</div>
 <div id="legend-body">
@@ -1138,8 +1363,19 @@ _SCRIPT = """
 'use strict';
 var dataEl = document.getElementById('cascade-blueprint-data');
 var DATA = JSON.parse(dataEl.textContent);
+//: Every execution-tab node, by id, regardless of current collapse state
+//: -- built once so stage cards can label their member lines without an
+//: O(n) scan per line per render.
+var EXECUTION_NODE_BY_ID = {};
+(DATA.execution.nodes || []).forEach(function (n) { EXECUTION_NODE_BY_ID[n.id] = n; });
 
-var NODE_W = 220, NODE_H = 72, DECISION_SIZE = 158;
+var NODE_W = 220, NODE_H = 72, DECISION_SIZE = 158, STAGE_W = 260, STAGE_H = 300;
+//: How many member lines a collapsed stage card shows before "+N more" --
+//: the deck's own reference layout shows 5 per container; this affords a
+//: little more since the card is taller than the deck's, and caps
+//: regardless of how many hundreds of elements a fallback module group
+//: might hold.
+var STAGE_VISIBLE_MEMBERS = 10;
 var COL_GAP = 300, ROW_GAP = 110;
 var MODULE_COLLAPSE_THRESHOLD = DATA.module_collapse_threshold || 150;
 var KIND_COLORS = {
@@ -1195,32 +1431,44 @@ function elWithBreaks(tag, cls, text) {
   return e;
 }
 
-// ---- theme ----
-function loadTheme() {
+// ---- palette (round 4, R3) ----
+var PALETTES = ['blueprint-dark', 'ai-blue', 'silver-milk', 'high-contrast'];
+var PALETTE_LABELS = {
+  'blueprint-dark': 'Blueprint Dark', 'ai-blue': 'AI Blue',
+  'silver-milk': 'Silver & Milk', 'high-contrast': 'High Contrast'
+};
+function loadPalette() {
   // The owner asked for "a highly visually aesthetic flow chart similar to
-  // that from Unreal Engine 5.0" -- Blueprint is dark, so this page opens
-  // dark unconditionally, not from `prefers-color-scheme`. The toggle
-  // below and the localStorage remembered choice still both work either
-  // direction; only the *default*, on a machine that has never opened this
-  // page before, is fixed.
+  // that from Unreal Engine 5.0" -- Blueprint Dark is the default
+  // unconditionally, not from `prefers-color-scheme`. The picker below and
+  // the localStorage remembered choice both still work either direction;
+  // only the default, on a machine that has never opened this page
+  // before, is fixed.
   try {
-    var saved = window.localStorage.getItem('cascade_blueprint_theme');
-    if (saved === 'dark' || saved === 'light') return saved;
+    var saved = window.localStorage.getItem('cascade_blueprint_palette');
+    if (PALETTES.indexOf(saved) !== -1) return saved;
   } catch (e) {}
-  return 'dark';
+  return 'blueprint-dark';
 }
-function saveTheme(t) { try { window.localStorage.setItem('cascade_blueprint_theme', t); } catch (e) {} }
-var theme = loadTheme();
-root.setAttribute('data-theme', theme);
-document.getElementById('theme-toggle').addEventListener('click', function () {
-  theme = theme === 'dark' ? 'light' : 'dark';
-  root.setAttribute('data-theme', theme);
-  saveTheme(theme);
+function savePalette(p) { try { window.localStorage.setItem('cascade_blueprint_palette', p); } catch (e) {} }
+var palette = loadPalette();
+root.setAttribute('data-palette', palette);
+var paletteSelect = document.getElementById('palette-picker');
+PALETTES.forEach(function (p) {
+  var opt = document.createElement('option');
+  opt.value = p; opt.textContent = PALETTE_LABELS[p];
+  if (p === palette) opt.selected = true;
+  paletteSelect.appendChild(opt);
+});
+paletteSelect.addEventListener('change', function () {
+  palette = paletteSelect.value;
+  root.setAttribute('data-palette', palette);
+  savePalette(palette);
 });
 
 // ---- state ----
 function defaultFilters() {
-  return { kinds:{}, minConfidenceIndex:null, onlyDecisionReach:false, onlyFindings:false };
+  return { kinds:{}, minConfidenceIndex:null, onlyDecisionReach:false, onlyFindings:false, onlyBackward:false };
 }
 var state = {
   tab: 'execution',
@@ -1230,7 +1478,13 @@ var state = {
   positions: { execution:{}, lineage:{}, diff:{} },
   collapsed: { execution:{}, lineage:{}, diff:{} },
   filters: defaultFilters(),
-  search: ''
+  search: '',
+  // round 4, R1: the Execution tab's default is grouped stage cards, not
+  // the per-element graph. `false` here means "ungrouped" and reveals
+  // exactly the graph phase C originally shipped.
+  stageMode: true,
+  collapsedStages: {},
+  stageDefaultsSet: false
 };
 ['execution', 'lineage', 'diff'].forEach(function (tab) {
   var g = DATA[tab];
@@ -1260,15 +1514,19 @@ function passesFilters(n) {
   return true;
 }
 
-function computeLayout(tab) {
-  var graph = getGraph(tab);
-  var allNodes = graph.nodes || [];
-  var wires = graph.wires || [];
-  var kept = allNodes.filter(passesFilters);
-  var keptIds = {};
-  kept.forEach(function (n) { keptIds[n.id] = true; });
+//: The default grouping for the Execution tab (round 4, R1): stage cards
+//: from `DATA.execution.stages`, all collapsed until the user expands one.
+//: `false` reverts to today's per-element/module-collapsible graph --
+//: "Expand all stages" sets this, and it stays reachable exactly as
+//: before, per the round 4 brief's own requirement.
+function ensureStageDefaults() {
+  if (state.stageDefaultsSet) return;
+  state.stageDefaultsSet = true;
+  var stages = (DATA.execution && DATA.execution.stages) || [];
+  stages.forEach(function (s, i) { state.collapsedStages[i] = true; });
+}
 
-  var collapsedMods = state.collapsed[tab] || {};
+function computeModuleGrouping(tab, kept, collapsedMods) {
   var visible = [];
   var moduleAgg = {};
   kept.forEach(function (n) {
@@ -1321,21 +1579,110 @@ function computeLayout(tab) {
     if (n.is_module_agg) { n.members.forEach(function (m) { displayIdOf[m] = n.id; }); }
     else { displayIdOf[n.id] = n.id; }
   });
+  return { displayNodes: displayNodes, displayIdOf: displayIdOf };
+}
+
+//: The Execution tab's grouped default (round 4, R1): a STAGE node per
+//: `DATA.execution.stages` entry that is still collapsed, holding its
+//: member ids in card 3's own order (never re-sorted, unlike module
+//: aggregates, which have no inherent order to preserve). An expanded
+//: stage's members pass through individually, at that stage's column --
+//: not their own call-graph layer, which would scatter them across
+//: whichever columns the ungrouped view uses and defeat the point of
+//: grouping by stage. A decision node is only shown once its owning
+//: element's stage is expanded; collapsed, it is part of what the stage
+//: card summarises, not drawn on its own.
+function computeStageGrouping(kept, keptIds) {
+  var graph = getGraph('execution');
+  var stages = graph.stages || [];
+  var stageOf = graph.stage_of || {};
+  var byId = {};
+  kept.forEach(function (n) { byId[n.id] = n; });
+  var displayNodes = [];
+  var displayIdOf = {};
+
+  stages.forEach(function (stage, index) {
+    var members = stage.member_ids.filter(function (id) { return keptIds[id]; });
+    if (!members.length) return;
+    if (state.collapsedStages[index] !== false) {
+      displayNodes.push({
+        id: stage.id, kind: 'STAGE', is_stage: true, name: stage.name, rule: stage.rule,
+        layer: index, ordered_member_ids: members, count: members.length,
+        confidence: stage.confidence, module: '', is_element: false,
+        reachability: { state: 'UNKNOWN', source: 'stage',
+          reason: 'expand the stage to see per-element reachability', sink_ids: [], path_ids: [] },
+        finding_count: 0, is_sink: false
+      });
+      members.forEach(function (id) { displayIdOf[id] = stage.id; });
+    } else {
+      members.forEach(function (id) {
+        var n = byId[id];
+        if (!n) return;
+        var clone = {};
+        for (var k in n) { if (Object.prototype.hasOwnProperty.call(n, k)) clone[k] = n[k]; }
+        clone.layer = index;
+        displayNodes.push(clone);
+        displayIdOf[id] = id;
+      });
+    }
+  });
+  kept.forEach(function (n) {
+    if (n.kind !== 'DECISION') return;
+    var ownerStage = stageOf[n.owner_element_id];
+    if (ownerStage === undefined || state.collapsedStages[ownerStage] !== false) return;
+    var clone = {};
+    for (var k in n) { if (Object.prototype.hasOwnProperty.call(n, k)) clone[k] = n[k]; }
+    clone.layer = ownerStage;
+    displayNodes.push(clone);
+    displayIdOf[n.id] = n.id;
+  });
+  return { displayNodes: displayNodes, displayIdOf: displayIdOf };
+}
+
+function computeLayout(tab) {
+  var graph = getGraph(tab);
+  var allNodes = graph.nodes || [];
+  var wires = graph.wires || [];
+  var kept = allNodes.filter(passesFilters);
+  var keptIds = {};
+  kept.forEach(function (n) { keptIds[n.id] = true; });
+
+  var grouping;
+  if (tab === 'execution' && state.stageMode) {
+    ensureStageDefaults();
+    grouping = computeStageGrouping(kept, keptIds);
+  } else {
+    grouping = computeModuleGrouping(tab, kept, state.collapsed[tab] || {});
+  }
+  var displayNodes = grouping.displayNodes;
+  var displayIdOf = grouping.displayIdOf;
 
   var wireBuckets = {}, wireOrder = [];
   wires.forEach(function (w) {
+    if (tab === 'execution' && state.filters.onlyBackward && w.flow !== 'BACKWARD') return;
     if (!keptIds[w.source_id] || !keptIds[w.target_id]) return;
     var ds = displayIdOf[w.source_id], dt = displayIdOf[w.target_id];
-    if (ds === undefined || dt === undefined) return;
+    if (ds === undefined || dt === undefined || ds === dt) return;
     var key = ds + '=>' + dt + '::' + w.kind;
     var bucket = wireBuckets[key];
     if (!bucket) {
-      bucket = wireBuckets[key] = { id:key, kind:w.kind, source_id:ds, target_id:dt, count:0, bestRank:999, representative:w };
+      bucket = wireBuckets[key] = {
+        id: key, kind: w.kind, source_id: ds, target_id: dt, count: 0, bestRank: 999,
+        representative: w, flow: w.flow || ''
+      };
       wireOrder.push(key);
     }
     bucket.count += 1;
     var r = (w.confidence !== null && w.confidence !== undefined) ? DATA.confidence_rank[w.confidence] : 999;
     if (r < bucket.bestRank) { bucket.bestRank = r; bucket.representative = w; }
+    // Grouping (by module or by stage) can fold several original wires
+    // with different individual flow classifications into one drawn
+    // wire -- e.g. two members of the same collapsed module sit in
+    // different stages. A backward relationship must never be hidden
+    // behind an aggregate that happens to also contain a forward one, so
+    // BACKWARD wins the bucket's displayed flow regardless of arrival
+    // order.
+    if (w.flow === 'BACKWARD') bucket.flow = 'BACKWARD';
   });
   wireOrder.sort();
   var displayWires = wireOrder.map(function (k) { return wireBuckets[k]; });
@@ -1359,20 +1706,77 @@ function computeLayout(tab) {
   // width and height to about sqrt(node count) -- the same reasoning as
   // the layer computation itself: this is packing, not analysis, and it
   // never changes which layer (hence which drawn wires) a node has.
-  var rowsPerSubcol = Math.max(6, Math.ceil(Math.sqrt(Math.max(1, displayNodes.length))));
-  var pos = {};
-  var xCursor = 0;
+  var rowsPerSubcol = Math.max(3, Math.ceil(Math.sqrt(Math.max(1, displayNodes.length))));
+  var ROW_GUTTER = 24, BAND_GUTTER = 60;
+
+  // Pass 1: each layer's *actual* content height, from the real size of
+  // whatever is in it (a STAGE card is ~4x a plain element row) -- never a
+  // flat ROW_GAP-based guess. D11 found the guess wasted ~900px per band
+  // (a 1250px band pitch for ~320px-tall content), landing Fit at scale
+  // 0.088 -- a grey speck, not a readable canvas.
+  var layerInfo = {};
+  var totalCols = 0, heightSum = 0;
   orderedLayers.forEach(function (l) {
     var members = byLayer[l];
+    var itemH = NODE_H;
+    members.forEach(function (n) { itemH = Math.max(itemH, sizeOf(n).h); });
+    var pitch = itemH + ROW_GUTTER;
     var subcols = Math.max(1, Math.ceil(members.length / rowsPerSubcol));
+    var rowsUsed = Math.max(1, Math.min(members.length, rowsPerSubcol));
+    var height = rowsUsed * pitch;
+    layerInfo[l] = { subcols: subcols, pitch: pitch, height: height };
+    totalCols += subcols;
+    heightSum += height;
+  });
+
+  // The mirror-image problem: stage mode (round 4, R1) can produce dozens
+  // of stages -- each its own layer with exactly one card, so the
+  // sub-column packing above never triggers -- and a fixture corpus with
+  // no single wired entry point turns every independent program into its
+  // own stage. Left as one row, that is the same "Fit shrinks everything
+  // to illegibility" failure D2 already named, just along the other axis.
+  // Past a threshold, wrap columns into bands, choosing the band width so
+  // the whole canvas approaches the ~16:9 a real viewport presents --
+  // using each axis's real pixel pitch (a column is ~300px, a row is
+  // however tall its content actually is), not raw counts.
+  var TARGET_ASPECT = 16 / 9;
+  var avgLayerHeight = heightSum / Math.max(1, orderedLayers.length);
+  var numBands = orderedLayers.length > 1 ? Math.max(1, Math.round(
+    Math.sqrt(totalCols * COL_GAP * (1 / TARGET_ASPECT) / Math.max(1, avgLayerHeight))
+  )) : 1;
+  var wrapCols = Math.max(1, Math.ceil(totalCols / numBands));
+
+  // Pass 2: assign each layer to a band, then give every band exactly the
+  // height its tallest layer actually needs, plus one gutter -- not a
+  // guess repeated per band.
+  var layerBand = {};
+  var bandMaxHeight = [];
+  var colsInBand = 0, band = 0;
+  orderedLayers.forEach(function (l) {
+    layerBand[l] = band;
+    bandMaxHeight[band] = Math.max(bandMaxHeight[band] || 0, layerInfo[l].height);
+    colsInBand += layerInfo[l].subcols;
+    if (colsInBand >= wrapCols) { colsInBand = 0; band += 1; }
+  });
+  var bandYOffset = [0];
+  for (var bandIndex = 1; bandIndex < bandMaxHeight.length; bandIndex++) {
+    bandYOffset[bandIndex] = bandYOffset[bandIndex - 1] + bandMaxHeight[bandIndex - 1] + BAND_GUTTER;
+  }
+
+  var pos = {};
+  var xCursor = 0, curBand = 0;
+  orderedLayers.forEach(function (l) {
+    if (layerBand[l] !== curBand) { xCursor = 0; curBand = layerBand[l]; }
+    var members = byLayer[l];
+    var info = layerInfo[l];
     members.forEach(function (n, i) {
       var saved = state.positions[tab][n.id];
       if (saved) { pos[n.id] = { x: saved.x, y: saved.y }; return; }
       var subcol = Math.floor(i / rowsPerSubcol);
       var row = i % rowsPerSubcol;
-      pos[n.id] = { x: xCursor + subcol * COL_GAP, y: row * ROW_GAP };
+      pos[n.id] = { x: xCursor + subcol * COL_GAP, y: row * info.pitch + bandYOffset[curBand] };
     });
-    xCursor += subcols * COL_GAP;
+    xCursor += info.subcols * COL_GAP;
   });
 
   var byId = {};
@@ -1382,7 +1786,9 @@ function computeLayout(tab) {
 }
 
 function sizeOf(n) {
-  return n.kind === 'DECISION' ? { w: DECISION_SIZE, h: DECISION_SIZE } : { w: NODE_W, h: NODE_H };
+  if (n.kind === 'DECISION') return { w: DECISION_SIZE, h: DECISION_SIZE };
+  if (n.kind === 'STAGE') return { w: STAGE_W, h: STAGE_H };
+  return { w: NODE_W, h: NODE_H };
 }
 
 // ---- rendering ----
@@ -1417,8 +1823,30 @@ function buildNodeEl(n, p, tab) {
   wrap.style.setProperty('--kind-color', KIND_COLORS[n.kind] || '#8993a4');
   wrap.dataset.id = n.id;
 
-  wrap.appendChild(el('div', 'node-header', n.kind));
+  wrap.appendChild(el('div', 'node-header', n.kind === 'STAGE' ? 'STAGE' : n.kind));
   wrap.appendChild(el('div', 'node-body', n.name || n.id));
+
+  if (n.kind === 'STAGE') {
+    var ruleNote = n.rule === 'fallback_module'
+      ? 'module (not in the cascade order)'
+      : (n.count + ' step' + (n.count === 1 ? '' : 's') + ', cascade order');
+    wrap.appendChild(el('div', 'stage-rule-note', ruleNote));
+    var list = el('ol', 'stage-list');
+    var shown = n.ordered_member_ids.slice(0, STAGE_VISIBLE_MEMBERS);
+    shown.forEach(function (memberId) {
+      var memberNode = EXECUTION_NODE_BY_ID[memberId];
+      var li = elWithBreaks('li', 'stage-list-item', (memberNode && memberNode.name) || memberId);
+      li.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        selectElementById(memberId, 'execution');
+      });
+      list.appendChild(li);
+    });
+    if (n.ordered_member_ids.length > shown.length) {
+      list.appendChild(el('li', 'stage-list-more', '+ ' + (n.ordered_member_ids.length - shown.length) + ' more'));
+    }
+    wrap.appendChild(list);
+  }
 
   var badges = el('div', 'node-badges');
   if (n.confidence) badges.appendChild(el('span', 'badge wire-conf-' + cssSafe(n.confidence), n.confidence));
@@ -1461,6 +1889,14 @@ function wirePathD(w, layout) {
   var sSize = sizeOf(srcNode || {}), tSize = sizeOf(tgtNode || {});
   var x1 = sp.x + sSize.w, y1 = sp.y + sSize.h / 2;
   var x2 = tp.x, y2 = tp.y + tSize.h / 2;
+  if (w.flow === 'BACKWARD') {
+    // Round 4, R2: a return wire must read as going back, not as a longer
+    // forward one -- routed clear below both lanes rather than the usual
+    // S-curve leaving each pin horizontally.
+    var dip = 90 + Math.min(240, Math.abs(x1 - x2) * 0.12);
+    var midY = Math.max(y1, y2) + dip;
+    return 'M ' + x1 + ' ' + y1 + ' C ' + x1 + ' ' + midY + ', ' + x2 + ' ' + midY + ', ' + x2 + ' ' + y2;
+  }
   var dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
   return 'M ' + x1 + ' ' + y1 + ' C ' + (x1 + dx) + ' ' + y1 + ', ' + (x2 - dx) + ' ' + y2 + ', ' + x2 + ' ' + y2;
 }
@@ -1471,7 +1907,12 @@ function buildWireEl(w, layout, tab) {
   path.setAttribute('d', wirePathD(w, layout));
   var conf = w.representative ? w.representative.confidence : w.confidence;
   var secondary = (w.kind !== 'CALLS' && w.kind !== 'OUTCOME') ? ' wire-secondary' : '';
-  path.setAttribute('class', 'wire wire-conf-' + cssSafe(conf) + ' wire-kind-' + cssSafe(w.kind) + secondary);
+  var flowClass = w.flow ? (' wire-flow-' + cssSafe(w.flow)) : '';
+  path.setAttribute('class', 'wire wire-conf-' + cssSafe(conf) + ' wire-kind-' + cssSafe(w.kind) + secondary + flowClass);
+  if (w.flow === 'BACKWARD' && w.source_stage !== undefined && w.target_stage !== undefined
+      && layout.byId[w.source_id] && layout.byId[w.source_id].kind === 'STAGE') {
+    path.dataset.stagePair = w.source_stage + '>' + w.target_stage;
+  }
   path.dataset.id = w.id;
   path.addEventListener('click', function (ev) { ev.stopPropagation(); selectWire(w, tab); });
   return path;
@@ -1851,8 +2292,13 @@ function renderRuntimeSection(panel, elementId) {
 function renderDetailForNode(n, tab) {
   document.getElementById('detail-panel').hidden = false;
   var panel = document.getElementById('detail-content');
+  // `#detail-close` is a persistent sibling of this panel, never moved
+  // into it: an earlier version re-parented it here on every render,
+  // which worked once and then made the second render's `innerHTML = ''`
+  // delete the button outright, crashing the next `appendChild` with "not
+  // a Node" -- found by selecting two elements in the same page load, a
+  // path none of this card's single-selection tests had exercised.
   panel.innerHTML = '';
-  panel.appendChild(document.getElementById('detail-close'));
   panel.appendChild(elWithBreaks('h2', null, n.name || n.id));
   panel.appendChild(elWithBreaks('div', 'detail-id', n.id));
   panel.appendChild(fieldRow('kind', n.kind));
@@ -1880,6 +2326,26 @@ function renderDetailForNode(n, tab) {
       ul.appendChild(li);
     });
     panel.appendChild(ul);
+  }
+  if (n.is_stage) {
+    panel.appendChild(fieldRow('grouping rule', n.rule === 'fallback_module'
+      ? 'module (this element is not in the cascade order -- see order.jsonl)'
+      : 'cascade order (order.jsonl, card 3)'));
+    panel.appendChild(el('h3', null, 'steps (' + n.ordered_member_ids.length + '), in cascade order'));
+    var stageMembersUl = el('ol');
+    n.ordered_member_ids.forEach(function (m) {
+      var li = el('li');
+      li.appendChild(idLink(m, tab, (EXECUTION_NODE_BY_ID[m] && EXECUTION_NODE_BY_ID[m].name) || m));
+      stageMembersUl.appendChild(li);
+    });
+    panel.appendChild(stageMembersUl);
+    var expandStageBtn = el('button', 'action-btn', 'Expand this stage');
+    expandStageBtn.type = 'button';
+    expandStageBtn.addEventListener('click', function () {
+      state.collapsedStages[n.layer] = false;
+      renderTab(tab);
+    });
+    panel.appendChild(expandStageBtn);
   }
   if (n.is_module_agg) {
     if (n.change_counts && Object.keys(n.change_counts).length) {
@@ -1925,7 +2391,6 @@ function renderDetailForWire(w, tab) {
   document.getElementById('detail-panel').hidden = false;
   var panel = document.getElementById('detail-content');
   panel.innerHTML = '';
-  panel.appendChild(document.getElementById('detail-close'));
   panel.appendChild(el('h2', null, w.kind + ' wire'));
   panel.appendChild(fieldRow('source', w.source_id));
   panel.appendChild(fieldRow('target', w.target_id));
@@ -1941,6 +2406,18 @@ function selectNode(n, tab) {
   state.selectedId = n.id; state.selectedWireId = null;
   updateSelectionHighlight(); renderDetailForNode(n, tab);
 }
+//: Selecting a stage's member line: the element may not be painted as its
+//: own node right now (its stage is still collapsed), so this looks the
+//: element up by id directly rather than requiring it to already be on
+//: canvas -- `updateSelectionHighlight` degrades to "nothing matches" if
+//: it is not currently painted, which is correct, not a bug.
+function selectElementById(id, tab) {
+  var node = EXECUTION_NODE_BY_ID[id];
+  if (!node) return;
+  state.selectedId = id; state.selectedWireId = null;
+  updateSelectionHighlight();
+  renderDetailForNode(node, tab);
+}
 function selectWire(w, tab) {
   state.selectedWireId = w.id; state.selectedId = null;
   updateSelectionHighlight(); renderDetailForWire(w, tab);
@@ -1950,6 +2427,12 @@ function selectWire(w, tab) {
 function switchTab(tab) {
   state.tab = tab;
   document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
+  var isExecution = tab === 'execution';
+  document.getElementById('stage-controls').hidden = !isExecution;
+  document.getElementById('filter-backward-chip').hidden = !isExecution;
+  document.getElementById('btn-expand-all').hidden = isExecution && state.stageMode;
+  document.getElementById('btn-collapse-all').hidden = isExecution && state.stageMode;
+  document.getElementById('flow-readout').hidden = !isExecution;
   renderTab(tab);
 }
 document.querySelectorAll('.tab-btn').forEach(function (b) {
@@ -2011,6 +2494,7 @@ function syncFilterUI() {
   document.getElementById('filter-min-conf').value = '';
   document.getElementById('filter-decision-reach').checked = false;
   document.getElementById('filter-findings').checked = false;
+  document.getElementById('filter-backward').checked = false;
 }
 function updateFilterSummary() {
   var active = [];
@@ -2019,6 +2503,7 @@ function updateFilterSummary() {
   if (state.filters.minConfidenceIndex !== null) active.push('confidence floor active');
   if (state.filters.onlyDecisionReach) active.push('only reaches-decision');
   if (state.filters.onlyFindings) active.push('only with findings');
+  if (state.filters.onlyBackward) active.push('only backward edges');
   var summary = document.getElementById('filter-summary');
   summary.textContent = active.length ? ('FILTERED: ' + active.join('; ')) : 'no filters active (showing everything)';
   summary.classList.toggle('filters-active', active.length > 0);
@@ -2031,6 +2516,30 @@ document.getElementById('btn-collapse-all').addEventListener('click', function (
   (getGraph(state.tab).nodes || []).forEach(function (n) { if (n.module) mods[n.module] = true; });
   state.collapsed[state.tab] = mods;
   renderTab(state.tab);
+});
+
+// ---- round 4, R1: stage mode (the Execution tab's default) ----
+document.getElementById('btn-toggle-stage-mode').addEventListener('click', function () {
+  state.stageMode = !state.stageMode;
+  this.textContent = state.stageMode ? 'Show full graph' : 'Show grouped stages';
+  document.getElementById('btn-expand-all').hidden = state.stageMode;
+  document.getElementById('btn-collapse-all').hidden = state.stageMode;
+  if (state.tab === 'execution') renderTab('execution');
+});
+document.getElementById('btn-expand-all-stages').addEventListener('click', function () {
+  var stages = (DATA.execution && DATA.execution.stages) || [];
+  stages.forEach(function (s, i) { state.collapsedStages[i] = false; });
+  if (state.tab === 'execution') renderTab('execution');
+});
+document.getElementById('btn-collapse-all-stages').addEventListener('click', function () {
+  var stages = (DATA.execution && DATA.execution.stages) || [];
+  stages.forEach(function (s, i) { state.collapsedStages[i] = true; });
+  if (state.tab === 'execution') renderTab('execution');
+});
+document.getElementById('filter-backward').addEventListener('change', function (ev) {
+  state.filters.onlyBackward = ev.target.checked;
+  renderTab(state.tab);
+  updateFilterSummary();
 });
 
 // ---- search ----
@@ -2101,6 +2610,90 @@ document.addEventListener('keydown', function (ev) {
 });
 
 // ---- legend & diagnostics ----
+// ---- round 4, R2: the permanent flow readout ----
+function renderFlowReadout() {
+  var ex = DATA.execution;
+  var totalsWrap = document.getElementById('flow-totals');
+  totalsWrap.innerHTML = '';
+  ['FORWARD', 'WITHIN', 'BACKWARD', 'UNORDERED'].forEach(function (kind) {
+    var count = (ex.flow_totals && ex.flow_totals[kind]) || 0;
+    totalsWrap.appendChild(el('span', 'flow-total-chip flow-total-' + kind, kind + ': ' + count));
+  });
+  var pairsWrap = document.getElementById('flow-pairs');
+  pairsWrap.innerHTML = '';
+  var stages = ex.stages || [];
+  (ex.stage_pairs || []).forEach(function (pair) {
+    var fromName = (stages[pair.from] && stages[pair.from].name) || ('stage ' + pair.from);
+    var toName = (stages[pair.to] && stages[pair.to].name) || ('stage ' + pair.to);
+    var arrow = pair.direction === 'BACKWARD' ? ' \\u2190 ' : ' \\u2192 ';
+    var label = pair.direction === 'BACKWARD'
+      ? (toName + arrow + fromName + ': ' + pair.count + ' call' + (pair.count === 1 ? '' : 's') + ' back')
+      : (fromName + arrow + toName + ': ' + pair.count);
+    var row = el('div', 'flow-pair-row flow-pair-' + cssSafe(pair.direction), label);
+    row.addEventListener('click', function () { frameStagePair(pair); });
+    pairsWrap.appendChild(row);
+  });
+  if (!(ex.stage_pairs || []).length) {
+    pairsWrap.appendChild(el('div', 'missing-note', 'no forward/backward cross-stage wires.'));
+  }
+}
+//: "Clicking a backward count selects and frames those edges" -- switches
+//: to the execution tab, expands whichever stages own the pair's wires
+//: (a collapsed stage's wires are aggregated and would not individually
+//: highlight), then highlights exactly those wire ids.
+function frameStagePair(pair) {
+  switchTab('execution');
+  state.collapsedStages[pair.from] = false;
+  state.collapsedStages[pair.to] = false;
+  renderTab('execution');
+  var layout = layoutCache.execution;
+  var wireIdSet = {};
+  (pair.wire_ids || []).forEach(function (id) { wireIdSet[id] = true; });
+  var touchedNodes = {};
+  layout.wires.forEach(function (w) {
+    if (w.representative && wireIdSet[w.representative.id]) {
+      touchedNodes[w.source_id] = true;
+      touchedNodes[w.target_id] = true;
+    }
+  });
+  Array.prototype.forEach.call(nodesLayer.children, function (e) {
+    var on = !!touchedNodes[e.dataset.id];
+    e.classList.toggle('dim', !on);
+    e.classList.toggle('path-highlight', on);
+  });
+  Array.prototype.forEach.call(wiresG.children, function (e) {
+    var on = wireIdSet[e.dataset.id] || false;
+    if (!on) {
+      var w = null;
+      for (var i = 0; i < layout.wires.length; i++) { if (layout.wires[i].id === e.dataset.id) { w = layout.wires[i]; break; } }
+      on = w && w.representative && wireIdSet[w.representative.id];
+    }
+    e.classList.toggle('dim', !on);
+    e.classList.toggle('path-highlight', !!on);
+  });
+  var ids = Object.keys(touchedNodes);
+  if (ids.length) {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    ids.forEach(function (id) {
+      var n = layout.byId[id], p = layout.pos[id];
+      if (!n || !p) return;
+      var size = sizeOf(n);
+      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + size.w); maxY = Math.max(maxY, p.y + size.h);
+    });
+    if (isFinite(minX)) {
+      var rect = viewport.getBoundingClientRect(), pad = 80;
+      var scale = Math.min(2, Math.max(0.15, Math.min(
+        (rect.width - pad * 2) / Math.max(1, maxX - minX),
+        (rect.height - pad * 2) / Math.max(1, maxY - minY))));
+      state.camera.scale = scale;
+      state.camera.x = (rect.width - (maxX - minX) * scale) / 2 - minX * scale;
+      state.camera.y = (rect.height - (maxY - minY) * scale) / 2 - minY * scale;
+      applyCameraTransform();
+    }
+  }
+}
+
 function buildLegend() {
   var confWrap = document.getElementById('legend-confidence');
   DATA.legend.confidence.forEach(function (item) {
@@ -2144,6 +2737,7 @@ function init() {
   buildLegend();
   buildFilterUI();
   showDiagnostics();
+  renderFlowReadout();
   if (DATA.report_link) {
     var link = document.getElementById('report-link');
     link.hidden = false;
