@@ -1720,8 +1720,10 @@ def _laz_augment_frame(frame, sport, needed=None, verbose=True):
                         print(f'[augment] {sport}: cleared {len(_lc47)} '
                               f'lead-dependent column(s) at {int(_lvl47.sum()):,} '
                               f'level-score tick(s) — they cannot exist there')
-    except Exception:
-        pass
+    except Exception as _sw:
+        # [HARD-FIX SILENT] recorded, not hidden: this swallow can leave a stale
+        # value that changes a result. laz_sink__report lists it at exit.
+        laz_sink__swallow('augment_frame:numeric_coercion', _sw)
     # ── [v76_49] FEED-FRESHNESS COLUMNS — the four BB66 pool inputs ──────────
     # The owner asked why four BB66 conditions could not be ported: their
     # columns never existed in any export, because the engine's BB66 tick
@@ -1903,8 +1905,10 @@ def _laz_augment_frame(frame, sport, needed=None, verbose=True):
             _from_voc |= set(_re76b.findall(
                 r'\b(?:hp_|ap_|betsson_)[a-z0-9_]+', _f76))
         _RAW_WANT = sorted(set(_RAW_WANT) | _from_voc)
-    except Exception:
-        pass          # fall back to the original twelve rather than break prep
+    except Exception as _sw:
+        # [HARD-FIX SILENT] recorded, not hidden: this swallow can leave a stale
+        # value that changes a result. laz_sink__report lists it at exit.
+        laz_sink__swallow('augment_frame:raw_want', _sw)             # fall back to the original twelve rather than break prep
     _need_raw = [c for c in _RAW_WANT if c not in df.columns]
     if _need_raw:
         try:
@@ -2774,8 +2778,10 @@ def _laz_augment_frame(frame, sport, needed=None, verbose=True):
             out = laz_player_features(out, sport, verbose=verbose)
         # Checkpoints depend on the role features, so they run second.
         out = laz_checkpoint_features(out, sport, verbose=verbose)
-    except Exception:
-        pass
+    except Exception as _sw:
+        # [HARD-FIX SILENT] recorded, not hidden: this swallow can leave a stale
+        # value that changes a result. laz_sink__report lists it at exit.
+        laz_sink__swallow('augment_frame:out', _sw)
 
     if verbose:
         el = f' in {_time.time() - t0:.0f}s' if t0 else ''
@@ -26904,8 +26910,10 @@ def laz_purge_lookahead(verbose=True, dry_run=False):
     own = set()
     try:
         own = {str(s).lower() for s in (laz_focus_sports() or [])}
-    except Exception:
-        pass
+    except Exception as _sw:
+        # [HARD-FIX SILENT] recorded, not hidden: this swallow can leave a stale
+        # value that changes a result. laz_sink__report lists it at exit.
+        laz_sink__swallow('purge_lookahead:own_terms', _sw)
     seen, purged, clean, unchecked = set(), {}, 0, 0
     for r in laz_ledger_read():
         if r.get('verdict') != 'MEASURED':
@@ -89651,13 +89659,17 @@ def causality_guard___certified(sport):
     try:
         sport = _OWm.canon(sport) if _OWm is not None else sport
     except Exception as _ce:
-        pass
+        # [HARD-FIX SILENT] recorded, not hidden: this swallow can leave a stale
+        # value that changes a result. laz_sink__report lists it at exit.
+        laz_sink__swallow('causality_guard:certified:sport', _ce)
     _home = os.getcwd()
     try:
         if _OWm is not None:
             _home = _OWm.LAZ_OWNER['paths'].get('output_dir') or _home
     except Exception as _he:
-        pass
+        # [HARD-FIX SILENT] recorded, not hidden: this swallow can leave a stale
+        # value that changes a result. laz_sink__report lists it at exit.
+        laz_sink__swallow('causality_guard:certified:home', _he)
     f = os.path.join(_home, f'causal_{sport}.csv')
     if os.path.exists(f):
         d = pd.read_csv(f)
@@ -91797,8 +91809,10 @@ def laz_trace__eval_leg_ticks(rec, d, pool, base_fn, ctx=None, sport=None):
             if isinstance(_bt, tuple) and len(_bt) >= 5 and str(_bt[0]) == _bname:
                 _side_a, _px_a, _ok_a = _np.asarray(_bt[1], dtype=object), _np.asarray(_bt[2], float), _np.asarray(_bt[4], bool); _how = 'generative store'
                 break
-    except Exception:
-        pass
+    except Exception as _sw:
+        # [HARD-FIX SILENT] recorded, not hidden: this swallow can leave a stale
+        # value that changes a result. laz_sink__report lists it at exit.
+        laz_sink__swallow('trace:eval_leg_ticks:arm_arrays', _sw)
     if _side_a is None and ctx is not None and sport is not None and not _bname.startswith('tg_'):
         try:
             _VM = _m('laz_validate')   # [V2.23] cross-section call through the module map (audit_full: unassigned name)
@@ -93181,8 +93195,10 @@ def laz_startup__prepare__impl(sport, books=None, stride=1, log=print, workers=N
         # it. Same test as laz_outcomes__valid (defined later in the file, so inlined here): a missing marker is not an outcome.
         _fws = pd.Series(fw, copy=False).fillna('').astype(str).str.strip().str.lower()
         y = np.where((~_fws.isin(('', 'nan', 'none', '<na>', 'null'))).values, y, np.nan)
-    except Exception:
-        pass
+    except Exception as _sw:
+        # [HARD-FIX SILENT] recorded, not hidden: this swallow can leave a stale
+        # value that changes a result. laz_sink__report lists it at exit.
+        laz_sink__swallow('startup:prepare:y_unsettled_to_nan', _sw)
     ih, ia = (1 / ho, 1 / ao)
     idr = np.nan_to_num(1 / dr, nan=0, posinf=0)
     vf = np.where(side == 'home', ih, ia) / (ih + ia + idr)
@@ -104003,6 +104019,25 @@ def laz_mode3___sweep_one_base(bt, rung_ix=None):
                 log(f'  [mode3] rung {lo:.2f}-{hi:.2f} sub-binned into {len(_sb)}: {[f'{a:.2f}-{b:.2f}' for a, b in _sb]}')
         seeds = [None]
         _seed_txt = [None]   # [v246] each seed's own condition text, parallel to seeds — the arm uses seed+chain, so the record must carry both
+        # [HARD-FIX M1] EVERY SEED CARRIES A STABLE IDENTITY, parallel to the mask.
+        # THE FAILURE THIS ENDS. Two separate defects rode on the positional index:
+        #  (a) the learning loop recorded outcomes as f'seed{_si}' -- an index into
+        #      THIS worker task's local seed list -- while order_seeds() looks the
+        #      same seeds up by NAME. They could never match, so every seed was
+        #      "untried" on every run and the engine relearned nothing. Worse, the
+        #      index is task-local, so aggregating it across tasks in the parent
+        #      merged the counts of completely unrelated seeds.
+        #  (b) _rec_at is computed BELOW, before the win-rate sort, and was read
+        #      AFTER it to label a strategy's origin. The sort reorders the list, so
+        #      `_si >= _rec_at` labelled an arbitrary set as 'recovered' and the
+        #      provenance recorded on every strategy in the book was wrong.
+        # An identity that travels WITH the mask through the sort ends both.
+        # _seed_id is the EXACT key laz_register__order_seeds() looks up -- for a
+        # recovered seed that is its bare name, because order_seeds is called with
+        # [str(n) for n, _ in _rec_seeds]. _seed_kind carries the provenance label
+        # separately so the id never has to be parsed to learn what a seed is.
+        _seed_id = ['(none)']
+        _seed_kind = ['none']
         for _, r in B.head(_per_rung).iterrows():
             v = pool.get(r.condition)
             if v is None:
@@ -104013,30 +104048,46 @@ def laz_mode3___sweep_one_base(bt, rung_ix=None):
             if (m & iA).sum() >= min_n and (m & iB).sum() >= min_n // 2:
                 seeds.append(m)
                 _seed_txt.append((str(getattr(r, 'feature', None) or f'{r.condition} {r.op} {r.cut:g}')) if r.op in ('>=', '<=') else None)   # [v246b] band seeds gate only ~isnan (the NULL rule) — the printed edges were the enumerate cut, never a real gate; only >=/<= seeds are real cuts and get recorded
-        for _ts in list(_tick_seeds) + list(_base_seeds):
+                _seed_id.append(f'search:{r.condition} {r.op} {r.cut:g}')
+                _seed_kind.append('search')
+        _n_tick = len(list(_tick_seeds))
+        for _tsi, _ts in enumerate(list(_tick_seeds) + list(_base_seeds)):
             _m2 = np.asarray(_ts, bool) & band
             if (_m2 & iA).sum() >= min_n and (_m2 & iB).sum() >= min_n // 2:
                 seeds.append(_m2)
                 _seed_txt.append(None)
+                # [HARD-FIX M1] tick and base seeds carry no condition text (playbook W3,
+                # which is why their legs fail the round-trip). They still get a stable id
+                # so the learning loop and the origin label are correct for them.
+                _seed_id.append(f'tick:{_tsi}' if _tsi < _n_tick else f'base:{_tsi - _n_tick}')
+                _seed_kind.append('tick' if _tsi < _n_tick else 'base')
         _rec_at = len(seeds)
         for _nm, _rs in _rec_seeds:
             _m2 = np.asarray(_rs, bool) & band
             if (_m2 & iA).sum() >= min_n and (_m2 & iB).sum() >= min_n // 2:
                 seeds.append(_m2)
                 _seed_txt.append(f'recovered:{_nm}')
+                _seed_id.append(str(_nm))   # [HARD-FIX M1] the bare name: what order_seeds looks up
+                _seed_kind.append('recovered')
         if len(seeds) > _rec_at:
             log(f'  [recovered] +{len(seeds) - _rec_at} recovered seeds in this rung')
         log(f'  [mode3] rung {lo:.2f}-{hi:.2f}: {int(band.sum())} matches · {len(seeds)} seeds')
         _rung_attempts = 0
         try:
-            _paired = sorted(zip(seeds, _seed_txt), key=lambda mt: -(float(np.nanmean(y[np.asarray(mt[0], bool) & band & IS])) if mt[0] is not None and (np.asarray(mt[0], bool) & band & IS).sum() >= max(int(min_n * 0.5), 30) else -1))
+            _paired = sorted(zip(seeds, _seed_txt, _seed_id, _seed_kind), key=lambda mt: -(float(np.nanmean(y[np.asarray(mt[0], bool) & band & IS])) if mt[0] is not None and (np.asarray(mt[0], bool) & band & IS).sum() >= max(int(min_n * 0.5), 30) else -1))
             seeds = [mt[0] for mt in _paired]
             _seed_txt = [mt[1] for mt in _paired]
+            _seed_id = [mt[2] for mt in _paired]     # [HARD-FIX M1] identity travels with its mask
+            _seed_kind = [mt[3] for mt in _paired]   # [HARD-FIX M1] so does its provenance
         except Exception:
             pass
         _seed_txt = locals().get('_seed_txt') or [None] * len(seeds)
+        _seed_id = locals().get('_seed_id') or ['(none)'] * len(seeds)
+        _seed_kind = locals().get('_seed_kind') or ['none'] * len(seeds)
         for _si, s in enumerate(seeds):
             _stxt = _seed_txt[_si] if _si < len(_seed_txt) else None   # [v246]
+            _sid = _seed_id[_si] if _si < len(_seed_id) else f'unknown:{_si}'      # [HARD-FIX M1]
+            _skind = _seed_kind[_si] if _si < len(_seed_kind) else 'search'        # [HARD-FIX M1]
             attempts += 1
             _rung_attempts += 1
             if _rung_attempts > rounds:
@@ -104104,7 +104155,10 @@ def laz_mode3___sweep_one_base(bt, rung_ix=None):
             if not clean:
                 laz_mode3___rej(_REJ, 'causality', base=_base_name, rung=f'{lo:.2f}-{hi:.2f}', chain=chain, detail=str(viol)[:120])
                 continue
-            _origin = 'recovered' if _si >= _rec_at else 'search'
+            # [HARD-FIX M1b] read from the seed's own identity. `_si >= _rec_at` was
+            # computed before the sort above reordered the list, so it labelled an
+            # arbitrary set as recovered on every run.
+            _origin = 'recovered' if _skind == 'recovered' else 'search'
             okg, rec = CAS.accept(y, price, cur, IS, OOS, min_n=P.get('min_bets', min_n), min_odds=lo)
             if okg:
                 try:
@@ -104179,10 +104233,10 @@ def laz_mode3___sweep_one_base(bt, rung_ix=None):
             _RGw = P.get('register')
             if _RGw is not None and _RGw.is_known(P.get('known_sport'), rec):
                 _known_hits += 1
-                _known_by_seed[_si] = _known_by_seed.get(_si, 0) + 1
+                _known_by_seed[_sid] = _known_by_seed.get(_sid, 0) + 1   # [HARD-FIX M1] by identity, not task-local index
                 laz_mode3___rej(_REJ, 'known', base=_base_name, rung=f'{lo:.2f}-{hi:.2f}', chain=chain)
                 continue
-            _novel_by_seed[_si] = _novel_by_seed.get(_si, 0) + 1
+            _novel_by_seed[_sid] = _novel_by_seed.get(_sid, 0) + 1   # [HARD-FIX M1] by identity, not task-local index
             try:
                 _tool = 'basefinder' if str(_base_name).startswith(('seed', 'bf_')) else 'tickscan' if s is not None and _si < len(_tick_seeds) else 'greedy'
                 rec['_calib'] = (sport, _tool, float(rec.get('is_win') or 0), float(rec.get('oos_win') or 0), int(rec.get('n_oos') or 0))
@@ -106735,6 +106789,18 @@ def laz_mode3__find(sport, stride=1, min_n=100, rounds=300, target=None, ladder=
     NM = _m('laz_naming')
     MEM = _m('laz_memory')
     ladder = ladder or laz_mode3__LADDER
+    # [HARD-FIX M0] --reset-book MUST be visible before anything reads it.
+    # THE FAILURE THIS ENDS. The only assignment of PAR['reset_book'] sat in the
+    # SEQUENTIAL fallback branch, ~44 lines AFTER the parallel path reads it to
+    # decide whether to honour the (base, rung) cell memory. In every parallel
+    # run -- which is every real run -- the read saw a missing key, `_fresh` was
+    # False, and the memory skipped cells however the flag was passed. So
+    # --reset-book never worked, on any run, ever, and a disk-backed memory of
+    # "nothing here" grew across reruns: three basketball runs on the same frame
+    # went 189 -> 48 candidate cells searched. The search silently narrowed and
+    # the final output was built on a fraction of the intended space.
+    # Recorded HERE, at the top of the function, before any reader exists.
+    laz_mode3___PAR['reset_book'] = bool(reset_book)
     PAR = _m('laz_parallel')
     OWc = _m('laz_owner')
     Cc = OWc.LAZ_OWNER.get('combination', {}) if OWc else {}
@@ -107751,7 +107817,10 @@ def laz_mode3__find(sport, stride=1, min_n=100, rounds=300, target=None, ladder=
             for _si in set(list(_kbs) + list(_nbs)):
                 _nov = _nbs.get(_si, 0)
                 _kn = _kbs.get(_si, 0)
-                _RG.record_seed(sport, f'seed{_si}', 'novel' if _nov else 'known' if _kn else 'nothing', _nov, _kn)
+                # [HARD-FIX M1] _si is now the seed's stable identity, the same string
+                # order_seeds() looks up. It used to be f'seed{index}' against a
+                # task-local index, so no recorded outcome ever matched a lookup.
+                _RG.record_seed(sport, str(_si), 'novel' if _nov else 'known' if _kn else 'nothing', _nov, _kn)
             try:
                 _memc = locals().get('mem')
                 if _memc is not None:
