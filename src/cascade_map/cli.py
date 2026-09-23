@@ -237,6 +237,19 @@ EXIT_USAGE = 2
 EXIT_GATE_FAILED = 3
 EXIT_REFUSED = 4
 
+#: Above this, `slices.jsonl` is refused rather than written. One gigabyte is
+#: the point at which an artifact stops being something an owner can open, and
+#: the number is a starting threshold, not a law: --force-slices writes it
+#: anyway and `slice_size_limit` moves the line.
+#:
+#: Only `slices.jsonl` is guarded. It is the one artifact quadratic in OUTPUT
+#: -- a slice per root, each holding O(graph) ids -- so it is the only one
+#: whose size is out of proportion to the target. `lineage.jsonl` and
+#: `order.jsonl` are linear in the target (one record per lineage edge, one per
+#: ordered node) and are what every unwritten slice is recomputed from:
+#: refusing to write them would save less and cost everything.
+SLICE_SIZE_LIMIT_BYTES = 1 << 30
+
 
 # ---------------------------------------------------------------------------
 # Writing artifacts
@@ -389,6 +402,8 @@ def analyze(
     config_paths: Sequence[str] = (),
     slice_scope: SliceScope = SliceScope.DECISION,
     slice_roots: Sequence[str] = (),
+    force_slices: bool = False,
+    slice_size_limit: int = SLICE_SIZE_LIMIT_BYTES,
     cache_dir: Path | None = None,
     strict_gate: bool = True,
     env_root: Path | None = None,
@@ -628,7 +643,24 @@ def analyze(
             "always written in full."
         ),
     }
+    # Why the count is what it is, in the artifact and not only on a terminal
+    # that has scrolled. A count of 0 with no explanation reads as "this target
+    # has no lineage", which is the opposite of true.
+    reason = _slice_count_reason(
+        scope=slice_scope,
+        has_sink=bool(sink_ids),
+        written=len(slices),
+        refusal=slice_refusal,
+    )
+    if reason:
+        slice_disclosure["reason"] = reason
+    slice_disclosure["estimated_bytes"] = slice_bytes
+    slice_disclosure["member_ids_total"] = slice_members
+    slice_disclosure["size_limit_bytes"] = slice_size_limit
+    slice_disclosure["refused"] = slice_refusal is not None
     summary["slices"] = slice_disclosure
+    if reason and slice_refusal is None:
+        say("  " + reason.replace("\n", "\n  "))
     if slice_scope is SliceScope.ALL and slices:
         say(
             f"  slices.jsonl will be about "
@@ -721,6 +753,12 @@ def analyze(
     bar.finish(
         finished_at=finished, elapsed=elapsed_seconds, stage_millis=stage_millis
     )
+    # A refusal outranks the gate: the owner asked for slices, did not get
+    # them, and must not read an exit code that says the run did what it was
+    # asked. Everything else was written, so the workspace is usable and the
+    # analysis does not have to be paid for twice.
+    if slice_refusal is not None:
+        return EXIT_REFUSED, summary
     if offenders and strict_gate:
         return EXIT_GATE_FAILED, summary
     return EXIT_OK, summary
@@ -1260,6 +1298,66 @@ _SLICE_EVIDENCED_FINDINGS = frozenset(
 )
 
 
+def _human_count(count: int) -> str:
+    """A count an owner can hold in their head. 41,231,904 reads as 41M."""
+    if count >= 1_000_000:
+        return f"{count // 1_000_000}M"
+    return f"{count:,}"
+
+
+def _slice_size_refusal(
+    *, estimated: int, limit: int, roots: int, members: int, has_sink: bool
+) -> str:
+    """Said INSTEAD of writing a slices.jsonl larger than the limit.
+
+    Every number is measured from the slices already computed for this run, not
+    from a rule of thumb about another one. The alternatives are named in the
+    same breath, including the one that writes it anyway: a refusal the owner
+    cannot override is an obstruction rather than a warning.
+    """
+    alternatives = (
+        "  Pass --slices none, or --force-slices to write it anyway."
+        if has_sink
+        else "  Declare a sink with --sink <id>, or pass --slices none, or "
+        "--force-slices to write it anyway."
+    )
+    return (
+        f"  slices would be ~{_human_bytes(estimated)} "
+        f"({roots:,} roots, {_human_count(members)} member ids), over the "
+        f"{_human_bytes(limit)} limit. Refusing to write it.\n"
+        f"{alternatives}\n"
+        f"  Nothing was truncated and nothing is lost: lineage.jsonl is written "
+        f"in full and answers any slice exactly, on demand."
+    )
+
+
+#: The DECISION scope with no declared sink. Not an error -- a statement that
+#: the question has no principled answer yet, and how to give it one.
+NO_SINK_SLICE_REASON = (
+    "scope DECISION; no decision sink declared, so there is no principled set "
+    "of roots. Declare one with --sink <id> to get slices, or use --slices all "
+    "to precompute every root and pay for it. A feature or any other root you "
+    "care about is one --slice-root <id> away."
+)
+
+
+def _slice_count_reason(
+    *, scope: SliceScope, has_sink: bool, written: int, refusal: str | None
+) -> str:
+    """Why `slices.jsonl` holds what it holds, carried into the artifact.
+
+    An owner who finds a count of zero with no explanation concludes the target
+    has no lineage, which is the opposite of true. The two counts that need
+    explaining are the ones this tool chose: the unrooted DECISION scope, and a
+    refusal on size.
+    """
+    if refusal is not None:
+        return "\n".join(part.strip() for part in refusal.splitlines())
+    if scope is SliceScope.DECISION and not has_sink and written == 0:
+        return NO_SINK_SLICE_REASON
+    return ""
+
+
 def _human_bytes(count: int) -> str:
     """A size an owner can act on. Never rounded up into a smaller unit."""
     for unit, size in (("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)):
@@ -1349,7 +1447,13 @@ def _slice_lines(summary: dict[str, Any]) -> list[str]:
         )
     else:
         line += "; every root precomputed"
-    return [line]
+    lines = [line]
+    # A count of zero with a reason is an answer. A count of zero without one
+    # reads as "this target has no lineage", which is never what happened.
+    reason = payload.get("reason")
+    if reason:
+        lines += [f"                {part}" for part in str(reason).splitlines()]
+    return lines
 
 
 def _dependency_lines(summary: dict[str, Any]) -> list[str]:
@@ -1621,6 +1725,8 @@ def _build_parser() -> argparse.ArgumentParser:
                      help='which roots get a PRECOMPUTED slice. Never how complete one is -- every slice written is exact and whole. decision (default): the roots that bear on a decision. all: every root, exhaustive and quadratic in output. none: no precomputed slices; lineage.jsonl still answers any of them.')
     run.add_argument("--slice-root", action="append", default=[], metavar="ID",
                      help='precompute the slice rooted at this id whatever --slices says; repeatable')
+    run.add_argument("--force-slices", action="store_true",
+                     help='write slices.jsonl even when the estimate exceeds the 1 GB size guard. The guard exists because an owner found a 6.4 GB slices.jsonl after the fact; this is how you say you meant it.')
     run.add_argument("--cache", type=Path, default=None)
     run.add_argument("--workers", type=int, default=None, metavar="N",
                      help="child processes for ingestion. Omitted or 0 = auto "
@@ -1833,6 +1939,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             config_paths=tuple(args.config),
             slice_scope=_slice_scope_of(args),
             slice_roots=tuple(args.slice_root),
+            force_slices=bool(getattr(args, "force_slices", False)),
             cache_dir=args.cache,
             strict_gate=not args.no_gate,
             env_root=args.env,
