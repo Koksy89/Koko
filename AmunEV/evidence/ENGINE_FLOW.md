@@ -1,4 +1,4 @@
-# The engine, A to Z — purpose, stage, workers, time
+# The engine, A to Z — one line per stage, with workers and time
 
 Derived from the source (`laz_workers__map` call sites, `laz_mode3__find`, the runner's
 own stage log), nothing executed.
@@ -10,37 +10,38 @@ cpu_count clip. Every parallel stage goes through that one door — `laz_workers
 which forks, and on failure calls `no_silent_serial()` so a stage can never quietly drop
 to one core while the log still claims N.
 
-| Purpose | Stage | Workers | Est. time |
-|---|---|---|---|
-| Check before anything runs | **preflight** — interpreter, stack, engine compiles, GOD-1/GOD-2 seals, owner rules, version gate, assembly invariant, frames, disk | 1 | ~2 s |
-| Get the engine into memory | **load** — exec the whole file into a real module so forked workers resolve by reference | 1 | 15–40 s |
-| Refuse to run a build that lies | **gate** — contract print, GOD-1 feature-documentation gate, GOD-2 rules check | 1 | ~1 s |
-| Make sure the sport has data | **ensure** — locate and validate the frame, derive missing columns | 1 | 10–60 s |
-| Turn the frame into a match universe | **startup / prepare** — load, attach h2h, causality guard, label settlement | 1 | 1–3 min (first load ~2.5 min) |
-| Build the owner's feature library | **library** — the 482 certified features over match chunks | **N** | 8–12 min uncached · **~0 s cached** |
-| Rebuild derived terms | **genome** — chunked rebuild of the derived layer | **N** | 1–4 min |
-| Assemble the candidate conditions | **pool** — engine + recovered + totals + **the 198-condition library**, cast to float32 | 1 | 20–60 s |
-| Find what is redundant | **corr** — correlation matrix in row blocks | **N** | 1–5 min |
-| Find what is worth combining | **interactions** — super-additive pairs | **N** | 2–8 min |
-| Build those combinations | **manufacture** — materialise the surviving pairs | **N** | 1–4 min |
-| Collapse correlated clusters | **PCA** — first component per cluster, fitted IS-only, frozen to `laz_pca_<sport>.json` | 1 (parent) | 10–40 s |
-| Decide what to search from | **bases** — registry + proposed + BaseFinder + tick-scan regions, deduped by identity | 1 | 30 s – 3 min |
-| Decide which prices to search | **ladder** — odds rungs built and merged (`band_min_matches_x` now 1.0×) | 1 | ~5 s |
-| **Find the strategies** | **SWEEP** — every (base, rung): stack, fit thresholds, IS/OOS split, permutation null, accept | **N** | **20 min – 3 h+** ← the long pole |
-| Document at the instant of acceptance | **acceptance** — round-trip check, then `element_doc` with the ordered execution spec | in-worker | in the sweep |
-| Collapse the results | **merge** — legs merged across bases, duplicate chains collapsed | 1 | 10–60 s |
-| Keep the evidence | **ledgers** — per-leg bet ledgers to `mode3_<sport>.parquet` | 1 | 20–90 s |
-| Score multi-leg slips | **combina** — arm table, windows, pair scoring in chunks | **N** | 2–10 min |
-| Fold into the standing book | **book** — accepted legs into `LAZ_BOOK`, tiers assigned | 1 | 10–40 s |
-| The book you read | **workbook** — MODE3 xlsx + provenance stamp and sidecar | 1 | 30 s – 3 min |
-| **The bundle you deploy** | **deploy** — registry SQL, feature module, PCA module, spec, verify script | 1 | 5–20 s |
+| # | stage | what happens | workers | est. time |
+|---|---|---|---|---|
+| 1 | **preflight** | `go_live.py` checks the interpreter and stack, that the engine compiles, the GOD-1 and GOD-2 seals, the owner's rules, the version gate, the assembly invariant, frames and disk — statically, nothing executed | 1 | ~2 s |
+| 2 | **load** | `run_m5.py` execs the whole engine into a real module (`lazarus_engine`) so forked workers resolve functions by reference rather than pickling them | 1 | 15–40 s |
+| 3 | **gate** | `laz_contract__print`, the GOD-1 feature-documentation gate, the GOD-2 bible and owner-rules check | 1 | ~1 s |
+| 4 | **ensure** | the frame is located and validated for the sport; missing columns are derived | 1 | 10–60 s |
+| 5 | **startup / prepare** | frame loaded, h2h attached, causality guard run, settlement labelled | 1 | 1–3 min (first load ~2.5 min) |
+| 6 | **library** | the owner's 482 certified features built over match chunks | **N** | 8–12 min · **~0 s cached** |
+| 7 | **genome** | derived terms rebuilt in chunks | **N** | 1–4 min |
+| 8 | **pool** | conditions assembled — engine + recovered + totals + **the 198-condition library** — then cast to float32 and put through the lookahead gate | 1 | 20–60 s |
+| 9 | **corr** | correlation matrix computed in row blocks | **N** | 1–5 min |
+| 10 | **interactions** | super-additive pairs found | **N** | 2–8 min |
+| 11 | **manufacture** | the surviving pairs materialised into new conditions | **N** | 1–4 min |
+| 12 | **PCA** | correlated clusters reduced to `pc_<hash>` composites, fitted IS-only, frozen to `laz_pca_<sport>.json` | 1 (parent) | 10–40 s |
+| 13 | **bases** | registry bases + proposed bases + BaseFinder + tick-scan arm regions, deduped by identity | 1 | 30 s – 3 min |
+| 14 | **ladder** | odds rungs built and merged; a rung below `band_min_matches_x × min_n` is skipped (**now 1.0×**) | 1 | ~5 s |
+| 15 | **SWEEP** | every (base, rung) task: stack conditions, fit thresholds, IS/OOS split, permutation null, accept | **N** | **20 min – 3 h+** ← the long pole |
+| 16 | **acceptance** | per leg: round-trip check, then `element_doc` written with the ordered execution spec | in-worker | inside the sweep |
+| 17 | **merge** | legs merged across bases, duplicate chains collapsed | 1 | 10–60 s |
+| 18 | **ledgers** | per-leg bet ledgers persisted to `mode3_<sport>.parquet` | 1 | 20–90 s |
+| 19 | **combina** | arm table built, slips scored in a window, pairs scored in chunks | **N** | 2–10 min |
+| 20 | **book** | accepted legs folded into `LAZ_BOOK`, tiers assigned | 1 | 10–40 s |
+| 21 | **workbook** | `laz_xl__write` — the MODE3 xlsx, provenance stamped into it and into a sidecar | 1 | 30 s – 3 min |
+| 22 | **DEPLOY** | `laz_deploy__emit` — registry SQL, feature module, PCA module, spec, verify script | 1 | 5–20 s |
 
-Rough total for one sport, library cached: **35 min – 4 h**, almost all of it the sweep.
-First run on a new frame or after a version bump adds the 8–12 min library build.
+Rough total for one sport with the library cached: **35 min – 4 h**, almost all of it the
+sweep. A first run on a new frame, or the first run after a version bump, adds the 8–12
+minute library build.
 
-Times are order-of-magnitude on an 8-core machine at `--workers 4`; the sweep scales
-with (bases × rungs × conditions), so a sport with a big pool and a long ladder is the
-outlier, not the average.
+Times are order-of-magnitude on an 8-core machine at `--workers 4`. The sweep scales with
+(bases × rungs × conditions), so a sport with a large pool and a long ladder is the
+outlier rather than the average.
 
 Other modes: `--mode 1` uses `label='mode1 cells'` (**N**), `--mode5` uses
 `label='mode5 hypotheses'` (**N**), the vectorised grid uses `ProcessPoolExecutor` at
