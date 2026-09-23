@@ -156,12 +156,26 @@ def test_non_tty_emits_one_plain_line_per_stage_and_no_carriage_returns() -> Non
     assert text.rstrip().endswith("finished  2025-09-23 14:07:26 UTC   (5m41s)")
 
 
-def test_the_estimate_says_estimating_before_anything_has_completed() -> None:
-    """Never a precise-looking countdown that nothing supports."""
+def test_the_estimate_says_estimating_until_a_stage_has_actually_finished() -> None:
+    """Never a precise-looking countdown that nothing supports.
+
+    The stage weights are seconds from ONE machine and ONE target. Turning
+    them into `6m47s left` before this machine has finished anything is an
+    invented number, so the line says `~ estimating` for the whole first
+    stage, however long that stage runs.
+    """
     stream, clock = io.StringIO(), _Clock()
     bar = _reporter(stream, clock, tty=True)
     bar.start(1_758_636_131.0)
     assert "~ estimating" in stream.getvalue().split("\r")[-1]
+    clock.advance(30)
+    bar.sub(1, 4)
+    assert "~ estimating" in stream.getvalue().split("\r")[-1]
+    clock.advance(16)
+    bar.complete("inventory")
+    last = stream.getvalue().split("\r")[-1]
+    assert "estimating" not in last
+    assert "left" in last
 
 
 def test_the_estimate_recalibrates_from_the_stages_already_measured() -> None:

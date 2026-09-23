@@ -400,11 +400,11 @@ class ProgressReporter:
             return 0.0
         if self._durations:
             return left_weight * self._scale()
-        if weighted > 0 and elapsed > 0:
-            # Nothing has completed, but the first stage has told us
-            # something. Widen it by a quarter rather than pretending to a
-            # precision one partial stage cannot support.
-            return left_weight * (elapsed / weighted) * 1.25
+        # NOTHING has finished yet. The stage weights are seconds from one
+        # machine and one target, and turning them into "6m47s left" two
+        # hundred milliseconds into a run is exactly the precise-looking
+        # countdown this module must not print. `~ estimating` until the first
+        # stage lands and there is something real to scale by.
         return None
 
     # -- stream ------------------------------------------------------------
