@@ -419,3 +419,65 @@ def test_emitted_slices_round_trip_through_the_canonical_serialiser(
             "confidence",
         }
     assert canonical_jsonl([]) == ""
+
+
+def test_the_finding_top_up_is_bounded_by_what_a_slice_answers(
+    tmp_path: Path,
+) -> None:
+    """A slice per finding root is the quadratic DECISION exists to avoid.
+
+    Measured on the 14.6 MB single-module target: 19,227 findings with no sink
+    declared, which as roots would be 38,454 slices -- more than `ALL` writes.
+    Only the two kinds whose evidence IS a data-flow path are topped up.
+
+    The corpus contains findings of other kinds whose element IS a lineage
+    node, so this asserts a real exclusion rather than an empty one.
+    """
+    from cascade_map.cli import _SLICE_EVIDENCED_FINDINGS
+
+    out = _run(CORPUS, tmp_path / "decision", SliceScope.DECISION)
+    findings = [
+        json.loads(line)
+        for line in _read(out, "findings.jsonl").splitlines()
+        if line.strip()
+    ]
+    rooted = {one["root_id"] for one in _slices(out)}
+    lineage_nodes = {
+        endpoint
+        for line in _read(out, "lineage.jsonl").splitlines()
+        if line.strip()
+        for endpoint in (
+            json.loads(line)["source_id"],
+            json.loads(line)["target_id"],
+        )
+    }
+    excluded = {
+        finding["element_id"]
+        for finding in findings
+        if finding["kind"] not in {str(kind) for kind in _SLICE_EVIDENCED_FINDINGS}
+        and finding["element_id"] in lineage_nodes
+    }
+    assert excluded, (
+        "no finding of an excluded kind sits on a lineage node in this corpus, "
+        "so this test asserts nothing"
+    )
+    # Roots that DECISION reaches on its own, before any finding is consulted.
+    ingestor = Ingestor(cache_dir=tmp_path / "probe", workers=1)
+    elements, _ = ingestor.inventory(str(CORPUS))
+    edges, _ = Resolver(CORPUS).resolve(elements)
+    tracer = LineageTracer(CORPUS, sink_ids=())
+    tracer.trace_values(elements, edges)
+    own = set(tracer.decision_slice_roots())
+    included = {
+        finding["element_id"]
+        for finding in findings
+        if finding["kind"] in {str(kind) for kind in _SLICE_EVIDENCED_FINDINGS}
+    }
+    unexplained = rooted - own - included
+    assert not unexplained, (
+        f"slices rooted at {sorted(unexplained)} came from neither the scope "
+        f"nor a finding a slice answers; the top-up is unbounded again"
+    )
+    assert excluded - rooted, (
+        "every excluded-kind finding still got a slice; the bound did nothing"
+    )

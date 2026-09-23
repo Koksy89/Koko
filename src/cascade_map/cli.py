@@ -36,6 +36,7 @@ from cascade_map.contracts.interfaces import (
     SCHEMA_VERSION,
     Confidence,
     DetectedCandidate,
+    FindingKind,
     SliceScope,
     canonical_dumps,
     canonical_jsonl,
@@ -516,10 +517,20 @@ def analyze(
     summary["findings"] = len(findings)
 
     # DECISION names "the root of any finding" among its roots, and findings
-    # are only known once card 5 has run. This second pass adds the ones that
-    # are lineage nodes, so an owner reading a finding can drill straight into
-    # its slice. It runs after `findings` is final and cannot change it.
-    # NONE stays NONE: it was asked for none.
+    # are only known once card 5 has run. This second pass adds them, so an
+    # owner reading a finding can drill straight into its slice. It runs after
+    # `findings` is final and cannot change it. NONE stays NONE: it was asked
+    # for none.
+    #
+    # Only the two kinds whose EVIDENCE IS A LINEAGE PATH are topped up, and
+    # that bound is measured rather than tidy: on the 14.6 MB single-module
+    # target, with no sink declared, card 5 reports 19,227 findings. A slice
+    # per finding root would be 38,454 slices -- more than `ALL` emits, and
+    # exactly the quadratic DECISION exists to avoid. An UNREACHABLE_ELEMENT
+    # or a VERSION_CONFLICT is not answered by a data-flow slice; an
+    # UNCONSUMED_FEATURE and a DECISION_IRRELEVANT are, which is why those two
+    # are here and the rest are not. Every root left out is still named in the
+    # disclosure and still exactly recomputable from lineage.jsonl.
     if slice_scope is not SliceScope.NONE:
         precomputed = {sliced.root_id for sliced in slices}
         top_up = tuple(
@@ -527,7 +538,8 @@ def analyze(
                 {
                     finding.element_id
                     for finding in findings
-                    if finding.element_id not in precomputed
+                    if finding.kind in _SLICE_EVIDENCED_FINDINGS
+                    and finding.element_id not in precomputed
                     and tracer.has_lineage_node(finding.element_id)
                 }
             )
@@ -1169,6 +1181,15 @@ def _graph_hash_of(graph_dir: Path) -> str:
             if is_target_content(str(key))
         }
     )
+
+
+#: Findings whose evidence is a data-flow path, and therefore the findings a
+#: precomputed slice actually answers. `SliceScope.DECISION` tops up the roots
+#: of these; the roots of the others stay recomputable from `lineage.jsonl`
+#: like every other root the scope did not precompute.
+_SLICE_EVIDENCED_FINDINGS = frozenset(
+    {FindingKind.UNCONSUMED_FEATURE, FindingKind.DECISION_IRRELEVANT}
+)
 
 
 def _human_bytes(count: int) -> str:
