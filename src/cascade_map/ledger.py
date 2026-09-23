@@ -166,6 +166,19 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "ORDER": [],
     "SCENARIOS": "scenarios.json",
     "SCENARIO": "baseline",
+    "SPORTS": [
+        "etennis",
+        "esport",
+        "basketball",
+        "tabletennis",
+        "football",
+        "efootball",
+        "ebasketball",
+    ],
+    "SPORT": "",
+    "ENGINE": "AmunEV_Engine_V2.py",
+    "RUNNER": "bin/go_live.py",
+    "RUN_ARGS": [],
 }
 
 _KEY_TO_FIELD: dict[str, str] = {
@@ -180,9 +193,14 @@ _KEY_TO_FIELD: dict[str, str] = {
     "ORDER": "order",
     "SCENARIOS": "scenarios",
     "SCENARIO": "scenario",
+    "SPORTS": "sports",
+    "SPORT": "sport",
+    "ENGINE": "engine",
+    "RUNNER": "runner",
+    "RUN_ARGS": "run_args",
 }
 
-_LIST_KEYS = frozenset({"SINKS", "ENTRIES", "CONFIGS", "ORDER"})
+_LIST_KEYS = frozenset({"SINKS", "ENTRIES", "CONFIGS", "ORDER", "SPORTS", "RUN_ARGS"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,6 +218,29 @@ class Settings:
     order: tuple[str, ...] = ()
     scenarios: str = "scenarios.json"
     scenario: str = "baseline"
+    sports: tuple[str, ...] = (
+        "etennis",
+        "esport",
+        "basketball",
+        "tabletennis",
+        "football",
+        "efootball",
+        "ebasketball",
+    )
+    sport: str = ""
+    engine: str = "AmunEV_Engine_V2.py"
+    runner: str = "bin/go_live.py"
+    run_args: tuple[str, ...] = ()
+
+    def selected_sports(self) -> tuple[str, ...]:
+        """The sports this run covers. ``SPORT`` empty means all of ``SPORTS``.
+
+        A tuple, always in ``SPORTS`` order, because it decides scenario names
+        and therefore run ids: a set would make two identical runs differ.
+        """
+        if self.sport:
+            return (self.sport,)
+        return self.sports
 
     @staticmethod
     def from_mapping(mapping: Mapping[str, Any]) -> "Settings":
@@ -242,7 +283,18 @@ class Settings:
                         f"{key} must be a string path, not {type(raw).__name__}."
                     )
                 values[_KEY_TO_FIELD[key]] = raw
-        return Settings(**values)
+        settings = Settings(**values)
+        # SPORT names one of SPORTS, so it can only be checked once both have
+        # been read. An unknown name is an error that LISTS the valid ones:
+        # a misspelled sport that silently ran every sport, or none, is the
+        # same defect class as a misspelled setting key.
+        if settings.sport and settings.sport not in settings.sports:
+            valid = ", ".join(settings.sports) if settings.sports else "(SPORTS is empty)"
+            raise SettingsError(
+                f'unknown SPORT "{settings.sport}". Valid sports: {valid}. '
+                f'SPORT must name one of SPORTS, or be "" for all of them.'
+            )
+        return settings
 
 
 # ---------------------------------------------------------------------------

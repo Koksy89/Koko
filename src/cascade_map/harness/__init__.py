@@ -20,6 +20,14 @@ from .errors import BlockedOperation, HarnessRefusal
 from .harness import Harness
 from .hashing import compute_graph_hash, compute_run_id, compute_target_hashes
 from .sandbox import SandboxContext, activate, within_sandbox
+from .scenarios import (
+    ScenarioDerivationError,
+    derive_scenario_document,
+    derive_scenarios,
+    harness_warnings,
+    runner_module_name,
+    select_sports,
+)
 
 __all__ = [
     "Harness",
@@ -33,4 +41,10 @@ __all__ = [
     "compute_graph_hash",
     "compute_run_id",
     "compute_target_hashes",
+    "ScenarioDerivationError",
+    "derive_scenario_document",
+    "derive_scenarios",
+    "harness_warnings",
+    "runner_module_name",
+    "select_sports",
 ]

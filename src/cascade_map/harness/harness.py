@@ -370,6 +370,16 @@ class Harness:
         path_added = target_root not in sys.path
         if path_added:
             sys.path.insert(0, target_root)
+        # `sys.argv` is set *before* the import, not between import and call:
+        # an import-only scenario (`function=""`) does all its work at module
+        # top level, which is exactly where `argparse` runs for a real
+        # launcher. Setting it after the import would leave the one shape
+        # this field exists for -- a `python bin/go_live.py --sports ...`
+        # runner -- seeing the harness's own argv.
+        argv_replaced = bool(spec.argv)
+        original_argv = list(sys.argv)
+        if argv_replaced:
+            sys.argv = list(spec.argv)
         try:
             try:
                 module = importlib.import_module(spec.module)
@@ -386,6 +396,13 @@ class Harness:
                 except BaseException as exc:
                     raise ScenarioStageError("call", exc) from exc
         finally:
+            # Restored here, in the same `finally` as the sys.path cleanup, so
+            # it is restored when the scenario raises as well as when it
+            # returns. A scenario that leaves the interpreter's argv rewritten
+            # would silently change what every later scenario -- and this tool
+            # itself -- sees.
+            if argv_replaced:
+                sys.argv = original_argv
             if path_added:
                 try:
                     sys.path.remove(target_root)

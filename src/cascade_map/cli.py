@@ -46,6 +46,12 @@ from cascade_map.findings import Findings
 from cascade_map.ingest import inventory
 from cascade_map.lineage import LineageTracer
 from cascade_map.resolve import Resolver
+from cascade_map.harness.scenarios import (
+    ScenarioDerivationError,
+    derive_scenario_document,
+    harness_warnings,
+    select_sports,
+)
 from cascade_map.ledger import (
     SETTING_DEFAULTS,
     LedgerError,
@@ -111,6 +117,43 @@ METATRON_SETTINGS = {
     # MODE 2 only.
     "SCENARIOS": "scenarios.json",
     "SCENARIO": "baseline",
+
+    # MODE 2 / `trace`: sports as first-class scenarios.
+    #
+    # The engine file is a LIBRARY -- running it does nothing. The launcher is
+    # what runs, and it is argv-driven, so a scenario is
+    #   RUNNER --engine ENGINE --sports <sport> [RUN_ARGS...]
+    # one per sport, each its own scenario with its own run id. Different
+    # sports are never compared against each other.
+    #
+    # You do not have to edit any of this to change which sport runs:
+    #   metatron_engine.py trace out/amun --sport basketball
+    #   metatron_engine.py track --mode 2 --all-sports
+    "SPORTS": [
+        "etennis",
+        "esport",
+        "basketball",
+        "tabletennis",
+        "football",
+        "efootball",
+        "ebasketball",
+    ],
+
+    # "" = all of SPORTS. Overridden by --sport / --all-sports.
+    "SPORT": "",
+
+    # The engine file, relative to the version root. Passed as --engine.
+    "ENGINE": "AmunEV_Engine_V2.py",
+
+    # The launcher, relative to the version root. Resolved to an importable
+    # module rooted at the target; an unresolvable path is a refusal naming
+    # the path tried, never a guess at another module.
+    "RUNNER": "bin/go_live.py",
+
+    # Extra flags passed through to the runner, after the sport. Appended to
+    # by --run-arg. Note: --workers N asks for N child processes, which the
+    # harness blocks unless declared, and does not supervise when declared.
+    "RUN_ARGS": [],
 }
 
 
@@ -802,23 +845,48 @@ def _settings_from_args(args: Any) -> Settings:
     an error even on a fully flag-driven run. `Settings.from_mapping` names the
     offending key and the nearest real one.
     """
+    def flag(name: str) -> Any:
+        """`trace` and `track` share the sports flags but not the rest, so a
+        namespace missing a key means "not overridden", never an
+        AttributeError deep inside a run."""
+        return getattr(args, name, None)
+
     merged = dict(METATRON_SETTINGS)
     overrides = {
-        "MODE": args.mode,
-        "VERSIONS_DIR": str(args.versions) if args.versions else None,
-        "OUT_DIR": str(args.out) if args.out else None,
-        "LEDGER": str(args.ledger) if args.ledger else None,
-        "SINKS": args.sink,
-        "ENTRIES": args.entry,
-        "CONFIGS": args.config,
-        "ENV": str(args.env) if args.env else None,
-        "ORDER": args.order,
-        "SCENARIOS": str(args.scenarios) if args.scenarios else None,
-        "SCENARIO": args.scenario,
+        "MODE": flag("mode"),
+        "VERSIONS_DIR": str(flag("versions")) if flag("versions") else None,
+        "OUT_DIR": str(flag("out")) if flag("out") else None,
+        "LEDGER": str(flag("ledger")) if flag("ledger") else None,
+        "SINKS": flag("sink"),
+        "ENTRIES": flag("entry"),
+        "CONFIGS": flag("config"),
+        "ENV": str(flag("env")) if flag("env") else None,
+        "ORDER": flag("order"),
+        "SCENARIOS": str(flag("scenarios")) if flag("scenarios") else None,
+        "SCENARIO": flag("scenario"),
     }
     for key, value in overrides.items():
         if value is not None:
             merged[key] = value
+
+    # Sports. `--sport` is validated against SPORTS *before* the override, so
+    # the error lists the sports the owner's own settings declare, and then
+    # narrows SPORTS to the selection: everything downstream reads
+    # `Settings.selected_sports()` and there is one answer, not two.
+    requested = list(flag("sport") or ())
+    all_sports = bool(flag("all_sports"))
+    try:
+        selected = select_sports(
+            tuple(merged["SPORTS"]), str(merged["SPORT"]), requested, all_sports
+        )
+    except ValueError as exc:
+        raise SettingsError(str(exc)) from exc
+    if requested or all_sports:
+        merged["SPORTS"] = list(selected)
+        merged["SPORT"] = selected[0] if len(selected) == 1 else ""
+    extra_args = list(flag("run_arg") or ())
+    if extra_args:
+        merged["RUN_ARGS"] = list(merged["RUN_ARGS"]) + extra_args
     return Settings.from_mapping(merged)
 
 
