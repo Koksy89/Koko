@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import heapq
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -1172,6 +1173,14 @@ class CascadeAnalyzer:
         self._sink_candidates: list[DetectedCandidate] = []
         self._builders: dict[str, _FlowBuilder] = {}
         self._source_cache: dict[str, ast.Module | None] = {}
+        # (path, module) -> element id -> defining AST node. Built once per
+        # file rather than once per element: on a single-module target the
+        # index is the whole tree and rebuilding it per element is quadratic
+        # in file size. The dict's insertion order is the traversal order, so
+        # the cached copy is the same object `_index_bodies` would have
+        # returned and the span fallback below still scans it in AST order.
+        self._body_index_cache: dict[tuple[str, str], dict[str, ast.AST]] = {}
+        self._body_line_index: dict[tuple[str, str], dict[int, ast.AST]] = {}
         self._entry_ids: tuple[str, ...] = ()
         self._sink_ids: tuple[str, ...] = ()
         self._call_index: dict[tuple[str, int], list[Edge]] = {}
@@ -1391,17 +1400,33 @@ class CascadeAnalyzer:
         walk(tree.body, "")
         return index
 
+    def _body_index(self, element: Element, tree: ast.Module) -> dict[str, ast.AST]:
+        key = (element.span.path, element.module)
+        index = self._body_index_cache.get(key)
+        if index is None:
+            index = self._index_bodies(tree, element.module)
+            self._body_index_cache[key] = index
+        return index
+
     def _locate(self, element: Element, tree: ast.Module) -> ast.AST | None:
-        index = self._index_bodies(tree, element.module)
+        key = (element.span.path, element.module)
+        index = self._body_index(element, tree)
         node = index.get(element.id)
         if node is not None:
             return node
         # Card 1's qualname convention may differ (``<locals>`` and friends).
-        # Fall back to the span, which is unambiguous within one file.
-        for candidate in index.values():
-            if int(getattr(candidate, "lineno", -1)) == element.span.line:
-                return candidate
-        return None
+        # Fall back to the span, which is unambiguous within one file. The
+        # line index keeps the *first* node at each line, which is what the
+        # equivalent scan over `index.values()` in AST order would have found.
+        by_line = self._body_line_index.get(key)
+        if by_line is None:
+            by_line = {}
+            for candidate in index.values():
+                line = int(getattr(candidate, "lineno", -1))
+                if line not in by_line:
+                    by_line[line] = candidate
+            self._body_line_index[key] = by_line
+        return by_line.get(element.span.line)
 
     def _build_cfgs(self) -> None:
         for element in sorted(self._elements.values(), key=lambda e: e.id):
@@ -2666,6 +2691,22 @@ class CascadeAnalyzer:
         best, via, side_effect_unknown = self._solve_reachability()
         behind_unknown = self._behind_unresolved()
         sinks = tuple(self._sink_ids)
+        # Wiring-edge confidences by the element each edge touches, in
+        # `self._edges` order -- the order the per-element scan this replaces
+        # produced. An edge whose source is its target is counted once, as the
+        # `element.id in {source, target}` membership test counted it.
+        incident_index: dict[str, list[Confidence]] = {}
+        for edge in self._edges:
+            if edge.kind not in WIRING_EDGE_KINDS:
+                continue
+            for endpoint in (
+                (edge.source_id,)
+                if edge.source_id == edge.target_id
+                else (edge.source_id, edge.target_id)
+            ):
+                incident_index.setdefault(endpoint, []).append(
+                    edge.provenance.confidence
+                )
         for element in sorted(self._elements.values(), key=lambda e: e.id):
             record_id = make_id("@reach", element.id)
             incident: list[Confidence] = []
@@ -2721,12 +2762,7 @@ class CascadeAnalyzer:
                     "any decision sink"
                 )
                 state = ReachabilityState.NO_SINK_PATH
-                incident = [
-                    edge.provenance.confidence
-                    for edge in self._edges
-                    if edge.kind in WIRING_EDGE_KINDS
-                    and element.id in {edge.source_id, edge.target_id}
-                ]
+                incident = incident_index.get(element.id, [])
             self._reachability.append(
                 Reachability(
                     id=record_id,
@@ -2763,22 +2799,59 @@ class CascadeAnalyzer:
         for element in self._elements.values():
             if element.kind in CFG_ELEMENT_KINDS and element.kind is not ElementKind.MODULE:
                 by_path.setdefault(element.span.path, []).append(element)
-        for elements in by_path.values():
-            elements.sort(key=lambda e: e.id)
 
-        out: dict[str, str] = {}
-        records = [
-            *self._input_unresolved,
-            *[record for record in self._unresolved if record.id in self._opaque],
-        ]
-        for record in sorted(records, key=lambda r: r.id):
+        records = sorted(
+            [
+                *self._input_unresolved,
+                *[record for record in self._unresolved if record.id in self._opaque],
+            ],
+            key=lambda r: r.id,
+        )
+
+        # `best[element id] -> index of the winning record`, where the winner
+        # is the earliest record in id order that either names the element or
+        # spans its lines. That is exactly what a `setdefault` over the sorted
+        # records does; computing it as a minimum lets the span half run as a
+        # line sweep instead of a record x element scan, which on a
+        # single-module target is quadratic in file size.
+        best: dict[str, int] = {}
+
+        def _claim(element_id: str, index: int) -> None:
+            current = best.get(element_id)
+            if current is None or index < current:
+                best[element_id] = index
+
+        records_by_path: dict[str, list[tuple[int, int]]] = {}
+        for index, record in enumerate(records):
             for candidate in record.candidate_ids:
                 if candidate in self._elements:
-                    out.setdefault(candidate, record.id)
-            for element in by_path.get(record.span.path, []):
-                if (
-                    element.span.line <= record.span.line
-                    and (element.span.end_line or element.span.line) >= record.span.line
-                ):
-                    out.setdefault(element.id, record.id)
-        return out
+                    _claim(candidate, index)
+            records_by_path.setdefault(record.span.path, []).append(
+                (record.span.line, index)
+            )
+
+        for path, stabs in records_by_path.items():
+            elements = by_path.get(path)
+            if not elements:
+                continue
+            starts = sorted(elements, key=lambda e: (e.span.line, e.id))
+            cursor = 0
+            closing: list[tuple[int, str]] = []
+            active: dict[str, None] = {}
+            for line, index in sorted(stabs):
+                while cursor < len(starts) and starts[cursor].span.line <= line:
+                    opening = starts[cursor]
+                    cursor += 1
+                    end = opening.span.end_line or opening.span.line
+                    if end >= line:
+                        active[opening.id] = None
+                        heapq.heappush(closing, (end, opening.id))
+                while closing and closing[0][0] < line:
+                    _, closed_id = heapq.heappop(closing)
+                    active.pop(closed_id, None)
+                for element_id in active:
+                    _claim(element_id, index)
+
+        return {
+            element_id: records[index].id for element_id, index in best.items()
+        }

@@ -2060,15 +2060,32 @@ Never imports, execs or evaluates the target. AST only.
 # string is a docstring", so that part is done with the AST first.
 _FORMATTING_TOKENS = frozenset(
     {
-        tokenize.COMMENT,
-        tokenize.NL,
-        tokenize.NEWLINE,
-        tokenize.INDENT,
-        tokenize.DEDENT,
-        tokenize.ENCODING,
-        tokenize.ENDMARKER,
+        "COMMENT",
+        "NL",
+        "NEWLINE",
+        "INDENT",
+        "DEDENT",
+        "ENCODING",
+        "ENDMARKER",
     }
 )
+
+# f-strings are the one construct tokenize spells differently across the
+# supported interpreters: 3.11 emits a single STRING token for the whole
+# literal, while 3.12+ decomposes it into FSTRING_START / FSTRING_MIDDLE /
+# nested tokens / FSTRING_END. Renaming cannot bridge that, so `_norm_tokens`
+# detects an f-string opener and collapses the whole literal back to one
+# ("STRING", <exact source text>) entry -- which is byte-for-byte what 3.11
+# already produces. These names only exist on 3.12+, hence the string
+# spellings rather than attribute access.
+_FSTRING_START = "FSTRING_START"
+_FSTRING_END = "FSTRING_END"
+
+# Field separators for the normalized token stream. Both are control
+# characters that cannot appear in Python source outside a string literal,
+# and inside one they would be escaped in the source text anyway.
+_TOKEN_FIELD_SEP = "\x00"
+_TOKEN_RECORD_SEP = "\x01"
 
 _PROPERTY_DECORATOR_SUFFIXES = (".setter", ".getter", ".deleter")
 
@@ -2233,12 +2250,78 @@ def _content_hash(ctx: _Ctx, node: ast.AST) -> str:
     return sha256_text(segment)
 
 
+def _norm_tokens(segment: str) -> str:
+    """Interpreter-independent normalized token stream for `segment`.
+
+    The representation is `tokenize.tok_name[tok.type]` (the token's *name*)
+    paired with `tok.string`, joined with control-character separators --
+    never `tok.type` itself. Token type numbers are CPython-internal and were
+    renumbered between 3.11 and 3.12, so hashing them made the "is this the
+    same logic" hash change for every element merely by changing interpreter.
+    Names are part of the documented `tokenize` surface and are identical on
+    3.11, 3.12 and 3.13 for every token this stream keeps.
+
+    One construct needs more than renaming: 3.11 emits a single STRING token
+    for an f-string, 3.12+ emits FSTRING_START / FSTRING_MIDDLE / the
+    replacement-field tokens / FSTRING_END. That is a structural difference,
+    so an f-string is re-collapsed here into one ("STRING", exact source
+    text) record by slicing `segment` from the opener's start position to the
+    closer's end position, tracking nesting so that an f-string inside an
+    f-string's replacement field is absorbed into the outer one. The result
+    is exactly the record 3.11 produces unaided.
+
+    Known limit: a segment using 3.12-only f-string syntax (same quote reused
+    inside a replacement field, or a backslash in one) cannot be tokenized at
+    all by 3.11, so no representation can make those two interpreters agree;
+    3.11 raises and the caller falls back to hashing the segment text, which
+    is itself version-stable. Every f-string that 3.11 can tokenize hashes
+    identically on all three versions.
+    """
+    lines = segment.splitlines(keepends=True)
+
+    def _cut(start: tuple[int, int], end: tuple[int, int]) -> str:
+        srow, scol = start
+        erow, ecol = end
+        if srow == erow:
+            return lines[srow - 1][scol:ecol]
+        return "".join([lines[srow - 1][scol:], *lines[srow : erow - 1], lines[erow - 1][:ecol]])
+
+    records: list[str] = []
+    tokens = tokenize.generate_tokens(io.StringIO(segment).readline)
+    for tok in tokens:
+        name = tokenize.tok_name[tok.type]
+        if name == _FSTRING_START:
+            depth = 1
+            start = tok.start
+            end = tok.end
+            for inner in tokens:
+                inner_name = tokenize.tok_name[inner.type]
+                if inner_name == _FSTRING_START:
+                    depth += 1
+                elif inner_name == _FSTRING_END:
+                    depth -= 1
+                    if depth == 0:
+                        end = inner.end
+                        break
+            records.append("STRING" + _TOKEN_FIELD_SEP + _cut(start, end))
+            continue
+        if name in _FORMATTING_TOKENS:
+            continue
+        records.append(name + _TOKEN_FIELD_SEP + tok.string)
+    return _TOKEN_RECORD_SEP.join(records)
+
+
 def _normalized_body_hash(ctx: _Ctx, node: ast.AST) -> str:
     """Hash of `node`'s body with comments, docstrings and whitespace
     normalized away -- "is this the same logic", distinct from
     `content_hash`'s "is this the same bytes". Uses `tokenize` only, never
     `ast.parse`/`compile` on target source (constraint 1 applies to every
     reparse, not just the first one).
+
+    The hashed representation is interpreter-independent by construction; see
+    `_norm_tokens`. This value is compared across runs and across engine
+    versions (cards 6 and 18), so a value that shifts with the interpreter
+    would report an entire engine as rewritten.
 
     Deliberately excludes the `def name(...):`/`class Name(...):` header:
     two identically-bodied functions with different names or signatures are
@@ -2271,17 +2354,15 @@ def _normalized_body_hash(ctx: _Ctx, node: ast.AST) -> str:
     segment = textwrap.dedent("\n".join(segments))
 
     try:
-        tokens = tokenize.generate_tokens(io.StringIO(segment).readline)
-        normalized = [
-            (tok.type, tok.string) for tok in tokens if tok.type not in _FORMATTING_TOKENS
-        ]
+        normalized = _norm_tokens(segment)
     except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
         # Tokenizing an extracted segment in isolation can occasionally fail
         # on code that only parses in its original context (e.g. a `match`
-        # soft keyword edge case). Fall back to the docstring-stripped
-        # segment itself rather than losing the fact entirely.
+        # soft keyword edge case), or on 3.12-only f-string syntax under
+        # 3.11. Fall back to the docstring-stripped segment itself rather
+        # than losing the fact entirely.
         return sha256_text(segment)
-    return sha256_text(repr(normalized))
+    return sha256_text(normalized)
 
 
 def _literal_value_and_note(value_node: ast.AST | None) -> tuple[str, str]:
@@ -8867,6 +8948,14 @@ class CascadeAnalyzer:
         self._sink_candidates: list[DetectedCandidate] = []
         self._builders: dict[str, _FlowBuilder] = {}
         self._source_cache: dict[str, ast.Module | None] = {}
+        # (path, module) -> element id -> defining AST node. Built once per
+        # file rather than once per element: on a single-module target the
+        # index is the whole tree and rebuilding it per element is quadratic
+        # in file size. The dict's insertion order is the traversal order, so
+        # the cached copy is the same object `_index_bodies` would have
+        # returned and the span fallback below still scans it in AST order.
+        self._body_index_cache: dict[tuple[str, str], dict[str, ast.AST]] = {}
+        self._body_line_index: dict[tuple[str, str], dict[int, ast.AST]] = {}
         self._entry_ids: tuple[str, ...] = ()
         self._sink_ids: tuple[str, ...] = ()
         self._call_index: dict[tuple[str, int], list[Edge]] = {}
@@ -9086,17 +9175,33 @@ class CascadeAnalyzer:
         walk(tree.body, "")
         return index
 
+    def _body_index(self, element: Element, tree: ast.Module) -> dict[str, ast.AST]:
+        key = (element.span.path, element.module)
+        index = self._body_index_cache.get(key)
+        if index is None:
+            index = self._index_bodies(tree, element.module)
+            self._body_index_cache[key] = index
+        return index
+
     def _locate(self, element: Element, tree: ast.Module) -> ast.AST | None:
-        index = self._index_bodies(tree, element.module)
+        key = (element.span.path, element.module)
+        index = self._body_index(element, tree)
         node = index.get(element.id)
         if node is not None:
             return node
         # Card 1's qualname convention may differ (``<locals>`` and friends).
-        # Fall back to the span, which is unambiguous within one file.
-        for candidate in index.values():
-            if int(getattr(candidate, "lineno", -1)) == element.span.line:
-                return candidate
-        return None
+        # Fall back to the span, which is unambiguous within one file. The
+        # line index keeps the *first* node at each line, which is what the
+        # equivalent scan over `index.values()` in AST order would have found.
+        by_line = self._body_line_index.get(key)
+        if by_line is None:
+            by_line = {}
+            for candidate in index.values():
+                line = int(getattr(candidate, "lineno", -1))
+                if line not in by_line:
+                    by_line[line] = candidate
+            self._body_line_index[key] = by_line
+        return by_line.get(element.span.line)
 
     def _build_cfgs(self) -> None:
         for element in sorted(self._elements.values(), key=lambda e: e.id):
@@ -10361,6 +10466,22 @@ class CascadeAnalyzer:
         best, via, side_effect_unknown = self._solve_reachability()
         behind_unknown = self._behind_unresolved()
         sinks = tuple(self._sink_ids)
+        # Wiring-edge confidences by the element each edge touches, in
+        # `self._edges` order -- the order the per-element scan this replaces
+        # produced. An edge whose source is its target is counted once, as the
+        # `element.id in {source, target}` membership test counted it.
+        incident_index: dict[str, list[Confidence]] = {}
+        for edge in self._edges:
+            if edge.kind not in WIRING_EDGE_KINDS:
+                continue
+            for endpoint in (
+                (edge.source_id,)
+                if edge.source_id == edge.target_id
+                else (edge.source_id, edge.target_id)
+            ):
+                incident_index.setdefault(endpoint, []).append(
+                    edge.provenance.confidence
+                )
         for element in sorted(self._elements.values(), key=lambda e: e.id):
             record_id = make_id("@reach", element.id)
             incident: list[Confidence] = []
@@ -10416,12 +10537,7 @@ class CascadeAnalyzer:
                     "any decision sink"
                 )
                 state = ReachabilityState.NO_SINK_PATH
-                incident = [
-                    edge.provenance.confidence
-                    for edge in self._edges
-                    if edge.kind in WIRING_EDGE_KINDS
-                    and element.id in {edge.source_id, edge.target_id}
-                ]
+                incident = incident_index.get(element.id, [])
             self._reachability.append(
                 Reachability(
                     id=record_id,
@@ -10458,25 +10574,62 @@ class CascadeAnalyzer:
         for element in self._elements.values():
             if element.kind in CFG_ELEMENT_KINDS and element.kind is not ElementKind.MODULE:
                 by_path.setdefault(element.span.path, []).append(element)
-        for elements in by_path.values():
-            elements.sort(key=lambda e: e.id)
 
-        out: dict[str, str] = {}
-        records = [
-            *self._input_unresolved,
-            *[record for record in self._unresolved if record.id in self._opaque],
-        ]
-        for record in sorted(records, key=lambda r: r.id):
+        records = sorted(
+            [
+                *self._input_unresolved,
+                *[record for record in self._unresolved if record.id in self._opaque],
+            ],
+            key=lambda r: r.id,
+        )
+
+        # `best[element id] -> index of the winning record`, where the winner
+        # is the earliest record in id order that either names the element or
+        # spans its lines. That is exactly what a `setdefault` over the sorted
+        # records does; computing it as a minimum lets the span half run as a
+        # line sweep instead of a record x element scan, which on a
+        # single-module target is quadratic in file size.
+        best: dict[str, int] = {}
+
+        def _claim(element_id: str, index: int) -> None:
+            current = best.get(element_id)
+            if current is None or index < current:
+                best[element_id] = index
+
+        records_by_path: dict[str, list[tuple[int, int]]] = {}
+        for index, record in enumerate(records):
             for candidate in record.candidate_ids:
                 if candidate in self._elements:
-                    out.setdefault(candidate, record.id)
-            for element in by_path.get(record.span.path, []):
-                if (
-                    element.span.line <= record.span.line
-                    and (element.span.end_line or element.span.line) >= record.span.line
-                ):
-                    out.setdefault(element.id, record.id)
-        return out
+                    _claim(candidate, index)
+            records_by_path.setdefault(record.span.path, []).append(
+                (record.span.line, index)
+            )
+
+        for path, stabs in records_by_path.items():
+            elements = by_path.get(path)
+            if not elements:
+                continue
+            starts = sorted(elements, key=lambda e: (e.span.line, e.id))
+            cursor = 0
+            closing: list[tuple[int, str]] = []
+            active: dict[str, None] = {}
+            for line, index in sorted(stabs):
+                while cursor < len(starts) and starts[cursor].span.line <= line:
+                    opening = starts[cursor]
+                    cursor += 1
+                    end = opening.span.end_line or opening.span.line
+                    if end >= line:
+                        active[opening.id] = None
+                        heapq.heappush(closing, (end, opening.id))
+                while closing and closing[0][0] < line:
+                    _, closed_id = heapq.heappop(closing)
+                    active.pop(closed_id, None)
+                for element_id in active:
+                    _claim(element_id, index)
+
+        return {
+            element_id: records[index].id for element_id, index in best.items()
+        }
 
 
 # ==========================================================================

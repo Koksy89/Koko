@@ -33,15 +33,32 @@ from .hashing import sha256_hex, sha256_text
 # string is a docstring", so that part is done with the AST first.
 _FORMATTING_TOKENS = frozenset(
     {
-        tokenize.COMMENT,
-        tokenize.NL,
-        tokenize.NEWLINE,
-        tokenize.INDENT,
-        tokenize.DEDENT,
-        tokenize.ENCODING,
-        tokenize.ENDMARKER,
+        "COMMENT",
+        "NL",
+        "NEWLINE",
+        "INDENT",
+        "DEDENT",
+        "ENCODING",
+        "ENDMARKER",
     }
 )
+
+# f-strings are the one construct tokenize spells differently across the
+# supported interpreters: 3.11 emits a single STRING token for the whole
+# literal, while 3.12+ decomposes it into FSTRING_START / FSTRING_MIDDLE /
+# nested tokens / FSTRING_END. Renaming cannot bridge that, so `_norm_tokens`
+# detects an f-string opener and collapses the whole literal back to one
+# ("STRING", <exact source text>) entry -- which is byte-for-byte what 3.11
+# already produces. These names only exist on 3.12+, hence the string
+# spellings rather than attribute access.
+_FSTRING_START = "FSTRING_START"
+_FSTRING_END = "FSTRING_END"
+
+# Field separators for the normalized token stream. Both are control
+# characters that cannot appear in Python source outside a string literal,
+# and inside one they would be escaped in the source text anyway.
+_TOKEN_FIELD_SEP = "\x00"
+_TOKEN_RECORD_SEP = "\x01"
 
 _PROPERTY_DECORATOR_SUFFIXES = (".setter", ".getter", ".deleter")
 
@@ -206,12 +223,78 @@ def _content_hash(ctx: _Ctx, node: ast.AST) -> str:
     return sha256_text(segment)
 
 
+def _norm_tokens(segment: str) -> str:
+    """Interpreter-independent normalized token stream for `segment`.
+
+    The representation is `tokenize.tok_name[tok.type]` (the token's *name*)
+    paired with `tok.string`, joined with control-character separators --
+    never `tok.type` itself. Token type numbers are CPython-internal and were
+    renumbered between 3.11 and 3.12, so hashing them made the "is this the
+    same logic" hash change for every element merely by changing interpreter.
+    Names are part of the documented `tokenize` surface and are identical on
+    3.11, 3.12 and 3.13 for every token this stream keeps.
+
+    One construct needs more than renaming: 3.11 emits a single STRING token
+    for an f-string, 3.12+ emits FSTRING_START / FSTRING_MIDDLE / the
+    replacement-field tokens / FSTRING_END. That is a structural difference,
+    so an f-string is re-collapsed here into one ("STRING", exact source
+    text) record by slicing `segment` from the opener's start position to the
+    closer's end position, tracking nesting so that an f-string inside an
+    f-string's replacement field is absorbed into the outer one. The result
+    is exactly the record 3.11 produces unaided.
+
+    Known limit: a segment using 3.12-only f-string syntax (same quote reused
+    inside a replacement field, or a backslash in one) cannot be tokenized at
+    all by 3.11, so no representation can make those two interpreters agree;
+    3.11 raises and the caller falls back to hashing the segment text, which
+    is itself version-stable. Every f-string that 3.11 can tokenize hashes
+    identically on all three versions.
+    """
+    lines = segment.splitlines(keepends=True)
+
+    def _cut(start: tuple[int, int], end: tuple[int, int]) -> str:
+        srow, scol = start
+        erow, ecol = end
+        if srow == erow:
+            return lines[srow - 1][scol:ecol]
+        return "".join([lines[srow - 1][scol:], *lines[srow : erow - 1], lines[erow - 1][:ecol]])
+
+    records: list[str] = []
+    tokens = tokenize.generate_tokens(io.StringIO(segment).readline)
+    for tok in tokens:
+        name = tokenize.tok_name[tok.type]
+        if name == _FSTRING_START:
+            depth = 1
+            start = tok.start
+            end = tok.end
+            for inner in tokens:
+                inner_name = tokenize.tok_name[inner.type]
+                if inner_name == _FSTRING_START:
+                    depth += 1
+                elif inner_name == _FSTRING_END:
+                    depth -= 1
+                    if depth == 0:
+                        end = inner.end
+                        break
+            records.append("STRING" + _TOKEN_FIELD_SEP + _cut(start, end))
+            continue
+        if name in _FORMATTING_TOKENS:
+            continue
+        records.append(name + _TOKEN_FIELD_SEP + tok.string)
+    return _TOKEN_RECORD_SEP.join(records)
+
+
 def _normalized_body_hash(ctx: _Ctx, node: ast.AST) -> str:
     """Hash of `node`'s body with comments, docstrings and whitespace
     normalized away -- "is this the same logic", distinct from
     `content_hash`'s "is this the same bytes". Uses `tokenize` only, never
     `ast.parse`/`compile` on target source (constraint 1 applies to every
     reparse, not just the first one).
+
+    The hashed representation is interpreter-independent by construction; see
+    `_norm_tokens`. This value is compared across runs and across engine
+    versions (cards 6 and 18), so a value that shifts with the interpreter
+    would report an entire engine as rewritten.
 
     Deliberately excludes the `def name(...):`/`class Name(...):` header:
     two identically-bodied functions with different names or signatures are
@@ -244,17 +327,15 @@ def _normalized_body_hash(ctx: _Ctx, node: ast.AST) -> str:
     segment = textwrap.dedent("\n".join(segments))
 
     try:
-        tokens = tokenize.generate_tokens(io.StringIO(segment).readline)
-        normalized = [
-            (tok.type, tok.string) for tok in tokens if tok.type not in _FORMATTING_TOKENS
-        ]
+        normalized = _norm_tokens(segment)
     except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
         # Tokenizing an extracted segment in isolation can occasionally fail
         # on code that only parses in its original context (e.g. a `match`
-        # soft keyword edge case). Fall back to the docstring-stripped
-        # segment itself rather than losing the fact entirely.
+        # soft keyword edge case), or on 3.12-only f-string syntax under
+        # 3.11. Fall back to the docstring-stripped segment itself rather
+        # than losing the fact entirely.
         return sha256_text(segment)
-    return sha256_text(repr(normalized))
+    return sha256_text(normalized)
 
 
 def _literal_value_and_note(value_node: ast.AST | None) -> tuple[str, str]:
