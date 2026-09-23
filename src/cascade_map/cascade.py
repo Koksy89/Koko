@@ -1187,6 +1187,11 @@ class CascadeAnalyzer:
         self._edges_by_source: dict[str, list[Edge]] = {}
         self._positioned_edge_ids: set[str] = set()
         self._children: dict[str, list[str]] = {}
+        # (scope id, child name) -> the first child of that scope with that
+        # name, in element-id order. `_lookup_name` asks that question once per
+        # name a condition reads, and a scope whose children are a whole
+        # module's definitions makes the scan that answered it quadratic.
+        self._child_by_name: dict[tuple[str, str], str] = {}
         self._by_module: dict[str, list[str]] = {}
         self._discarded_cache: dict[str, set[tuple[int, int]]] = {}
         self._side_effect_cache: dict[str, bool] = {}
@@ -1225,6 +1230,9 @@ class CascadeAnalyzer:
         for element in sorted(self._elements.values(), key=lambda e: e.id):
             if element.parent_id:
                 self._children.setdefault(element.parent_id, []).append(element.id)
+                self._child_by_name.setdefault(
+                    (element.parent_id, element.name), element.id
+                )
             if element.kind is not ElementKind.MODULE:
                 self._by_module.setdefault(make_id(element.module), []).append(element.id)
 
@@ -2418,16 +2426,18 @@ class CascadeAnalyzer:
         head, _, tail = name.partition(".")
         scope: Element | None = element
         while scope is not None:
-            for child_id in self._children.get(scope.id, []):
+            child_id = self._child_by_name.get((scope.id, head))
+            if child_id is not None:
+                # Both arms of the scan this replaces required `child.name ==
+                # head`, so the first such child is the one it returned.
                 child = self._elements[child_id]
-                if child.name == head and not tail:
+                if not tail:
                     return child_id
-                if tail and child.name == head:
-                    nested = f"{child.qualname}.{tail}"
-                    hit = make_id(scope.module, nested)
-                    if hit in self._elements:
-                        return hit
-                    return child_id
+                nested = f"{child.qualname}.{tail}"
+                hit = make_id(scope.module, nested)
+                if hit in self._elements:
+                    return hit
+                return child_id
             scope = self._elements.get(scope.parent_id) if scope.parent_id else None
         if head in {"self", "cls"} and tail:
             owner = element.qualname.split(".")[0] if "." in element.qualname else ""
