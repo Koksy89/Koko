@@ -127,6 +127,26 @@ def preflight(engine, frames, sports, strict=True):
         notes.append('rules: min_odds 1.40 (mode 3) / 1.50 (other) · NO maximum · '
                      'n_is>=100 · n_oos>=100 · ROI>0')
 
+    # THE ASSEMBLY INVARIANT. A strategy family list that is consumed -- copied into a
+    # registry, or walked to stamp defaults onto every member -- and then CHANGED again
+    # further down leaves the consumer holding a snapshot. That is how 220 strategies sat
+    # in the file, fully defined and documented, while being invisible to the registry.
+    # Checked here so it can never come back silently.
+    try:
+        import subprocess as _sp
+        _aud = os.path.join(os.path.dirname(HERE), 'audit', 'laz_assembly_audit.py')
+        if os.path.exists(_aud):
+            r = _sp.run([sys.executable, _aud, engine], capture_output=True, text=True)
+            head = [l for l in r.stdout.splitlines() if l.strip()][1:2]
+            if r.returncode == 0:
+                notes.append((head[0].strip() if head else 'assembly invariant holds'))
+            else:
+                fails.append('ASSEMBLY: ' + (head[0].strip() if head else 'a family list is '
+                             'consumed and then changed again — the consumer holds a stale '
+                             'snapshot') + f'   (run: python3 {_aud} {engine})')
+    except Exception as _e:
+        notes.append(f'assembly audit not run ({type(_e).__name__})')
+
     fdir = os.path.abspath(frames)
     if not os.path.isdir(fdir):
         fails.append(f'frames directory not found: {fdir}')

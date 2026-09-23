@@ -80354,6 +80354,80 @@ V67_TEN_STRATEGIES = V67_TEN_STRATEGIES + [x for x in V68_TEN_BREAK_BOOK
                                            if x['name'] not in _seen]
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  FINAL REGISTRY ASSEMBLY — THE REAL ONE                                [ASSEMBLY]
+# ══════════════════════════════════════════════════════════════════════════════
+#  L63444 already says "FINAL REGISTRY ASSEMBLY - MUST BE THE LAST THING IN THIS
+#  SECTION", and records why: "Assembling earlier silently drops any family defined
+#  later in the file: V67_WALL_STRATEGIES was absent from V67_EFB_ALL for exactly
+#  that reason, so all three Wall strategies were registered, documented and
+#  parity-tested while being INVISIBLE TO THE EVALUATOR."
+#
+#  It was fixed there, and then broken again by everything added below it. Between
+#  L63444 and here the four family lists are rebound 35 more times, folding in 220
+#  strategies:
+#     V67_EBB_ALL  +EBBD +EBBQ +EBBS2 +REPAIRED +MONEYLINE +MISPRICE +Q4ML
+#                  +WINDOW_UNDER                                        69 strategies
+#     V67_CB_ALL   +LEADER_ML +LEADER_185 +WINDOW_ML +COMEBACK x3 +OTAKUMARU x6
+#                  +COMEBACK_LEADER +LEADER_60 +CB_REBUILT              74 strategies
+#     V67_EFB_ALL  +WINDOW_UNDER +UNDER_LADDER +UNDER_70 +UNDER_70V +UNDER_75
+#                  +UNDER_COMBINED +WALL_UNDER +WHITELIST_UNDER +UNDER_200
+#                  +TOTALS_UNDER                                        67 strategies
+#     V67_TEN_STRATEGIES  +S1W +BREAK_BOOK                              10 strategies
+#
+#  `V67_REGISTRY = {'efootball': V67_EFB_ALL + V67_CB_ALL, ...}` builds a NEW list
+#  at the line it is written on. Rebinding the name afterwards does not reach into
+#  it. So all 220 were absent from V67_REGISTRY and from V67_ALL_STRATEGIES, and
+#  the three stamping loops below them never ran over any of them.
+#
+#  ADDITIVE AND IDEMPOTENT ON PURPOSE. Nothing above is moved or deleted: the early
+#  assembly still runs for anything between here and there that needs it, and every
+#  stamp below uses setdefault, so a strategy the earlier loops already reached
+#  keeps the value it was given. Re-running this block changes nothing.
+#
+#  laz_assembly_audit.py fails the build if a family is ever rebound below this
+#  point again.
+# ══════════════════════════════════════════════════════════════════════════════
+V67_REGISTRY = {
+    'efootball': V67_EFB_ALL + V67_CB_ALL,
+    'ebasketball': V67_EBB_ALL,
+    'tennis': V67_TEN_STRATEGIES,
+}
+V67_ALL_STRATEGIES = [x for v in V67_REGISTRY.values() for x in v]
+
+for _s in V67_ALL_STRATEGIES:
+    _s.setdefault('evaluator', V67_EVALUATOR_OF_FAMILY.get(
+        _s.get('family'),
+        {'efootball': 'V67FeatureEngine', 'ebasketball': 'V67EbbFeatureEngine',
+         'tennis': 'V67TenFeatureEngine'}.get(_s.get('sport'), 'V67FeatureEngine')))
+
+for _s in V67_EBB_ALL:
+    _s.setdefault('settles', _EBB_SETTLES)
+    _s.setdefault('backs', 'the UNDER on the full-match total points line')
+    _s.setdefault('entry_window',
+                  'Q1-Q2 ONLY, enforced in V67EbbEvaluator rather than in the conditions. '
+                  'Measured live over 3+ hours: Q1/Q2 bets are accepted, Q3+ mostly refused. '
+                  'The book defends this mispricing by refusing late bets rather than '
+                  'repricing, so the gate is what makes the edge bettable.')
+
+for _s in V67_TEN_STRATEGIES:
+    _s.setdefault('settles', _TEN_SETTLES)
+    _s.setdefault('backs', 'the player who won the FIRST SET')
+    _s.setdefault('entry_window',
+                  'the FIRST tick after set 1 is decided. No late cap applies: eTennis '
+                  'matches run ~14 minutes median and the market stays open throughout.')
+
+for _t67 in V67_TEN_STRATEGIES:
+    _t67.setdefault('laz_id', v67_strategy_id(_t67['conditions'], _t67['market'] + '|ten'))
+
+V67_ASSEMBLY_COUNTS = dict(
+    efootball=len(V67_EFB_ALL) + len(V67_CB_ALL),
+    ebasketball=len(V67_EBB_ALL),
+    tennis=len(V67_TEN_STRATEGIES),
+    total=len(V67_ALL_STRATEGIES))
+
+
+
 # ═══════════════════════════════════════════════════════════════════════════════════════
 #  v68 — RUNNING-EXTREMA SEMANTICS                                         [DOCUMENTATION]
 # ═══════════════════════════════════════════════════════════════════════════════════════
