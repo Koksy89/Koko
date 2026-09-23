@@ -1822,6 +1822,29 @@ def _build_parser() -> argparse.ArgumentParser:
                            "without it, the Diff tab states that it has nothing loaded")
     blue.add_argument("--run", default=None, metavar="RUN_ID",
                       help="a run id under graph_dir/runtime/; layers the runtime overlay on")
+    blue.add_argument("--scope", choices=("cascade", "full"), default="cascade",
+                      help="cascade (default): structure only -- modules and stages as "
+                           "cards, decision points, declared and detected sinks, entry "
+                           "points, and the edges between them. full: every element, "
+                           "every call edge and every lineage edge, which on a large "
+                           "engine will be refused unless it fits or you pass --force.")
+    blue.add_argument("--max-nodes", type=int, default=None, metavar="N",
+                      help="keep at most N nodes, the most decision-relevant first "
+                           "(sinks and entry points, then elements on a path to a sink, "
+                           "then decision points, then the rest). The page and the summary "
+                           "both state how many were left out. Default 2000 in cascade "
+                           "scope, no cap in full scope; 0 means no cap.")
+    blue.add_argument("--focus", default="", metavar="ELEMENT_ID",
+                      help="draw only this element and its neighbourhood. This is also "
+                           "the only way to populate the Lineage tab in cascade scope.")
+    blue.add_argument("--hops", type=int, default=2, metavar="N",
+                      help="how many hops --focus reaches (default 2)")
+    blue.add_argument("--force", action="store_true",
+                      help="write the page even when the size guard says a browser "
+                           "cannot open it")
+    blue.add_argument("--size-limit-mb", type=int, default=50, metavar="MB",
+                      help="the size guard's threshold on the estimated data island "
+                           "(default 50). 0 disables the guard, exactly as --force does.")
 
     hist = sub.add_parser(
         "track",
@@ -2094,13 +2117,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
 
     if args.command == "blueprint":
-        from cascade_map.viewer import render_blueprint_to_file
+        from cascade_map.viewer.blueprint import (
+            BlueprintTooLarge,
+            BlueprintView,
+            render_blueprint_to_file,
+        )
 
         if not _require_graph_dir(args.graph_dir):
             return EXIT_USAGE
         target = args.html or (args.graph_dir / "blueprint.html")
-        render_blueprint_to_file(args.graph_dir, target, run_id=args.run, diff_root=args.diff)
-        print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
+        view = BlueprintView(
+            scope=args.scope,
+            max_nodes=args.max_nodes,
+            focus=args.focus,
+            hops=args.hops,
+            force=args.force,
+            size_limit_bytes=max(0, args.size_limit_mb) * 1024 * 1024,
+        )
+        try:
+            _store, selection, estimate = render_blueprint_to_file(
+                args.graph_dir, target, run_id=args.run, diff_root=args.diff, view=view,
+            )
+        except BlueprintTooLarge as too_large:
+            # Nothing was written. The owner gets the number and the ways
+            # out, never a file their browser cannot open.
+            print(too_large.estimate.refusal_text(), file=sys.stderr)
+            return EXIT_REFUSED
+        written = target.stat().st_size
+        lines = [
+            f"Wrote {target}  ({_human_bytes(written)}, scope `{selection.view.scope}`)",
+            f"  {selection.headline()}",
+        ]
+        for note in selection.notes:
+            lines.append(f"  - {note}")
+        lines.append("Open it in a browser. It needs no network.")
+        print("\n".join(lines))
         return EXIT_OK
 
     return _trace_command(args)

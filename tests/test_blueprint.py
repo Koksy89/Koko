@@ -55,14 +55,39 @@ from cascade_map.contracts.interfaces import (
     canonical_jsonl,
 )
 from cascade_map.viewer.blueprint import (
+    BlueprintTooLarge,
+    BlueprintView,
     build_blueprint_data,
+    estimate_island_bytes,
     render_blueprint,
     render_blueprint_to_file,
+    select,
 )
 from cascade_map.viewer.loader import ArtifactStore, RuntimeStore
 
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / "tests" / "fixtures" / "mode_b"
+
+#: Round 5 made `cascade` the default scope, which deliberately carries no
+#: lineage edges and only the decision-relevant slice of the execution
+#: graph. Every test below that is about the *whole* graph's shape asks for
+#: it explicitly; the tests about the default's own bounds are in the
+#: "round 5" section at the end of this file.
+FULL = BlueprintView(scope="full", max_nodes=0)
+
+
+#: The `element_detail` list fields round 5 caps and counts.
+_CAPPED_FIELDS = (
+    "outgoing_edges", "incoming_edges", "unresolved_as_candidate", "order_node_ids",
+    "decision_as_condition", "decision_reads_this", "lineage_out", "lineage_in",
+    "barrier_ids", "slice_ids_as_member", "finding_ids_as_evidence",
+)
+
+
+def full_data(store_, **kwargs):
+    """`build_blueprint_data` over the unscoped graph."""
+    return build_blueprint_data(store_, view=FULL, **kwargs)
+
 
 _HOSTILE = "</script><img src=x onerror=alert(1)>&<>  "
 
@@ -94,13 +119,24 @@ def test_renders_from_mode_b_corpus_without_error(tmp_path: Path) -> None:
     assert summary["elements"] > 0
 
     html_path = tmp_path / "blueprint.html"
-    store = render_blueprint_to_file(graph_dir, html_path)
+    store, selection, estimate = render_blueprint_to_file(graph_dir, html_path)
     assert isinstance(store, ArtifactStore)
+    assert estimate.total_bytes > 0
+    assert selection.totals["nodes_shown"] > 0
     assert html_path.exists()
 
     data = _island(html_path.read_text(encoding="utf-8"))
     assert data["execution"]["nodes"], "the real corpus must produce execution nodes"
-    assert data["lineage"]["nodes"], "the real corpus must produce lineage nodes"
+    # Round 5: the default scope is `cascade` and its Lineage tab is
+    # focus-driven. It must be empty *and say so*, never blank.
+    assert data["lineage"]["nodes"] == []
+    assert data["lineage"]["focus_driven"] is False
+    assert "focus-driven" in data["lineage"]["reason"]
+
+    full_html = tmp_path / "blueprint_full.html"
+    render_blueprint_to_file(graph_dir, full_html, view=FULL)
+    full = _island(full_html.read_text(encoding="utf-8"))
+    assert full["lineage"]["nodes"], "`--scope full` must still produce lineage nodes"
 
 
 def test_writes_nothing_into_the_fixture_corpus(tmp_path: Path) -> None:
@@ -138,9 +174,9 @@ def test_data_island_is_byte_identical_across_two_calls(store: ArtifactStore) ->
 def test_render_to_file_matches_direct_render(tmp_path: Path) -> None:
     build_fixture(tmp_path)
     out_path = tmp_path / "blueprint.html"
-    returned_store = render_blueprint_to_file(tmp_path, out_path)
+    returned_store, selection, _estimate = render_blueprint_to_file(tmp_path, out_path)
     written = out_path.read_text(encoding="utf-8")
-    assert written == render_blueprint(returned_store)
+    assert written == render_blueprint(returned_store, selection=selection)
 
 
 def test_byte_identical_across_pythonhashseed(tmp_path: Path) -> None:
@@ -216,7 +252,7 @@ def test_every_wire_endpoint_resolves_to_a_node_on_full_corpus(tmp_path: Path) -
     graph_dir = tmp_path / "graph"
     analyze(CORPUS, graph_dir, strict_gate=False)
     store_ = ArtifactStore.load(graph_dir)
-    data = build_blueprint_data(store_)
+    data = full_data(store_)
     for tab_name in ("execution", "lineage"):
         graph = data[tab_name]
         assert graph["nodes"], f"{tab_name} produced no nodes on the real corpus"
@@ -435,7 +471,7 @@ def test_empty_state_missing_records_jsonl(tmp_path: Path) -> None:
 def test_empty_state_missing_reachability_falls_back_not_crashes(tmp_path: Path) -> None:
     build_fixture(tmp_path, include_reachability=False)
     store_ = ArtifactStore.load(tmp_path)
-    data = build_blueprint_data(store_)
+    data = full_data(store_)
     ingest_nodes = [n for n in data["execution"]["nodes"] if n["id"] == INGEST_ID]
     assert ingest_nodes
     assert ingest_nodes[0]["reachability"]["state"] in ("REACHES_SINK", "UNKNOWN")
@@ -478,7 +514,7 @@ def test_confidence_rank_covers_every_confidence_level_used(tmp_path: Path) -> N
 
 
 def test_every_node_carries_a_reachability_state(store: ArtifactStore) -> None:
-    data = build_blueprint_data(store)
+    data = full_data(store)
     for tab_name in ("execution", "lineage"):
         nodes = data[tab_name]["nodes"]
         assert nodes
@@ -491,7 +527,7 @@ def test_reachability_states_are_distinguishable_in_the_fixture(store: ArtifactS
     """The fixture deliberately covers all three states (see
     `test_viewer.build_fixture`); confirm the blueprint data preserves the
     distinction rather than collapsing it."""
-    data = build_blueprint_data(store)
+    data = full_data(store)
     by_id = {n["id"]: n for n in data["execution"]["nodes"]}
     assert by_id[DECIDE_ID]["reachability"]["state"] == "REACHES_SINK"
     assert by_id[INGEST_ID]["reachability"]["state"] == "NO_SINK_PATH"
@@ -561,11 +597,20 @@ def test_element_details_reuse_the_canonical_element_detail_view(store: Artifact
     data = build_blueprint_data(store)
     assert DECIDE_ID in data["element_details"]
     expected = views.element_detail(store, DECIDE_ID)
-    assert data["element_details"][DECIDE_ID] == expected
+    actual = data["element_details"][DECIDE_ID]
+    # Round 5 adds `<field>_total` counters and a `detail_cap` marker so a
+    # capped list can state its own shortfall. Everything the canonical
+    # view produced is still present, verbatim: the fixture is far below
+    # the cap, so no list is actually shortened here.
+    added = set(actual) - set(expected)
+    assert added == {"detail_cap"} | {f"{f}_total" for f in _CAPPED_FIELDS}
+    assert {k: actual[k] for k in expected} == expected
+    for field in _CAPPED_FIELDS:
+        assert actual[f"{field}_total"] == len(expected[field])
 
 
 def test_element_details_cover_every_element_node_across_tabs(store: ArtifactStore) -> None:
-    data = build_blueprint_data(store)
+    data = full_data(store)
     element_node_ids = set()
     for tab_name in ("execution", "lineage", "diff"):
         for node in data[tab_name]["nodes"]:
@@ -592,7 +637,7 @@ def test_decision_renders_as_its_own_node_with_outcomes(store: ArtifactStore) ->
 
 
 def test_barrier_renders_as_a_terminator_node_with_its_reason(store: ArtifactStore) -> None:
-    data = build_blueprint_data(store)
+    data = full_data(store)
     barrier_nodes = [n for n in data["lineage"]["nodes"] if n["kind"] == "BARRIER"]
     assert barrier_nodes
     node = barrier_nodes[0]
