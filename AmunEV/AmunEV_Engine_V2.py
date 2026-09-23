@@ -82067,17 +82067,69 @@ def laz_registry():
         'football':    list(football),
         'basketball':  [],
     }
+    # ── THE SPORT A CONTAINER BELONGS TO, READ FROM THE ENGINE'S OWN REGISTRIES ──
+    # The sweep below skipped any entry whose dict carries no 'sport' key. That is
+    # 296 strategies -- every legacy per-sport container, where the sport was never
+    # written on the entry because the CONTAINER already said it:
+    #     SPORT_RUNNERS['football']  = (prep_real_football, fire_real_football,
+    #                                   RFB_STRATEGIES, 'Real Football')
+    #     LAZ_SPECS['efootball']     = dict(specs=EFB_STRATEGIES, new=NEW_EFB+V5_EFB, ...)
+    #     AB_SPORT_RUNNERS, AB_SPECS, SPORT_RUNNERS_V44, V5_REGISTRY ... the same shape.
+    # They were in the file, sized, documented and enabled, and invisible to every
+    # registry-driven path -- the identical failure this function's own comment
+    # records for real basketball and for V67_WALL_STRATEGIES.
+    #
+    # BY IDENTITY, NOT BY NAME. Hand-listing the containers is what this function
+    # exists not to do. Every sport-keyed dict in the module is walked, and whatever
+    # list object sits under a sport key IS that sport's container -- whether it sits
+    # there directly, inside a runner tuple, or under a 'specs' key. A container added
+    # tomorrow is picked up the moment it is put under a sport key.
+    _id2name = {id(_v): _k for _k, _v in globals().items() if isinstance(_v, list)}
+    _cont_sport = {}
+    for _rv in list(globals().values()):
+        if not isinstance(_rv, dict):
+            continue
+        for _k, _v in _rv.items():
+            if _k not in base:
+                continue
+            _cands = (list(_v.values()) if isinstance(_v, dict)
+                      else list(_v) if isinstance(_v, (list, tuple)) else [_v])
+            for _o in _cands + [_v]:
+                _n2 = _id2name.get(id(_o))
+                if _n2:
+                    _cont_sport.setdefault(_n2, _k)
+
     _known = {x.get('name') for v in base.values() for x in v}
+    _swept = {'with_sport': 0, 'by_container': 0, 'no_sport': 0, 'deduped': 0}
     for _cname, _cval in list(globals().items()):
         if not (isinstance(_cval, list) and _cval
                 and isinstance(_cval[0], dict) and 'conditions' in _cval[0]):
             continue
         for _x in _cval:
             _nm, _sp = _x.get('name'), _x.get('sport')
-            if not _nm or _nm in _known or _sp not in base:
+            if not _nm:
                 continue
+            if _sp not in base:
+                # the entry does not say; the container does
+                _sp = _cont_sport.get(_cname)
+                if _sp not in base:
+                    _swept['no_sport'] += 1
+                    continue
+                _from_container = True
+            else:
+                _from_container = False
+            if _nm in _known:
+                _swept['deduped'] += 1
+                continue
+            # the entry keeps its own sport if it had one; otherwise it is stamped
+            # with the container's, so everything downstream can route it
+            _x.setdefault('sport', _sp)
+            _x.setdefault('sport_source',
+                          'container %s' % _cname if _from_container else 'entry')
             base[_sp].append(_x)
             _known.add(_nm)
+            _swept['by_container' if _from_container else 'with_sport'] += 1
+    globals()['LAZ_REGISTRY_SWEEP'] = dict(_swept)
 
     # ── PURGE: LOOKAHEAD AND UNREPRODUCIBLE ENTRIES ARE REMOVED, NOT PARKED ────────────
     # Owner directive: delete the 40 lookahead-biased football strategies outright, and
