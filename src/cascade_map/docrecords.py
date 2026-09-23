@@ -43,6 +43,7 @@ from cascade_map.contracts.interfaces import (
     combine,
 )
 from cascade_map.enrichment import EnrichmentClient
+from cascade_map.parallel import Payload, StageReport, resolve_workers, run_stage
 
 # ---------------------------------------------------------------------------
 # The explicit-unknown sentinel
@@ -223,6 +224,17 @@ class _KindStrings:
 _KIND_STRINGS: dict[ElementKind, _KindStrings] = {
     kind: _KindStrings(kind) for kind in ElementKind
 }
+
+#: Below this a chunk is not worth sending: the record build is microseconds
+#: and the round trip is not.
+_MIN_RECORDS_PER_CHUNK = 64
+
+#: Chunks per worker. Above one, so an idle worker has something left to steal.
+_CHUNKS_PER_WORKER = 8
+
+#: Fewer chunks than this per worker and the pool costs more than it saves.
+#: Measured on the fixture corpus, where 491 elements came back at 0.20x.
+_MIN_CHUNKS_PER_WORKER = 4
 
 _NO_LINEAGE_REASON = "no lineage data supplied to the documentation builder"
 _NO_RETURN_REASON = (
@@ -515,22 +527,56 @@ class DocumentationBuilder:
     # -- assembly -----------------------------------------------------
 
     def records(
-        self, *, on_progress: Callable[[int, int], None] | None = None
+        self,
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
+        workers: int | None = None,
+        report: StageReport | None = None,
     ) -> Sequence[DocRecord]:
-        """`on_progress(done, total)` is called at most `_PROGRESS_STEPS` times
+        """One record per element, built over the work-stealing pool.
+
+        A record is embarrassingly parallel: it depends on this builder's
+        indexes and on nothing any other record produces. The unit is a whole
+        element, the builder crosses to each worker ONCE (never once per
+        element -- it holds the whole graph), and the consolidation below puts
+        the results back in element-id order, which is the order the serial
+        loop produced and is independent of which worker finished first.
+
+        `on_progress(done, total)` is called at most `_PROGRESS_STEPS` times
         over the whole build, not once per element: the callback exists so a
         long stage looks alive, and firing it per element on a 400,000-element
-        target would cost more than the reporting is worth."""
+        target would cost more than the reporting is worth.
+        """
         ordered = sorted(self._elements, key=lambda e: e.id)
-        if on_progress is None:
-            return tuple(self._build_record(el) for el in ordered)
+        stage = report if report is not None else StageReport(stage="records")
+        count = resolve_workers(workers)
         total = len(ordered)
-        every = max(1, total // _PROGRESS_STEPS)
+        chunks = _chunk_bounds(total, count)
+
+        def tick(done: int, of: int) -> None:
+            # Chunks, not elements: a chunk coming back is the only moment the
+            # pool has news, and the callback exists so a long stage looks
+            # alive rather than to count anything.
+            assert on_progress is not None
+            on_progress(min(total, round(total * done / max(1, of))), total)
+
+        results: dict[str, list[DocRecord]] = run_stage(
+            _records_unit,
+            [(f"{index:08d}", bounds) for index, bounds in enumerate(chunks)],
+            count,
+            stage,
+            payload=_RecordsPayload(self),
+            on_unit=tick if on_progress is not None else None,
+            # A few hundred records cost less to build than a pool costs to
+            # start. Below this many chunks per worker the stage stays
+            # in-process and the report says why, with the number.
+            min_units_per_worker=_MIN_CHUNKS_PER_WORKER,
+        )
+        # SEQUENTIAL CONSOLIDATION, by chunk index, which is element-id order.
+        # Nothing here depends on which worker finished first.
         built: list[DocRecord] = []
-        for done, element in enumerate(ordered, start=1):
-            built.append(self._build_record(element))
-            if done % every == 0 or done == total:
-                on_progress(done, total)
+        for index in range(len(chunks)):
+            built.extend(results.get(f"{index:08d}", ()))
         return tuple(built)
 
     def _build_record(self, element: Element) -> DocRecord:
@@ -803,3 +849,72 @@ class DocumentationBuilder:
             result = client.summarize_element(record.identity)
             enriched.append(replace(record, model_prose=result.prose, model_id=result.model_id))
         return tuple(enriched)
+
+
+# ---------------------------------------------------------------------------
+# The records unit of work -- whole elements, never a fragment of one
+# ---------------------------------------------------------------------------
+
+
+def _chunk_bounds(total: int, workers: int) -> list[tuple[int, int]]:
+    """Contiguous half-open ranges over an already-sorted element list.
+
+    Many more chunks than workers, deliberately: that is what keeps the shared
+    queue able to *steal*. With one chunk per worker a single slow chunk
+    leaves the rest idle, which is the fixed-batch failure this pool exists to
+    avoid. Bounded below so a chunk is never so small that sending it costs
+    more than building it.
+    """
+    if total <= 0:
+        return []
+    if workers <= 1:
+        return [(0, total)]
+    target = max(_MIN_RECORDS_PER_CHUNK, -(-total // (workers * _CHUNKS_PER_WORKER)))
+    bounds: list[tuple[int, int]] = []
+    start = 0
+    while start < total:
+        stop = min(total, start + target)
+        bounds.append((start, stop))
+        start = stop
+    return bounds
+
+
+class _RecordsWorker:
+    """One worker's view: the builder plus the element order, sorted once."""
+
+    __slots__ = ("builder", "ordered")
+
+    def __init__(self, builder: "DocumentationBuilder") -> None:
+        self.builder = builder
+        self.ordered = sorted(builder._elements, key=lambda e: e.id)
+
+
+class _RecordsPayload(Payload):
+    """The whole builder, sent ONCE per worker.
+
+    It holds the entire graph -- elements, edges, order, decisions, lineage,
+    slices, findings -- so sending it with every task would cost orders of
+    magnitude more than the records cost to build. Under the ``fork`` start
+    method it is not even pickled: the child inherits it.
+    """
+
+    __slots__ = ("builder",)
+
+    def __init__(self, builder: "DocumentationBuilder") -> None:
+        self.builder = builder
+
+    def open(self) -> "_RecordsWorker":
+        return _RecordsWorker(self.builder)
+
+
+def _records_unit(
+    worker: "_RecordsWorker", bounds: tuple[int, int]
+) -> list[DocRecord]:
+    """Whole records for one contiguous range of the sorted element list.
+
+    Whole elements: a record is never split, because half a record would fail
+    the completeness gate and a record that fails the gate is a failed run.
+    """
+    start, stop = bounds
+    build = worker.builder._build_record
+    return [build(element) for element in worker.ordered[start:stop]]

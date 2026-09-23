@@ -48,6 +48,13 @@ from cascade_map.findings import Findings
 from cascade_map.ingest import inventory
 from cascade_map.ingest.inventory import Ingestor
 from cascade_map.ingest.parallel import render_worker_report
+from cascade_map.parallel import (
+    PipelineReport,
+    StageReport,
+    canonical_jsonl_many,
+    render_pipeline_report,
+    resolve_workers,
+)
 from cascade_map.lineage import LineageTracer
 from cascade_map.progress import (
     ANALYZE_STAGES,
@@ -469,6 +476,12 @@ def analyze(
     # can be read back. That report is PRINTED and never written into an
     # artifact: it is wall-clock, and constraint 4 says identical input gives
     # identical bytes.
+    # Every stage that can take workers reports what they actually bought, per
+    # stage, measured on this run. `worker_count` is resolved once so every
+    # stage asks for the same thing and the report can name one number.
+    worker_count = resolve_workers(workers)
+    pipeline = PipelineReport(requested=worker_count)
+
     ingestor = Ingestor(cache_dir=cache_dir, workers=workers)
     elements, unresolved = ingestor.inventory(str(root), on_unit=bar.sub)
     summary["elements"] = len(elements)
@@ -476,14 +489,44 @@ def analyze(
     (worker_report_sink or bar.through)(render_worker_report(ingestor.worker_report))
 
     # Card 2 — resolution.
+    #
+    # NOT handed to the pool, and the report says so with the number rather
+    # than leaving it looking like a stage with nothing to gain. Resolution's
+    # unit is a whole MODULE -- a `_CallResolver` carries a scope chain down
+    # one module's tree and binds names as it goes, so there is no boundary
+    # inside a module to cut on, and cutting anyway would resolve names
+    # against a scope that does not exist. Across modules the walks share
+    # caches that one module's pass fills for the next. On a target that is
+    # one 15 MB module, as the owner's is, there is exactly one unit either
+    # way.
+    resolve_started = time.time()
     resolver = Resolver(root, config_paths=tuple(config_paths))
     edges, resolve_unresolved = resolver.resolve(elements)
     unresolved = list(unresolved) + list(resolve_unresolved)
     summary["edges"] = len(edges)
+    pipeline.add(
+        StageReport(
+            stage="resolve",
+            requested=worker_count,
+            unit_count=resolver.module_count(),
+            total_seconds=time.time() - resolve_started,
+            not_parallelised_reason=(
+                "one unit is one module, and a module's name resolution "
+                "carries a scope chain and caches that the next module's "
+                "pass reads; the units are not independent"
+            ),
+        )
+    )
     _stage("resolve")
 
     # Card 3 — CFG, ordering, decisions, reachability, detected candidates.
-    analyzer = CascadeAnalyzer(root, sink_ids=tuple(sink_ids), unresolved=unresolved)
+    analyzer = CascadeAnalyzer(
+        root,
+        sink_ids=tuple(sink_ids),
+        unresolved=unresolved,
+        workers=worker_count,
+        on_unit=bar.sub,
+    )
     (
         blocks,
         cfg_edges,
@@ -495,6 +538,9 @@ def analyze(
     ) = analyzer.order(elements, edges, tuple(entry_ids))
     unresolved = list(unresolved) + list(cascade_unresolved)
     summary["decisions"] = len(decisions)
+    analyzer.cfg_report.total_seconds = analyzer.cfg_report.wall_seconds
+    pipeline.add(analyzer.cfg_report)
+    pipeline.add(analyzer.order_report)
     _stage("cascade")
 
     # Card 4 — lineage and slices.
@@ -504,6 +550,7 @@ def analyze(
     # whole, because a half-slice answering "what produces this feature" is a
     # wrong answer wearing the shape of a right one. `lineage.jsonl` is always
     # written in full, so any root not precomputed is still answerable.
+    lineage_started = time.time()
     tracer = LineageTracer(root, sink_ids=tuple(sink_ids))
     lineage_edges, barriers = tracer.trace_values(elements, edges)
 
@@ -530,6 +577,27 @@ def analyze(
     )
     summary["lineage_edges"] = len(lineage_edges)
     summary["barriers"] = len(barriers)
+    # NOT handed to the pool either, for a harder reason than resolution's: a
+    # reaching-definition walk is a fold over the module, and its walkers
+    # write shared state -- aliases, container keys, declared features,
+    # established definitions -- that a LATER module's walk reads. Splitting
+    # the modules across processes would give each worker a different half of
+    # that state and a different set of lineage edges. A wrong graph is
+    # infinitely worse than a slow one, so this stays in one process and the
+    # cost is printed rather than disguised.
+    pipeline.add(
+        StageReport(
+            stage="lineage",
+            requested=worker_count,
+            unit_count=tracer.module_count(),
+            total_seconds=time.time() - lineage_started,
+            not_parallelised_reason=(
+                "one unit is one module, and a module's dataflow walk writes "
+                "alias, container-key and feature state that later modules' "
+                "walks read; the units are not independent"
+            ),
+        )
+    )
     _stage("lineage")
 
     # Card 17 — dependency and version applicability. Declared, installed and
@@ -641,7 +709,11 @@ def analyze(
         decision_sink_ids=tuple(sink_ids),
         dependencies=dependencies.doc_dependencies(),
     )
-    records = builder.records(on_progress=bar.sub)
+    records_report = pipeline.add(StageReport(stage="records"))
+    records = builder.records(
+        on_progress=bar.sub, workers=worker_count, report=records_report
+    )
+    records_report.total_seconds = records_report.wall_seconds
     offenders = builder.completeness_gate(records)
     summary["incomplete_records"] = len(offenders)
     _stage("records")
@@ -688,28 +760,43 @@ def analyze(
             f"decision; the rest stay recomputable from lineage.jsonl."
         )
 
-    for name, payload in (
-        ("elements.jsonl", canonical_jsonl(elements)),
-        ("edges.jsonl", canonical_jsonl(edges)),
-        ("unresolved.jsonl", canonical_jsonl(unresolved)),
-        ("cfg_blocks.jsonl", canonical_jsonl(blocks)),
-        ("cfg_edges.jsonl", canonical_jsonl(cfg_edges)),
-        ("order.jsonl", canonical_jsonl(order_nodes)),
-        ("decisions.jsonl", canonical_jsonl(decisions)),
-        ("reachability.jsonl", canonical_jsonl(reachability)),
-        ("candidates.jsonl", canonical_jsonl(candidates)),
-        ("lineage.jsonl", canonical_jsonl(lineage_edges)),
-        ("barriers.jsonl", canonical_jsonl(barriers)),
-        ("slices.jsonl", canonical_jsonl(slices)),
-        ("findings.jsonl", canonical_jsonl(findings)),
-        ("records.jsonl", canonical_jsonl(records)),
-        ("requirements.jsonl", canonical_jsonl(package_requirements)),
-        ("installed.jsonl", canonical_jsonl(installed_packages)),
-        ("package_usage.jsonl", canonical_jsonl(package_usage)),
-        ("interpreter.jsonl", canonical_jsonl(interpreter_requirements)),
-    ):
+    # Serialisation is the largest stage on a large target -- 437 MB of JSON
+    # on the owner's engine -- and it is per RECORD, so it parallelises. The
+    # unit is a whole record; the global sort that fixes the order stays in
+    # this process, so the bytes cannot depend on which worker rendered what.
+    # `canonical_jsonl_many` is byte-identical to `canonical_jsonl` per group
+    # and there is a test that fails if it ever stops being.
+    write_report = pipeline.add(StageReport(stage="write"))
+    payloads = canonical_jsonl_many(
+        {
+            "elements.jsonl": elements,
+            "edges.jsonl": edges,
+            "unresolved.jsonl": unresolved,
+            "cfg_blocks.jsonl": blocks,
+            "cfg_edges.jsonl": cfg_edges,
+            "order.jsonl": order_nodes,
+            "decisions.jsonl": decisions,
+            "reachability.jsonl": reachability,
+            "candidates.jsonl": candidates,
+            "lineage.jsonl": lineage_edges,
+            "barriers.jsonl": barriers,
+            "slices.jsonl": slices,
+            "findings.jsonl": findings,
+            "records.jsonl": records,
+            "requirements.jsonl": package_requirements,
+            "installed.jsonl": installed_packages,
+            "package_usage.jsonl": package_usage,
+            "interpreter.jsonl": interpreter_requirements,
+        },
+        worker_count,
+        write_report,
+        on_unit=bar.sub,
+    )
+    for name in sorted(payloads):
+        payload = payloads.pop(name)
         artifacts[name] = _write(out_dir, name, payload)
         artifact_bytes[name] = len(payload.encode("utf-8"))
+        del payload
 
     # Only `slices.jsonl` is REFUSED on size, because it is the only artifact
     # quadratic in OUTPUT. The rest are linear in the target -- one record per
@@ -730,6 +817,7 @@ def analyze(
         )
     summary["artifact_bytes"] = dict(sorted(artifact_bytes.items()))
 
+    write_report.total_seconds = write_report.wall_seconds
     _stage("write")
     summary["unresolved"] = len(unresolved)
     summary["stage_millis"] = stage_millis
@@ -787,6 +875,11 @@ def analyze(
         encoding="utf-8",
         newline="\n",
     )
+
+    # What the workers bought, per stage, measured on this run. Printed and
+    # never written into an artifact: these are wall-clock timings and
+    # constraint 4 says identical input gives identical bytes.
+    (worker_report_sink or bar.through)(render_pipeline_report(pipeline))
 
     bar.finish(
         finished_at=finished, elapsed=elapsed_seconds, stage_millis=stage_millis

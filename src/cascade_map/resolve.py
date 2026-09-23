@@ -873,6 +873,15 @@ class Resolver:
         self._stats["unresolved"] = len(unresolved)
         return edges, unresolved
 
+    def module_count(self) -> int:
+        """How many modules the last :meth:`resolve` walked.
+
+        The unit of work this stage would be split on, if its units were
+        independent. Reported so a target that is one module says so with a
+        number instead of looking like a stage that had nothing to gain.
+        """
+        return len(self._modules)
+
     def statistics(self) -> dict[str, int]:
         """Counts, all integers. Includes the edges deliberately not emitted,
         so the omission of builtin calls is never silent."""

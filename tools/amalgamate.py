@@ -58,6 +58,7 @@ PACKAGE = Path(__file__).resolve().parents[1] / "src" / "cascade_map"
 ORDER = [
     "contracts/interfaces.py",
     "progress.py",
+    "parallel.py",
     "ingest/constants.py", "ingest/hashing.py", "ingest/walker.py",
     "ingest/python_module.py", "ingest/data_files.py", "ingest/cache.py",
     "ingest/parallel.py", "ingest/inventory.py",

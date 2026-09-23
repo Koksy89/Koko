@@ -53,10 +53,12 @@ from __future__ import annotations
 import ast
 import builtins
 import heapq
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping, Sequence
 
+from .parallel import Payload, StageReport, resolve_workers, run_stage
 from .contracts.interfaces import (
     CFGBlock,
     CFGEdge,
@@ -138,6 +140,11 @@ if the two ever disagree, so this cannot drift from :func:`combine`."""
 _BUILTIN_NAMES: frozenset[str] = frozenset(dir(builtins)) | frozenset(
     {"self", "cls", "__name__", "__file__", "__doc__", "None", "True", "False"}
 )
+
+#: A pool costs roughly a tenth of a second to start and a CFG costs
+#: microseconds, so a handful of elements never repays it. Below this many
+#: units PER WORKER the stage stays in-process and the report says why.
+_CFG_MIN_UNITS_PER_WORKER = 64
 
 _IMPURE_BUILTINS: frozenset[str] = frozenset(
     {"print", "open", "setattr", "delattr", "exec", "eval", "input", "__import__"}
@@ -367,6 +374,74 @@ def _has_main_guard(module: ast.Module) -> bool:
 # ---------------------------------------------------------------------------
 # The per-element flow builder
 # ---------------------------------------------------------------------------
+
+
+def _index_bodies(tree: ast.Module, module: str) -> dict[str, ast.AST]:
+    """Map element ID -> defining AST node, using the contract's ID rule.
+
+    Module level so the CFG workers use the very same walk the analyser does.
+    Two copies of an ID rule is two answers to the same question.
+    """
+    index: dict[str, ast.AST] = {make_id(module): tree}
+    counts: dict[str, int] = {}
+
+    def walk(body: Iterable[ast.stmt], prefix: str) -> None:
+        for stmt in body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                qualname = f"{prefix}{stmt.name}"
+                counts[qualname] = counts.get(qualname, 0) + 1
+                index[make_id(module, qualname, counts[qualname])] = stmt
+                walk(stmt.body, f"{qualname}.")
+                continue
+            for name, value in ast.iter_fields(stmt):
+                if name in {"body", "orelse", "finalbody"} and isinstance(value, list):
+                    walk([s for s in value if isinstance(s, ast.stmt)], prefix)
+                elif name in {"handlers", "cases"} and isinstance(value, list):
+                    for sub in value:
+                        walk(list(getattr(sub, "body", [])), prefix)
+
+    walk(tree.body, "")
+    return index
+
+
+def _body_index(
+    cache: dict[tuple[str, str], dict[str, ast.AST]],
+    path: str,
+    module: str,
+    tree: ast.Module,
+) -> dict[str, ast.AST]:
+    key = (path, module)
+    index = cache.get(key)
+    if index is None:
+        index = _index_bodies(tree, module)
+        cache[key] = index
+    return index
+
+
+def _locate(
+    index_cache: dict[tuple[str, str], dict[str, ast.AST]],
+    line_cache: dict[tuple[str, str], dict[int, ast.AST]],
+    element: Element,
+    tree: ast.Module,
+) -> ast.AST | None:
+    key = (element.span.path, element.module)
+    index = _body_index(index_cache, element.span.path, element.module, tree)
+    node = index.get(element.id)
+    if node is not None:
+        return node
+    # Card 1's qualname convention may differ (``<locals>`` and friends). Fall
+    # back to the span, which is unambiguous within one file. The line index
+    # keeps the *first* node at each line, which is what the equivalent scan
+    # over `index.values()` in AST order would have found.
+    by_line = line_cache.get(key)
+    if by_line is None:
+        by_line = {}
+        for candidate in index.values():
+            line = int(getattr(candidate, "lineno", -1))
+            if line not in by_line:
+                by_line[line] = candidate
+        line_cache[key] = by_line
+    return by_line.get(element.span.line)
 
 
 class _FlowBuilder:
@@ -1136,6 +1211,247 @@ class _FlowBuilder:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# The CFG unit of work -- one whole element, built in one worker
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _FlowResult:
+    """Everything the later stages need from one element's CFG build.
+
+    A whole element is the unit, never a fragment: half a function is not
+    parseable and its facts would be wrong rather than merely worse.
+
+    This carries no AST node, deliberately. A :class:`_FlowBuilder` holds the
+    subtree it walked, and shipping a 123,000-line module's AST back from a
+    worker would cost far more than the build it parallelises. The two things
+    later stages read off that node -- the ``if``/``elif`` chain numbering and
+    the local half of the side-effect verdict -- are computed here, in the
+    worker, and travel as the small facts they are.
+    """
+
+    element_id: str
+    path: str
+    blocks: tuple[CFGBlock, ...]
+    edges: tuple[CFGEdge, ...]
+    unresolved: tuple[Unresolved, ...]
+    branches: tuple[_BranchShape, ...]
+    models: tuple[_ModelShape, ...]
+    deferred: tuple[_Shape, ...]
+    shape: _SeqShape
+    entry_id: str
+    exit_id: str
+    cascade_chain: dict[str, tuple[int, int]]
+    side_effect_events: tuple[str, ...]
+    """The side-effect walk, replayed rather than re-walked. Each entry is
+    either ``""`` -- a node that settles the verdict on its own, at which
+    point the sequence stops -- or the name of a plain-`Name` callee whose own
+    verdict the *parent* must look up, because that lookup crosses elements
+    and a worker sees only one. Replaying this gives the identical answer to
+    walking the AST in the parent, and `test_side_effect_replay_matches_the_
+    ast_walk` is what keeps the two honest."""
+
+
+def _side_effect_events(node: ast.AST) -> tuple[str, ...]:
+    """The side-effect walk of one body, recorded rather than decided.
+
+    Mirrors :meth:`CascadeAnalyzer._may_have_side_effects` exactly, except
+    that a cross-element lookup is *recorded* instead of followed: a worker
+    holds one element and cannot answer for another. The sequence stops at the
+    first event that settles the verdict locally, which is where the original
+    loop breaks.
+    """
+    events: list[str] = []
+    for child in ast.walk(node):
+        if isinstance(child, (ast.Global, ast.Nonlocal, ast.Yield, ast.YieldFrom)):
+            events.append("")
+        elif isinstance(child, (ast.Attribute, ast.Subscript)) and isinstance(
+            child.ctx, (ast.Store, ast.Del)
+        ):
+            events.append("")
+        elif isinstance(child, ast.Call):
+            if isinstance(child.func, ast.Attribute):
+                events.append("")  # a method may mutate its receiver
+            elif isinstance(child.func, ast.Name):
+                name = child.func.id
+                if name in _IMPURE_BUILTINS:
+                    events.append("")
+                elif name not in _BUILTIN_NAMES:
+                    events.append(name)
+                else:
+                    continue
+            else:
+                events.append("")
+        else:
+            continue
+        if events[-1] == "":
+            break
+    return tuple(events)
+
+
+def _cascade_chain_of(
+    node: ast.AST, path: str, branches: Sequence[_BranchShape]
+) -> dict[str, tuple[int, int]]:
+    """Number the steps of each ``if``/``elif`` chain, for the record."""
+    out: dict[str, tuple[int, int]] = {}
+    for parent in ast.walk(node):
+        if not isinstance(parent, ast.If):
+            continue
+        chain: list[ast.If] = [parent]
+        current = parent
+        while len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
+            current = current.orelse[0]
+            chain.append(current)
+        if len(chain) < 2:
+            continue
+        spans = {(_span_of(path, c).line, _span_of(path, c).col) for c in chain}
+        ordered = sorted(spans)
+        for shape in branches:
+            key = (shape.span.line, shape.span.col)
+            if key in spans and shape.block_id not in out:
+                out[shape.block_id] = (ordered.index(key) + 1, len(ordered))
+    return out
+
+
+def _flow_result(element: Element, node: ast.AST, path: str) -> _FlowResult:
+    """Build one element's CFG and reduce it to what travels."""
+    builder = _FlowBuilder(element, node, path)
+    builder.build()
+    return _FlowResult(
+        element_id=element.id,
+        path=path,
+        blocks=tuple(builder.blocks),
+        edges=tuple(builder.edges),
+        unresolved=tuple(builder.unresolved),
+        branches=tuple(builder.branches),
+        models=tuple(builder.models),
+        deferred=tuple(builder.deferred),
+        shape=builder.shape,
+        entry_id=builder.entry_id,
+        exit_id=builder.exit_id,
+        cascade_chain=_cascade_chain_of(node, path, builder.branches),
+        side_effect_events=_side_effect_events(node),
+    )
+
+
+class _CFGPayload(Payload):
+    """The state every CFG task in one worker shares, sent ONCE per worker.
+
+    The elements travel here rather than with each task, and each source file
+    is read and parsed once inside the worker rather than once per element.
+    On a single-module target that is the difference between one parse and
+    ten thousand.
+    """
+
+    def __init__(self, root: str, elements: Sequence[Element]) -> None:
+        self.root = root
+        self.elements = tuple(elements)
+
+    def open(self) -> "_CFGWorker":
+        return _CFGWorker(Path(self.root), self.elements)
+
+
+class _CFGWorker:
+    """One worker's view: parse on demand, cache per file, build per element."""
+
+    def __init__(self, root: Path, elements: Sequence[Element]) -> None:
+        self.root = root
+        self.elements = {element.id: element for element in elements}
+        self.trees: dict[str, ast.Module | None] = {}
+        self.parse_failures: dict[str, Unresolved] = {}
+        self.index_cache: dict[tuple[str, str], dict[str, ast.AST]] = {}
+        self.line_cache: dict[tuple[str, str], dict[int, ast.AST]] = {}
+
+    def parse(self, path: str) -> ast.Module | None:
+        if path in self.trees:
+            return self.trees[path]
+        tree, failure = _parse_source(self.root, path)
+        self.trees[path] = tree
+        if failure is not None:
+            self.parse_failures[path] = failure
+        return tree
+
+
+@dataclass(frozen=True)
+class _CFGOutcome:
+    """One task's whole answer: the flow, or why there is none."""
+
+    flow: _FlowResult | None = None
+    not_located: Unresolved | None = None
+    parse_failure: Unresolved | None = None
+
+
+def _cfg_unit(worker: "_CFGWorker", element_id: str) -> _CFGOutcome:
+    """One whole element's control-flow graph. The unit of work."""
+    element = worker.elements[element_id]
+    path = element.span.path
+    seen_failure = path in worker.parse_failures
+    tree = worker.parse(path)
+    if tree is None:
+        # Reported once per PATH, not once per element in it: the record's id
+        # is derived from the path, so the consolidation step de-duplicates by
+        # id and the artifact holds exactly one. Sending it with the first
+        # element that hit it keeps the worker stateless about who reports.
+        failure = None if seen_failure else worker.parse_failures.get(path)
+        return _CFGOutcome(parse_failure=failure)
+    node = _locate(worker.index_cache, worker.line_cache, element, tree)
+    if node is None:
+        return _CFGOutcome(
+            not_located=Unresolved(
+                id=make_id(element.id, "@cfg_not_located"),
+                reason=UnresolvedReason.MISSING_TARGET,
+                span=element.span,
+                description=(
+                    "no AST node matches this element's id or span; no CFG built"
+                ),
+                attempted=(Method.AST_DIRECT,),
+            )
+        )
+    return _CFGOutcome(flow=_flow_result(element, node, path))
+
+
+def _parse_source(root: Path, path: str) -> tuple[ast.Module | None, Unresolved | None]:
+    """Read and parse one file. Never imports, executes or unpickles it."""
+    full = root / path
+    try:
+        text = full.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None, Unresolved(
+            id=make_id("@cascade", f"missing:{path}"),
+            reason=UnresolvedReason.MISSING_TARGET,
+            span=SourceSpan(path=path, line=1),
+            description=f"source file not found under {root}; no CFG built for it",
+            attempted=(Method.AST_DIRECT,),
+        )
+    except UnicodeDecodeError as exc:
+        return None, Unresolved(
+            id=make_id("@cascade", f"decode:{path}"),
+            reason=UnresolvedReason.DECODE_ERROR,
+            span=SourceSpan(path=path, line=1),
+            description=f"not UTF-8 ({exc.reason}); no CFG built for it",
+            attempted=(Method.AST_DIRECT,),
+        )
+    except OSError as exc:
+        return None, Unresolved(
+            id=make_id("@cascade", f"unreadable:{path}"),
+            reason=UnresolvedReason.MISSING_TARGET,
+            span=SourceSpan(path=path, line=1),
+            description=f"unreadable: {exc.__class__.__name__}",
+            attempted=(Method.AST_DIRECT,),
+        )
+    try:
+        return ast.parse(text, filename=path), None
+    except SyntaxError as exc:
+        return None, Unresolved(
+            id=make_id("@cascade", f"syntax:{path}"),
+            reason=UnresolvedReason.SYNTAX_ERROR,
+            span=SourceSpan(path=path, line=int(exc.lineno or 1)),
+            description=f"cannot parse: {exc.msg}; no CFG built for it",
+            attempted=(Method.AST_DIRECT,),
+        )
+
+
 class CascadeAnalyzer:
     """Card 3's implementation of :class:`~.contracts.interfaces.CascadeCard`.
 
@@ -1153,10 +1469,24 @@ class CascadeAnalyzer:
         *,
         sink_ids: Sequence[str] = (),
         unresolved: Sequence[Unresolved] = (),
+        workers: int | None = None,
+        on_unit: Callable[[int, int], None] | None = None,
     ) -> None:
         self.root = Path(root)
         self._declared_sinks: tuple[str, ...] = tuple(sorted(set(sink_ids)))
         self._input_unresolved: tuple[Unresolved, ...] = tuple(unresolved)
+        #: How many child processes the CFG stage may use. `0`/`1` keep
+        #: everything in this process, which is how any of it is debugged.
+        self.workers = resolve_workers(workers)
+        self._on_unit = on_unit
+        #: The CFG stage's measured worker effectiveness. A timing, so it never
+        #: reaches an artifact -- constraint 4.
+        self.cfg_report = StageReport(stage="cascade")
+        #: The two closures that are sequential by nature, timed and named
+        #: rather than faked.
+        self.order_report = StageReport(
+            stage="order", sequential_by_nature=True, started=1
+        )
         self._reset()
 
     def _reset(self) -> None:
@@ -1171,8 +1501,12 @@ class CascadeAnalyzer:
         self._reachability: list[Reachability] = []
         self._entry_candidates: list[DetectedCandidate] = []
         self._sink_candidates: list[DetectedCandidate] = []
-        self._builders: dict[str, _FlowBuilder] = {}
+        self._builders: dict[str, _FlowResult] = {}
         self._source_cache: dict[str, ast.Module | None] = {}
+        #: ids of parse failures already emitted, whether by a worker or
+        #: by this process. Constraint 3 wants the failure reported; it
+        #: does not want it reported once per reader.
+        self._reported_failures: set[str] = set()
         # (path, module) -> element id -> defining AST node. Built once per
         # file rather than once per element: on a single-module target the
         # index is the whole tree and rebuilding it per element is quadratic
@@ -1239,9 +1573,18 @@ class CascadeAnalyzer:
         self._build_cfgs()
         self._entry_ids = self._resolve_entries(entry_ids)
         self._sink_ids = self._resolve_sinks()
+        # SEQUENTIAL BY NATURE, and timed so its share is a measurement rather
+        # than a claim. Ordering is a topological closure over the whole graph
+        # and reachability is a closure over the reversed one: every node's
+        # answer depends on every other node's, so there is no unit to hand
+        # out. Faking parallelism here would buy a wrong graph, which is
+        # infinitely worse than a slow one.
+        closure_started = time.perf_counter()
         self._build_order()
         self._build_decisions()
         self._build_reachability()
+        self.order_report.wall_seconds = time.perf_counter() - closure_started
+        self.order_report.total_seconds = self.order_report.wall_seconds
 
         self._blocks.sort(key=lambda b: b.id)
         self._cfg_edges.sort(key=lambda e: e.id)
@@ -1321,43 +1664,22 @@ class CascadeAnalyzer:
     # -- CFG ----------------------------------------------------------------
 
     def _parse(self, path: str) -> ast.Module | None:
+        """The parent's own copy of the tree, for the questions that are asked
+        per FILE rather than per element -- the ``__main__`` guard, the
+        discarded call sites.
+
+        The CFG workers parse independently, in their own processes; a failure
+        either of them already reported is not reported twice, because the
+        record's id is derived from the path and constraint 3 asks for the
+        failure once, not once per reader.
+        """
         if path in self._source_cache:
             return self._source_cache[path]
-        tree: ast.Module | None = None
-        full = self.root / path
-        try:
-            text = full.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            self._record_unresolved(
-                make_id("@cascade", f"missing:{path}"),
-                UnresolvedReason.MISSING_TARGET,
-                SourceSpan(path=path, line=1),
-                f"source file not found under {self.root}; no CFG built for it",
-            )
-        except UnicodeDecodeError as exc:
-            self._record_unresolved(
-                make_id("@cascade", f"decode:{path}"),
-                UnresolvedReason.DECODE_ERROR,
-                SourceSpan(path=path, line=1),
-                f"not UTF-8 ({exc.reason}); no CFG built for it",
-            )
-        except OSError as exc:
-            self._record_unresolved(
-                make_id("@cascade", f"unreadable:{path}"),
-                UnresolvedReason.MISSING_TARGET,
-                SourceSpan(path=path, line=1),
-                f"unreadable: {exc.__class__.__name__}",
-            )
-        else:
-            try:
-                tree = ast.parse(text, filename=path)
-            except SyntaxError as exc:
-                self._record_unresolved(
-                    make_id("@cascade", f"syntax:{path}"),
-                    UnresolvedReason.SYNTAX_ERROR,
-                    SourceSpan(path=path, line=int(exc.lineno or 1)),
-                    f"cannot parse: {exc.msg}; no CFG built for it",
-                )
+        tree, failure = _parse_source(self.root, path)
+        if failure is not None and failure.id not in self._reported_failures:
+            self._reported_failures.add(failure.id)
+            self._opaque.add(failure.id)
+            self._unresolved.append(failure)
         self._source_cache[path] = tree
         return tree
 
@@ -1387,82 +1709,77 @@ class CascadeAnalyzer:
 
     def _index_bodies(self, tree: ast.Module, module: str) -> dict[str, ast.AST]:
         """Map element ID -> defining AST node, using the contract's ID rule."""
-        index: dict[str, ast.AST] = {make_id(module): tree}
-        counts: dict[str, int] = {}
-
-        def walk(body: Iterable[ast.stmt], prefix: str) -> None:
-            for stmt in body:
-                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    qualname = f"{prefix}{stmt.name}"
-                    counts[qualname] = counts.get(qualname, 0) + 1
-                    index[make_id(module, qualname, counts[qualname])] = stmt
-                    walk(stmt.body, f"{qualname}.")
-                    continue
-                for name, value in ast.iter_fields(stmt):
-                    if name in {"body", "orelse", "finalbody"} and isinstance(value, list):
-                        walk([s for s in value if isinstance(s, ast.stmt)], prefix)
-                    elif name in {"handlers", "cases"} and isinstance(value, list):
-                        for sub in value:
-                            walk(list(getattr(sub, "body", [])), prefix)
-
-        walk(tree.body, "")
-        return index
+        return _index_bodies(tree, module)
 
     def _body_index(self, element: Element, tree: ast.Module) -> dict[str, ast.AST]:
-        key = (element.span.path, element.module)
-        index = self._body_index_cache.get(key)
-        if index is None:
-            index = self._index_bodies(tree, element.module)
-            self._body_index_cache[key] = index
-        return index
+        return _body_index(
+            self._body_index_cache, element.span.path, element.module, tree
+        )
 
     def _locate(self, element: Element, tree: ast.Module) -> ast.AST | None:
-        key = (element.span.path, element.module)
-        index = self._body_index(element, tree)
-        node = index.get(element.id)
-        if node is not None:
-            return node
-        # Card 1's qualname convention may differ (``<locals>`` and friends).
-        # Fall back to the span, which is unambiguous within one file. The
-        # line index keeps the *first* node at each line, which is what the
-        # equivalent scan over `index.values()` in AST order would have found.
-        by_line = self._body_line_index.get(key)
-        if by_line is None:
-            by_line = {}
-            for candidate in index.values():
-                line = int(getattr(candidate, "lineno", -1))
-                if line not in by_line:
-                    by_line[line] = candidate
-            self._body_line_index[key] = by_line
-        return by_line.get(element.span.line)
+        return _locate(
+            self._body_index_cache, self._body_line_index, element, tree
+        )
 
     def _build_cfgs(self) -> None:
-        for element in sorted(self._elements.values(), key=lambda e: e.id):
-            if element.kind not in CFG_ELEMENT_KINDS:
+        """One CFG per element, over the work-stealing pool.
+
+        Every unit is a WHOLE element. The pool hands them out of one shared
+        queue, so a 4,000-line method does not leave the other workers idle
+        the way a fixed batch would.
+
+        **Consolidation is sequential and in id order**, below, not in the
+        order the workers finished: `_blocks`, `_cfg_edges` and `_unresolved`
+        are appended to in `sorted(...)` order exactly as the serial loop did,
+        and every id inside a unit is minted from that unit's element id, never
+        from a counter shared across units.
+        """
+        ordered = [
+            element.id
+            for element in sorted(self._elements.values(), key=lambda e: e.id)
+            if element.kind in CFG_ELEMENT_KINDS
+        ]
+        jobs = [(element_id, element_id) for element_id in ordered]
+        results: dict[str, _CFGOutcome] = run_stage(
+            _cfg_unit,
+            jobs,
+            self.workers,
+            self.cfg_report,
+            payload=_CFGPayload(str(self.root), tuple(self._elements.values())),
+            on_unit=self._on_unit,
+            # Below this a pool costs more to start than the CFGs cost to
+            # build. Measured, not guessed: `test_small_targets_stay_in_process`.
+            min_units_per_worker=_CFG_MIN_UNITS_PER_WORKER,
+        )
+        for element_id in ordered:
+            outcome = results.get(element_id)
+            if outcome is None:  # pragma: no cover - a unit that vanished
                 continue
-            tree = self._parse(element.span.path)
-            if tree is None:
+            if outcome.parse_failure is not None:
+                # De-duplicated by id, which is derived from the path: several
+                # elements in one unreadable file report the same failure and
+                # the artifact must hold it once.
+                if outcome.parse_failure.id not in self._reported_failures:
+                    self._reported_failures.add(outcome.parse_failure.id)
+                    self._opaque.add(outcome.parse_failure.id)
+                    self._unresolved.append(outcome.parse_failure)
                 continue
-            node = self._locate(element, tree)
-            if node is None:
-                self._record_unresolved(
-                    make_id(element.id, "@cfg_not_located"),
-                    UnresolvedReason.MISSING_TARGET,
-                    element.span,
-                    "no AST node matches this element's id or span; no CFG built",
-                )
+            if outcome.not_located is not None:
+                self._opaque.add(outcome.not_located.id)
+                self._unresolved.append(outcome.not_located)
                 continue
-            builder = _FlowBuilder(element, node, element.span.path)
-            builder.build()
-            self._builders[element.id] = builder
-            self._blocks.extend(builder.blocks)
-            self._cfg_edges.extend(builder.edges)
-            self._unresolved.extend(builder.unresolved)
+            flow = outcome.flow
+            if flow is None:  # pragma: no cover - a parse failure already seen
+                continue
+            self._builders[element_id] = flow
+            self._blocks.extend(flow.blocks)
+            self._cfg_edges.extend(flow.edges)
+            self._unresolved.extend(flow.unresolved)
             # A deferred lambda body hides a control path; `break` outside a
             # loop does not. Only the former blinds reachability.
             self._opaque.update(
                 record.id
-                for record in builder.unresolved
+                for record in flow.unresolved
                 if record.reason is UnresolvedReason.AMBIGUOUS
             )
 
@@ -1503,7 +1820,7 @@ class CascadeAnalyzer:
             evidence: tuple[str, ...] = ()
             confidence = Confidence.HEURISTIC
             if element.kind is ElementKind.MODULE:
-                tree = self._source_cache.get(element.span.path)
+                tree = self._parse(element.span.path)
                 if tree is not None and _has_main_guard(tree):
                     evidence = (
                         f'{element.span.path} has an `if __name__ == "__main__"` guard',
@@ -1511,7 +1828,7 @@ class CascadeAnalyzer:
                     confidence = Confidence.PROBABLE
             elif element.kind is ElementKind.FUNCTION and element.name in _ENTRY_NAME_HINTS:
                 stem = Path(element.span.path).stem
-                tree = self._source_cache.get(element.span.path)
+                tree = self._parse(element.span.path)
                 guarded = tree is not None and _has_main_guard(tree)
                 if guarded:
                     evidence = (
@@ -2345,27 +2662,13 @@ class CascadeAnalyzer:
                     )
                 )
 
-    def _cascade_chain(self, builder: _FlowBuilder) -> dict[str, tuple[int, int]]:
-        """Number the steps of each ``if``/``elif`` chain, for the record."""
-        out: dict[str, tuple[int, int]] = {}
-        node = builder.node
-        for parent in ast.walk(node):
-            if not isinstance(parent, ast.If):
-                continue
-            chain: list[ast.If] = [parent]
-            current = parent
-            while len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
-                current = current.orelse[0]
-                chain.append(current)
-            if len(chain) < 2:
-                continue
-            spans = {(_span_of(builder.path, c).line, _span_of(builder.path, c).col) for c in chain}
-            ordered = sorted(spans)
-            for shape in builder.branches:
-                key = (shape.span.line, shape.span.col)
-                if key in spans and shape.block_id not in out:
-                    out[shape.block_id] = (ordered.index(key) + 1, len(ordered))
-        return out
+    def _cascade_chain(self, builder: _FlowResult) -> dict[str, tuple[int, int]]:
+        """Number the steps of each ``if``/``elif`` chain, for the record.
+
+        Computed in the worker that built the CFG, from the same AST node, so
+        the answer is identical and the node never has to travel.
+        """
+        return builder.cascade_chain
 
     def _condition_calls(
         self, element_id: str, positions: Sequence[tuple[int, int]], span: SourceSpan
@@ -2502,28 +2805,19 @@ class CascadeAnalyzer:
         builder = self._builders.get(element_id)
         if builder is None:
             return True
+        # The walk itself happened in the worker that built this element's CFG;
+        # what is replayed here is the sequence it recorded, because the only
+        # step a worker cannot take is the one that crosses into another
+        # element. `""` is a node that settled the verdict on its own.
         verdict = False
-        for node in ast.walk(builder.node):
-            if isinstance(node, (ast.Global, ast.Nonlocal, ast.Yield, ast.YieldFrom)):
+        for event in builder.side_effect_events:
+            if event == "":
                 verdict = True
-            elif isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(
-                node.ctx, (ast.Store, ast.Del)
-            ):
-                verdict = True
-            elif isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Attribute):
-                    verdict = True  # a method may mutate its receiver
-                elif isinstance(node.func, ast.Name):
-                    name = node.func.id
-                    if name in _IMPURE_BUILTINS:
-                        verdict = True
-                    elif name not in _BUILTIN_NAMES:
-                        target = self._lookup_name(self._elements.get(element_id), name)
-                        verdict = not target or self._may_have_side_effects(
-                            target, (*stack, element_id)
-                        )
-                else:
-                    verdict = True
+                break
+            target = self._lookup_name(self._elements.get(element_id), event)
+            verdict = not target or self._may_have_side_effects(
+                target, (*stack, element_id)
+            )
             if verdict:
                 break
         self._side_effect_cache[element_id] = verdict

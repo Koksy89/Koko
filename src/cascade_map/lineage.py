@@ -680,6 +680,15 @@ class LineageTracer:
         self._freeze()
         return self.lineage_edges, self.barriers
 
+    def module_count(self) -> int:
+        """How many modules the last :meth:`trace_values` walked.
+
+        The unit this stage would be split on, if its walks did not write
+        state that later walks read. Reported so the owner sees the number
+        rather than a claim.
+        """
+        return len(self._modules)
+
     def _freeze(self) -> None:
         self.lineage_edges = tuple(
             sorted(self._edges.values(), key=lambda e: (e.id, e.source_id, e.target_id))

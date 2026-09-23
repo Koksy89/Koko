@@ -52,12 +52,15 @@ worse than a slow one.
 
 from __future__ import annotations
 
+import json
 import os
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
+
+from .contracts.interfaces import canonical_dumps
 
 __all__ = [
     "GAIN_FLOOR",
@@ -66,6 +69,8 @@ __all__ = [
     "PipelineReport",
     "StageReport",
     "UnitResult",
+    "canonical_jsonl_many",
+    "chunk_bounds",
     "cpu_budget",
     "render_pipeline_report",
     "render_stage_line",
@@ -148,6 +153,13 @@ class StageReport:
     #: spread: a topological closure, a merge, a sort.
     sequential_by_nature: bool = False
 
+    #: Why this stage was not handed to the pool at all. Set when the units
+    #: exist but are NOT INDEPENDENT -- a walk that carries state from one
+    #: unit into the next has no unit boundary to cut on, and cutting anyway
+    #: would give a different graph, not a faster one. Stated, never hidden:
+    #: a stage silently left serial reads as a stage that had nothing to gain.
+    not_parallelised_reason: str = ""
+
     largest_unit_key: str = ""
     largest_unit_seconds: float = 0.0
     skipped_reason: str = ""
@@ -188,8 +200,14 @@ class StageReport:
                 "sequential by nature: a closure over the whole graph, where "
                 "every node's answer depends on every other node's"
             )
+        if self.not_parallelised_reason:
+            return self.not_parallelised_reason
         if self.unit_count == 0:
             return self.skipped_reason or "nothing to do -- no units of work"
+        # A stage that declined the pool said exactly why when it declined;
+        # the generic guesses below are for a pool that ran and did not pay.
+        if self.skipped_reason:
+            return self.skipped_reason
         if self.unit_count == 1:
             return (
                 "1 unit holds 100% of the work; a unit is never split, because "
@@ -214,6 +232,8 @@ class StageReport:
         )
 
     def recommendation(self) -> str:
+        if self.not_parallelised_reason:
+            return "one worker; the units here are not independent of each other"
         if self.sequential_by_nature:
             return "one worker; parallelising this would give a wrong graph, not a fast one"
         if self.helped:
@@ -232,13 +252,19 @@ def render_stage_line(report: StageReport) -> str:
     name = f"  {report.stage:<12}"
     total = report.total_seconds or report.wall_seconds
     if report.sequential_by_nature:
-        return f"{name}sequential by nature    ({total:.1f}s)"
+        return f"{name}{'sequential by nature':<24}({total:.1f}s)"
+    if report.not_parallelised_reason:
+        units = f", {report.unit_count:,} unit(s)" if report.unit_count else ""
+        return (
+            f"{name}{'1.00x, not parallelised':<24}({total:.1f}s{units}) "
+            f"-- {report.not_parallelised_reason}"
+        )
     if report.unit_count == 0:
         reason = report.skipped_reason or "no units of work"
-        return f"{name}n/a                     ({reason})"
+        return f"{name}{'n/a':<24}({reason})"
     if report.started <= 1:
         return (
-            f"{name}1.00x over 1 worker     "
+            f"{name}{'1.00x over 1 worker':<24}"
             f"({total:.1f}s, {report.unit_count:,} unit(s)) "
             f"-- {report.explain_no_gain()}"
         )
@@ -274,12 +300,17 @@ class PipelineReport:
                 return report
         return None
 
+    @staticmethod
+    def _spread(stage: StageReport) -> bool:
+        """Whether a worker count can touch this stage at all."""
+        return not stage.sequential_by_nature and not stage.not_parallelised_reason
+
     @property
     def parallel_seconds(self) -> float:
         return sum(
             (s.total_seconds or s.wall_seconds)
             for s in self.stages
-            if not s.sequential_by_nature
+            if self._spread(s)
         )
 
     @property
@@ -287,7 +318,7 @@ class PipelineReport:
         return sum(
             (s.total_seconds or s.wall_seconds)
             for s in self.stages
-            if s.sequential_by_nature
+            if not self._spread(s)
         )
 
     @property
@@ -310,13 +341,16 @@ def render_pipeline_report(report: PipelineReport) -> str:
     if total > 0.0:
         lines.append(
             f"  {'sequential':<12}{report.sequential_seconds:.1f}s of "
-            f"{total:.1f}s measured ({report.sequential_share * 100:.0f}%) is "
-            "sequential by nature and no worker count removes it"
+            f"{total:.1f}s measured ({report.sequential_share * 100:.0f}%) no "
+            "worker count removes -- see the reason on each line above"
         )
     unpaid = [
         s.stage
         for s in report.stages
-        if not s.sequential_by_nature and s.started > 1 and not s.helped
+        if not s.sequential_by_nature
+        and not s.not_parallelised_reason
+        and s.started > 1
+        and not s.helped
     ]
     if unpaid:
         lines.append(
@@ -510,3 +544,141 @@ def _record_largest(report: StageReport) -> None:
     key = sorted(report.unit_seconds.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
     report.largest_unit_key = key
     report.largest_unit_seconds = report.unit_seconds[key]
+
+
+# ---------------------------------------------------------------------------
+# chunking -- whole units, many more chunks than workers
+# ---------------------------------------------------------------------------
+
+
+def chunk_bounds(total: int, per_chunk: int) -> list[tuple[int, int]]:
+    """Contiguous half-open ranges over an already-ordered sequence.
+
+    Many more chunks than workers, deliberately: that is what lets the shared
+    queue *steal*. One chunk per worker is a fixed batch, and a fixed batch is
+    what leaves seven workers idle behind one slow unit.
+    """
+    if total <= 0:
+        return []
+    step = max(1, per_chunk)
+    return [(start, min(total, start + step)) for start in range(0, total, step)]
+
+
+# ---------------------------------------------------------------------------
+# the write stage -- one artifact's records, in whole-record chunks
+# ---------------------------------------------------------------------------
+
+#: Records per chunk when serialising artifacts. Small enough that 390,000
+#: lineage edges become ~80 stealable units; large enough that the round trip
+#: is a rounding error against the work in the chunk.
+JSONL_CHUNK_RECORDS = 5_000
+
+#: Total records below which the write stage stays in one process. Measured,
+#: not guessed: the fixture corpus writes ~1,600 records across 18 artifacts
+#: and a four-worker pool came back at 0.78x -- slower than doing it here. A
+#: pool that loses is worse than no pool, so it is not started.
+JSONL_MIN_RECORDS_FOR_POOL = 20_000
+
+
+class _JsonlPayload(Payload):
+    """Every artifact's records, sent ONCE per worker.
+
+    Under the ``fork`` start method the child inherits them and nothing is
+    pickled at all; under ``spawn`` they cross once per worker rather than
+    once per chunk, which on a 437 MB artifact set is the difference between
+    a win and a loss.
+    """
+
+    __slots__ = ("groups", "sort_key")
+
+    def __init__(self, groups: Mapping[str, Sequence[Any]], sort_key: str) -> None:
+        self.groups = {name: tuple(records) for name, records in groups.items()}
+        self.sort_key = sort_key
+
+    def open(self) -> "_JsonlPayload":
+        return self
+
+
+def _jsonl_unit(
+    payload: "_JsonlPayload", arg: tuple[str, int, int]
+) -> list[tuple[Any, str]]:
+    """Serialise one contiguous run of WHOLE records.
+
+    A record is never split across chunks: half a JSON object is not a record,
+    and an artifact holding one would be wrong rather than merely untidy.
+
+    Returns ``(sort key, row)`` pairs. The sort key is read back out of the
+    rendered row exactly as `canonical_jsonl` reads it, so the ordering cannot
+    drift from the contract's serialiser by taking a shortcut through the
+    record object.
+    """
+    name, start, stop = arg
+    sort_key = payload.sort_key
+    out: list[tuple[Any, str]] = []
+    for record in payload.groups[name][start:stop]:
+        row = canonical_dumps(record)
+        out.append((json.loads(row).get(sort_key, ""), row))
+    return out
+
+
+def canonical_jsonl_many(
+    groups: Mapping[str, Sequence[Any]],
+    workers: int,
+    report: StageReport,
+    *,
+    sort_key: str = "id",
+    on_unit: Callable[[int, int], None] | None = None,
+) -> dict[str, str]:
+    """`{name: canonical_jsonl(records)}` for several artifacts at once.
+
+    **Byte-identical to calling `canonical_jsonl` on each group**, and
+    `test_parallel_jsonl_is_byte_identical_at_every_worker_count` is what
+    keeps it that way. The rendering is per record and parallel; the ORDERING
+    is a single global sort in this process, over ``(sort key, row)`` -- the
+    very tuple `canonical_jsonl` sorts by -- so which worker rendered which
+    row cannot reach a byte of the output.
+
+    One pool for the whole write stage rather than one per artifact: the
+    artifacts differ in size by three orders of magnitude, and a pool per
+    artifact would start eight processes to serialise an empty file.
+    """
+    names = sorted(groups)
+    total_records = sum(len(groups[name]) for name in names)
+    if total_records < JSONL_MIN_RECORDS_FOR_POOL:
+        workers = 1
+        report.skipped_reason = (
+            f"{total_records:,} record(s) is below the {JSONL_MIN_RECORDS_FOR_POOL:,} "
+            "at which a pool starts paying for itself here; ran in-process"
+        )
+    jobs: list[tuple[str, tuple[str, int, int]]] = []
+    chunk_counts: dict[str, int] = {}
+    for name in names:
+        bounds = chunk_bounds(len(groups[name]), JSONL_CHUNK_RECORDS)
+        chunk_counts[name] = len(bounds)
+        for index, (start, stop) in enumerate(bounds):
+            jobs.append((f"{name}#{index:08d}", (name, start, stop)))
+
+    results = run_stage(
+        _jsonl_unit,
+        jobs,
+        workers,
+        report,
+        payload=_JsonlPayload(groups, sort_key),
+        on_unit=on_unit,
+        # A handful of chunks is not worth eight processes; the report says so
+        # with the number rather than printing a worker count that bought
+        # nothing.
+        min_units_per_worker=2,
+    )
+
+    out: dict[str, str] = {}
+    for name in names:
+        pairs: list[tuple[Any, str]] = []
+        for index in range(chunk_counts[name]):
+            # `pop`, not `get`: the parent holds every artifact's rows at once
+            # and a 437 MB artifact set is not something to keep two copies of.
+            pairs.extend(results.pop(f"{name}#{index:08d}", ()))
+        pairs.sort()
+        out[name] = "".join(f"{row}\n" for _, row in pairs)
+        del pairs
+    return out
