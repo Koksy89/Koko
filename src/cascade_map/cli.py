@@ -1706,7 +1706,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     story.add_argument("project", nargs="?", default=None,
                        help="omit to list every project in the workspace, newest first")
-    story.add_argument("--workspace", type=Path, default=None, metavar="DIR",
+    story.add_argument("--workspace", type=_graph_path, default=None, metavar="DIR",
                        help="overrides WORKSPACE")
     # dest is not "sport": `track` and `trace` take `--sport` REPEATABLY and
     # `_settings_from_args` reads that list. A bare string arriving there would
@@ -2001,10 +2001,16 @@ def _history_command(args: Any) -> int:
     layout = layout_for(settings, Path.cwd())
     root = layout.workspace.root
 
-    # `history` READS. A workspace that is not there is a usage error naming
-    # the path, never an empty history rendered as a clean answer, and never a
-    # directory created on the way to saying so.
-    if not root.exists():
+    # `history` READS, and it never creates the workspace it was asked to
+    # read. Two different absences, kept apart:
+    #
+    # * the DEFAULT workspace has simply never been written -- that is an
+    #   absence, said as one, exit 0, which is card 6's decision and stands;
+    # * a path the owner TYPED is not there -- that is a usage error, because
+    #   the owner believes they named something and they did not. Rendering an
+    #   empty history for it would answer a question about the wrong tree.
+    named = getattr(args, "workspace", None) is not None
+    if named and not root.exists():
         print(
             f"no workspace at {root} — the directory does not exist.\n"
             f"Run `{_PROG} track` to create one, or `{_PROG} migrate` if you "
@@ -2012,7 +2018,7 @@ def _history_command(args: Any) -> int:
             file=sys.stderr,
         )
         return EXIT_USAGE
-    if not root.is_dir():
+    if root.exists() and not root.is_dir():
         print(
             f"no workspace at {root} — that is a file, not a directory.",
             file=sys.stderr,
