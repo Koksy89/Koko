@@ -57,6 +57,7 @@ PACKAGE = Path(__file__).resolve().parents[1] / "src" / "cascade_map"
 #: `render_to_file`, which card 10 calls.
 ORDER = [
     "contracts/interfaces.py",
+    "progress.py",
     "ingest/constants.py", "ingest/hashing.py", "ingest/walker.py",
     "ingest/python_module.py", "ingest/data_files.py", "ingest/cache.py",
     "ingest/parallel.py", "ingest/inventory.py",
