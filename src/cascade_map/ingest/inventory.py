@@ -8,6 +8,8 @@ execs, evals or unpickles anything under the walked root -- `ast` and
 from __future__ import annotations
 
 import ast
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from cascade_map.contracts.interfaces import (
@@ -26,8 +28,39 @@ from .cache import Cache
 from .constants import MAX_FILE_BYTES
 from .data_files import parse_data_file
 from .hashing import locate_byte_offset, sha256_hex, sha256_text
+from .parallel import WorkerReport, resolve_workers, run_units
 from .python_module import parse_python_file
 from .walker import module_dotted_name, walk
+
+
+@dataclass
+class _Step:
+    """One file's place in the output, decided serially in walk order before
+    any worker starts. Exactly one of `job_key` (work still to do) or the
+    inline `elements`/`unresolved` (already known) is populated."""
+
+    elements: list[Element] = field(default_factory=list)
+    unresolved: list[Unresolved] = field(default_factory=list)
+    #: Set when this file's records came from the cache; carried forward.
+    reuse_key: str | None = None
+    #: Set when this file still has to be parsed; the key into the results.
+    job_key: str | None = None
+    content_hash: str = ""
+
+
+def _run_unit(payload: tuple) -> tuple[list[Element], list[Unresolved]]:
+    """The whole of one file's work, and the only thing a worker ever runs.
+
+    Module level and pure: a `ProcessPoolExecutor` pickles what it is given,
+    and this takes bytes and returns dataclasses, both of which pickle. It
+    parses; it does not read files, write the cache, or order anything.
+    """
+    tag = payload[0]
+    if tag == "python":
+        _, module, relkey, raw, local_top_names = payload
+        return Ingestor._parse_python(module, relkey, raw, local_top_names)
+    _, kind, relkey, raw = payload
+    return parse_data_file(kind, relkey, raw)
 
 
 def _default_cache_dir() -> Path:
@@ -64,10 +97,19 @@ class Ingestor:
     target -- `inventory(root)` itself takes no extra arguments, matching the
     contract's `IngestionCard` protocol exactly."""
 
-    def __init__(self, cache_dir: str | Path | None = None) -> None:
+    def __init__(
+        self, cache_dir: str | Path | None = None, workers: int | None = None
+    ) -> None:
         self.cache_dir = Path(cache_dir) if cache_dir is not None else _default_cache_dir()
+        #: `None` = auto (see `parallel.resolve_workers`); 0 or 1 = in-process.
+        self.workers = resolve_workers(workers)
+        #: Filled in by every `inventory()` call: what the workers bought.
+        #: Read by the CLI and printed; never written into an artifact,
+        #: because it is a timing and constraint 4 forbids timings in output.
+        self.worker_report = WorkerReport()
 
     def inventory(self, root: str) -> tuple[list[Element], list[Unresolved]]:
+        stage_started = time.perf_counter()
         root_path = Path(root)
         root_resolved = root_path.resolve()
         files = list(walk(root))
@@ -82,31 +124,51 @@ class Ingestor:
         unresolved: list[Unresolved] = []
         module_names_seen: set[str] = set()
 
+        # ---- pass 1: plan, serially. -------------------------------------
+        # Everything that touches the filesystem, the cache, or the ordering
+        # of records happens here, in walk order, in this process. A worker
+        # only ever receives bytes already in memory and returns facts; it
+        # never reads a file, never sees the cache, and never decides where
+        # its output lands. That is what keeps the parallel run byte-identical
+        # to the in-process one (and to itself) rather than merely usually
+        # equal.
+        steps: list[_Step] = []
+        jobs: list[tuple[str, tuple]] = []
+
         for f in files:
             relkey = _relative_to_root(f.path, root_resolved)
             if relkey is None:
-                unresolved.append(
-                    Unresolved(
-                        id=file_id(f.path.as_posix()),
-                        reason=UnresolvedReason.AMBIGUOUS,
-                        span=SourceSpan(path=f.path.name, line=1),
-                        description=(
-                            f"{f.path} resolves outside the target root {root_resolved} "
-                            "(a symlink escaping the tree, or the root itself is a symlink "
-                            "elsewhere) -- no root-relative path can be emitted for it"
-                        ),
+                steps.append(
+                    _Step(
+                        unresolved=[
+                            Unresolved(
+                                id=file_id(f.path.as_posix()),
+                                reason=UnresolvedReason.AMBIGUOUS,
+                                span=SourceSpan(path=f.path.name, line=1),
+                                description=(
+                                    f"{f.path} resolves outside the target root "
+                                    f"{root_resolved} (a symlink escaping the tree, or "
+                                    "the root itself is a symlink elsewhere) -- no "
+                                    "root-relative path can be emitted for it"
+                                ),
+                            )
+                        ]
                     )
                 )
                 continue
             try:
                 raw = f.path.read_bytes()
             except OSError as exc:
-                unresolved.append(
-                    Unresolved(
-                        id=file_id(relkey),
-                        reason=UnresolvedReason.DECODE_ERROR,
-                        span=SourceSpan(path=relkey, line=1),
-                        description=f"could not read {relkey}: {exc}",
+                steps.append(
+                    _Step(
+                        unresolved=[
+                            Unresolved(
+                                id=file_id(relkey),
+                                reason=UnresolvedReason.DECODE_ERROR,
+                                span=SourceSpan(path=relkey, line=1),
+                                description=f"could not read {relkey}: {exc}",
+                            )
+                        ]
                     )
                 )
                 continue
@@ -118,38 +180,72 @@ class Ingestor:
                 module_names_seen.add(module)
 
                 if len(raw) > MAX_FILE_BYTES:
+                    steps.append(
+                        _Step(
+                            unresolved=[
+                                Unresolved(
+                                    id=module,
+                                    reason=UnresolvedReason.TOO_LARGE,
+                                    span=SourceSpan(path=relkey, line=1),
+                                    description=(
+                                        f"{relkey} is {len(raw)} bytes, exceeds the "
+                                        f"{MAX_FILE_BYTES}-byte parse limit"
+                                    ),
+                                )
+                            ]
+                        )
+                    )
+                    continue
+                payload: tuple = ("python", module, relkey, raw, local_top_names)
+            else:
+                payload = ("data", f.kind, relkey, raw)
+
+            cached = cache.get(relkey, content_hash)
+            if cached is not None:
+                els, unr = cached
+                steps.append(_Step(elements=els, unresolved=unr, reuse_key=relkey))
+                continue
+
+            # A unit is a WHOLE file and is never split. Half a function is
+            # not parseable, and the IDs minted from it would be wrong rather
+            # than merely ugly.
+            steps.append(_Step(job_key=relkey, content_hash=content_hash))
+            jobs.append((relkey, payload))
+
+        # ---- pass 2: do the work, in-process or across the pool. ---------
+        self.worker_report = WorkerReport()
+        results = run_units(_run_unit, jobs, self.workers, self.worker_report)
+
+        # ---- pass 3: assemble, serially, in walk order. ------------------
+        # Results are looked up by key in the order pass 1 recorded, so the
+        # order workers happened to finish in cannot reach the output. The
+        # parent owns every cache write: no child ever touches the cache
+        # file, so there is nothing for concurrent writes to corrupt.
+        for step in steps:
+            if step.job_key is not None:
+                got = results.get(step.job_key)
+                if got is None:  # pragma: no cover - run_units returns every key
                     unresolved.append(
                         Unresolved(
-                            id=module,
-                            reason=UnresolvedReason.TOO_LARGE,
-                            span=SourceSpan(path=relkey, line=1),
+                            id=file_id(step.job_key),
+                            reason=UnresolvedReason.AMBIGUOUS,
+                            span=SourceSpan(path=step.job_key, line=1),
                             description=(
-                                f"{relkey} is {len(raw)} bytes, exceeds the "
-                                f"{MAX_FILE_BYTES}-byte parse limit"
+                                f"worker returned no result for {step.job_key}; "
+                                "the file was not analysed"
                             ),
                         )
                     )
                     continue
-
-                cached = cache.get(relkey, content_hash)
-                if cached is not None:
-                    els, unr = cached
-                    cache.reuse(relkey)
-                else:
-                    els, unr = self._parse_python(module, relkey, raw, local_top_names)
-                    cache.put(relkey, content_hash, els, unr)
+                els, unr = got
+                cache.put(step.job_key, step.content_hash, els, unr)
                 elements.extend(els)
                 unresolved.extend(unr)
-            else:
-                cached = cache.get(relkey, content_hash)
-                if cached is not None:
-                    els, unr = cached
-                    cache.reuse(relkey)
-                else:
-                    els, unr = parse_data_file(f.kind, relkey, raw)
-                    cache.put(relkey, content_hash, els, unr)
-                elements.extend(els)
-                unresolved.extend(unr)
+                continue
+            if step.reuse_key is not None:
+                cache.reuse(step.reuse_key)
+            elements.extend(step.elements)
+            unresolved.extend(step.unresolved)
 
         cache.save()
 
@@ -157,6 +253,12 @@ class Ingestor:
 
         elements, collision_unresolved = _resolve_id_collisions(elements)
         unresolved.extend(collision_unresolved)
+
+        # The gain the owner feels is over the WHOLE stage, including the
+        # serial walking, reading, hashing and cache writing that no worker
+        # count removes. Recording it here rather than around the pool alone
+        # is the difference between an honest number and a flattering one.
+        self.worker_report.total_seconds = time.perf_counter() - stage_started
 
         return elements, unresolved
 
@@ -270,6 +372,15 @@ def _resolve_id_collisions(elements: list[Element]) -> tuple[list[Element], list
     return kept, unresolved
 
 
-def inventory(root: str, cache_dir: str | Path | None = None) -> tuple[list[Element], list[Unresolved]]:
-    """Functional convenience wrapper around `Ingestor`."""
-    return Ingestor(cache_dir=cache_dir).inventory(root)
+def inventory(
+    root: str,
+    cache_dir: str | Path | None = None,
+    workers: int | None = None,
+) -> tuple[list[Element], list[Unresolved]]:
+    """Functional convenience wrapper around `Ingestor`.
+
+    `workers` is `None` for auto, 0 or 1 for in-process. Callers that
+    want the worker-effectiveness report build an `Ingestor` themselves
+    and read `.worker_report`; this wrapper keeps the two-value return
+    the `IngestionCard` contract specifies."""
+    return Ingestor(cache_dir=cache_dir, workers=workers).inventory(root)

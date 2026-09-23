@@ -183,6 +183,15 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "ENGINE": "AmunEV_Engine_V2.py",
     "RUNNER": "bin/go_live.py",
     "RUN_ARGS": [],
+
+    # Child processes for ingestion. 0 = auto (the machine's usable cores,
+    # less one, so an analysis does not take the whole box); 1 = in-process.
+    #
+    # Parallelism here is ACROSS FILES: one file is one unit and a unit is
+    # never split, because half a function is not parseable. A target that is
+    # one large file therefore has one unit, and every run prints what the
+    # workers actually bought rather than only how many were asked for.
+    "WORKERS": 0,
 }
 
 _KEY_TO_FIELD: dict[str, str] = {
@@ -202,6 +211,7 @@ _KEY_TO_FIELD: dict[str, str] = {
     "ENGINE": "engine",
     "RUNNER": "runner",
     "RUN_ARGS": "run_args",
+    "WORKERS": "workers",
 }
 
 _LIST_KEYS = frozenset({"SINKS", "ENTRIES", "CONFIGS", "ORDER", "SPORTS", "RUN_ARGS"})
@@ -235,6 +245,8 @@ class Settings:
     engine: str = "AmunEV_Engine_V2.py"
     runner: str = "bin/go_live.py"
     run_args: tuple[str, ...] = ()
+    #: 0 = auto, 1 = in-process, N = ask for N child processes.
+    workers: int = 0
 
     def selected_sports(self) -> tuple[str, ...]:
         """The sports this run covers. ``SPORT`` empty means all of ``SPORTS``.
@@ -271,6 +283,13 @@ class Settings:
                         f"not {raw!r}."
                     )
                 values["mode"] = int(raw)
+            elif key == "WORKERS":
+                if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+                    raise SettingsError(
+                        f"WORKERS must be a non-negative integer -- 0 for auto, "
+                        f"1 for in-process, N for N child processes -- not {raw!r}."
+                    )
+                values["workers"] = int(raw)
             elif key in _LIST_KEYS:
                 if isinstance(raw, (str, bytes)) or not isinstance(raw, (list, tuple)):
                     raise SettingsError(
@@ -813,6 +832,8 @@ def _default_analyse(source_root: Path, out_dir: Path, settings: Settings) -> di
         config_paths=settings.configs,
         strict_gate=False,
         env_root=env,
+        # 0 in the settings means auto, which `Ingestor` spells `None`.
+        workers=settings.workers or None,
     )
     summary["exit_code"] = code
     return summary

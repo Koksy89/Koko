@@ -10,22 +10,51 @@ rather than re-deriving it.
 ## The layout
 
 ```
-Metatron_Engine/                         <- WORKSPACE (the only path in settings)
-    AmunEV_Engine_V2/                    <- one folder per script. Name = PROJECT.
-        history.json                     <- the story. Small, human-readable, portable.
-        fingerprints.jsonl               <- one line per element per version. Append-only.
-        comparisons.jsonl                <- one line per consecutive pair. Append-only.
+Metatron_Engine/                                  <- WORKSPACE. The only path in settings.
+    AmunEV_Engine_V2/                             <- one folder per script. Name = PROJECT.
+        history/
+            AmunEV_Engine_V2_history.json         <- the static story. Open this one.
+            AmunEV_Engine_V2_fingerprints.jsonl
+            AmunEV_Engine_V2_comparisons.jsonl
+            runtime/
+                etennis_history.json              <- one per sport. Mode 2 only.
+                basketball_history.json
+                ebasketball_history.json
         sources/
-            a3f19c4e…/                   <- the source, stored ONCE per distinct content
-        runs/
-            2026-09-23T14-02-11Z/        <- one map per run
-                elements.jsonl  edges.jsonl  …  blueprint.html  run_meta.json
+            a3f19c4e.../                          <- stored ONCE per distinct content
+        io/
+            runs/2026-09-23T14-02-11Z/            <- the map from that run
+                elements.jsonl  edges.jsonl  ...  blueprint.html
+            reports/
     LazarusRunner/
-        …
+        ...
 ```
 
-`PROJECT` defaults to the name of the folder or file being analysed, so
-`AmunEV_Engine_V2.py` lands in `Metatron_Engine/AmunEV_Engine_V2/` with no configuration.
+Every file carries its script's name, so nothing is ambiguous when a file is copied out,
+attached to a message, or opened months later. `PROJECT` is derived from the script being
+analysed, so naming the script is the whole instruction — the tool resolves the paths
+itself and there is nothing to point at and nothing to mis-point.
+
+### Per sport: runtime only, and here is why
+
+The owner asked for `etennis_history.json`, `ebasketball_history.json` and so on, to avoid
+combing through data irrelevant to the run in hand. That is right for runtime and wrong for
+the static map, so the split follows the data rather than the folder.
+
+**The static map does not depend on the sport.** Mode 1 never runs anything, so it produces
+one map of the whole engine — every sport's code at once. Writing it per sport would store
+seven identical copies, make a change appear seven times, and give the owner seven places to
+look for one answer. Worse, it would imply the tool knows which code belongs to which sport,
+which statically it does not: a sport chosen by a runtime string is exactly the link Mode 1
+reports as HEURISTIC rather than claiming.
+
+**Runtime data is entirely per sport.** A Mode 2 run traces one sport. Its events, values,
+contradictions and observed order belong to that sport and to no other, and comparing
+basketball against basketball across versions is the only comparison that means anything.
+So each sport gets its own runtime history, read only when that sport is in play.
+
+That gives the speed gain the owner is after, where the gain is real, without duplicating
+the static map seven times.
 
 ## Why not literally one JSON file
 
@@ -58,13 +87,13 @@ already there. Re-analysis is skipped for the same reason.
 This matters at their scale. Storing a 14.8 MB engine on every run would be ~740 MB after
 fifty runs. Storing it once per *distinct content* means it costs 14.8 MB per real change
 and nothing at all for a re-run. The owner should still know the number:
-**`history.json` reports the workspace's disk use and what the sources cost**, so it never
+**the history file reports the workspace's disk use and what the sources cost**, so it never
 grows in silence. `--no-sources` records hashes without keeping the copies, for anyone who
 would rather rely on their own version control.
 
 ## What a run records
 
-Every run appends to `history.json`:
+Every run appends to `<PROJECT>_history.json`:
 
 * the version's id (tree hash), its label, its timestamp **and which signal that came from**
   — filename, git, or file mtime, never a guess presented as fact;
@@ -78,8 +107,9 @@ Every run appends to `history.json`:
 ## Reading the story back
 
 ```
-metatron history                    # every version of every project, newest first
-metatron history AmunEV_Engine_V2   # one project's full development
+metatron history                                  # every project, newest first
+metatron history AmunEV_Engine_V2                 # one script's full development
+metatron history AmunEV_Engine_V2 --sport etennis # that sport's runs only
 metatron history AmunEV_Engine_V2 --element amun.features::rsi
 ```
 
@@ -93,3 +123,10 @@ version's fingerprints were kept.
 An existing flat `VERSIONS_DIR` is not abandoned. `metatron migrate` moves it into the new
 shape, reusing the version ids it already computed, so no history is lost and nothing is
 re-analysed.
+
+## Mode from the terminal
+
+`--mode 1` and `--mode 2` on every command that runs anything — `track`, `analyze`,
+`trace` — overriding `MODE` in settings without opening the file. `--mode 2` on a target
+with no completed static map refuses and says to run mode 1 first, rather than starting a
+run it cannot key to anything.

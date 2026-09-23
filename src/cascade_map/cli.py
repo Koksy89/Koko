@@ -26,7 +26,7 @@ import json
 import platform
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +44,8 @@ from cascade_map.diff import diff_snapshots, load_snapshot
 from cascade_map.docrecords import DocumentationBuilder
 from cascade_map.findings import Findings
 from cascade_map.ingest import inventory
+from cascade_map.ingest.inventory import Ingestor
+from cascade_map.ingest.parallel import render_worker_report
 from cascade_map.lineage import LineageTracer
 from cascade_map.resolve import Resolver
 from cascade_map.harness.hashing import (
@@ -77,9 +79,9 @@ from cascade_map.ledger import (
 # thought they had applied. Every key can still be overridden by a flag, so
 # scripting stays possible.
 #
-# Deliberately absent: worker/core count. Ingestion parallelises across files
-# and the right degree is what the machine knows, not what a config file
-# written on a different machine guessed.
+# WORKERS is here but defaults to 0 = auto, because the right degree is what
+# the machine knows, not what a config file written on a different machine
+# guessed. Every run prints what the workers actually bought.
 
 METATRON_SETTINGS = {
     # 1 = static only (never executes your engine).
@@ -110,6 +112,17 @@ METATRON_SETTINGS = {
 
     # Config files that wire components by name, relative to each version root.
     "CONFIGS": [],
+
+    # Child processes for ingestion. 0 = auto (usable cores less one, so an
+    # analysis does not take the whole box); 1 = in-process, which is how
+    # anything here is debugged and always stays available.
+    #
+    # Parallelism is ACROSS FILES: one file is one unit, and a unit is never
+    # split because half a function is not parseable. If your target is ONE
+    # large file, workers cannot help it -- the run will say so, with the
+    # measured gain, rather than printing a worker count as if it were a
+    # benefit.
+    "WORKERS": 0,
 
     # Card 17: the interpreter whose installed packages to read, as TEXT.
     # Nothing here is ever imported or executed.
@@ -320,6 +333,8 @@ def analyze(
     cache_dir: Path | None = None,
     strict_gate: bool = True,
     env_root: Path | None = None,
+    workers: int | None = None,
+    worker_report_sink: Callable[[str], None] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Run the static pipeline over *root* and write artifacts to *out_dir*.
 
@@ -350,9 +365,16 @@ def analyze(
         _stage_started = now
 
     # Card 1 — inventory.
-    elements, unresolved = inventory(str(root), cache_dir=cache_dir)
+    #
+    # `Ingestor` rather than the `inventory()` wrapper so the worker report
+    # can be read back. That report is PRINTED and never written into an
+    # artifact: it is wall-clock, and constraint 4 says identical input gives
+    # identical bytes.
+    ingestor = Ingestor(cache_dir=cache_dir, workers=workers)
+    elements, unresolved = ingestor.inventory(str(root))
     summary["elements"] = len(elements)
     _stage("inventory")
+    (worker_report_sink or print)(render_worker_report(ingestor.worker_report))
 
     # Card 2 — resolution.
     resolver = Resolver(root, config_paths=tuple(config_paths))
@@ -1177,6 +1199,7 @@ def _settings_from_args(args: Any) -> Settings:
         "ORDER": flag("order"),
         "SCENARIOS": str(flag("scenarios")) if flag("scenarios") else None,
         "SCENARIO": flag("scenario"),
+        "WORKERS": flag("workers"),
     }
     for key, value in overrides.items():
         if value is not None:
@@ -1240,6 +1263,13 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--config", action="append", default=[], metavar="PATH",
                      help="config file that wires components by name; repeatable")
     run.add_argument("--cache", type=Path, default=None)
+    run.add_argument("--workers", type=int, default=None, metavar="N",
+                     help="child processes for ingestion. Omitted or 0 = auto "
+                          "(usable cores less one); 1 = in-process, which is how "
+                          "this is debugged and always stays available. "
+                          "Parallelism is ACROSS FILES and never splits one file, "
+                          "so a single-large-file target gains nothing -- the run "
+                          "measures and prints what the workers actually bought.")
     run.add_argument("--env", type=Path, default=None, metavar="PATH",
                      help="interpreter tree whose installed package metadata to "
                           "read (.venv-target in production). Read as text; nothing "
@@ -1248,6 +1278,19 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--no-gate", action="store_true",
                      help="write artifacts even if the completeness gate fails, "
                           "and exit 0. The gate still reports.")
+
+    doc = sub.add_parser(
+        "doctor",
+        help="measure this machine on this target and write one file you can send",
+    )
+    doc.add_argument("--out", type=Path, default=Path("out/doctor"),
+                     help="where to write metatron_doctor_<UTC>.log and .json")
+    doc.add_argument("--target", type=Path, default=None, metavar="PATH",
+                     help="the tree to measure. Omitted, metatron measures its "
+                          "OWN source. Nothing under PATH is ever executed.")
+    doc.add_argument("--workers", type=int, action="append", default=None, metavar="N",
+                     help="a worker count to measure; repeatable. "
+                          "Default 1, 4 and 8.")
 
     cmp_ = sub.add_parser("diff", help="compare two analysed output directories")
     cmp_.add_argument("before", type=Path)
@@ -1296,6 +1339,8 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="overrides SCENARIOS (MODE 2 only)")
     hist.add_argument("--scenario", default=None,
                       help="overrides SCENARIO (MODE 2 only)")
+    hist.add_argument("--workers", type=int, default=None, metavar="N",
+                      help="overrides WORKERS. 0 = auto, 1 = in-process.")
     hist.add_argument("--report", action="store_true",
                       help="print the whole history, not only what this run did")
     _add_sport_flags(hist)
@@ -1357,9 +1402,29 @@ def main(argv: Sequence[str] | None = None) -> int:
             cache_dir=args.cache,
             strict_gate=not args.no_gate,
             env_root=args.env,
+            workers=args.workers,
         )
         print(_report(summary, args.out, code))
         return EXIT_OK if args.no_gate else code
+
+    if args.command == "doctor":
+        from cascade_map.doctor import SCALING_POINTS, run_doctor, write_report
+
+        if args.target is not None and not args.target.is_dir():
+            print(f"not a directory: {args.target}", file=sys.stderr)
+            return EXIT_USAGE
+        points = tuple(args.workers) if args.workers else SCALING_POINTS
+        result = run_doctor(args.target, scaling_points=points)
+        path = write_report(result, args.out)
+        # The full path last, on its own line, so it can be copied straight
+        # out of the terminal.
+        print(f"Measured {result.target}")
+        print(f"  {result.elements:,} elements, {result.file_count:,} file(s)")
+        if result.errors:
+            print(f"  {len(result.errors)} error(s) recorded in the report")
+        print("Send this file:")
+        print(path.resolve())
+        return EXIT_OK
 
     if args.command == "diff":
         changes, impacts = diff_snapshots(
