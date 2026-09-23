@@ -1,4 +1,4 @@
-# The engine, A to Z — one line per stage, with worker counts
+# The engine, A to Z — purpose, stage, workers, time
 
 Derived from the source (`laz_workers__map` call sites, `laz_mode3__find`, the runner's
 own stage log), nothing executed.
@@ -10,30 +10,37 @@ cpu_count clip. Every parallel stage goes through that one door — `laz_workers
 which forks, and on failure calls `no_silent_serial()` so a stage can never quietly drop
 to one core while the log still claims N.
 
-| # | stage | what happens | workers |
+| Purpose | Stage | Workers | Est. time |
 |---|---|---|---|
-| 1 | **boot** | `go_live.py` preflights statically, extracts `run_m5_<sha8>.py` from the engine | 1 |
-| 2 | **load** | `run_m5.py` execs the whole engine into a real module (`lazarus_engine`) so forked workers can resolve functions by reference | 1 |
-| 3 | **gate** | `laz_contract__print`, GOD-1 seal + feature-documentation gate, GOD-2 bible + owner-rules check | 1 |
-| 4 | **ensure** | frame located and validated per sport; columns derived if missing | 1 |
-| 5 | **startup / prepare** | frame loaded, h2h attached, causality guard, settlement labelled | 1 |
-| 6 | **library** | the owner's feature library built over match chunks | **N** (`label='library'`) |
-| 7 | **genome** | derived terms rebuilt in chunks | **N** (`label='genome'`) |
-| 8 | **pool** | conditions assembled — engine + recovered + proposed — then cast to float32 | 1 |
-| 9 | **corr** | correlation matrix in row blocks | **N** (`label='corr'`) |
-| 10 | **interactions** | super-additive pairs found | **N** (`label='interactions'`) |
-| 11 | **manufacture** | the surviving pairs materialised into new conditions | **N** (`label='manufacture'`) |
-| 12 | **PCA** | correlated clusters reduced to `pc_<hash>` composites, fitted IS-only, frozen to `laz_pca_<sport>.json` | 1 (parent) |
-| 13 | **bases** | registry bases + proposed bases + BaseFinder + tick-scan arm regions, deduped by identity | 1 |
-| 14 | **ladder** | odds rungs built and merged; rungs below `band_min_matches_x × min_n` skipped (**now 1.0×**) | 1 |
-| 15 | **SWEEP** | every (base, rung) task: stack conditions, fit thresholds, IS/OOS split, permutation null, accept | **N** (`label='mode3 sweep'`) ← the long pole |
-| 16 | **acceptance** | per leg: round-trip check, then `element_doc` written with the ordered execution spec | in-worker |
-| 17 | **merge** | legs merged across bases, duplicate chains collapsed | 1 |
-| 18 | **ledgers** | per-leg bet ledgers persisted to `mode3_<sport>.parquet` | 1 |
-| 19 | **combina** | arm table built, slips scored in a window, pairs scored in chunks | **N** (`label='combina pairs'`) |
-| 20 | **book** | accepted legs folded into `LAZ_BOOK`, tiers assigned | 1 |
-| 21 | **workbook** | `laz_xl__write` — the MODE3 xlsx, provenance stamped into it and a sidecar | 1 |
-| 22 | **DEPLOY** | `laz_deploy__emit` — registry SQL, feature module, PCA module, spec, verify script | 1 |
+| Check before anything runs | **preflight** — interpreter, stack, engine compiles, GOD-1/GOD-2 seals, owner rules, version gate, assembly invariant, frames, disk | 1 | ~2 s |
+| Get the engine into memory | **load** — exec the whole file into a real module so forked workers resolve by reference | 1 | 15–40 s |
+| Refuse to run a build that lies | **gate** — contract print, GOD-1 feature-documentation gate, GOD-2 rules check | 1 | ~1 s |
+| Make sure the sport has data | **ensure** — locate and validate the frame, derive missing columns | 1 | 10–60 s |
+| Turn the frame into a match universe | **startup / prepare** — load, attach h2h, causality guard, label settlement | 1 | 1–3 min (first load ~2.5 min) |
+| Build the owner's feature library | **library** — the 482 certified features over match chunks | **N** | 8–12 min uncached · **~0 s cached** |
+| Rebuild derived terms | **genome** — chunked rebuild of the derived layer | **N** | 1–4 min |
+| Assemble the candidate conditions | **pool** — engine + recovered + totals + **the 198-condition library**, cast to float32 | 1 | 20–60 s |
+| Find what is redundant | **corr** — correlation matrix in row blocks | **N** | 1–5 min |
+| Find what is worth combining | **interactions** — super-additive pairs | **N** | 2–8 min |
+| Build those combinations | **manufacture** — materialise the surviving pairs | **N** | 1–4 min |
+| Collapse correlated clusters | **PCA** — first component per cluster, fitted IS-only, frozen to `laz_pca_<sport>.json` | 1 (parent) | 10–40 s |
+| Decide what to search from | **bases** — registry + proposed + BaseFinder + tick-scan regions, deduped by identity | 1 | 30 s – 3 min |
+| Decide which prices to search | **ladder** — odds rungs built and merged (`band_min_matches_x` now 1.0×) | 1 | ~5 s |
+| **Find the strategies** | **SWEEP** — every (base, rung): stack, fit thresholds, IS/OOS split, permutation null, accept | **N** | **20 min – 3 h+** ← the long pole |
+| Document at the instant of acceptance | **acceptance** — round-trip check, then `element_doc` with the ordered execution spec | in-worker | in the sweep |
+| Collapse the results | **merge** — legs merged across bases, duplicate chains collapsed | 1 | 10–60 s |
+| Keep the evidence | **ledgers** — per-leg bet ledgers to `mode3_<sport>.parquet` | 1 | 20–90 s |
+| Score multi-leg slips | **combina** — arm table, windows, pair scoring in chunks | **N** | 2–10 min |
+| Fold into the standing book | **book** — accepted legs into `LAZ_BOOK`, tiers assigned | 1 | 10–40 s |
+| The book you read | **workbook** — MODE3 xlsx + provenance stamp and sidecar | 1 | 30 s – 3 min |
+| **The bundle you deploy** | **deploy** — registry SQL, feature module, PCA module, spec, verify script | 1 | 5–20 s |
+
+Rough total for one sport, library cached: **35 min – 4 h**, almost all of it the sweep.
+First run on a new frame or after a version bump adds the 8–12 min library build.
+
+Times are order-of-magnitude on an 8-core machine at `--workers 4`; the sweep scales
+with (bases × rungs × conditions), so a sport with a big pool and a long ladder is the
+outlier, not the average.
 
 Other modes: `--mode 1` uses `label='mode1 cells'` (**N**), `--mode5` uses
 `label='mode5 hypotheses'` (**N**), the vectorised grid uses `ProcessPoolExecutor` at
@@ -106,3 +113,57 @@ a runner **tuple** (`SPORT_RUNNERS['football'] = (prep, fire, RFB_STRATEGIES, �
 Proven on fixtures shaped like the engine's own registries: tuple, specs-dict and direct
 list all route correctly; the duplicate name registers once; the undeclared container is
 skipped; an entry that already had a sport keeps it. 8/8.
+
+
+---
+
+# The 198-condition library, wired in
+
+`CONDITION_POOL` at L9054 holds **198 hand-built conditions** — odds-trend spikes, phase
+and minute gates, ELO and H2H edges, form and streak filters, wall/cannon profiles,
+market-dark windows. They had never entered the search **for any sport**.
+
+**Why they were invisible.** The name is rebound at L38132 to a five-key *sport* dict with
+**zero** shared keys, and the second wins. Every consumer of the original shape then reads
+the wrong object:
+
+```python
+if cn in CONDITION_POOL:             # a condition name is never a sport name
+    mask &= CONDITION_POOL[cn](...)  # so this never runs
+```
+
+and those consumers — `_build_combined_mask`, `discover_best_conditions` — are dead code.
+
+**The live consumer they now belong to: the mode-3 pool.** That is the right owner, and
+the only one that gives you everything you asked for in one place:
+
+- the **sweep** can stack any of them into a strategy
+- **BaseFinder** and the tick-scan can seed a **base** from one
+- the **correlation / interaction / manufacture** stages can build compounds on them
+- **PCA** can fold them into composites
+
+**Offered to every sport, taken up where computable.** There is no sport list. Each
+condition is tried against the frame the run actually prepared; one whose columns that
+sport does not carry is **skipped with its reason**, recorded in
+`laz_condlib__SKIPPED[sport]`, never faked and never silently dropped. Football carries
+`draw_odds_vel`, basketball does not — so the draw-spike conditions arrive for one and are
+reported absent for the other.
+
+**Subject to every gate the rest of the pool is.** They are added *before* the float32
+cast and *before* `LA.gate_pool`, so a condition that turns out to be forward-looking is
+removed by the same lookahead gate that judges every other term. Nothing bypasses a
+safeguard. Each is documented at creation under **GOD-1** with its recipe, its inputs and
+its replication steps.
+
+**Fail-closed on missing data**, which is the engine's own condition contract: a
+comparison against NaN is False, so a tick with no value does not satisfy the condition.
+That is why they are emitted as 0/1 rather than NaN-carrying floats.
+
+**Proven:** all 198 recover and are callable; on a realistic frame 91 enter the pool, all
+`float32`, all strictly 0/1, none constant; 107 are skipped and **every one carries a
+written reason**; zero NameErrors.
+
+> One bug this found in itself: the recovery first exec'd the assignment into an empty
+> namespace, so eleven lambdas that read `np` or `pd` raised `NameError` and were lost to
+> the *recovery* rather than to the frame. It now exec's into a copy of the module
+> namespace, so they resolve exactly as they do in the engine.
