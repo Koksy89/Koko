@@ -19,7 +19,7 @@ that matters.
 
 from __future__ import annotations
 
-__version__ = "0.0.0"
+__version__ = "1.0.0"
 
 from collections import defaultdict
 from collections import defaultdict, deque
@@ -171,10 +171,11 @@ METATRON_SETTINGS = {
     # MANY slices are stored, never how complete any one of them is: every
     # slice emitted is exact and whole, and none is ever truncated or sampled.
     #
-    #   "DECISION"  default. The roots that bear on a decision: your SINKS,
-    #               what they read, engineered features, and the root of any
-    #               finding. Bounded by the number of decision inputs, not by
-    #               the size of your codebase.
+    #   "DECISION"  default. The roots that bear on a decision: your SINKS
+    #               and what they read. Bounded by your declaration of what
+    #               the decision IS -- so with no SINKS declared it emits NO
+    #               slices, because there is then no principled set of roots
+    #               and lineage.jsonl answers any of them on demand.
     #   "ALL"       every root. Exhaustive, correct, and quadratic in OUTPUT --
     #               measured 211 MB of slices for 1.4 MB of source, 1.6 GB for
     #               5.6 MB, and gigabytes for a 14.8 MB engine. The run says so
@@ -186,6 +187,11 @@ METATRON_SETTINGS = {
     # Roots to precompute WHATEVER SLICES says, by element or feature id.
     # Chasing one feature should never mean switching to the exhaustive mode.
     "SLICE_ROOTS": [],
+
+    # Write slices.jsonl even when its estimated size exceeds the guard.
+    # The guard refuses above 1 GB and prints the number; this is how you
+    # say you meant it.
+    "FORCE_SLICES": False,
 
     # Child processes for ingestion. 0 = auto (usable cores less one, so an
     # analysis does not take the whole box); 1 = in-process, which is how
@@ -12109,31 +12115,73 @@ class LineageTracer:
         )
 
     def all_slice_roots(self) -> tuple[str, ...]:
-        """Every root `SliceScope.ALL` precomputes: feature, key and sink."""
+        """Every root `SliceScope.ALL` precomputes: feature, key and sink.
+
+        The one-hop readers of a declared sink are included so that ALL is a
+        superset of `decision_slice_roots` by construction. A scope named "every
+        root" that omits a root a narrower scope precomputes is a contradiction,
+        and the subset property is what lets a DECISION slice be compared to the
+        ALL slice of the same root to prove neither was shortened.
+        """
         return tuple(
-            sorted({*self.feature_ids(), *self.key_node_ids(), *self.sink_ids})
+            sorted(
+                {
+                    *self.feature_ids(),
+                    *self.key_node_ids(),
+                    *self.sink_ids,
+                    *self._sink_readers(),
+                }
+            )
         )
+
+    def _sink_readers(self) -> set[str]:
+        """What the declared sinks read: the sources of the lineage edges that
+        land on them, one hop. "What the decision reads" in this card's terms."""
+        readers: set[str] = set()
+        for sink in self.sink_ids:
+            for source, _ in self._in.get(sink, ()):
+                readers.add(source)
+        return readers
 
     def decision_slice_roots(self) -> tuple[str, ...]:
         """The roots that bear on a decision, per `SliceScope.DECISION`.
 
-        Declared sinks, what those sinks read -- the sources of the lineage
-        edges that land on them, one hop, which is "what the decision reads"
-        stated in this card's own terms -- and engineered features. Bounded by
-        the number of decision inputs rather than by the size of the codebase.
+        **With no declared sink this is empty, on purpose.** DECISION scope is
+        bounded by the owner's declaration of what the decision is. Without one
+        there is no principled root set: the alternatives are auto-detected sink
+        CANDIDATES -- which this tool refuses to call facts -- plus every
+        feature and the root of every finding, which is thousands of roots on a
+        real engine and the direct cause of a measured 6.4 GB `slices.jsonl`
+        from a 15 MB input. Building thousands of exact answers on top of a
+        guess is wrong twice: enormous, and rooted in something the tool itself
+        will not assert. `lineage.jsonl` still answers any of them on demand,
+        and `--slice-root` precomputes any root by name.
 
-        Container keys are deliberately NOT here. A key that no config declared
-        a feature is a subscript this card found, not something an owner named
-        as bearing on the decision, and on a single-module target they are
-        every root there is: 7,502 of them on the 14.6 MB file, which is the
-        whole of the quadratic. Each one is still answerable on demand from
-        `lineage.jsonl`, and `--slice-root` precomputes any of them by name.
+        With a sink declared: the sinks and what they read. Bounded by the
+        owner's declaration, which is what "decision scope" always meant.
+
+        Engineered features and finding roots are deliberately NOT here. They
+        were the leak -- unbounded in the size of the codebase, not in the
+        number of decision inputs. So are container keys: a key no config
+        declared a feature is a subscript this card found, and on a
+        single-module target there were 7,502 of them.
         """
-        roots = {*self.sink_ids, *self.feature_ids()}
-        for sink in self.sink_ids:
-            for source, _ in self._in.get(sink, ()):
-                roots.add(source)
-        return tuple(sorted(roots))
+        if not self.sink_ids:
+            return ()
+        return tuple(sorted({*self.sink_ids, *self._sink_readers()}))
+
+    def findings_basis_roots(self) -> tuple[str, ...]:
+        """The roots card 5 reasons from. COMPUTED, never written.
+
+        A finding is a fact and the slice scope is a storage decision; a storage
+        decision that silently changed a finding would be a defect. So the basis
+        handed to card 5 is the same set at every scope and with or without a
+        declared sink -- sinks, what they read, and every engineered feature --
+        even though `slices.jsonl` now writes far fewer of these. The slices for
+        roots that are not written are computed for the finding's own use and
+        discarded, which costs time and no bytes.
+        """
+        return tuple(sorted({*self.sink_ids, *self._sink_readers(), *self.feature_ids()}))
 
     def slice_roots(
         self, scope: SliceScope, extra_roots: Sequence[str] = ()
@@ -18753,9 +18801,10 @@ SETTING_DEFAULTS: dict[str, Any] = {
     # Which roots get a PRECOMPUTED slice in `slices.jsonl`. Never how
     # complete a slice is -- every slice emitted is exact and whole.
     #
-    #   "DECISION"  the roots that bear on a decision: your sinks, what they
-    #               read, engineered features, and the root of any finding.
-    #               Bounded by decision inputs, not by how big your code is.
+    #   "DECISION"  the roots that bear on a decision: your sinks and what
+    #               they read. Bounded by your declaration of what the
+    #               decision is -- with no SINKS there is no principled root
+    #               set, so it writes none and says so.
     #   "ALL"       every root. Exhaustive, correct, and quadratic in OUTPUT:
     #               measured 211 MB of slices for 1.4 MB of source, 1.6 GB for
     #               5.6 MB, and gigabytes for a 14.8 MB engine.
@@ -18765,6 +18814,11 @@ SETTING_DEFAULTS: dict[str, Any] = {
     # Roots to precompute WHATEVER the scope, by id. Chasing one feature
     # should not mean turning on the exhaustive mode to get it.
     "SLICE_ROOTS": [],
+
+    # Write `slices.jsonl` even when the estimate exceeds the size guard.
+    # The guard refuses above 1 GB, because an owner found a 6.4 GB
+    # `slices.jsonl` after the fact. This is how you say you meant it.
+    "FORCE_SLICES": False,
 
     "ENV": ".venv-target",
     "ORDER": [],
@@ -18807,6 +18861,7 @@ _KEY_TO_FIELD: dict[str, str] = {
     "CONFIGS": "configs",
     "SLICES": "slices",
     "SLICE_ROOTS": "slice_roots",
+    "FORCE_SLICES": "force_slices",
     "ENV": "env",
     "ORDER": "order",
     "SCENARIOS": "scenarios",
@@ -18849,6 +18904,10 @@ class Settings:
     slices: SliceScope = SliceScope.DECISION
     #: Roots precomputed whatever the scope says.
     slice_roots: tuple[str, ...] = ()
+    #: Write `slices.jsonl` past the size guard. An override, never a default:
+    #: a refusal the owner can lift is honest; one they cannot is an
+    #: obstruction.
+    force_slices: bool = False
     env: str = ".venv-target"
     order: tuple[str, ...] = ()
     scenarios: str = "scenarios.json"
@@ -18927,6 +18986,15 @@ class Settings:
                         f"1 for in-process, N for N child processes -- not {raw!r}."
                     )
                 values["workers"] = int(raw)
+            elif key == "FORCE_SLICES":
+                if not isinstance(raw, bool):
+                    raise SettingsError(
+                        f"FORCE_SLICES must be true or false -- true writes "
+                        f"slices.jsonl past the size guard, false (the default) "
+                        f"refuses above the limit and says how big it would have "
+                        f"been -- not {raw!r}."
+                    )
+                values["force_slices"] = bool(raw)
             elif key == "SLICES":
                 try:
                     values["slices"] = SliceScope(str(raw).strip().upper())
@@ -19508,6 +19576,7 @@ def _default_analyse(
         config_paths=settings.configs,
         slice_scope=settings.slices,
         slice_roots=tuple(qualify_id(i, prefix) for i in settings.slice_roots),
+        force_slices=settings.force_slices,
         strict_gate=False,
         env_root=env,
         # 0 in the settings means auto, which `Ingestor` spells `None`.
@@ -36054,6 +36123,28 @@ EXIT_USAGE = 2
 EXIT_GATE_FAILED = 3
 EXIT_REFUSED = 4
 
+#: Above this, `slices.jsonl` is refused rather than written. One gigabyte is
+#: the point at which an artifact stops being something an owner can open, and
+#: the number is a starting threshold, not a law: --force-slices writes it
+#: anyway and `slice_size_limit` moves the line.
+#:
+#: Only `slices.jsonl` is guarded. It is the one artifact quadratic in OUTPUT
+#: -- a slice per root, each holding O(graph) ids -- so it is the only one
+#: whose size is out of proportion to the target. `lineage.jsonl` and
+#: `order.jsonl` are linear in the target (one record per lineage edge, one per
+#: ordered node) and are what every unwritten slice is recomputed from:
+#: refusing to write them would save less and cost everything.
+SLICE_SIZE_LIMIT_BYTES = 1 << 30
+
+#: An artifact at or above this is NAMED with its size when it is written --
+#: not refused. Measured on the owner's engine, `lineage.jsonl` was 205 MB and
+#: `order.jsonl` 105 MB for a 14.8 MB target: roughly 14x and 7x the source and
+#: linear in it, which is proportionate for one record per lineage edge and one
+#: per ordered node. `slices.jsonl` at the same scope was 6.4 GB, 432x, because
+#: it alone is quadratic. Proportion is the difference between a sentence and a
+#: refusal.
+LARGE_ARTIFACT_BYTES = 64 << 20
+
 
 # ---------------------------------------------------------------------------
 # Writing artifacts
@@ -36196,6 +36287,8 @@ def analyze(
     config_paths: Sequence[str] = (),
     slice_scope: SliceScope = SliceScope.DECISION,
     slice_roots: Sequence[str] = (),
+    force_slices: bool = False,
+    slice_size_limit: int = SLICE_SIZE_LIMIT_BYTES,
     cache_dir: Path | None = None,
     strict_gate: bool = True,
     env_root: Path | None = None,
@@ -36212,6 +36305,7 @@ def analyze(
     started = time.time()
     summary: dict[str, Any] = {}
     artifacts: dict[str, str] = {}
+    artifact_bytes: dict[str, int] = {}
     stage_millis: dict[str, int] = {}
     _stage_started = started
     # A null object when the caller passed none, so every `progress.` call
@@ -36287,16 +36381,21 @@ def analyze(
     if slice_scope is SliceScope.ALL and available_roots:
         say(_all_scope_warning(len(available_roots), len(lineage_edges)))
 
-    # The basis card 5 reasons from is the DECISION set at EVERY scope. The
-    # scope is a storage decision and a finding is a fact; a storage decision
-    # that silently changed a finding would be a defect, so it cannot reach
-    # one. `--slices all` still WRITES every slice.
-    findings_roots = tracer.slice_roots(SliceScope.DECISION, slice_roots)
+    # The basis card 5 reasons from is the SAME SET at every scope, with and
+    # without a declared sink: sinks, what they read, and every feature, plus
+    # any explicit `--slice-root`. The scope is a storage decision and a
+    # finding is a fact; a storage decision that silently changed a finding
+    # would be a defect, so it cannot reach one.
+    #
+    # Since DECISION no longer writes the feature roots, most of these slices
+    # are now computed for card 5 and never written. That is the intended
+    # trade: the cost was the bytes, not the computation, and `lineage.jsonl`
+    # still lets anyone recompute any of them exactly.
     slices = tracer.default_slices(slice_scope, slice_roots)
-    findings_slices = (
-        slices
-        if slice_scope is SliceScope.DECISION
-        else tracer.default_slices(SliceScope.DECISION, slice_roots)
+    findings_slices = tracer.default_slices(
+        SliceScope.NONE,
+        (*tracer.findings_basis_roots(), *slice_roots),
+        emitted_as=SliceScope.DECISION,
     )
     summary["lineage_edges"] = len(lineage_edges)
     summary["barriers"] = len(barriers)
@@ -36338,22 +36437,20 @@ def analyze(
     findings = tuple(sorted([*findings, *dependency_findings], key=lambda f: f.id))
     summary["findings"] = len(findings)
 
-    # DECISION names "the root of any finding" among its roots, and findings
-    # are only known once card 5 has run. This second pass adds them, so an
-    # owner reading a finding can drill straight into its slice. It runs after
-    # `findings` is final and cannot change it. NONE stays NONE: it was asked
-    # for none.
+    # The root of a finding is NO LONGER an automatic DECISION root: on the
+    # 14.6 MB single-module target card 5 reports 19,227 findings, and a slice
+    # per finding root was 38,454 slices -- more than `ALL` emits, and exactly
+    # the quadratic DECISION exists to avoid. It was one half of the leak that
+    # produced a measured 6.4 GB `slices.jsonl` from a 15 MB input. A finding
+    # the owner wants a slice of is one `--slice-root <id>` away, and
+    # `lineage.jsonl` answers it exactly either way.
     #
-    # Only the two kinds whose EVIDENCE IS A LINEAGE PATH are topped up, and
-    # that bound is measured rather than tidy: on the 14.6 MB single-module
-    # target, with no sink declared, card 5 reports 19,227 findings. A slice
-    # per finding root would be 38,454 slices -- more than `ALL` emits, and
-    # exactly the quadratic DECISION exists to avoid. An UNREACHABLE_ELEMENT
-    # or a VERSION_CONFLICT is not answered by a data-flow slice; an
-    # UNCONSUMED_FEATURE and a DECISION_IRRELEVANT are, which is why those two
-    # are here and the rest are not. Every root left out is still named in the
-    # disclosure and still exactly recomputable from lineage.jsonl.
-    if slice_scope is not SliceScope.NONE:
+    # ALL is unchanged and still tops up, because ALL is the scope that asks
+    # for everything and says what it will cost before paying it. Only the two
+    # kinds whose EVIDENCE IS A LINEAGE PATH are topped up: an
+    # UNREACHABLE_ELEMENT or a VERSION_CONFLICT is not answered by a data-flow
+    # slice; an UNCONSUMED_FEATURE and a DECISION_IRRELEVANT are.
+    if slice_scope is SliceScope.ALL:
         precomputed = {sliced.root_id for sliced in slices}
         top_up = tuple(
             sorted(
@@ -36374,6 +36471,31 @@ def analyze(
                 merged[sliced.id] = sliced
             slices = tuple(sorted(merged.values(), key=lambda one: one.id))
     _stage("findings")
+
+    # The size guard, BEFORE anything is written and before card 16 links a
+    # record to a slice, so a refusal can never leave a record pointing at a
+    # slice the artifact does not hold.
+    #
+    # The owner of a 14.8 MB engine discovered a 6.4 GB slices.jsonl after the
+    # fact. An estimate costs a sum over ids already in memory; discovering the
+    # size afterwards costs a disk. A refusal the owner can override with
+    # --force-slices is honest, and silently writing 6.4 GB is not.
+    slice_bytes = tracer.estimated_slice_bytes(slices)
+    slice_members = sum(len(one.member_ids) for one in slices)
+    slice_refusal: str | None = None
+    if slices and slice_bytes > slice_size_limit and not force_slices:
+        slice_refusal = _slice_size_refusal(
+            estimated=slice_bytes,
+            limit=slice_size_limit,
+            roots=len({sliced.root_id for sliced in slices}),
+            members=slice_members,
+            has_sink=bool(sink_ids),
+        )
+        say(slice_refusal)
+        # Dropped WHOLE, never shortened. The principle the scope rests on is
+        # "emit fewer slices, never smaller ones", and a truncated slices.jsonl
+        # would be the wrong answer wearing the shape of a right one.
+        slices = ()
 
     # Card 16 — documentation records, then the gate.
     builder = DocumentationBuilder(
@@ -36407,7 +36529,24 @@ def analyze(
             "always written in full."
         ),
     }
+    # Why the count is what it is, in the artifact and not only on a terminal
+    # that has scrolled. A count of 0 with no explanation reads as "this target
+    # has no lineage", which is the opposite of true.
+    reason = _slice_count_reason(
+        scope=slice_scope,
+        has_sink=bool(sink_ids),
+        written=len(slices),
+        refusal=slice_refusal,
+    )
+    if reason:
+        slice_disclosure["reason"] = reason
+    slice_disclosure["estimated_bytes"] = slice_bytes
+    slice_disclosure["member_ids_total"] = slice_members
+    slice_disclosure["size_limit_bytes"] = slice_size_limit
+    slice_disclosure["refused"] = slice_refusal is not None
     summary["slices"] = slice_disclosure
+    if reason and slice_refusal is None:
+        say("  " + reason.replace("\n", "\n  "))
     if slice_scope is SliceScope.ALL and slices:
         say(
             f"  slices.jsonl will be about "
@@ -36438,6 +36577,26 @@ def analyze(
         ("interpreter.jsonl", canonical_jsonl(interpreter_requirements)),
     ):
         artifacts[name] = _write(out_dir, name, payload)
+        artifact_bytes[name] = len(payload.encode("utf-8"))
+
+    # Only `slices.jsonl` is REFUSED on size, because it is the only artifact
+    # quadratic in OUTPUT. The rest are linear in the target -- one record per
+    # element, per edge, per ordered node -- and they are what every unwritten
+    # slice is recomputed from, so refusing to write them would save less and
+    # cost everything. What they get instead is a sentence, so a large one is
+    # never a surprise discovered on disk afterwards.
+    large = sorted(
+        (name for name, size in artifact_bytes.items() if size >= LARGE_ARTIFACT_BYTES),
+        key=lambda name: (-artifact_bytes[name], name),
+    )
+    if large:
+        say(
+            "  large artifacts: "
+            + ", ".join(f"{name} {_human_bytes(artifact_bytes[name])}" for name in large)
+            + ". Linear in the target and written in full: these are what any "
+            "slice is recomputed from, so none of them is ever withheld."
+        )
+    summary["artifact_bytes"] = dict(sorted(artifact_bytes.items()))
 
     _stage("write")
     summary["unresolved"] = len(unresolved)
@@ -36500,6 +36659,12 @@ def analyze(
     bar.finish(
         finished_at=finished, elapsed=elapsed_seconds, stage_millis=stage_millis
     )
+    # A refusal outranks the gate: the owner asked for slices, did not get
+    # them, and must not read an exit code that says the run did what it was
+    # asked. Everything else was written, so the workspace is usable and the
+    # analysis does not have to be paid for twice.
+    if slice_refusal is not None:
+        return EXIT_REFUSED, summary
     if offenders and strict_gate:
         return EXIT_GATE_FAILED, summary
     return EXIT_OK, summary
@@ -37017,6 +37182,66 @@ _SLICE_EVIDENCED_FINDINGS = frozenset(
 )
 
 
+def _human_count(count: int) -> str:
+    """A count an owner can hold in their head. 41,231,904 reads as 41M."""
+    if count >= 1_000_000:
+        return f"{count // 1_000_000}M"
+    return f"{count:,}"
+
+
+def _slice_size_refusal(
+    *, estimated: int, limit: int, roots: int, members: int, has_sink: bool
+) -> str:
+    """Said INSTEAD of writing a slices.jsonl larger than the limit.
+
+    Every number is measured from the slices already computed for this run, not
+    from a rule of thumb about another one. The alternatives are named in the
+    same breath, including the one that writes it anyway: a refusal the owner
+    cannot override is an obstruction rather than a warning.
+    """
+    alternatives = (
+        "  Pass --slices none, or --force-slices to write it anyway."
+        if has_sink
+        else "  Declare a sink with --sink <id>, or pass --slices none, or "
+        "--force-slices to write it anyway."
+    )
+    return (
+        f"  slices would be ~{_human_bytes(estimated)} "
+        f"({roots:,} roots, {_human_count(members)} member ids), over the "
+        f"{_human_bytes(limit)} limit. Refusing to write it.\n"
+        f"{alternatives}\n"
+        f"  Nothing was truncated and nothing is lost: lineage.jsonl is written "
+        f"in full and answers any slice exactly, on demand."
+    )
+
+
+#: The DECISION scope with no declared sink. Not an error -- a statement that
+#: the question has no principled answer yet, and how to give it one.
+NO_SINK_SLICE_REASON = (
+    "scope DECISION; no decision sink declared, so there is no principled set "
+    "of roots. Declare one with --sink <id> to get slices, or use --slices all "
+    "to precompute every root and pay for it. A feature or any other root you "
+    "care about is one --slice-root <id> away."
+)
+
+
+def _slice_count_reason(
+    *, scope: SliceScope, has_sink: bool, written: int, refusal: str | None
+) -> str:
+    """Why `slices.jsonl` holds what it holds, carried into the artifact.
+
+    An owner who finds a count of zero with no explanation concludes the target
+    has no lineage, which is the opposite of true. The two counts that need
+    explaining are the ones this tool chose: the unrooted DECISION scope, and a
+    refusal on size.
+    """
+    if refusal is not None:
+        return "\n".join(part.strip() for part in refusal.splitlines())
+    if scope is SliceScope.DECISION and not has_sink and written == 0:
+        return NO_SINK_SLICE_REASON
+    return ""
+
+
 def _human_bytes(count: int) -> str:
     """A size an owner can act on. Never rounded up into a smaller unit."""
     for unit, size in (("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)):
@@ -37106,7 +37331,13 @@ def _slice_lines(summary: dict[str, Any]) -> list[str]:
         )
     else:
         line += "; every root precomputed"
-    return [line]
+    lines = [line]
+    # A count of zero with a reason is an answer. A count of zero without one
+    # reads as "this target has no lineage", which is never what happened.
+    reason = payload.get("reason")
+    if reason:
+        lines += [f"                {part}" for part in str(reason).splitlines()]
+    return lines
 
 
 def _dependency_lines(summary: dict[str, Any]) -> list[str]:
@@ -37221,6 +37452,7 @@ def _settings_from_args(args: Any) -> Settings:
         "CONFIGS": flag("config"),
         "SLICES": flag("slices"),
         "SLICE_ROOTS": flag("slice_root"),
+        "FORCE_SLICES": True if flag("force_slices") else None,
         "ENV": str(flag("env")) if flag("env") else None,
         "ORDER": flag("order"),
         "SCENARIOS": str(flag("scenarios")) if flag("scenarios") else None,
@@ -37378,6 +37610,8 @@ def _build_parser() -> argparse.ArgumentParser:
                      help='which roots get a PRECOMPUTED slice. Never how complete one is -- every slice written is exact and whole. decision (default): the roots that bear on a decision. all: every root, exhaustive and quadratic in output. none: no precomputed slices; lineage.jsonl still answers any of them.')
     run.add_argument("--slice-root", action="append", default=[], metavar="ID",
                      help='precompute the slice rooted at this id whatever --slices says; repeatable')
+    run.add_argument("--force-slices", action="store_true",
+                     help='write slices.jsonl even when the estimate exceeds the 1 GB size guard. The guard exists because an owner found a 6.4 GB slices.jsonl after the fact; this is how you say you meant it.')
     run.add_argument("--cache", type=Path, default=None)
     run.add_argument("--workers", type=int, default=None, metavar="N",
                      help="child processes for ingestion. Omitted or 0 = auto "
@@ -37590,6 +37824,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             config_paths=tuple(args.config),
             slice_scope=_slice_scope_of(args),
             slice_roots=tuple(args.slice_root),
+            force_slices=bool(getattr(args, "force_slices", False)),
             cache_dir=args.cache,
             strict_gate=not args.no_gate,
             env_root=args.env,
