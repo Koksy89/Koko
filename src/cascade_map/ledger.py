@@ -919,7 +919,12 @@ AnalyseFn = Callable[[Path, Path, Settings], dict[str, Any]]
 TraceFn = Callable[[Path, Path, str, Path], tuple[int, str]]
 
 
-def _default_analyse(source_root: Path, out_dir: Path, settings: Settings) -> dict[str, Any]:
+def _default_analyse(
+    source_root: Path,
+    out_dir: Path,
+    settings: Settings,
+    progress: Any = None,
+) -> dict[str, Any]:
     """Card 10's static pipeline, which is cards 1-5, 16 and 17.
 
     Imported inside the function: ``cli`` sits above this module in the
@@ -942,6 +947,7 @@ def _default_analyse(source_root: Path, out_dir: Path, settings: Settings) -> di
         env_root=env,
         # 0 in the settings means auto, which `Ingestor` spells `None`.
         workers=settings.workers or None,
+        progress=progress,
     )
     summary["exit_code"] = code
     return summary
@@ -1891,6 +1897,7 @@ def track(
     analyse: AnalyseFn | None = None,
     trace: TraceFn | None = None,
     now: Callable[[], str] | None = None,
+    progress_factory: Callable[[str], Any] | None = None,
 ) -> tuple[TrackResult, Ledger]:
     """Discover, analyse what is new, compare consecutive pairs, save, report.
 
@@ -1899,6 +1906,19 @@ def track(
     what to run and what to skip, and files the result in the workspace.
     """
     base = Path(root) if root is not None else Path.cwd()
+    if analyse is None and progress_factory is not None:
+        # A reporter PER VERSION, not one for the whole command: `track`
+        # cannot know how many versions it will analyse until discovery has
+        # run, and a bar whose denominator changes underneath it is worse
+        # than eight honest bars.
+        def analyse(
+            source_root: Path, out_dir: Path, settings: Settings
+        ) -> dict[str, Any]:
+            assert progress_factory is not None
+            return _default_analyse(
+                source_root, out_dir, settings, progress_factory(source_root.name)
+            )
+
     layout = layout_for(settings, base)
     ledger = Ledger(settings, root=root, analyse=analyse, trace=trace, layout=layout, now=now)
     ledger_path = layout.ledger_file

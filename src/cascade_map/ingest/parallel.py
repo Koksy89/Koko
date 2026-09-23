@@ -254,6 +254,8 @@ def run_units(
     jobs: Sequence[tuple[str, Any]],
     workers: int,
     report: WorkerReport,
+    *,
+    on_unit: Callable[[int, int], None] | None = None,
 ) -> dict[str, Any]:
     """Run every `(key, payload)` job through `fn` and return `{key: value}`.
 
@@ -281,10 +283,12 @@ def run_units(
         report.started = 1
         started_at = time.perf_counter()
         out: dict[str, Any] = {}
-        for job in jobs:
+        for done, job in enumerate(jobs, start=1):
             r = _timed(fn, job)
             out[r.key] = r.value
             report.unit_seconds[r.key] = r.seconds
+            if on_unit is not None:
+                on_unit(done, len(jobs))
         report.wall_seconds = time.perf_counter() - started_at
         report.serial_seconds = sum(report.unit_seconds.values())
         _record_largest(report)
@@ -294,13 +298,20 @@ def run_units(
     started_at = time.perf_counter()
     try:
         with ProcessPoolExecutor(max_workers=effective) as pool:
-            results = list(pool.map(_Call(fn), jobs, chunksize=1))
+            # Iterated rather than `list(...)` so progress can be reported as
+            # results arrive. `pool.map` still yields in SUBMISSION order, so
+            # nothing about ordering changes -- only when we hear about it.
+            results = []
+            for done, item in enumerate(pool.map(_Call(fn), jobs, chunksize=1), start=1):
+                results.append(item)
+                if on_unit is not None:
+                    on_unit(done, len(jobs))
     except Exception as exc:  # pragma: no cover - platform dependent
         report.started = 1
         report.skipped_reason = f"pool unavailable ({type(exc).__name__}); ran in-process"
         report.wall_seconds = 0.0
         report.unit_seconds.clear()
-        return run_units(fn, jobs, 1, report)
+        return run_units(fn, jobs, 1, report, on_unit=on_unit)
 
     report.started = effective
     out = {}

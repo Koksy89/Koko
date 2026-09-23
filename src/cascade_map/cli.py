@@ -49,6 +49,13 @@ from cascade_map.ingest import inventory
 from cascade_map.ingest.inventory import Ingestor
 from cascade_map.ingest.parallel import render_worker_report
 from cascade_map.lineage import LineageTracer
+from cascade_map.progress import (
+    ANALYZE_STAGES,
+    NullProgress,
+    TRACE_STAGES,
+    make_envelope,
+    make_reporter,
+)
 from cascade_map.resolve import Resolver
 from cascade_map.harness.hashing import (
     compute_graph_hash,
@@ -387,6 +394,7 @@ def analyze(
     env_root: Path | None = None,
     workers: int | None = None,
     worker_report_sink: Callable[[str], None] | None = None,
+    progress: Any = None,
 ) -> tuple[int, dict[str, Any]]:
     """Run the static pipeline over *root* and write artifacts to *out_dir*.
 
@@ -399,6 +407,10 @@ def analyze(
     artifacts: dict[str, str] = {}
     stage_millis: dict[str, int] = {}
     _stage_started = started
+    # A null object when the caller passed none, so every `progress.` call
+    # below is unconditional and a forgotten guard cannot crash the quiet path.
+    bar = progress if progress is not None else NullProgress()
+    bar.start(started)
 
     def _stage(name: str) -> None:
         """Record how long the stage that just finished took, in whole
@@ -415,6 +427,9 @@ def analyze(
         now = time.time()
         stage_millis[name] = int(round((now - _stage_started) * 1000))
         _stage_started = now
+        # The same call that records the timing announces it. One hook, so a
+        # stage can never be timed and not shown, or shown and not timed.
+        bar.complete(name)
 
     # Card 1 — inventory.
     #
@@ -423,10 +438,10 @@ def analyze(
     # artifact: it is wall-clock, and constraint 4 says identical input gives
     # identical bytes.
     ingestor = Ingestor(cache_dir=cache_dir, workers=workers)
-    elements, unresolved = ingestor.inventory(str(root))
+    elements, unresolved = ingestor.inventory(str(root), on_unit=bar.sub)
     summary["elements"] = len(elements)
     _stage("inventory")
-    (worker_report_sink or print)(render_worker_report(ingestor.worker_report))
+    (worker_report_sink or bar.through)(render_worker_report(ingestor.worker_report))
 
     # Card 2 — resolution.
     resolver = Resolver(root, config_paths=tuple(config_paths))
@@ -460,7 +475,7 @@ def analyze(
     tracer = LineageTracer(root, sink_ids=tuple(sink_ids))
     lineage_edges, barriers = tracer.trace_values(elements, edges)
 
-    say = worker_report_sink or print
+    say = worker_report_sink or bar.through
     available_roots = tracer.all_slice_roots()
     if slice_scope is SliceScope.ALL and available_roots:
         say(_all_scope_warning(len(available_roots), len(lineage_edges)))
@@ -565,7 +580,7 @@ def analyze(
         decision_sink_ids=tuple(sink_ids),
         dependencies=dependencies.doc_dependencies(),
     )
-    records = builder.records()
+    records = builder.records(on_progress=bar.sub)
     offenders = builder.completeness_gate(records)
     summary["incomplete_records"] = len(offenders)
     _stage("records")
@@ -648,14 +663,24 @@ def analyze(
         )
         + "\n",
     )
+    # ONE reading of the clock, used by the printed footer and by
+    # run_meta.json alike. Two readings would let the owner's terminal and
+    # their artifact disagree about how long their own run took.
+    finished = time.time()
+    elapsed_seconds = round(finished - started, 1)
+    summary["started_at"] = started
+    summary["finished_at"] = finished
+    summary["elapsed_seconds"] = elapsed_seconds
     (out_dir / "run_meta.json").write_text(
         json.dumps(
             {
                 "tool_version": __version__,
                 "python": platform.python_version(),
                 "target_root": str(root.resolve()),
-                "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "elapsed_seconds": round(time.time() - started, 1),
+                "finished_at": time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime(finished)
+                ),
+                "elapsed_seconds": elapsed_seconds,
             },
             indent=2,
             sort_keys=True,
@@ -665,6 +690,9 @@ def analyze(
         newline="\n",
     )
 
+    bar.finish(
+        finished_at=finished, elapsed=elapsed_seconds, stage_millis=stage_millis
+    )
     if offenders and strict_gate:
         return EXIT_GATE_FAILED, summary
     return EXIT_OK, summary
@@ -680,6 +708,7 @@ def trace(
     scenario_file: Path,
     scenario: str,
     out_root: Path,
+    progress: Any = None,
 ) -> tuple[int, str]:
     """Run the target under the harness and write the runtime overlay.
 
@@ -699,6 +728,10 @@ def trace(
     write root, which would have let the target write there too.
     """
     import subprocess
+
+    # The caller owns start and finish, because a refusal returns from a dozen
+    # places in this function and every one of them must still print a footer.
+    bar = progress if progress is not None else NullProgress()
 
     from cascade_map.contracts.interfaces import (
         CFGBlock,
@@ -757,9 +790,11 @@ def trace(
         src=json.dumps(str(Path(__file__).resolve().parents[1])),
         self_file=json.dumps(str(Path(__file__).resolve())),
     )
+    bar.complete("preflight")
     completed = subprocess.run(
         [sys.executable, "-c", child], capture_output=True, text=True, timeout=1800
     )
+    bar.complete("harness")
     if not record_out.exists():
         detail = (completed.stderr or completed.stdout or "").strip()[-2000:]
         return EXIT_REFUSED, f"the harness produced no run record.\n\n{detail}"
@@ -775,14 +810,17 @@ def trace(
     index = build_index(graph_dir, target_root)
     tracer = Tracer(index, recordings_dir=recordings)
     result = tracer.result(run)
+    bar.complete("map")
     order_nodes = _read_jsonl(graph_dir, "order.jsonl", OrderNode)
     decisions = _read_jsonl(graph_dir, "decisions.jsonl", DecisionPoint)
     narrative = Narrator().narrate(result.events, order_nodes, decisions, run)
+    bar.complete("narrate")
 
     run_dir = out_root / "runtime" / run.run_id
     tracer.emit(result, run_dir)
     _write(run_dir, "run.json", canonical_dumps(run) + "\n")
     _write(run_dir, "narrative.jsonl", canonical_jsonl(narrative))
+    bar.complete("write")
 
     failure = run.scenario_failure
     total, mapped = result.mapping.total_events, result.mapping.mapped_events
@@ -1447,6 +1485,31 @@ def _track_trace(
 # ---------------------------------------------------------------------------
 
 
+def _add_progress_flags(sub_parser: argparse.ArgumentParser) -> None:
+    """Progress flags, identical on `analyze`, `track` and `trace`.
+
+    Progress is on by default and writes ONLY to stderr, so a run that is
+    piped, redirected or parsed sees exactly the bytes it always saw. On a
+    terminal the line is redrawn in place; anywhere else it is one plain line
+    per completed stage, because a log full of carriage returns is worse than
+    silence.
+    """
+    group = sub_parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--progress", dest="progress", action="store_true", default=None,
+        help="show live progress even when stderr is not a terminal "
+             "(one line per stage, no carriage returns)",
+    )
+    group.add_argument(
+        "--no-progress", dest="progress", action="store_false",
+        help="no progress line and no timing footer",
+    )
+    sub_parser.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="suppress progress and timing entirely. Never affects stdout.",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cascade-map",
@@ -1490,6 +1553,8 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--no-gate", action="store_true",
                      help="write artifacts even if the completeness gate fails, "
                           "and exit 0. The gate still reports.")
+
+    _add_progress_flags(run)
 
     doc = sub.add_parser(
         "doctor",
@@ -1571,6 +1636,8 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="print the whole history, not only what this run did")
     _add_sport_flags(hist)
 
+    _add_progress_flags(hist)
+
     story = sub.add_parser(
         "history",
         help="read one script's whole development story back out of the workspace",
@@ -1629,6 +1696,7 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="say whether this run could start, and what would be "
                             "active, WITHOUT executing anything")
     _add_sport_flags(run_a)
+    _add_progress_flags(run_a)
     return parser
 
 
@@ -1666,6 +1734,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         code, summary = analyze(
             args.root,
             args.out,
+            progress=make_reporter(
+                ANALYZE_STAGES, quiet=args.quiet, force=args.progress
+            ),
             entry_ids=tuple(args.entry),
             sink_ids=tuple(args.sink),
             config_paths=tuple(args.config),
@@ -1724,20 +1795,36 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
 
     if args.command == "track":
+        envelope = make_envelope(quiet=args.quiet, force=args.progress)
+        started = time.time()
+        envelope.start(started)
+
+        def _version_progress(label: str) -> Any:
+            reporter = make_reporter(
+                ANALYZE_STAGES, quiet=args.quiet, force=args.progress
+            )
+            reporter.note(f"analysing {label}")
+            return reporter
+
         try:
             settings = _settings_from_args(args)
             result, ledger = track(
                 settings,
                 root=Path.cwd(),
                 trace=_track_trace if settings.mode == 2 else None,
+                progress_factory=_version_progress,
             )
         except (SettingsError, LedgerError) as exc:
             print(str(exc), file=sys.stderr)
             return EXIT_USAGE
+        finished = time.time()
         print(render_track_report(result))
         if args.report:
             print()
             print(render_history_report(ledger))
+        # Last, so the timing footer sits under everything the run printed and
+        # an owner scrolling to the bottom finds it where `analyze` puts it.
+        envelope.finish(finished_at=finished, elapsed=finished - started)
         incomplete = [c for c in result.comparisons if c.unaccounted_element_ids]
         if incomplete:
             # Every element of both versions must land in exactly one
@@ -1987,9 +2074,7 @@ def _trace_command(args: Any) -> int:
         if not args.scenarios.is_file():
             print(f"no scenarios file at {args.scenarios}", file=sys.stderr)
             return EXIT_USAGE
-        code, message = trace(args.graph_dir, args.scenarios, args.scenario, args.out)
-        print(message, file=sys.stderr if code else sys.stdout)
-        return code
+        return _timed_trace(args, args.scenarios, args.scenario)
 
     sports = settings.selected_sports()
     if args.preflight:
@@ -2042,12 +2127,36 @@ def _trace_command(args: Any) -> int:
     )
     worst = EXIT_OK
     for sport in chosen:
-        code, message = trace(args.graph_dir, derived_path, sport, args.out)
-        print(f"=== {sport} ===")
-        print(message, file=sys.stderr if code else sys.stdout)
-        print()
-        worst = max(worst, code)
+        worst = max(worst, _timed_trace(args, derived_path, sport, banner=sport))
     return worst
+
+
+def _timed_trace(
+    args: Any, scenario_file: Path, scenario: str, *, banner: str = ""
+) -> int:
+    """One traced scenario, with its progress line and its timing footer.
+
+    The reporter is started and finished HERE rather than inside `trace()`,
+    because `trace()` returns a refusal from a dozen places and a run that
+    printed `started` and never printed `finished` reads exactly like a hang --
+    which is the complaint this whole feature answers.
+    """
+    bar = make_reporter(TRACE_STAGES, quiet=args.quiet, force=args.progress)
+    started = time.time()
+    bar.start(started)
+    try:
+        code, message = trace(
+            args.graph_dir, scenario_file, scenario, args.out, progress=bar
+        )
+    finally:
+        finished = time.time()
+        bar.finish(finished_at=finished, elapsed=finished - started)
+    if banner:
+        print(f"=== {banner} ===")
+    print(message, file=sys.stderr if code else sys.stdout)
+    if banner:
+        print()
+    return code
 
 
 if __name__ == "__main__":

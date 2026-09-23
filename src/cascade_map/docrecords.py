@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from cascade_map.contracts.interfaces import (
     AlignmentVerdict,
@@ -330,6 +330,12 @@ def parse_signature(signature: str) -> tuple[list[dict[str, str]], str]:
 # ---------------------------------------------------------------------------
 
 
+#: How many times `records()` reports sub-progress over a whole build. Ten
+#: calls on any corpus size, so the cost of reporting is constant and cannot
+#: grow into the stage it is measuring.
+_PROGRESS_STEPS = 10
+
+
 class DocumentationBuilder:
     """Implements the ``DocsCard`` protocol.
 
@@ -508,8 +514,24 @@ class DocumentationBuilder:
 
     # -- assembly -----------------------------------------------------
 
-    def records(self) -> Sequence[DocRecord]:
-        return tuple(self._build_record(el) for el in sorted(self._elements, key=lambda e: e.id))
+    def records(
+        self, *, on_progress: Callable[[int, int], None] | None = None
+    ) -> Sequence[DocRecord]:
+        """`on_progress(done, total)` is called at most `_PROGRESS_STEPS` times
+        over the whole build, not once per element: the callback exists so a
+        long stage looks alive, and firing it per element on a 400,000-element
+        target would cost more than the reporting is worth."""
+        ordered = sorted(self._elements, key=lambda e: e.id)
+        if on_progress is None:
+            return tuple(self._build_record(el) for el in ordered)
+        total = len(ordered)
+        every = max(1, total // _PROGRESS_STEPS)
+        built: list[DocRecord] = []
+        for done, element in enumerate(ordered, start=1):
+            built.append(self._build_record(element))
+            if done % every == 0 or done == total:
+                on_progress(done, total)
+        return tuple(built)
 
     def _build_record(self, element: Element) -> DocRecord:
         identity = self._identity(element)

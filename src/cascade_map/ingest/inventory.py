@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -108,7 +109,17 @@ class Ingestor:
         #: because it is a timing and constraint 4 forbids timings in output.
         self.worker_report = WorkerReport()
 
-    def inventory(self, root: str) -> tuple[list[Element], list[Unresolved]]:
+    def inventory(
+        self,
+        root: str,
+        *,
+        on_unit: Callable[[int, int], None] | None = None,
+    ) -> tuple[list[Element], list[Unresolved]]:
+        """`on_unit(done, total)` is called once per PARSED FILE, never inside
+        a per-node loop: one call per unit of work costs nothing measurable and
+        a per-node counter would show up in the stage it is reporting on.
+        A cached file is not a unit -- it is not parsed -- so the count is of
+        work actually being done."""
         stage_started = time.perf_counter()
         root_path = Path(root)
         root_resolved = root_path.resolve()
@@ -214,7 +225,9 @@ class Ingestor:
 
         # ---- pass 2: do the work, in-process or across the pool. ---------
         self.worker_report = WorkerReport()
-        results = run_units(_run_unit, jobs, self.workers, self.worker_report)
+        results = run_units(
+            _run_unit, jobs, self.workers, self.worker_report, on_unit=on_unit
+        )
 
         # ---- pass 3: assemble, serially, in walk order. ------------------
         # Results are looked up by key in the order pass 1 recorded, so the
