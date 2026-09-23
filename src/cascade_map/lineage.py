@@ -644,6 +644,14 @@ class LineageTracer:
         self._in: dict[str, tuple[tuple[str, str], ...]] = {}
         self._slice_cache: dict[str, Slice] = {}
         self._edge_conf: dict[str, Confidence] = {}
+        self._walk_index: dict[
+            str,
+            tuple[
+                dict[str, tuple[str, ...]],
+                dict[str, tuple[str, ...]],
+                dict[str, Confidence],
+            ],
+        ] = {}
 
     # -- LineageCard -------------------------------------------------------
 
@@ -705,11 +713,9 @@ class LineageTracer:
                     ),
                 )
             )
-        members, edge_ids, confidences = self._walk(root_id, direction)
+        members, edge_ids, weakest = self._walk(root_id, direction)
         barrier_ids = {member for member in members if member in self._barriers}
-        confidence = (
-            combine(*sorted(confidences, key=str)) if confidences else Confidence.UNKNOWN
-        )
+        confidence = weakest if weakest is not None else Confidence.UNKNOWN
         if barrier_ids:
             confidence = Confidence.UNKNOWN
         result = Slice(
@@ -727,36 +733,38 @@ class LineageTracer:
 
     def _walk(
         self, root_id: str, direction: str
-    ) -> tuple[set[str], set[str], set[Confidence]]:
-        """Reachable nodes, the edges used, and the confidences seen.
+    ) -> tuple[set[str], set[str], Confidence | None]:
+        """Reachable nodes, the edges used, and the weakest edge on the way.
 
         Each node is dequeued once and each edge therefore traversed once, so
         the members set and the visited set are the same set -- one is kept.
-        The confidences are a *set*: :func:`combine` is a minimum over a total
-        rank, so duplicates and order cannot change its answer, and keeping at
-        most one of each stops a slice over thousands of edges from building a
-        thousands-long argument list to take a minimum of six values.
+        The confidence is reduced as it goes rather than collected: it ends as
+        ``combine`` over exactly the traversed edges, which is what the caller
+        asked for, and ``None`` when no edge was traversed at all.
         """
-        adjacency = self._in if direction == "backward" else self._out
+        nodes_of, ids_of, weakest_of = self._walk_index_for(direction)
         sinks = set(self.sink_ids)
-        edge_conf = self._edge_conf
         members: set[str] = {root_id}
         edge_ids: set[str] = set()
-        confidences: set[Confidence] = set()
+        weakest: Confidence | None = None
         queue: deque[str] = deque([root_id])
         forward = direction == "forward"
-        empty: tuple[tuple[str, str], ...] = ()
         while queue:
             node = queue.popleft()
             if forward and node in sinks and node != root_id:
                 continue  # a forward slice ends at a decision sink
-            for neighbour, edge_id in adjacency.get(node, empty):  # already sorted
-                edge_ids.add(edge_id)
-                confidences.add(edge_conf[edge_id])
+            neighbours = nodes_of.get(node)
+            if not neighbours:
+                continue
+            edge_ids.update(ids_of[node])
+            here = weakest_of[node]
+            if here is not weakest:
+                weakest = here if weakest is None else combine(weakest, here)
+            for neighbour in neighbours:  # already sorted
                 if neighbour not in members:
                     members.add(neighbour)
                     queue.append(neighbour)
-        return members, edge_ids, confidences
+        return members, edge_ids, weakest
 
     def _reaches_sinks(
         self, root_id: str, members: set[str], direction: str
@@ -1148,11 +1156,53 @@ class LineageTracer:
             into.setdefault(edge.source_id, [])
         self._out = {key: tuple(sorted(value)) for key, value in sorted(out.items())}
         self._in = {key: tuple(sorted(value)) for key, value in sorted(into.items())}
-        # Edge id -> confidence, so a slice walk reads one dict instead of a
-        # dict lookup plus two attribute hops per traversed edge.
+        # `_freeze` runs twice, and the second run replaces this, so the
+        # per-node walk index is built on demand by `_walk_index_for` rather
+        # than here.
         self._edge_conf = {
             edge.id: edge.provenance.confidence for edge in self.lineage_edges
         }
+        self._walk_index = {}
+
+    def _walk_index_for(
+        self, direction: str
+    ) -> tuple[
+        dict[str, tuple[str, ...]],
+        dict[str, tuple[str, ...]],
+        dict[str, Confidence],
+    ]:
+        """Per-node view of the adjacency a slice walk actually reads.
+
+        A walk wants three things per node and nothing per edge: the
+        neighbours to queue, the edge ids to record, and the weakest
+        confidence among those edges -- `combine` is a minimum, so the minimum
+        over a node's edges can be taken once here instead of once per
+        traversal. Splitting the pairs the same way lets `set.update` absorb a
+        node's edge ids in C rather than one `add` per edge.
+        """
+        built = self._walk_index.get(direction)
+        if built is not None:
+            return built
+        adjacency = self._in if direction == "backward" else self._out
+        edge_conf = self._edge_conf
+        nodes: dict[str, tuple[str, ...]] = {}
+        ids: dict[str, tuple[str, ...]] = {}
+        weakest: dict[str, Confidence] = {}
+        for key, pairs in adjacency.items():
+            if not pairs:
+                continue
+            nodes[key] = tuple([pair[0] for pair in pairs])
+            edge_ids = tuple([pair[1] for pair in pairs])
+            ids[key] = edge_ids
+            worst = edge_conf[edge_ids[0]]
+            for edge_id in edge_ids[1:]:
+                here = edge_conf[edge_id]
+                if here is not worst:
+                    worst = combine(worst, here)
+            weakest[key] = worst
+        built = (nodes, ids, weakest)
+        self._walk_index[direction] = built
+        return built
 
 
 def _config_names(element: Element) -> set[str]:
