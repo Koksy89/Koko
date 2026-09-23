@@ -24,6 +24,7 @@ __version__ = "0.0.0"
 from collections import defaultdict
 from collections import defaultdict, deque
 from collections import deque
+from collections.abc import Callable
 from collections.abc import Callable, Sequence
 from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
@@ -42,6 +43,7 @@ from types import CodeType, FrameType
 from types import ModuleType
 from typing import Any
 from typing import Any, Callable, Iterable, Mapping, Sequence, get_args, get_origin
+from typing import Any, Callable, Mapping, Sequence
 from typing import Any, Callable, Sequence
 from typing import Any, Iterable
 from typing import Any, Iterable, Iterator, Mapping, Sequence
@@ -49,10 +51,10 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 from typing import Any, Iterable, Protocol, Sequence
 from typing import Any, Iterable, Sequence
 from typing import Any, Mapping
-from typing import Any, Mapping, Sequence
 from typing import Any, Sequence
 from typing import Callable
 from typing import Callable, Mapping
+from typing import Callable, Sequence, TextIO
 from typing import Iterable, Mapping, Sequence
 from typing import Iterable, Pattern, Sequence
 from typing import Iterable, Sequence
@@ -1955,6 +1957,530 @@ class NarrativeCard(Protocol):
 
 
 # ==========================================================================
+# progress.py
+# ==========================================================================
+
+"""Live progress and honest timing for runs that would otherwise print nothing.
+
+A five-minute run that prints one worker report and then goes silent is
+indistinguishable from a hung one. This module is the only thing in the tool
+that writes while work is in flight, and it obeys three rules absolutely:
+
+1. **Everything goes to stderr.** Never stdout. The summary, the artifacts and
+   anything a script parses are unchanged whether progress ran or not, so
+   constraint 4 -- identical input, byte-identical output -- is untouched.
+2. **Carriage returns only on a TTY.** Piped into a log, `\\r` spam is worse
+   than silence, so a non-TTY gets exactly one plain line per completed stage.
+3. **An estimate is stated as an estimate.** The remaining time carries `~`,
+   and where no stage has finished yet there is nothing to calibrate against,
+   so it says `estimating` rather than inventing a countdown.
+
+The estimate starts from measured stage weights (see `ANALYZE_STAGES`) and is
+recalibrated after every stage completes: the stages already done say how fast
+this machine and this target actually are, which is a far better prior than any
+constant. Within a stage the fraction is real sub-progress when a stage can
+report it cheaply (ingestion knows its file count, records its element count),
+and otherwise a time-based guess capped below 1.0 so the bar never sits at
+100% waiting.
+"""
+
+
+
+__all__ = [
+    "ANALYZE_STAGES",
+    "NullProgress",
+    "ProgressReporter",
+    "RunEnvelope",
+    "Stage",
+    "TRACE_STAGES",
+    "format_duration",
+    "make_envelope",
+    "make_reporter",
+    "stage_timing_line",
+    "utc_stamp",
+]
+
+
+@dataclass(frozen=True)
+class Stage:
+    """One pipeline stage and its share of a typical run.
+
+    `weight` is relative, not a percentage: the reporter normalises by the sum,
+    so a caller adding a stage never has to rebalance the others.
+    """
+
+    name: str
+    weight: float
+
+
+#: Measured stage weights, in seconds, from a real `analyze` over the owner's
+#: 14.6 MB single-module target:
+#:
+#:     inventory 46s · resolve 69s · cascade 58s · lineage 80s · records 7s
+#:     · write 68s
+#:
+#: `dependencies` and `findings` are not in that measurement -- it predates
+#: them being timed separately -- so they carry a small measured-here prior
+#: instead. They are the two cheapest stages on every corpus run, and being
+#: wrong about them moves the estimate by single-digit percent, which is
+#: inside what a `~` is claiming anyway.
+ANALYZE_STAGES: tuple[Stage, ...] = (
+    Stage("inventory", 46.0),
+    Stage("resolve", 69.0),
+    Stage("cascade", 58.0),
+    Stage("lineage", 80.0),
+    Stage("dependencies", 4.0),
+    Stage("findings", 9.0),
+    Stage("records", 7.0),
+    Stage("write", 68.0),
+)
+
+#: Mode A. The child process owns most of the wall clock and cannot be asked
+#: how far through it is without instrumenting the target, which mode A will
+#: not do, so `harness` is deliberately one long opaque stage.
+TRACE_STAGES: tuple[Stage, ...] = (
+    Stage("preflight", 2.0),
+    Stage("harness", 70.0),
+    Stage("map", 15.0),
+    Stage("narrate", 5.0),
+    Stage("write", 8.0),
+)
+
+
+def format_duration(seconds: float) -> str:
+    """`5m15s`, `46s`, `1h07m`. Short enough to sit on a redrawn line."""
+    if seconds < 0:
+        seconds = 0.0
+    whole = int(round(seconds))
+    if whole < 60:
+        return f"{whole}s"
+    if whole < 3600:
+        return f"{whole // 60}m{whole % 60:02d}s"
+    return f"{whole // 3600}h{(whole % 3600) // 60:02d}m"
+
+
+def _progress_utc_stamp(epoch: float) -> str:
+    """`2026-09-23 14:02:11 UTC` -- printed, never written into an artifact."""
+    return time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(epoch))
+
+
+def stage_timing_line(stage_millis: dict[str, int]) -> str:
+    """`inventory 46s · resolve 69s · ...`, in the order the stages ran.
+
+    `dict` preserves insertion order and the pipeline inserts in execution
+    order, so this needs no sort -- and must not have one, because alphabetical
+    stage names would tell the owner nothing about where the time went.
+    """
+    if not stage_millis:
+        return ""
+    return " · ".join(
+        f"{name} {format_duration(millis / 1000.0)}"
+        for name, millis in stage_millis.items()
+    )
+
+
+class NullProgress:
+    """The disabled reporter. Every method exists and does nothing.
+
+    A null object rather than `if self._progress:` at eight call sites: a
+    forgotten guard is a crash in the one configuration -- `--quiet`, or no
+    terminal -- that exists precisely so nothing extra happens.
+    """
+
+    enabled = False
+
+    def start(self, started_at: float | None = None) -> None: ...
+
+    def complete(self, name: str) -> None: ...
+
+    def sub(self, done: int, total: int) -> None: ...
+
+    def note(self, text: str) -> None: ...
+
+    def through(self, text: str, *, stream: TextIO | None = None) -> None:
+        print(text, file=stream if stream is not None else sys.stdout)
+
+    def finish(
+        self,
+        *,
+        finished_at: float | None = None,
+        elapsed: float | None = None,
+        stage_millis: dict[str, int] | None = None,
+    ) -> None: ...
+
+
+class ProgressReporter:
+    """Redraws one line on a TTY; emits one line per stage otherwise.
+
+    The reporter owns a daemon ticker thread on a TTY so the line keeps moving
+    inside a stage that reports no sub-progress -- which is the owner's actual
+    complaint, since a single 14.6 MB module is *one* ingestion unit and no
+    file counter can animate it. The thread does nothing but re-render a
+    string and write it; it holds a lock the foreground also takes, so a stage
+    boundary and a tick can never interleave mid-line.
+    """
+
+    def __init__(
+        self,
+        stages: Sequence[Stage],
+        *,
+        stream: TextIO | None = None,
+        tty: bool | None = None,
+        clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
+        interval: float = 0.25,
+        live: bool = True,
+    ) -> None:
+        if not stages:
+            raise ValueError("a reporter needs at least one stage")
+        self.enabled = True
+        self._stages = tuple(stages)
+        self._index = 0
+        self._stream = stream if stream is not None else sys.stderr
+        self._tty = self._detect_tty() if tty is None else bool(tty)
+        self._clock = clock
+        self._wall = wall_clock
+        self._interval = interval
+        self._live = live and self._tty
+        self._total_weight = sum(s.weight for s in self._stages) or 1.0
+        self._done_weight = 0.0
+        self._t0 = 0.0
+        self._stage_t0 = 0.0
+        self._sub = (0, 0)
+        self._durations: dict[str, float] = {}
+        self._lock = threading.RLock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._painted = 0
+        self._started = False
+
+    # -- lifecycle ---------------------------------------------------------
+
+    @staticmethod
+    def _detect_tty() -> bool:
+        try:
+            return bool(sys.stderr.isatty())
+        except Exception:  # pragma: no cover - a closed or exotic stream
+            return False
+
+    def start(self, started_at: float | None = None) -> None:
+        with self._lock:
+            if self._started:
+                return
+            self._started = True
+            self._t0 = self._clock()
+            self._stage_t0 = self._t0
+            stamp = _progress_utc_stamp(started_at if started_at is not None else self._wall())
+            self._write(f"started   {stamp}\n")
+            self._render()
+        if self._live:
+            self._thread = threading.Thread(
+                target=self._tick, name="cascade-map-progress", daemon=True
+            )
+            self._thread.start()
+
+    def complete(self, name: str) -> None:
+        """The stage called *name* has just finished."""
+        with self._lock:
+            if not self._started:
+                return
+            now = self._clock()
+            self._durations[name] = now - self._stage_t0
+            current = self._stages[self._index] if self._index < len(self._stages) else None
+            if current is not None and current.name == name:
+                self._done_weight += current.weight
+                self._index += 1
+            else:
+                # A stage the reporter was not told about, or one out of
+                # order. It is still timed and still announced; it simply does
+                # not move the bar, because a bar that jumps backwards is
+                # worse than one that is briefly conservative.
+                found = next(
+                    (i for i, s in enumerate(self._stages) if s.name == name), None
+                )
+                if found is not None and found >= self._index:
+                    self._done_weight = sum(
+                        s.weight for s in self._stages[: found + 1]
+                    )
+                    self._index = found + 1
+            self._stage_t0 = now
+            self._sub = (0, 0)
+            if self._tty:
+                self._render()
+            else:
+                self._clear()
+                self._write(self._line(done_stage=name) + "\n")
+
+    def sub(self, done: int, total: int) -> None:
+        """Real sub-progress inside the current stage, if it has any cheaply."""
+        with self._lock:
+            if not self._started or total <= 0:
+                return
+            self._sub = (max(0, min(done, total)), total)
+            if self._tty:
+                self._render()
+
+    def note(self, text: str) -> None:
+        """A one-off line on stderr, without disturbing the progress line."""
+        with self._lock:
+            self._clear()
+            self._write(text.rstrip("\n") + "\n")
+            if self._tty:
+                self._render()
+
+    def through(self, text: str, *, stream: TextIO | None = None) -> None:
+        """Print *text* (stdout by default) with the progress line out of the way."""
+        with self._lock:
+            self._clear()
+            print(text, file=stream if stream is not None else sys.stdout)
+            if self._tty:
+                self._render()
+
+    def finish(
+        self,
+        *,
+        finished_at: float | None = None,
+        elapsed: float | None = None,
+        stage_millis: dict[str, int] | None = None,
+    ) -> None:
+        """Stop, and print the closing timestamp, true elapsed and stage split.
+
+        `finished_at` and `elapsed` come from the caller, not from this
+        object's own clock, so the printed numbers and the ones in
+        `run_meta.json` are the same numbers and cannot drift apart.
+        """
+        self._stop.set()
+        thread = self._thread
+        if thread is not None:
+            thread.join(timeout=1.0)
+            self._thread = None
+        with self._lock:
+            self._clear()
+            wall = finished_at if finished_at is not None else self._wall()
+            took = elapsed if elapsed is not None else (self._clock() - self._t0)
+            line = stage_timing_line(stage_millis or {})
+            if line:
+                self._write(line + "\n")
+            self._write(f"finished  {_progress_utc_stamp(wall)}   ({format_duration(took)})\n")
+            self._flush()
+
+    # -- rendering ---------------------------------------------------------
+
+    def _tick(self) -> None:
+        while not self._stop.wait(self._interval):
+            with self._lock:
+                if self._stop.is_set():
+                    return
+                self._render()
+
+    def _render(self) -> None:
+        if not self._tty:
+            return
+        text = self._line()
+        pad = max(0, self._painted - len(text))
+        self._write("\r" + text + " " * pad)
+        self._painted = len(text)
+        self._flush()
+
+    def _clear(self) -> None:
+        if self._tty and self._painted:
+            self._write("\r" + " " * self._painted + "\r")
+            self._painted = 0
+            self._flush()
+
+    def _line(self, *, done_stage: str | None = None) -> str:
+        elapsed = self._clock() - self._t0
+        fraction = self._stage_fraction()
+        if self._index < len(self._stages):
+            current = self._stages[self._index]
+            weighted = self._done_weight + fraction * current.weight
+            name = done_stage or current.name
+            position = f"{self._index + 1}/{len(self._stages)}"
+        else:
+            current = None
+            weighted = self._total_weight
+            name = done_stage or "done"
+            position = f"{len(self._stages)}/{len(self._stages)}"
+        if done_stage is not None:
+            # A completion line names the stage that finished, at the point
+            # the bar reached when it finished.
+            weighted = self._done_weight
+            position = f"{self._index}/{len(self._stages)}"
+        pct = int(100 * weighted / self._total_weight)
+        pct = max(0, min(99 if weighted < self._total_weight else 100, pct))
+        remaining = self._remaining(weighted, elapsed)
+        left = f"~{format_duration(remaining)} left" if remaining is not None else "~ estimating"
+        return (
+            f"[ {pct:>3d}% ] {name:<14} {position:<6} ·  "
+            f"{format_duration(elapsed)} elapsed  ·  {left}"
+        )
+
+    def _stage_fraction(self) -> float:
+        """How far through the current stage we are, in [0, 0.95].
+
+        Real counts win. With none, elapsed against the stage's measured
+        weight scaled by how wrong the weights have been so far -- capped
+        below 1.0, because a stage sitting at 100% for a minute is exactly the
+        false precision this module exists to avoid.
+        """
+        done, total = self._sub
+        if total > 0:
+            return min(0.95, done / total)
+        if self._index >= len(self._stages):
+            return 0.0
+        expected = self._stages[self._index].weight * self._scale()
+        if expected <= 0:
+            return 0.0
+        return min(0.95, (self._clock() - self._stage_t0) / expected)
+
+    def _scale(self) -> float:
+        """Seconds per unit of weight, measured from the stages already done.
+
+        Before anything has finished, 1.0 -- the weights are in seconds from a
+        real run, so that is the honest prior rather than a neutral one.
+        """
+        if not self._durations or self._done_weight <= 0:
+            return 1.0
+        measured = sum(
+            self._durations.get(s.name, 0.0) for s in self._stages[: self._index]
+        )
+        if measured <= 0:
+            return 1.0
+        return measured / self._done_weight
+
+    def _remaining(self, weighted: float, elapsed: float) -> float | None:
+        """`None` means unknown, and the line says so rather than guessing."""
+        left_weight = self._total_weight - weighted
+        if left_weight <= 0:
+            return 0.0
+        if self._durations:
+            return left_weight * self._scale()
+        if weighted > 0 and elapsed > 0:
+            # Nothing has completed, but the first stage has told us
+            # something. Widen it by a quarter rather than pretending to a
+            # precision one partial stage cannot support.
+            return left_weight * (elapsed / weighted) * 1.25
+        return None
+
+    # -- stream ------------------------------------------------------------
+
+    def _write(self, text: str) -> None:
+        try:
+            self._stream.write(text)
+        except Exception:  # pragma: no cover - a closed stream must not fail a run
+            pass
+
+    def _flush(self) -> None:
+        try:
+            self._stream.flush()
+        except Exception:  # pragma: no cover
+            pass
+
+
+class RunEnvelope:
+    """Timestamps only: `started` and `finished` on stderr, no live line.
+
+    For commands whose work is a sequence of sub-runs that each draw their own
+    progress (`track` analyses one version at a time). Two objects redrawing
+    the same terminal line would garble each other, so the outer one does not
+    draw.
+    """
+
+    enabled = True
+
+    def __init__(
+        self,
+        *,
+        stream: TextIO | None = None,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
+        self._stream = stream if stream is not None else sys.stderr
+        self._clock = clock
+        self._t0: float | None = None
+
+    def start(self, started_at: float | None = None) -> None:
+        self._t0 = started_at if started_at is not None else self._clock()
+        self._emit(f"started   {_progress_utc_stamp(self._t0)}")
+
+    def note(self, text: str) -> None:
+        self._emit(text.rstrip("\n"))
+
+    def through(self, text: str, *, stream: TextIO | None = None) -> None:
+        print(text, file=stream if stream is not None else sys.stdout)
+
+    def complete(self, name: str) -> None: ...
+
+    def sub(self, done: int, total: int) -> None: ...
+
+    def finish(
+        self,
+        *,
+        finished_at: float | None = None,
+        elapsed: float | None = None,
+        stage_millis: dict[str, int] | None = None,
+    ) -> None:
+        wall = finished_at if finished_at is not None else self._clock()
+        took = elapsed if elapsed is not None else (wall - (self._t0 or wall))
+        line = stage_timing_line(stage_millis or {})
+        if line:
+            self._emit(line)
+        self._emit(f"finished  {_progress_utc_stamp(wall)}   ({format_duration(took)})")
+
+    def _emit(self, text: str) -> None:
+        try:
+            self._stream.write(text + "\n")
+            self._stream.flush()
+        except Exception:  # pragma: no cover - a closed stream must not fail a run
+            pass
+
+
+def make_envelope(
+    *,
+    quiet: bool = False,
+    force: bool | None = None,
+    stream: TextIO | None = None,
+) -> RunEnvelope | NullProgress:
+    """`make_reporter`'s rules, for the commands that only want timestamps."""
+    if quiet or force is False:
+        return NullProgress()
+    if force is None and os.environ.get("CASCADE_MAP_NO_PROGRESS"):
+        return NullProgress()
+    return RunEnvelope(stream=stream)
+
+
+def make_reporter(
+    stages: Sequence[Stage],
+    *,
+    quiet: bool = False,
+    force: bool | None = None,
+    stream: TextIO | None = None,
+) -> ProgressReporter | NullProgress:
+    """The one place that decides whether a run shows progress.
+
+    `--quiet` always wins. `--progress/--no-progress` (`force`) overrides the
+    TTY test either way. `CASCADE_MAP_NO_PROGRESS` is honoured for the same
+    reason `NO_COLOR` exists: a CI job should be able to turn it off without
+    every call site growing a flag.
+    """
+    if quiet or force is False:
+        return NullProgress()
+    if force is None and os.environ.get("CASCADE_MAP_NO_PROGRESS"):
+        return NullProgress()
+    target = stream if stream is not None else sys.stderr
+    # Forced on, a pipe is still a pipe: `--progress` must not start emitting
+    # carriage returns into the owner's log file. The flag decides WHETHER,
+    # the TTY test decides HOW.
+    return ProgressReporter(stages, stream=target, tty=_isatty(target))
+
+
+def _isatty(stream: TextIO) -> bool:
+    try:
+        return bool(stream.isatty())
+    except Exception:  # pragma: no cover
+        return False
+
+
+# ==========================================================================
 # ingest/constants.py
 # ==========================================================================
 
@@ -3450,6 +3976,8 @@ def run_units(
     jobs: Sequence[tuple[str, Any]],
     workers: int,
     report: WorkerReport,
+    *,
+    on_unit: Callable[[int, int], None] | None = None,
 ) -> dict[str, Any]:
     """Run every `(key, payload)` job through `fn` and return `{key: value}`.
 
@@ -3477,10 +4005,12 @@ def run_units(
         report.started = 1
         started_at = time.perf_counter()
         out: dict[str, Any] = {}
-        for job in jobs:
+        for done, job in enumerate(jobs, start=1):
             r = _timed(fn, job)
             out[r.key] = r.value
             report.unit_seconds[r.key] = r.seconds
+            if on_unit is not None:
+                on_unit(done, len(jobs))
         report.wall_seconds = time.perf_counter() - started_at
         report.serial_seconds = sum(report.unit_seconds.values())
         _record_largest(report)
@@ -3490,13 +4020,20 @@ def run_units(
     started_at = time.perf_counter()
     try:
         with ProcessPoolExecutor(max_workers=effective) as pool:
-            results = list(pool.map(_Call(fn), jobs, chunksize=1))
+            # Iterated rather than `list(...)` so progress can be reported as
+            # results arrive. `pool.map` still yields in SUBMISSION order, so
+            # nothing about ordering changes -- only when we hear about it.
+            results = []
+            for done, item in enumerate(pool.map(_Call(fn), jobs, chunksize=1), start=1):
+                results.append(item)
+                if on_unit is not None:
+                    on_unit(done, len(jobs))
     except Exception as exc:  # pragma: no cover - platform dependent
         report.started = 1
         report.skipped_reason = f"pool unavailable ({type(exc).__name__}); ran in-process"
         report.wall_seconds = 0.0
         report.unit_seconds.clear()
-        return run_units(fn, jobs, 1, report)
+        return run_units(fn, jobs, 1, report, on_unit=on_unit)
 
     report.started = effective
     out = {}
@@ -3611,7 +4148,17 @@ class Ingestor:
         #: because it is a timing and constraint 4 forbids timings in output.
         self.worker_report = WorkerReport()
 
-    def inventory(self, root: str) -> tuple[list[Element], list[Unresolved]]:
+    def inventory(
+        self,
+        root: str,
+        *,
+        on_unit: Callable[[int, int], None] | None = None,
+    ) -> tuple[list[Element], list[Unresolved]]:
+        """`on_unit(done, total)` is called once per PARSED FILE, never inside
+        a per-node loop: one call per unit of work costs nothing measurable and
+        a per-node counter would show up in the stage it is reporting on.
+        A cached file is not a unit -- it is not parsed -- so the count is of
+        work actually being done."""
         stage_started = time.perf_counter()
         root_path = Path(root)
         root_resolved = root_path.resolve()
@@ -3717,7 +4264,9 @@ class Ingestor:
 
         # ---- pass 2: do the work, in-process or across the pool. ---------
         self.worker_report = WorkerReport()
-        results = run_units(_run_unit, jobs, self.workers, self.worker_report)
+        results = run_units(
+            _run_unit, jobs, self.workers, self.worker_report, on_unit=on_unit
+        )
 
         # ---- pass 3: assemble, serially, in walk order. ------------------
         # Results are looked up by key in the order pass 1 recorded, so the
@@ -18936,7 +19485,12 @@ AnalyseFn = Callable[[Path, Path, Settings], dict[str, Any]]
 TraceFn = Callable[[Path, Path, str, Path], tuple[int, str]]
 
 
-def _default_analyse(source_root: Path, out_dir: Path, settings: Settings) -> dict[str, Any]:
+def _default_analyse(
+    source_root: Path,
+    out_dir: Path,
+    settings: Settings,
+    progress: Any = None,
+) -> dict[str, Any]:
     """Card 10's static pipeline, which is cards 1-5, 16 and 17.
 
     Imported inside the function: ``cli`` sits above this module in the
@@ -18958,6 +19512,7 @@ def _default_analyse(source_root: Path, out_dir: Path, settings: Settings) -> di
         env_root=env,
         # 0 in the settings means auto, which `Ingestor` spells `None`.
         workers=settings.workers or None,
+        progress=progress,
     )
     summary["exit_code"] = code
     return summary
@@ -19905,6 +20460,7 @@ def track(
     analyse: AnalyseFn | None = None,
     trace: TraceFn | None = None,
     now: Callable[[], str] | None = None,
+    progress_factory: Callable[[str], Any] | None = None,
 ) -> tuple[TrackResult, Ledger]:
     """Discover, analyse what is new, compare consecutive pairs, save, report.
 
@@ -19913,6 +20469,19 @@ def track(
     what to run and what to skip, and files the result in the workspace.
     """
     base = Path(root) if root is not None else Path.cwd()
+    if analyse is None and progress_factory is not None:
+        # A reporter PER VERSION, not one for the whole command: `track`
+        # cannot know how many versions it will analyse until discovery has
+        # run, and a bar whose denominator changes underneath it is worse
+        # than eight honest bars.
+        def analyse(
+            source_root: Path, out_dir: Path, settings: Settings
+        ) -> dict[str, Any]:
+            assert progress_factory is not None
+            return _default_analyse(
+                source_root, out_dir, settings, progress_factory(source_root.name)
+            )
+
     layout = layout_for(settings, base)
     ledger = Ledger(settings, root=root, analyse=analyse, trace=trace, layout=layout, now=now)
     ledger_path = layout.ledger_file
@@ -22446,6 +23015,12 @@ def parse_signature(signature: str) -> tuple[list[dict[str, str]], str]:
 # ---------------------------------------------------------------------------
 
 
+#: How many times `records()` reports sub-progress over a whole build. Ten
+#: calls on any corpus size, so the cost of reporting is constant and cannot
+#: grow into the stage it is measuring.
+_PROGRESS_STEPS = 10
+
+
 class DocumentationBuilder:
     """Implements the ``DocsCard`` protocol.
 
@@ -22624,8 +23199,24 @@ class DocumentationBuilder:
 
     # -- assembly -----------------------------------------------------
 
-    def records(self) -> Sequence[DocRecord]:
-        return tuple(self._build_record(el) for el in sorted(self._elements, key=lambda e: e.id))
+    def records(
+        self, *, on_progress: Callable[[int, int], None] | None = None
+    ) -> Sequence[DocRecord]:
+        """`on_progress(done, total)` is called at most `_PROGRESS_STEPS` times
+        over the whole build, not once per element: the callback exists so a
+        long stage looks alive, and firing it per element on a 400,000-element
+        target would cost more than the reporting is worth."""
+        ordered = sorted(self._elements, key=lambda e: e.id)
+        if on_progress is None:
+            return tuple(self._build_record(el) for el in ordered)
+        total = len(ordered)
+        every = max(1, total // _PROGRESS_STEPS)
+        built: list[DocRecord] = []
+        for done, element in enumerate(ordered, start=1):
+            built.append(self._build_record(element))
+            if done % every == 0 or done == total:
+                on_progress(done, total)
+        return tuple(built)
 
     def _build_record(self, element: Element) -> DocRecord:
         identity = self._identity(element)
@@ -35413,7 +36004,7 @@ def render(result: DoctorResult) -> str:
     return "\n".join(lines) + "\n"
 
 
-def utc_stamp(now: float | None = None) -> str:
+def _doctor_utc_stamp(now: float | None = None) -> str:
     return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now if now is not None else time.time()))
 
 
@@ -35422,7 +36013,7 @@ def write_report(result: DoctorResult, out_dir: Path, stamp: str | None = None) 
     beside it. Returns the .log path -- the one the owner sends."""
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = stamp or utc_stamp()
+    stamp = stamp or _doctor_utc_stamp()
     log_path = out_dir / f"metatron_doctor_{stamp}.log"
     json_path = out_dir / f"metatron_doctor_{stamp}.json"
     log_path.write_text(render(result), encoding="utf-8")
@@ -35610,6 +36201,7 @@ def analyze(
     env_root: Path | None = None,
     workers: int | None = None,
     worker_report_sink: Callable[[str], None] | None = None,
+    progress: Any = None,
 ) -> tuple[int, dict[str, Any]]:
     """Run the static pipeline over *root* and write artifacts to *out_dir*.
 
@@ -35622,6 +36214,10 @@ def analyze(
     artifacts: dict[str, str] = {}
     stage_millis: dict[str, int] = {}
     _stage_started = started
+    # A null object when the caller passed none, so every `progress.` call
+    # below is unconditional and a forgotten guard cannot crash the quiet path.
+    bar = progress if progress is not None else NullProgress()
+    bar.start(started)
 
     def _stage(name: str) -> None:
         """Record how long the stage that just finished took, in whole
@@ -35638,6 +36234,9 @@ def analyze(
         now = time.time()
         stage_millis[name] = int(round((now - _stage_started) * 1000))
         _stage_started = now
+        # The same call that records the timing announces it. One hook, so a
+        # stage can never be timed and not shown, or shown and not timed.
+        bar.complete(name)
 
     # Card 1 — inventory.
     #
@@ -35646,10 +36245,10 @@ def analyze(
     # artifact: it is wall-clock, and constraint 4 says identical input gives
     # identical bytes.
     ingestor = Ingestor(cache_dir=cache_dir, workers=workers)
-    elements, unresolved = ingestor.inventory(str(root))
+    elements, unresolved = ingestor.inventory(str(root), on_unit=bar.sub)
     summary["elements"] = len(elements)
     _stage("inventory")
-    (worker_report_sink or print)(render_worker_report(ingestor.worker_report))
+    (worker_report_sink or bar.through)(render_worker_report(ingestor.worker_report))
 
     # Card 2 — resolution.
     resolver = Resolver(root, config_paths=tuple(config_paths))
@@ -35683,7 +36282,7 @@ def analyze(
     tracer = LineageTracer(root, sink_ids=tuple(sink_ids))
     lineage_edges, barriers = tracer.trace_values(elements, edges)
 
-    say = worker_report_sink or print
+    say = worker_report_sink or bar.through
     available_roots = tracer.all_slice_roots()
     if slice_scope is SliceScope.ALL and available_roots:
         say(_all_scope_warning(len(available_roots), len(lineage_edges)))
@@ -35788,7 +36387,7 @@ def analyze(
         decision_sink_ids=tuple(sink_ids),
         dependencies=dependencies.doc_dependencies(),
     )
-    records = builder.records()
+    records = builder.records(on_progress=bar.sub)
     offenders = builder.completeness_gate(records)
     summary["incomplete_records"] = len(offenders)
     _stage("records")
@@ -35871,14 +36470,24 @@ def analyze(
         )
         + "\n",
     )
+    # ONE reading of the clock, used by the printed footer and by
+    # run_meta.json alike. Two readings would let the owner's terminal and
+    # their artifact disagree about how long their own run took.
+    finished = time.time()
+    elapsed_seconds = round(finished - started, 1)
+    summary["started_at"] = started
+    summary["finished_at"] = finished
+    summary["elapsed_seconds"] = elapsed_seconds
     (out_dir / "run_meta.json").write_text(
         json.dumps(
             {
                 "tool_version": __version__,
                 "python": platform.python_version(),
                 "target_root": str(root.resolve()),
-                "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "elapsed_seconds": round(time.time() - started, 1),
+                "finished_at": time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime(finished)
+                ),
+                "elapsed_seconds": elapsed_seconds,
             },
             indent=2,
             sort_keys=True,
@@ -35888,6 +36497,9 @@ def analyze(
         newline="\n",
     )
 
+    bar.finish(
+        finished_at=finished, elapsed=elapsed_seconds, stage_millis=stage_millis
+    )
     if offenders and strict_gate:
         return EXIT_GATE_FAILED, summary
     return EXIT_OK, summary
@@ -35903,6 +36515,7 @@ def trace(
     scenario_file: Path,
     scenario: str,
     out_root: Path,
+    progress: Any = None,
 ) -> tuple[int, str]:
     """Run the target under the harness and write the runtime overlay.
 
@@ -35922,6 +36535,10 @@ def trace(
     write root, which would have let the target write there too.
     """
     import subprocess
+
+    # The caller owns start and finish, because a refusal returns from a dozen
+    # places in this function and every one of them must still print a footer.
+    bar = progress if progress is not None else NullProgress()
 
 
     spec_doc = json.loads(scenario_file.read_text(encoding="utf-8"))
@@ -35967,9 +36584,11 @@ def trace(
         src=json.dumps(str(Path(__file__).resolve().parents[1])),
         self_file=json.dumps(str(Path(__file__).resolve())),
     )
+    bar.complete("preflight")
     completed = subprocess.run(
         [sys.executable, "-c", child], capture_output=True, text=True, timeout=1800
     )
+    bar.complete("harness")
     if not record_out.exists():
         detail = (completed.stderr or completed.stdout or "").strip()[-2000:]
         return EXIT_REFUSED, f"the harness produced no run record.\n\n{detail}"
@@ -35985,14 +36604,17 @@ def trace(
     index = build_index(graph_dir, target_root)
     tracer = Tracer(index, recordings_dir=recordings)
     result = tracer.result(run)
+    bar.complete("map")
     order_nodes = _cli__read_jsonl(graph_dir, "order.jsonl", OrderNode)
     decisions = _cli__read_jsonl(graph_dir, "decisions.jsonl", DecisionPoint)
     narrative = Narrator().narrate(result.events, order_nodes, decisions, run)
+    bar.complete("narrate")
 
     run_dir = out_root / "runtime" / run.run_id
     tracer.emit(result, run_dir)
     _write(run_dir, "run.json", canonical_dumps(run) + "\n")
     _write(run_dir, "narrative.jsonl", canonical_jsonl(narrative))
+    bar.complete("write")
 
     failure = run.scenario_failure
     total, mapped = result.mapping.total_events, result.mapping.mapped_events
@@ -36648,6 +37270,92 @@ def _track_trace(
 # ---------------------------------------------------------------------------
 
 
+#: The name the owner types. Messages that tell them what to run next must
+#: name the command they actually have.
+_PROG = "metatron"
+
+
+def _graph_path(text: str) -> Path:
+    """An argparse type for a path that must NAME something.
+
+    `Path("")` is `Path(".")`, silently, so an unmatched shell glob arrives as
+    the working directory and every downstream check passes on the wrong tree.
+    Rejecting it here means the refusal happens before any command body runs,
+    and nothing can be created on the way.
+    """
+    if not text.strip():
+        raise argparse.ArgumentTypeError(
+            "empty path. An empty argument is a usage error, not the working "
+            "directory -- a shell glob that matched nothing produces exactly "
+            f"this. Pass the directory `{_PROG} analyze --out` wrote."
+        )
+    return Path(text)
+
+
+def _graph_dir_problem(path: Path) -> str:
+    """`""` if *path* already holds a Mode B map; otherwise why it does not.
+
+    Read-only, always: it stats and it reads a size, and it creates nothing.
+    A read command that makes the directory it was supposed to find is how an
+    empty answer gets a filename and a 95 KB page gets believed.
+
+    The four diagnoses are kept distinct on purpose. "No such directory" and
+    "the directory is there and holds no elements" are different problems with
+    different fixes, and the owner should not have to work out which one they
+    have from a single generic sentence.
+    """
+    run_this = f"Run `{_PROG} analyze <target> --out {path}` first."
+    if not path.exists():
+        return f"no map at {path} — the directory does not exist.\n{run_this}"
+    if not path.is_dir():
+        return f"no map at {path} — that is a file, not a directory.\n{run_this}"
+    elements = path / "elements.jsonl"
+    if not elements.is_file():
+        return f"no map at {path} — elements.jsonl is missing.\n{run_this}"
+    if elements.stat().st_size == 0:
+        return (
+            f"no map at {path} — found the directory, found no elements: "
+            f"elements.jsonl is empty.\n"
+            f"That is a map of nothing, not an empty target. Re-run "
+            f"`{_PROG} analyze <target> --out {path}` and read its summary."
+        )
+    return ""
+
+
+def _require_graph_dir(path: Path) -> bool:
+    """Print the refusal and say whether the caller may continue."""
+    problem = _graph_dir_problem(path)
+    if problem:
+        print(problem, file=sys.stderr)
+        return False
+    return True
+
+
+def _add_progress_flags(sub_parser: argparse.ArgumentParser) -> None:
+    """Progress flags, identical on `analyze`, `track` and `trace`.
+
+    Progress is on by default and writes ONLY to stderr, so a run that is
+    piped, redirected or parsed sees exactly the bytes it always saw. On a
+    terminal the line is redrawn in place; anywhere else it is one plain line
+    per completed stage, because a log full of carriage returns is worse than
+    silence.
+    """
+    group = sub_parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--progress", dest="progress", action="store_true", default=None,
+        help="show live progress even when stderr is not a terminal "
+             "(one line per stage, no carriage returns)",
+    )
+    group.add_argument(
+        "--no-progress", dest="progress", action="store_false",
+        help="no progress line and no timing footer",
+    )
+    sub_parser.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="suppress progress and timing entirely. Never affects stdout.",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cascade-map",
@@ -36692,6 +37400,8 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="write artifacts even if the completeness gate fails, "
                           "and exit 0. The gate still reports.")
 
+    _add_progress_flags(run)
+
     doc = sub.add_parser(
         "doctor",
         help="measure this machine on this target and write one file you can send",
@@ -36706,19 +37416,20 @@ def _build_parser() -> argparse.ArgumentParser:
                           "Default 1, 4 and 8.")
 
     cmp_ = sub.add_parser("diff", help="compare two analysed output directories")
-    cmp_.add_argument("before", type=Path)
-    cmp_.add_argument("after", type=Path)
+    cmp_.add_argument("before", type=_graph_path)
+    cmp_.add_argument("after", type=_graph_path)
     cmp_.add_argument("--out", type=Path, default=Path("out/diff"))
 
     show = sub.add_parser("view", help="render an analysed tree as offline HTML")
-    show.add_argument("out_dir", type=Path)
+    show.add_argument("out_dir", type=_graph_path)
     show.add_argument("--html", type=Path, default=None)
 
     blue = sub.add_parser(
         "blueprint",
         help="render an analysed tree as an interactive, UE5-Blueprint-styled node canvas",
     )
-    blue.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
+    blue.add_argument("graph_dir", type=_graph_path,
+                      help="an analysed Mode B output directory")
     blue.add_argument("--html", type=Path, default=None)
     blue.add_argument("--diff", type=Path, default=None,
                       help="a `metatron diff` output directory (changes.jsonl/impacts.jsonl); "
@@ -36731,7 +37442,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="analyse every version in VERSIONS_DIR that has not been analysed "
              "already, compare consecutive versions, and update the ledger",
     )
-    hist.add_argument("--workspace", type=Path, default=None, metavar="DIR",
+    hist.add_argument("--workspace", type=_graph_path, default=None, metavar="DIR",
                       help="overrides WORKSPACE, the one path everything else "
                            "is derived from")
     hist.add_argument("--project", default=None, metavar="NAME",
@@ -36772,13 +37483,15 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="print the whole history, not only what this run did")
     _add_sport_flags(hist)
 
+    _add_progress_flags(hist)
+
     story = sub.add_parser(
         "history",
         help="read one script's whole development story back out of the workspace",
     )
     story.add_argument("project", nargs="?", default=None,
                        help="omit to list every project in the workspace, newest first")
-    story.add_argument("--workspace", type=Path, default=None, metavar="DIR",
+    story.add_argument("--workspace", type=_graph_path, default=None, metavar="DIR",
                        help="overrides WORKSPACE")
     # dest is not "sport": `track` and `trace` take `--sport` REPEATABLY and
     # `_settings_from_args` reads that list. A bare string arriving there would
@@ -36813,7 +37526,8 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="reuse the version ids without copying any tree")
 
     run_a = sub.add_parser("trace", help="Mode A — run the target under the harness")
-    run_a.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
+    run_a.add_argument("graph_dir", type=_graph_path,
+                       help="an analysed Mode B output directory")
     run_a.add_argument("--scenarios", type=Path, default=None,
                        help="JSON file declaring target_root and named scenarios. "
                             "Omitted, scenarios are derived from METATRON_SETTINGS: "
@@ -36830,6 +37544,7 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="say whether this run could start, and what would be "
                             "active, WITHOUT executing anything")
     _add_sport_flags(run_a)
+    _add_progress_flags(run_a)
     return parser
 
 
@@ -36867,6 +37582,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         code, summary = analyze(
             args.root,
             args.out,
+            progress=make_reporter(
+                ANALYZE_STAGES, quiet=args.quiet, force=args.progress
+            ),
             entry_ids=tuple(args.entry),
             sink_ids=tuple(args.sink),
             config_paths=tuple(args.config),
@@ -36912,6 +37630,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
 
     if args.command == "diff":
+        # Both sides, before either is read and before --out is created: a
+        # diff of a map against nothing reports every element as deleted,
+        # which is a dramatic and entirely false answer.
+        if not _require_graph_dir(args.before) or not _require_graph_dir(args.after):
+            return EXIT_USAGE
         changes, impacts = diff_snapshots(
             load_snapshot(args.before), load_snapshot(args.after)
         )
@@ -36924,20 +37647,36 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
 
     if args.command == "track":
+        envelope = make_envelope(quiet=args.quiet, force=args.progress)
+        started = time.time()
+        envelope.start(started)
+
+        def _version_progress(label: str) -> Any:
+            reporter = make_reporter(
+                ANALYZE_STAGES, quiet=args.quiet, force=args.progress
+            )
+            reporter.note(f"analysing {label}")
+            return reporter
+
         try:
             settings = _settings_from_args(args)
             result, ledger = track(
                 settings,
                 root=Path.cwd(),
                 trace=_track_trace if settings.mode == 2 else None,
+                progress_factory=_version_progress,
             )
         except (SettingsError, LedgerError) as exc:
             print(str(exc), file=sys.stderr)
             return EXIT_USAGE
+        finished = time.time()
         print(render_track_report(result))
         if args.report:
             print()
             print(render_history_report(ledger))
+        # Last, so the timing footer sits under everything the run printed and
+        # an owner scrolling to the bottom finds it where `analyze` puts it.
+        envelope.finish(finished_at=finished, elapsed=finished - started)
         incomplete = [c for c in result.comparisons if c.unaccounted_element_ids]
         if incomplete:
             # Every element of both versions must land in exactly one
@@ -36957,6 +37696,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         # needs a `viewer` namespace to exist, and in the single-file build
         # there are no module namespaces -- only globals.
 
+        if not _require_graph_dir(args.out_dir):
+            return EXIT_USAGE
         target = args.html or (args.out_dir / "index.html")
         render_to_file(args.out_dir, target)
         _crosslink_report_to_blueprint(target)
@@ -36965,6 +37706,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "blueprint":
 
+        if not _require_graph_dir(args.graph_dir):
+            return EXIT_USAGE
         target = args.html or (args.graph_dir / "blueprint.html")
         render_blueprint_to_file(args.graph_dir, target, run_id=args.run, diff_root=args.diff)
         print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
@@ -37028,6 +37771,30 @@ def _history_command(args: Any) -> int:
         return EXIT_USAGE
     layout = layout_for(settings, Path.cwd())
     root = layout.workspace.root
+
+    # `history` READS, and it never creates the workspace it was asked to
+    # read. Two different absences, kept apart:
+    #
+    # * the DEFAULT workspace has simply never been written -- that is an
+    #   absence, said as one, exit 0, which is card 6's decision and stands;
+    # * a path the owner TYPED is not there -- that is a usage error, because
+    #   the owner believes they named something and they did not. Rendering an
+    #   empty history for it would answer a question about the wrong tree.
+    named = getattr(args, "workspace", None) is not None
+    if named and not root.exists():
+        print(
+            f"no workspace at {root} — the directory does not exist.\n"
+            f"Run `{_PROG} track` to create one, or `{_PROG} migrate` if you "
+            f"have a flat layout from before the workspace existed.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+    if root.exists() and not root.is_dir():
+        print(
+            f"no workspace at {root} — that is a file, not a directory.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
 
     if not args.project:
         projects = list_projects(root)
@@ -37142,15 +37909,20 @@ def _trace_command(args: Any) -> int:
             file=sys.stderr,
         )
         return EXIT_REFUSED
-    static = args.graph_dir / "elements.jsonl"
-    if not static.is_file() or not static.stat().st_size:
+    problem = _graph_dir_problem(args.graph_dir)
+    if problem:
         # Keyed to nothing is worse than not run: a runtime overlay with no
-        # graph to attach to cannot be read, compared or trusted.
+        # graph to attach to cannot be read, compared or trusted. The
+        # diagnosis is the shared one, so `trace` distinguishes "no such
+        # directory" from "directory, no elements" exactly as the read-only
+        # commands do -- and REFUSED rather than USAGE, because this is the
+        # one command that would otherwise have executed the owner's engine.
         print(
-            f"REFUSED: MODE 2 always builds on a completed static map, and "
-            f"{args.graph_dir} holds none ({static} is missing or empty). Nothing "
-            f"was executed. Run mode 1 first:\n"
-            f"    cascade-map analyze <your target> --out {args.graph_dir}",
+            f"REFUSED: MODE 2 always builds on a completed static map.\n"
+            f"{problem}\n"
+            f"Run mode 1 first:\n"
+            f"    cascade-map analyze <your target> --out {args.graph_dir}\n"
+            f"Nothing was executed.",
             file=sys.stderr,
         )
         return EXIT_REFUSED
@@ -37172,9 +37944,7 @@ def _trace_command(args: Any) -> int:
         if not args.scenarios.is_file():
             print(f"no scenarios file at {args.scenarios}", file=sys.stderr)
             return EXIT_USAGE
-        code, message = trace(args.graph_dir, args.scenarios, args.scenario, args.out)
-        print(message, file=sys.stderr if code else sys.stdout)
-        return code
+        return _timed_trace(args, args.scenarios, args.scenario)
 
     sports = settings.selected_sports()
     if args.preflight:
@@ -37227,12 +37997,36 @@ def _trace_command(args: Any) -> int:
     )
     worst = EXIT_OK
     for sport in chosen:
-        code, message = trace(args.graph_dir, derived_path, sport, args.out)
-        print(f"=== {sport} ===")
-        print(message, file=sys.stderr if code else sys.stdout)
-        print()
-        worst = max(worst, code)
+        worst = max(worst, _timed_trace(args, derived_path, sport, banner=sport))
     return worst
+
+
+def _timed_trace(
+    args: Any, scenario_file: Path, scenario: str, *, banner: str = ""
+) -> int:
+    """One traced scenario, with its progress line and its timing footer.
+
+    The reporter is started and finished HERE rather than inside `trace()`,
+    because `trace()` returns a refusal from a dozen places and a run that
+    printed `started` and never printed `finished` reads exactly like a hang --
+    which is the complaint this whole feature answers.
+    """
+    bar = make_reporter(TRACE_STAGES, quiet=args.quiet, force=args.progress)
+    started = time.time()
+    bar.start(started)
+    try:
+        code, message = trace(
+            args.graph_dir, scenario_file, scenario, args.out, progress=bar
+        )
+    finally:
+        finished = time.time()
+        bar.finish(finished_at=finished, elapsed=finished - started)
+    if banner:
+        print(f"=== {banner} ===")
+    print(message, file=sys.stderr if code else sys.stdout)
+    if banner:
+        print()
+    return code
 
 
 if __name__ == "__main__":
