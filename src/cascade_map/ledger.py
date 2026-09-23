@@ -187,9 +187,10 @@ SETTING_DEFAULTS: dict[str, Any] = {
     # Which roots get a PRECOMPUTED slice in `slices.jsonl`. Never how
     # complete a slice is -- every slice emitted is exact and whole.
     #
-    #   "DECISION"  the roots that bear on a decision: your sinks, what they
-    #               read, engineered features, and the root of any finding.
-    #               Bounded by decision inputs, not by how big your code is.
+    #   "DECISION"  the roots that bear on a decision: your sinks and what
+    #               they read. Bounded by your declaration of what the
+    #               decision is -- with no SINKS there is no principled root
+    #               set, so it writes none and says so.
     #   "ALL"       every root. Exhaustive, correct, and quadratic in OUTPUT:
     #               measured 211 MB of slices for 1.4 MB of source, 1.6 GB for
     #               5.6 MB, and gigabytes for a 14.8 MB engine.
@@ -199,6 +200,11 @@ SETTING_DEFAULTS: dict[str, Any] = {
     # Roots to precompute WHATEVER the scope, by id. Chasing one feature
     # should not mean turning on the exhaustive mode to get it.
     "SLICE_ROOTS": [],
+
+    # Write `slices.jsonl` even when the estimate exceeds the size guard.
+    # The guard refuses above 1 GB, because an owner found a 6.4 GB
+    # `slices.jsonl` after the fact. This is how you say you meant it.
+    "FORCE_SLICES": False,
 
     "ENV": ".venv-target",
     "ORDER": [],
@@ -241,6 +247,7 @@ _KEY_TO_FIELD: dict[str, str] = {
     "CONFIGS": "configs",
     "SLICES": "slices",
     "SLICE_ROOTS": "slice_roots",
+    "FORCE_SLICES": "force_slices",
     "ENV": "env",
     "ORDER": "order",
     "SCENARIOS": "scenarios",
@@ -283,6 +290,10 @@ class Settings:
     slices: SliceScope = SliceScope.DECISION
     #: Roots precomputed whatever the scope says.
     slice_roots: tuple[str, ...] = ()
+    #: Write `slices.jsonl` past the size guard. An override, never a default:
+    #: a refusal the owner can lift is honest; one they cannot is an
+    #: obstruction.
+    force_slices: bool = False
     env: str = ".venv-target"
     order: tuple[str, ...] = ()
     scenarios: str = "scenarios.json"
@@ -361,6 +372,15 @@ class Settings:
                         f"1 for in-process, N for N child processes -- not {raw!r}."
                     )
                 values["workers"] = int(raw)
+            elif key == "FORCE_SLICES":
+                if not isinstance(raw, bool):
+                    raise SettingsError(
+                        f"FORCE_SLICES must be true or false -- true writes "
+                        f"slices.jsonl past the size guard, false (the default) "
+                        f"refuses above the limit and says how big it would have "
+                        f"been -- not {raw!r}."
+                    )
+                values["force_slices"] = bool(raw)
             elif key == "SLICES":
                 try:
                     values["slices"] = SliceScope(str(raw).strip().upper())
@@ -943,6 +963,7 @@ def _default_analyse(
         config_paths=settings.configs,
         slice_scope=settings.slices,
         slice_roots=tuple(qualify_id(i, prefix) for i in settings.slice_roots),
+        force_slices=settings.force_slices,
         strict_gate=False,
         env_root=env,
         # 0 in the settings means auto, which `Ingestor` spells `None`.

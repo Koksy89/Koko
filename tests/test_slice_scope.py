@@ -59,14 +59,34 @@ def _sink_fixtures() -> list[Path]:
     return out
 
 
+#: The corpus declares no sink of its own, so every run that needs DECISION to
+#: have a principled root set passes this one explicitly. That is the whole
+#: point of the scope: it is bounded by the owner's declaration.
+CORPUS_SINK = ("mode_b.dec_sink::final_decision",)
+
+
 def _run(
     root: Path,
     out: Path,
     scope: SliceScope,
     sinks: tuple[str, ...] = (),
     entries: tuple[str, ...] = (),
+    **kwargs: object,
 ) -> Path:
-    analyze(
+    _code, _summary = _run_full(root, out, scope, sinks, entries, **kwargs)
+    return out
+
+
+def _run_full(
+    root: Path,
+    out: Path,
+    scope: SliceScope,
+    sinks: tuple[str, ...] = (),
+    entries: tuple[str, ...] = (),
+    say: list[str] | None = None,
+    **kwargs: object,
+) -> tuple[int, dict]:
+    return analyze(
         root,
         out,
         sink_ids=sinks,
@@ -74,9 +94,9 @@ def _run(
         slice_scope=scope,
         cache_dir=out / "cache",
         strict_gate=False,
-        worker_report_sink=lambda _text: None,
+        worker_report_sink=(say.append if say is not None else (lambda _text: None)),
+        **kwargs,  # type: ignore[arg-type]
     )
-    return out
 
 
 def _read(out: Path, name: str) -> str:
@@ -102,9 +122,11 @@ def test_a_scoped_slice_is_byte_identical_to_the_same_slice_computed_alone(
     a slice, the two would differ here and nowhere else -- the counts would
     still look plausible.
     """
-    decision = _slices(_run(CORPUS, tmp_path / "decision", SliceScope.DECISION))
+    decision = _slices(
+        _run(CORPUS, tmp_path / "decision", SliceScope.DECISION, CORPUS_SINK)
+    )
     everything = {one["id"]: one for one in _slices(
-        _run(CORPUS, tmp_path / "all", SliceScope.ALL)
+        _run(CORPUS, tmp_path / "all", SliceScope.ALL, CORPUS_SINK)
     )}
     assert decision, "no slices at DECISION scope; the comparison proves nothing"
     for one in decision:
@@ -127,10 +149,10 @@ def test_a_scoped_slice_is_byte_identical_to_the_same_slice_computed_alone(
 
 def test_decision_roots_are_a_subset_of_all_roots(tmp_path: Path) -> None:
     decision = {one["root_id"] for one in _slices(
-        _run(CORPUS, tmp_path / "decision", SliceScope.DECISION)
+        _run(CORPUS, tmp_path / "decision", SliceScope.DECISION, CORPUS_SINK)
     )}
     everything = {one["root_id"] for one in _slices(
-        _run(CORPUS, tmp_path / "all", SliceScope.ALL)
+        _run(CORPUS, tmp_path / "all", SliceScope.ALL, CORPUS_SINK)
     )}
     assert decision, "DECISION precomputed nothing"
     assert decision <= everything
@@ -415,7 +437,9 @@ def test_emitted_slices_round_trip_through_the_canonical_serialiser(
 ) -> None:
     """Guards the shape of `slices.jsonl`: every line is a `Slice` and nothing
     else, because `schema.json` says so and the scope is disclosed elsewhere."""
-    rows = _slices(_run(CORPUS, tmp_path / "decision", SliceScope.DECISION))
+    rows = _slices(
+        _run(CORPUS, tmp_path / "decision", SliceScope.DECISION, CORPUS_SINK)
+    )
     assert rows, "no slices written; the shape check would pass on an empty file"
     for row in rows:
         assert set(row) == {
@@ -448,7 +472,9 @@ def test_every_written_slice_declares_its_own_scope(tmp_path: Path) -> None:
         (SliceScope.DECISION, "DECISION"),
         (SliceScope.ALL, "ALL"),
     ):
-        rows = _slices(_run(CORPUS, tmp_path / label.lower(), scope))
+        rows = _slices(
+            _run(CORPUS, tmp_path / label.lower(), scope, CORPUS_SINK)
+        )
         assert rows, f"no slices at {label}; the check would pass vacuously"
         assert {row["scope"] for row in rows} == {label}
 

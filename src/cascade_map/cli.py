@@ -154,10 +154,11 @@ METATRON_SETTINGS = {
     # MANY slices are stored, never how complete any one of them is: every
     # slice emitted is exact and whole, and none is ever truncated or sampled.
     #
-    #   "DECISION"  default. The roots that bear on a decision: your SINKS,
-    #               what they read, engineered features, and the root of any
-    #               finding. Bounded by the number of decision inputs, not by
-    #               the size of your codebase.
+    #   "DECISION"  default. The roots that bear on a decision: your SINKS
+    #               and what they read. Bounded by your declaration of what
+    #               the decision IS -- so with no SINKS declared it emits NO
+    #               slices, because there is then no principled set of roots
+    #               and lineage.jsonl answers any of them on demand.
     #   "ALL"       every root. Exhaustive, correct, and quadratic in OUTPUT --
     #               measured 211 MB of slices for 1.4 MB of source, 1.6 GB for
     #               5.6 MB, and gigabytes for a 14.8 MB engine. The run says so
@@ -169,6 +170,11 @@ METATRON_SETTINGS = {
     # Roots to precompute WHATEVER SLICES says, by element or feature id.
     # Chasing one feature should never mean switching to the exhaustive mode.
     "SLICE_ROOTS": [],
+
+    # Write slices.jsonl even when its estimated size exceeds the guard.
+    # The guard refuses above 1 GB and prints the number; this is how you
+    # say you meant it.
+    "FORCE_SLICES": False,
 
     # Child processes for ingestion. 0 = auto (usable cores less one, so an
     # analysis does not take the whole box); 1 = in-process, which is how
@@ -1568,6 +1574,7 @@ def _settings_from_args(args: Any) -> Settings:
         "CONFIGS": flag("config"),
         "SLICES": flag("slices"),
         "SLICE_ROOTS": flag("slice_root"),
+        "FORCE_SLICES": True if flag("force_slices") else None,
         "ENV": str(flag("env")) if flag("env") else None,
         "ORDER": flag("order"),
         "SCENARIOS": str(flag("scenarios")) if flag("scenarios") else None,
