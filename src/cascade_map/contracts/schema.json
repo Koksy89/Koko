@@ -1649,6 +1649,15 @@
       ],
       "type": "object"
     },
+    "SliceScope": {
+      "description": "Which roots get a precomputed slice. A slice is a QUESTION -- \"what produces this\", \"what does changing this affect\" -- and the answer for any root is recomputable from `lineage.jsonl`, which is always emitted in full. So precomputing every slice stores a derivable answer at quadratic cost, and the scope decides how many are worth storing rather than how complete each one is.",
+      "enum": [
+        "DECISION",
+        "ALL",
+        "NONE"
+      ],
+      "type": "string"
+    },
     "SourceSpan": {
       "additionalProperties": false,
       "description": "Where a fact lives. Paths are POSIX and relative to the target root.",
@@ -2294,6 +2303,6 @@
     }
   },
   "description": "Generated from cascade_map.contracts.interfaces. Do not edit by hand: run python -m cascade_map.contracts._generate_schema.",
-  "schemaVersion": "1.4.0",
+  "schemaVersion": "1.5.0",
   "title": "CASCADE-MAP artifacts"
 }

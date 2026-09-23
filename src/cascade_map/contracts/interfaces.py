@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any, Iterable, Protocol, Sequence
 
-SCHEMA_VERSION = "1.4.0"
+SCHEMA_VERSION = "1.5.0"
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -52,6 +52,7 @@ __all__ = [
     "LineageEdge",
     "Barrier",
     "Slice",
+    "SliceScope",
     "FindingKind",
     "Finding",
     "ChangeKind",
@@ -710,10 +711,48 @@ class Slice:
     """"backward" -- what produces this. "forward" -- what a change affects."""
 
     member_ids: tuple[str, ...]
+    """Every element in the slice. Exact, never sampled.
+
+    This is the field that makes `slices.jsonl` quadratic in OUTPUT, and the
+    reason `SliceScope` exists. N roots whose slices each hold O(N) members is
+    O(N^2) ids: measured at 211 MB for a 1.4 MB input, 1.6 GB for 5.6 MB, and
+    an estimated 9 GB for the 14.8 MB target this tool was built for. The cost
+    is in emitting a slice for every possible root, not in any single slice.
+
+    No slice is ever truncated to save space. A half-slice answering "what
+    produces this" would be a wrong answer wearing the shape of a right one.
+    Emit fewer slices, never smaller ones."""
+
     edge_ids: tuple[str, ...]
     barrier_ids: tuple[str, ...]
     reaches_sink_ids: tuple[str, ...]
     confidence: Confidence
+
+
+class SliceScope(StrEnum):
+    """Which roots get a precomputed slice.
+
+    A slice is a QUESTION -- "what produces this", "what does changing this
+    affect" -- and the answer for any root is recomputable from `lineage.jsonl`,
+    which is always emitted in full. So precomputing every slice stores a
+    derivable answer at quadratic cost, and the scope decides how many are worth
+    storing rather than how complete each one is.
+    """
+
+    DECISION = "DECISION"
+    """Default. Roots that bear on a decision: declared sinks, what they read,
+    engineered features, and the roots any finding cites. Bounded by the number
+    of decision inputs rather than by the size of the codebase, and it is the
+    set an owner actually asks about."""
+
+    ALL = "ALL"
+    """Every root. Exhaustive, quadratic in output, and correct. Available
+    because on a small target it is cheap and complete; the run must state the
+    cost before paying it."""
+
+    NONE = "NONE"
+    """No precomputed slices. `lineage.jsonl` still holds everything needed to
+    answer any slice on demand."""
 
 
 # ---------------------------------------------------------------------------
