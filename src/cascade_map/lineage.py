@@ -643,6 +643,7 @@ class LineageTracer:
         self._out: dict[str, tuple[tuple[str, str], ...]] = {}
         self._in: dict[str, tuple[tuple[str, str], ...]] = {}
         self._slice_cache: dict[str, Slice] = {}
+        self._edge_conf: dict[str, Confidence] = {}
 
     # -- LineageCard -------------------------------------------------------
 
@@ -706,7 +707,9 @@ class LineageTracer:
             )
         members, edge_ids, confidences = self._walk(root_id, direction)
         barrier_ids = {member for member in members if member in self._barriers}
-        confidence = combine(*confidences) if confidences else Confidence.UNKNOWN
+        confidence = (
+            combine(*sorted(confidences, key=str)) if confidences else Confidence.UNKNOWN
+        )
         if barrier_ids:
             confidence = Confidence.UNKNOWN
         result = Slice(
@@ -724,24 +727,34 @@ class LineageTracer:
 
     def _walk(
         self, root_id: str, direction: str
-    ) -> tuple[set[str], set[str], list[Confidence]]:
+    ) -> tuple[set[str], set[str], set[Confidence]]:
+        """Reachable nodes, the edges used, and the confidences seen.
+
+        Each node is dequeued once and each edge therefore traversed once, so
+        the members set and the visited set are the same set -- one is kept.
+        The confidences are a *set*: :func:`combine` is a minimum over a total
+        rank, so duplicates and order cannot change its answer, and keeping at
+        most one of each stops a slice over thousands of edges from building a
+        thousands-long argument list to take a minimum of six values.
+        """
         adjacency = self._in if direction == "backward" else self._out
         sinks = set(self.sink_ids)
+        edge_conf = self._edge_conf
         members: set[str] = {root_id}
         edge_ids: set[str] = set()
-        confidences: list[Confidence] = []
+        confidences: set[Confidence] = set()
         queue: deque[str] = deque([root_id])
-        seen: set[str] = {root_id}
+        forward = direction == "forward"
+        empty: tuple[tuple[str, str], ...] = ()
         while queue:
             node = queue.popleft()
-            if direction == "forward" and node in sinks and node != root_id:
+            if forward and node in sinks and node != root_id:
                 continue  # a forward slice ends at a decision sink
-            for neighbour, edge_id in adjacency.get(node, ()):  # already sorted
+            for neighbour, edge_id in adjacency.get(node, empty):  # already sorted
                 edge_ids.add(edge_id)
-                confidences.append(self._edges[edge_id].provenance.confidence)
-                members.add(neighbour)
-                if neighbour not in seen:
-                    seen.add(neighbour)
+                confidences.add(edge_conf[edge_id])
+                if neighbour not in members:
+                    members.add(neighbour)
                     queue.append(neighbour)
         return members, edge_ids, confidences
 
@@ -1135,6 +1148,11 @@ class LineageTracer:
             into.setdefault(edge.source_id, [])
         self._out = {key: tuple(sorted(value)) for key, value in sorted(out.items())}
         self._in = {key: tuple(sorted(value)) for key, value in sorted(into.items())}
+        # Edge id -> confidence, so a slice walk reads one dict instead of a
+        # dict lookup plus two attribute hops per traversed edge.
+        self._edge_conf = {
+            edge.id: edge.provenance.confidence for edge in self.lineage_edges
+        }
 
 
 def _config_names(element: Element) -> set[str]:
@@ -1238,8 +1256,21 @@ class _ModuleWalker:
         right: dict[tuple[str, str], tuple[str, ...]],
     ) -> dict[tuple[str, str], tuple[str, ...]]:
         merged = dict(left)
+        # Every value in an env is a sorted tuple of distinct ids: the only
+        # place an env entry is written outside this method binds a single id,
+        # and this method re-sorts and de-duplicates. So when a key is absent
+        # from `left`, or carries a tuple equal to `right`'s, the union below
+        # would rebuild the tuple it already has. The two branches are skipped,
+        # not approximated -- on a single-module target the two envs being
+        # merged are near-identical copies and almost every key takes one.
+        get = merged.get
+        missing = object()
         for key, value in right.items():
-            merged[key] = tuple(sorted(set(merged.get(key, ())) | set(value)))
+            current = get(key, missing)
+            if current is value or current is missing or current == value:
+                merged[key] = value
+                continue
+            merged[key] = tuple(sorted(set(current) | set(value)))
         return merged
 
     # -- statements --------------------------------------------------------
