@@ -256,6 +256,15 @@ EXIT_REFUSED = 4
 #: refusing to write them would save less and cost everything.
 SLICE_SIZE_LIMIT_BYTES = 1 << 30
 
+#: An artifact at or above this is NAMED with its size when it is written --
+#: not refused. Measured on the owner's engine, `lineage.jsonl` was 205 MB and
+#: `order.jsonl` 105 MB for a 14.8 MB target: roughly 14x and 7x the source and
+#: linear in it, which is proportionate for one record per lineage edge and one
+#: per ordered node. `slices.jsonl` at the same scope was 6.4 GB, 432x, because
+#: it alone is quadratic. Proportion is the difference between a sentence and a
+#: refusal.
+LARGE_ARTIFACT_BYTES = 64 << 20
+
 
 # ---------------------------------------------------------------------------
 # Writing artifacts
@@ -426,6 +435,7 @@ def analyze(
     started = time.time()
     summary: dict[str, Any] = {}
     artifacts: dict[str, str] = {}
+    artifact_bytes: dict[str, int] = {}
     stage_millis: dict[str, int] = {}
     _stage_started = started
     # A null object when the caller passed none, so every `progress.` call
@@ -697,6 +707,26 @@ def analyze(
         ("interpreter.jsonl", canonical_jsonl(interpreter_requirements)),
     ):
         artifacts[name] = _write(out_dir, name, payload)
+        artifact_bytes[name] = len(payload.encode("utf-8"))
+
+    # Only `slices.jsonl` is REFUSED on size, because it is the only artifact
+    # quadratic in OUTPUT. The rest are linear in the target -- one record per
+    # element, per edge, per ordered node -- and they are what every unwritten
+    # slice is recomputed from, so refusing to write them would save less and
+    # cost everything. What they get instead is a sentence, so a large one is
+    # never a surprise discovered on disk afterwards.
+    large = sorted(
+        (name for name, size in artifact_bytes.items() if size >= LARGE_ARTIFACT_BYTES),
+        key=lambda name: (-artifact_bytes[name], name),
+    )
+    if large:
+        say(
+            "  large artifacts: "
+            + ", ".join(f"{name} {_human_bytes(artifact_bytes[name])}" for name in large)
+            + ". Linear in the target and written in full: these are what any "
+            "slice is recomputed from, so none of them is ever withheld."
+        )
+    summary["artifact_bytes"] = dict(sorted(artifact_bytes.items()))
 
     _stage("write")
     summary["unresolved"] = len(unresolved)

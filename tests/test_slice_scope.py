@@ -911,3 +911,85 @@ def test_the_ledger_passes_force_slices_through(tmp_path: Path) -> None:
         cli_module.analyze = original  # type: ignore[assignment]
 
     assert seen["force_slices"] is True
+
+
+# ---------------------------------------------------------------------------
+# Determinism, and the sizes of the artifacts that are NOT guarded
+# ---------------------------------------------------------------------------
+
+
+_SEED_PROBE = """
+import hashlib, json, sys
+sys.path.insert(0, {src!r})
+from pathlib import Path
+from cascade_map.cli import analyze
+from cascade_map.contracts.interfaces import SliceScope
+
+out = Path({out!r})
+analyze(
+    Path({corpus!r}), out, sink_ids={sinks!r}, slice_scope=SliceScope.DECISION,
+    cache_dir=out / "cache", strict_gate=False,
+    worker_report_sink=lambda _t: None,
+)
+digest = hashlib.sha256()
+names = sorted(p.name for p in out.glob("*.jsonl")) + ["manifest.json"]
+for name in names:
+    digest.update(name.encode())
+    digest.update((out / name).read_bytes())
+print(json.dumps({{"digest": digest.hexdigest(), "names": names}}))
+"""
+
+
+@pytest.mark.parametrize("sinks", [(), CORPUS_SINK], ids=["no_sink", "declared_sink"])
+def test_the_scoped_run_is_byte_identical_across_hash_seeds(
+    sinks: tuple[str, ...], tmp_path: Path
+) -> None:
+    """Set iteration order is the usual way determinism dies, and it cannot be
+    varied inside one process. Both root sets are exercised: the empty one
+    and the declared one."""
+    import os
+    import subprocess
+    import sys
+
+    repo = Path(__file__).resolve().parent.parent
+    digests = []
+    for index, seed in enumerate(("0", "524287")):
+        probe = _SEED_PROBE.format(
+            src=str(repo / "src"),
+            corpus=str(CORPUS),
+            out=str(tmp_path / f"seed{index}"),
+            sinks=sinks,
+        )
+        done = subprocess.run(
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            env=dict(os.environ, PYTHONHASHSEED=seed),
+            cwd=str(repo),
+            timeout=600,
+        )
+        assert done.returncode == 0, done.stderr
+        digests.append(json.loads(done.stdout))
+    assert len({one["digest"] for one in digests}) == 1, digests
+    assert "slices.jsonl" in digests[0]["names"]
+
+
+def test_the_unguarded_artifacts_are_named_with_their_measured_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`lineage.jsonl` and `order.jsonl` are linear in the target and are what
+    every unwritten slice is recomputed from, so they are never refused. They
+    are named with their size instead, so a large one is not a surprise found
+    on disk afterwards."""
+    import cascade_map.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "LARGE_ARTIFACT_BYTES", 50_000)
+    said: list[str] = []
+    out = tmp_path / "sizes"
+    _code, summary = _run_full(CORPUS, out, SliceScope.DECISION, say=said)
+    spoken = "\n".join(said)
+    assert "large artifacts:" in spoken
+    assert "lineage.jsonl" in spoken and "order.jsonl" in spoken
+    # Measured, not estimated: the numbers must equal the bytes on disk.
+    for name, size in summary["artifact_bytes"].items():
+        assert (out / name).stat().st_size == size, name
