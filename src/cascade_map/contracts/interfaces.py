@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any, Iterable, Protocol, Sequence
 
-SCHEMA_VERSION = "1.5.0"
+SCHEMA_VERSION = "1.6.0"
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -727,6 +727,15 @@ class Slice:
     barrier_ids: tuple[str, ...]
     reaches_sink_ids: tuple[str, ...]
     confidence: Confidence
+    scope: str = "DECISION"
+    """The `SliceScope` this slice was emitted under, carried on every record.
+
+    Not only in `manifest.json`, because a `slices.jsonl` copied out of its
+    workspace must still be able to say what produced it. A scoped artifact that
+    cannot declare its own scope reads as exhaustive to anyone who finds it
+    later, which is the "a filtered view mistaken for the whole" failure this
+    project has now shipped four times. A record that travels carries its own
+    provenance."""
 
 
 class SliceScope(StrEnum):

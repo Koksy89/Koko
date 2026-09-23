@@ -1591,7 +1591,7 @@
     },
     "Slice": {
       "additionalProperties": false,
-      "description": "Slice(id: 'str', root_id: 'str', direction: 'str', member_ids: 'tuple[str, ...]', edge_ids: 'tuple[str, ...]', barrier_ids: 'tuple[str, ...]', reaches_sink_ids: 'tuple[str, ...]', confidence: 'Confidence')",
+      "description": "Slice(id: 'str', root_id: 'str', direction: 'str', member_ids: 'tuple[str, ...]', edge_ids: 'tuple[str, ...]', barrier_ids: 'tuple[str, ...]', reaches_sink_ids: 'tuple[str, ...]', confidence: 'Confidence', scope: 'str' = 'DECISION')",
       "properties": {
         "barrier_ids": {
           "items": {
@@ -1634,6 +1634,9 @@
           "type": "array"
         },
         "root_id": {
+          "type": "string"
+        },
+        "scope": {
           "type": "string"
         }
       },
@@ -2303,6 +2306,6 @@
     }
   },
   "description": "Generated from cascade_map.contracts.interfaces. Do not edit by hand: run python -m cascade_map.contracts._generate_schema.",
-  "schemaVersion": "1.5.0",
+  "schemaVersion": "1.6.0",
   "title": "CASCADE-MAP artifacts"
 }
