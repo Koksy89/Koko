@@ -9,7 +9,7 @@ guarantee starts here, not just in card 12's event log.
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from cascade_map.contracts import canonical_dumps
 
@@ -19,6 +19,18 @@ from cascade_map.contracts import canonical_dumps
 _EXCLUDED_DIR_NAMES = frozenset(
     {"__pycache__", ".git", ".hg", ".svn", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 )
+
+
+def is_target_content(relative_posix: str) -> bool:
+    """Is this POSIX-relative path part of the target's own content?
+
+    The one place the exclusion rule lives. `cli` needs it to compare a
+    manifest written by `analyze` -- whose own walk skips less -- against what
+    this module hashes, and a second copy of the rule is a second answer to
+    "what is the target", which is exactly what the graph hash exists to pin
+    down.
+    """
+    return not any(part in _EXCLUDED_DIR_NAMES for part in PurePosixPath(relative_posix).parts)
 
 
 def compute_target_hashes(target_root: Path) -> dict[str, str]:

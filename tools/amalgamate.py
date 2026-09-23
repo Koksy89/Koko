@@ -63,7 +63,7 @@ ORDER = [
     "resolve.py", "cascade.py", "lineage.py", "findings.py", "diff.py",
     "dependencies.py", "ledger.py", "docrecords.py", "enrichment.py",
     "harness/errors.py", "harness/hashing.py", "harness/config.py",
-    "harness/sandbox.py", "harness/harness.py",
+    "harness/sandbox.py", "harness/harness.py", "harness/scenarios.py",
     "tracer/limits.py", "tracer/capture.py", "tracer/static_index.py",
     "tracer/recording.py", "tracer/collector.py", "tracer/nondeterminism.py",
     "tracer/contradictions.py", "tracer/tracer.py",

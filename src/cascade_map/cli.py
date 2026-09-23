@@ -46,6 +46,11 @@ from cascade_map.findings import Findings
 from cascade_map.ingest import inventory
 from cascade_map.lineage import LineageTracer
 from cascade_map.resolve import Resolver
+from cascade_map.harness.hashing import (
+    compute_graph_hash,
+    compute_target_hashes,
+    is_target_content,
+)
 from cascade_map.harness.scenarios import (
     ScenarioDerivationError,
     derive_scenario_document,
@@ -554,6 +559,19 @@ def trace(
         known = ", ".join(sorted(spec_doc.get("scenarios", {}))) or "none"
         return EXIT_USAGE, f"no scenario named {scenario!r}. Declared: {known}"
 
+    # The hash the harness checks the target against is the one the GRAPH was
+    # built from, read out of manifest.json. Letting the child recompute it
+    # from the target it is about to run makes the staleness check compare a
+    # number against itself, which can never fail -- a control that always
+    # passes is not a control.
+    expected_graph_hash = _graph_hash_of(graph_dir)
+    if not expected_graph_hash:
+        return EXIT_REFUSED, (
+            f"REFUSED: {graph_dir} carries no manifest.json with target hashes, "
+            f"so this run cannot prove the Mode B graph matches the target it "
+            f"is about to execute. Re-run `analyze`. Nothing was executed."
+        )
+
     elements = _read_jsonl(graph_dir, "elements.jsonl", Element)
     if not elements:
         return EXIT_USAGE, (
@@ -574,6 +592,7 @@ def trace(
         sandbox=json.dumps(str(sandbox_root)),
         recordings=json.dumps(str(recordings)),
         record_out=json.dumps(str(record_out)),
+        graph_hash=json.dumps(expected_graph_hash),
         src=json.dumps(str(Path(__file__).resolve().parents[1])),
         self_file=json.dumps(str(Path(__file__).resolve())),
     )
@@ -653,11 +672,46 @@ def trace(
             "",
         ] + lines
 
+    stopped = [
+        item for item in run.blocked
+        if item.kind != "filesystem_read_outside_sandbox"
+    ]
+    if stopped:
+        # Loudly, with what was attempted. A blocked connect or a refused
+        # spawn reported only as a count next to four other counts is how a
+        # run that never reached its data reads as a clean run.
+        lines.append(
+            f"THE HARNESS STOPPED {len(stopped):,} REAL SIDE EFFECT(S). These are "
+            f"findings, not noise — your engine tried to do each of these:"
+        )
+        shown = stopped[:_BLOCKED_SHOWN]
+        lines += [f"  - [{item.kind}] {item.detail}" for item in shown]
+        if len(stopped) > len(shown):
+            lines.append(
+                f"  ... and {len(stopped) - len(shown):,} more; all of them are in "
+                f"{run_dir / 'run.json'} under `blocked`."
+            )
+        lines.append("")
+    lines.append("WHAT THE HARNESS DID TO THIS RUN — read before you trust the output:")
+    lines += [
+        f"  - {item}"
+        for item in harness_warnings(
+            str(sandbox_root),
+            spec_doc.get("declared_process_names", ()),
+            spec_doc["scenarios"][scenario].get("argv", ()),
+        )
+    ]
+    lines.append("")
     if run.unguaranteed:
         lines.append("WHAT THIS RUN COULD NOT GUARANTEE:")
         lines += [f"  - {item}" for item in run.unguaranteed]
         lines.append("")
     return EXIT_OK, "\n".join(lines)
+
+
+#: How many blocked attempts the run summary prints in full. The rest are
+#: counted and pointed at run.json -- an explicit cap, never a silent cut.
+_BLOCKED_SHOWN = 20
 
 
 #: How the child gets this tool's own code into scope. A named seam, not an
@@ -688,7 +742,8 @@ config = RunConfig(
     scenarios={{
         name: ScenarioSpec(name=name, module=body["module"],
                            function=body.get("function", ""),
-                           args=tuple(body.get("args", ())))
+                           args=tuple(body.get("args", ())),
+                           argv=tuple(body.get("argv", ())))
         for name, body in spec_doc["scenarios"].items()
     }},
     declared_process_names=frozenset(spec_doc.get("declared_process_names", ())),
@@ -696,7 +751,7 @@ config = RunConfig(
 )
 index = build_index(Path({graph_dir}), target_root)
 tracer = Tracer(index, recordings_dir=Path({recordings}))
-graph_hash = compute_graph_hash(compute_target_hashes(target_root))
+graph_hash = {graph_hash}
 try:
     run = Harness(config).start({scenario}, graph_hash, tracer)
 except HarnessRefusal as exc:
@@ -709,6 +764,264 @@ Path({record_out}).write_text(canonical_dumps(run) + "\\n", encoding="utf-8")
 # ---------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------
+
+
+def target_root_of(graph_dir: Path) -> Path:
+    """The tree the Mode B graph was built from, read back from its own output.
+
+    `analyze` records it in `run_meta.json`. Reading it back is what lets
+    `trace out/amun --sport basketball` work with no scenarios file and no
+    second copy of the path: the graph already knows what it is a map of.
+    Raises `ScenarioDerivationError` naming the file tried rather than
+    guessing a directory to execute code from.
+    """
+    meta = graph_dir / "run_meta.json"
+    if not meta.is_file():
+        raise ScenarioDerivationError(
+            f"cannot tell which tree {graph_dir} is a map of: no run_meta.json. "
+            f"Tried: {meta}. Re-run `analyze`, or declare target_root in a "
+            f"scenarios file."
+        )
+    try:
+        payload = json.loads(meta.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ScenarioDerivationError(f"cannot read {meta}: {exc}") from exc
+    root = str(payload.get("target_root", ""))
+    if not root:
+        raise ScenarioDerivationError(
+            f"{meta} records no target_root, so there is nothing to run. "
+            f"Re-run `analyze`."
+        )
+    return Path(root)
+
+
+def _version_tuple(text: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for chunk in text.split("."):
+        digits = "".join(c for c in chunk if c.isdigit())
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+def _required_python(graph_dir: Path) -> tuple[str, str]:
+    """The highest `minimum_python` card 17 read off the target's own syntax.
+
+    A measured fact -- `match` is 3.10, `except*` is 3.11 -- not a guess at
+    what the engine needs, and not a number this tool invented. Returns
+    ``("", "")`` when the graph carries no interpreter requirements, which is
+    reported as "not measured", never as "any version will do".
+    """
+    path = graph_dir / "interpreter.jsonl"
+    if not path.is_file():
+        return "", ""
+    best, best_element = "", ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        version = str(row.get("minimum_python", ""))
+        if version and _version_tuple(version) > _version_tuple(best):
+            best, best_element = version, str(row.get("element_id", ""))
+    return best, best_element
+
+
+def preflight(
+    graph_dir: Path,
+    out_root: Path,
+    settings: Settings,
+    sports: Sequence[str],
+    scenario_file: Path | None,
+) -> tuple[int, str]:
+    """Can this run start? Answered WITHOUT executing anything.
+
+    Every line is a check that either passed or did not, and the verdict at
+    the end is the same decision `Harness.start` would make on the inputs
+    this can see from outside the harness. It deliberately does not claim to
+    be the harness's own verdict: the audit-hook self-test happens inside the
+    run, and a preflight that promised it would be promising something it
+    never tried.
+    """
+    checks: list[tuple[str, str, bool]] = []
+
+    anchor = graph_dir / "elements.jsonl"
+    graph_ok = anchor.is_file()
+    element_count = (
+        sum(1 for line in anchor.read_text(encoding="utf-8").splitlines() if line.strip())
+        if graph_ok
+        else 0
+    )
+    checks.append((
+        "Mode B graph",
+        f"{anchor} ({element_count:,} elements)" if graph_ok else f"missing: {anchor}",
+        graph_ok,
+    ))
+
+    target_root: Path | None = None
+    document: dict[str, Any] | None = None
+    derivation_error = ""
+    if scenario_file is not None:
+        if scenario_file.is_file():
+            try:
+                document = json.loads(scenario_file.read_text(encoding="utf-8"))
+                target_root = Path(str(document["target_root"]))
+            except (OSError, json.JSONDecodeError, KeyError) as exc:
+                derivation_error = f"cannot read {scenario_file}: {exc}"
+        else:
+            derivation_error = f"no scenarios file at {scenario_file}"
+        checks.append((
+            "scenarios file", str(scenario_file), not derivation_error,
+        ))
+    else:
+        try:
+            target_root = target_root_of(graph_dir)
+            document = derive_scenario_document(
+                target_root,
+                sports=sports,
+                runner=settings.runner,
+                engine=settings.engine,
+                run_args=settings.run_args,
+            )
+        except ScenarioDerivationError as exc:
+            derivation_error = str(exc)
+        checks.append((
+            "runner",
+            f"{settings.runner} -> {document['scenarios'][sports[0]]['module']}"
+            if document and sports
+            else derivation_error or "not resolved",
+            document is not None,
+        ))
+        checks.append((
+            "engine file",
+            str(target_root / settings.engine) if target_root else settings.engine,
+            bool(target_root and (target_root / settings.engine).is_file()),
+        ))
+
+    if target_root is not None:
+        checks.append(("target root", str(target_root), target_root.is_dir()))
+        hashes = compute_target_hashes(target_root)
+        current = compute_graph_hash(hashes)
+        recorded = _graph_hash_of(graph_dir)
+        checks.append((
+            "graph is current",
+            f"target hashes {current[:12]}, graph built from "
+            f"{recorded[:12] if recorded else 'unrecorded'}"
+            + ("" if recorded == current else "  <- STALE: re-run analyze"),
+            bool(recorded) and recorded == current,
+        ))
+
+    needed, needed_by = _required_python(graph_dir)
+    running = platform.python_version()
+    if needed:
+        ok = _version_tuple(running) >= _version_tuple(needed)
+        detail = (
+            f"this interpreter is {running}; the target's own syntax needs "
+            f"{needed} or newer (first seen in {needed_by})"
+        )
+    else:
+        ok = True
+        detail = (
+            f"this interpreter is {running}; the graph carries no interpreter "
+            f"requirements, so the minimum was NOT MEASURED"
+        )
+    checks.append(("python", detail, ok))
+
+    checks.append((
+        "sports",
+        ", ".join(sports) if sports else "none selected",
+        bool(sports) or scenario_file is not None,
+    ))
+
+    lines = ["PREFLIGHT — nothing was executed.", ""]
+    width = max(len(name) for name, _, _ in checks)
+    for name, detail, ok in checks:
+        lines.append(f"  {'OK  ' if ok else 'FAIL'}  {name.ljust(width)}  {detail}")
+    lines.append("")
+
+    sandbox_root = (out_root / "sandbox").resolve()
+    declared = sorted(document.get("declared_process_names", ())) if document else []
+    passthrough = sorted(document.get("env_passthrough", ())) if document else []
+    stubs = sorted(document.get("client_stubs", ())) if document else []
+    lines += [
+        "CONTROLS THAT WILL BE ACTIVE:",
+        "  network           blocked at the socket layer, including DNS. No allowlist exists.",
+        f"  filesystem        every write redirected under {sandbox_root}",
+        "  process           blocked unless declared: "
+        + (", ".join(declared) if declared else "(none declared)"),
+        "  environment       passed through: "
+        + (", ".join(passthrough) if passthrough else "(nothing, including secrets)"),
+        "  external clients  stubbed or replayed: "
+        + (", ".join(stubs) if stubs else "(none declared; an undeclared client is a hard stop)"),
+        "",
+    ]
+    if document:
+        lines.append("SCENARIOS THAT WOULD RUN:")
+        for name in sorted(document.get("scenarios", {})):
+            body = document["scenarios"][name]
+            lines.append(f"  {name}")
+            lines.append(f"    module  {body.get('module', '')}")
+            argv = body.get("argv", ())
+            lines.append(
+                f"    argv    {' '.join(argv) if argv else '(sys.argv left alone)'}"
+            )
+        lines.append("")
+
+    lines.append("WHAT THE HARNESS WILL DO TO THIS RUN:")
+    lines += [
+        f"  - {item}"
+        for item in harness_warnings(str(sandbox_root), declared, settings.run_args)
+    ]
+    lines.append("")
+
+    failed = [name for name, _, ok in checks if not ok]
+    if failed or derivation_error:
+        if derivation_error:
+            lines.append(f"  {derivation_error}")
+            lines.append("")
+        lines.append(
+            "VERDICT: this run WOULD REFUSE TO START — "
+            + ", ".join(failed or ["scenario could not be derived"])
+            + ". Nothing was executed."
+        )
+        return EXIT_REFUSED, "\n".join(lines)
+    lines.append(
+        "VERDICT: every check this can make from outside the harness passes. "
+        "The harness re-verifies its own controls when the run starts, and "
+        "refuses there if any of them cannot be proved active."
+    )
+    return EXIT_OK, "\n".join(lines)
+
+
+def _graph_hash_of(graph_dir: Path) -> str:
+    """The graph hash recorded by `analyze`, or "" when there is none.
+
+    Derived from `manifest.json:target_hashes`, which is the same input
+    `compute_graph_hash` takes inside the harness, so "current" here means
+    exactly what "current" means there.
+    """
+    manifest = graph_dir / "manifest.json"
+    if not manifest.is_file():
+        return ""
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    hashes = payload.get("target_hashes")
+    if not isinstance(hashes, dict):
+        return ""
+    # `analyze` skips only __pycache__; the harness also skips VCS and tool
+    # cache directories. Filtering the manifest through the harness's own set
+    # makes the two key sets identical, so this hash is comparable with the
+    # one the harness computes -- and a mismatch means the target changed,
+    # never that the two sides disagree on what a target file is.
+    return compute_graph_hash(
+        {
+            str(key): str(value)
+            for key, value in hashes.items()
+            if is_target_content(str(key))
+        }
+    )
 
 
 def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
@@ -985,14 +1298,47 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="overrides SCENARIO (MODE 2 only)")
     hist.add_argument("--report", action="store_true",
                       help="print the whole history, not only what this run did")
+    _add_sport_flags(hist)
 
     run_a = sub.add_parser("trace", help="Mode A — run the target under the harness")
     run_a.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
-    run_a.add_argument("--scenarios", type=Path, required=True,
-                       help="JSON file declaring target_root and named scenarios")
-    run_a.add_argument("--scenario", required=True)
+    run_a.add_argument("--scenarios", type=Path, default=None,
+                       help="JSON file declaring target_root and named scenarios. "
+                            "Omitted, scenarios are derived from METATRON_SETTINGS: "
+                            "one per selected sport, driving RUNNER by argv.")
+    run_a.add_argument("--scenario", default=None,
+                       help="a scenario name from --scenarios. Ignored when "
+                            "scenarios are derived -- the sport is the name.")
     run_a.add_argument("--out", type=Path, default=Path("out/latest"))
+    run_a.add_argument("--preflight", action="store_true",
+                       help="say whether this run could start, and what would be "
+                            "active, WITHOUT executing anything")
+    _add_sport_flags(run_a)
     return parser
+
+
+def _add_sport_flags(sub_parser: argparse.ArgumentParser) -> None:
+    """The sports flags, identical on `trace` and `track`.
+
+    The owner should never have to open a Python file to change which sport
+    runs, and the two commands that run sports must not diverge on how they
+    are named.
+    """
+    sub_parser.add_argument(
+        "--sport", action="append", default=None, metavar="NAME",
+        help="a sport to run; repeatable. Overrides SPORT. An unknown name is "
+             "an error listing the valid ones.",
+    )
+    sub_parser.add_argument(
+        "--all-sports", action="store_true",
+        help="every sport in SPORTS, each as its own scenario",
+    )
+    sub_parser.add_argument(
+        "--run-arg", action="append", default=None, metavar="ARG",
+        help="an extra flag passed through to the runner; repeatable. Appended "
+             "to RUN_ARGS. Use --run-arg=--workers --run-arg=8 for flags, so "
+             "argparse does not read them as this tool's own options.",
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1070,9 +1416,108 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
         return EXIT_OK
 
-    code, message = trace(args.graph_dir, args.scenarios, args.scenario, args.out)
-    print(message, file=sys.stderr if code else sys.stdout)
-    return code
+    return _trace_command(args)
+
+
+def _trace_command(args: Any) -> int:
+    """`trace`. The only command that executes owner code, and the only one
+    that needs the owner to have asked for it by name.
+
+    Two ways in, and the file wins when it is given:
+
+    * ``--scenarios FILE`` -- the declared path, unchanged.
+    * nothing -- scenarios are DERIVED from METATRON_SETTINGS, one per
+      selected sport, each driving RUNNER through ``argv``. This is what
+      makes `trace out/amun --sport basketball` work with no scenarios file
+      and no edit to any Python file.
+
+    Derivation never guesses. A runner it cannot resolve is a refusal naming
+    the path it tried.
+    """
+    try:
+        settings = _settings_from_args(args)
+    except SettingsError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+
+    if args.scenarios is not None:
+        if args.preflight:
+            code, message = preflight(
+                args.graph_dir, args.out, settings, (), args.scenarios
+            )
+            print(message, file=sys.stderr if code else sys.stdout)
+            return code
+        if not args.scenario:
+            print(
+                "--scenario is required with --scenarios: naming the file is not "
+                "naming which of its scenarios to run.",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+        if not args.scenarios.is_file():
+            print(f"no scenarios file at {args.scenarios}", file=sys.stderr)
+            return EXIT_USAGE
+        code, message = trace(args.graph_dir, args.scenarios, args.scenario, args.out)
+        print(message, file=sys.stderr if code else sys.stdout)
+        return code
+
+    sports = settings.selected_sports()
+    if args.preflight:
+        code, message = preflight(args.graph_dir, args.out, settings, sports, None)
+        print(message, file=sys.stderr if code else sys.stdout)
+        return code
+
+    try:
+        document = derive_scenario_document(
+            target_root_of(args.graph_dir),
+            sports=sports,
+            runner=settings.runner,
+            engine=settings.engine,
+            run_args=settings.run_args,
+        )
+    except ScenarioDerivationError as exc:
+        print(
+            f"REFUSED: {exc}\n\n"
+            f"No scenarios file was given, so scenarios are derived from "
+            f"METATRON_SETTINGS. A refusal is the correct outcome here — nothing "
+            f"was executed. Give --scenarios FILE to declare them explicitly.",
+            file=sys.stderr,
+        )
+        return EXIT_REFUSED
+
+    # Written out, not kept in memory, for two reasons: the owner can read
+    # exactly what was derived and hand-edit it into a scenarios file, and
+    # `trace()` keeps one code path for both ways in.
+    derived_path = args.out / "derived_scenarios.json"
+    derived_path.parent.mkdir(parents=True, exist_ok=True)
+    derived_path.write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    if args.scenario and args.scenario not in sports:
+        print(
+            f"--scenario {args.scenario!r} names no derived scenario. Derived "
+            f"scenarios are named for their sport: "
+            f"{', '.join(sports) if sports else 'none selected'}. Use --sport.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    chosen = (args.scenario,) if args.scenario else sports
+    print(
+        f"Derived {len(chosen)} scenario(s) from METATRON_SETTINGS "
+        f"({', '.join(chosen)}), written to {derived_path}.\n"
+    )
+    worst = EXIT_OK
+    for sport in chosen:
+        code, message = trace(args.graph_dir, derived_path, sport, args.out)
+        print(f"=== {sport} ===")
+        print(message, file=sys.stderr if code else sys.stdout)
+        print()
+        worst = max(worst, code)
+    return worst
 
 
 if __name__ == "__main__":

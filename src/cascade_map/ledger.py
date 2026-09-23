@@ -108,6 +108,10 @@ from cascade_map.contracts.interfaces import (
     combine,
 )
 from cascade_map.diff import GraphSnapshot, _normalized_body, diff_snapshots, load_snapshot
+from cascade_map.harness.scenarios import (
+    ScenarioDerivationError,
+    derive_scenario_document,
+)
 from cascade_map.ingest.hashing import sha256_hex, sha256_text
 
 __all__ = [
@@ -847,6 +851,12 @@ class Ledger:
         self.order_reason: str = "nothing discovered yet"
         #: label -> the label it duplicates, for trees with identical content.
         self.duplicate_labels: dict[str, str] = {}
+        #: The sports this ledger's Mode A runs are about, in SPORTS order, or
+        #: empty when scenarios come from a scenarios file (or cannot be
+        #: derived at all). Non-empty, it is the ONLY set of scenario names
+        #: two versions may be compared on: basketball is compared with
+        #: basketball or with nothing.
+        self.sports_scenarios: tuple[str, ...] = ()
 
     # -- paths ------------------------------------------------------------
 
@@ -1245,7 +1255,9 @@ class Ledger:
         """
         before_dir = self.resolve(before.artifact_dir)
         after_dir = self.resolve(after.artifact_dir)
-        pair = _common_scenario_runs(before, after, before_dir, after_dir)
+        pair = _common_scenario_runs(
+            before, after, before_dir, after_dir, self.sports_scenarios
+        )
         if pair is None:
             return {}
         scenario, before_run, after_run = pair
@@ -1517,19 +1529,31 @@ def _run_scenarios(artifact_dir: Path) -> dict[str, str]:
 
 
 def _common_scenario_runs(
-    before: VersionRecord, after: VersionRecord, before_dir: Path, after_dir: Path
+    before: VersionRecord,
+    after: VersionRecord,
+    before_dir: Path,
+    after_dir: Path,
+    preferred: Sequence[str] = (),
 ) -> tuple[str, str, str] | None:
     """``(scenario, before_run_id, after_run_id)`` for the one scenario both
     versions were traced under, or None. Comparing two runs of *different*
-    scenarios would measure the scenarios, not the versions."""
+    scenarios would measure the scenarios, not the versions.
+
+    *preferred* names the scenarios this run is about -- the selected sports.
+    Given, nothing outside it is ever compared and the order it declares is
+    the order tried, so "basketball vs basketball" cannot quietly become
+    "basketball vs football" because a leftover run sorted first. Different
+    sports are different scenarios and must never be compared against each
+    other."""
     if not before.runtime_run_ids or not after.runtime_run_ids:
         return None
     before_runs = _run_scenarios(before_dir)
     after_runs = _run_scenarios(after_dir)
-    shared = sorted(
-        {s for s in before_runs.values() if s}
-        & {s for s in after_runs.values() if s}
-    )
+    common = {s for s in before_runs.values() if s} & {s for s in after_runs.values() if s}
+    if preferred:
+        shared = [name for name in preferred if name in common]
+    else:
+        shared = sorted(common)
     if not shared:
         return None
     scenario = shared[0]
@@ -1600,6 +1624,10 @@ def track(
 
     new_ids = [record.id for record in ledger.analyse_new(discovered)]
 
+    # Decided once, before anything is run or compared, so a second `track`
+    # over an unchanged tree reports the same way as the first.
+    ledger.sports_scenarios = _sports_in_play(ledger, settings)
+
     trace_notes = _run_mode_a(ledger, settings, new_ids, trace)
     ledger.refresh_runtime_runs()
     ledger.apply_ordering()
@@ -1612,7 +1640,11 @@ def track(
         if fresh or before_id in new_ids or after_id in new_ids:
             computed.append(comparison)
         runtime_notes[comparison.id] = _runtime_note(
-            settings, ledger.record(before_id), ledger.record(after_id), comparison
+            settings,
+            ledger.record(before_id),
+            ledger.record(after_id),
+            comparison,
+            ledger,
         )
 
     if not computed and ledger.consecutive_pairs():
@@ -1658,19 +1690,86 @@ def _run_mode_a(
             "was executed. Run `metatron trace` per version instead.",
         )
     scenarios = ledger.resolve(settings.scenarios)
-    if not scenarios.is_file():
-        return (
-            f"MODE 2 was set but SCENARIOS file {scenarios} does not exist, so "
-            f"nothing was executed and runtime is not measured.",
-        )
     notes: list[str] = []
+    if scenarios.is_file():
+        # A scenarios file wins. Declared scenarios are the owner's own
+        # statement of what to run; nothing is derived on top of them.
+        for version_id in sorted(new_ids):
+            out_dir = ledger.artifact_dir(version_id)
+            code, message = trace(out_dir, scenarios, settings.scenario, out_dir)
+            label = ledger.record(version_id).label
+            head = message.splitlines()[0] if message else ""
+            notes.append(f"{label}: trace exit {code} -- {head}")
+        return tuple(notes)
+
+    # No scenarios file: derive one scenario per selected sport, per version.
+    # Each sport is its own scenario with its own run id, recorded against
+    # that version, so the ledger can compare the same sport across versions.
+    sports = settings.selected_sports()
     for version_id in sorted(new_ids):
+        record = ledger.record(version_id)
         out_dir = ledger.artifact_dir(version_id)
-        code, message = trace(out_dir, scenarios, settings.scenario, out_dir)
-        label = ledger.record(version_id).label
-        head = message.splitlines()[0] if message else ""
-        notes.append(f"{label}: trace exit {code} -- {head}")
+        try:
+            document = derive_scenario_document(
+                ledger.resolve(record.source_path),
+                sports=sports,
+                runner=settings.runner,
+                engine=settings.engine,
+                run_args=settings.run_args,
+            )
+        except ScenarioDerivationError as exc:
+            notes.append(
+                f"{record.label}: SCENARIOS file {scenarios} does not exist and no "
+                f"scenario could be derived from METATRON_SETTINGS -- {exc} "
+                f"Nothing was executed for this version and runtime is not measured."
+            )
+            continue
+        derived = out_dir / "derived_scenarios.json"
+        derived.parent.mkdir(parents=True, exist_ok=True)
+        derived.write_text(
+            json.dumps(document, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        for sport in sports:
+            code, message = trace(out_dir, derived, sport, out_dir)
+            head = message.splitlines()[0] if message else ""
+            notes.append(f"{record.label} [{sport}]: trace exit {code} -- {head}")
     return tuple(notes)
+
+
+def _sports_in_play(ledger: "Ledger", settings: Settings) -> tuple[str, ...]:
+    """The sports this ledger's comparisons are about, or ``()``.
+
+    Empty whenever scenario names are not sports: MODE 1, a scenarios file
+    that exists, or a RUNNER that resolves against no known version. Deciding
+    it from the settings *and* the tree -- rather than from the fact that
+    SPORTS is never empty -- is what keeps a ledger whose scenarios are named
+    "baseline" and "stress" reading the way it always has.
+
+    Derivation here is a check, not a run: it resolves paths and builds a
+    dict. Nothing is imported and nothing is executed.
+    """
+    if settings.mode != 2:
+        return ()
+    if ledger.resolve(settings.scenarios).is_file():
+        return ()
+    sports = settings.selected_sports()
+    if not sports:
+        return ()
+    for record in ledger.versions:
+        try:
+            derive_scenario_document(
+                ledger.resolve(record.source_path),
+                sports=sports,
+                runner=settings.runner,
+                engine=settings.engine,
+                run_args=settings.run_args,
+            )
+        except ScenarioDerivationError:
+            continue
+        return sports
+    return ()
 
 
 def _runtime_note(
@@ -1678,6 +1777,7 @@ def _runtime_note(
     before: VersionRecord,
     after: VersionRecord,
     comparison: VersionComparison,
+    ledger: "Ledger | None" = None,
 ) -> str:
     """Why ``runtime_delta`` is empty, or what it found. Never "no change"."""
     if comparison.runtime_delta:
@@ -1691,6 +1791,18 @@ def _runtime_note(
         )
     if settings.mode != 2:
         return "not measured (MODE 1; set MODE 2 to observe execution)"
+    sports = ledger.sports_scenarios if ledger is not None else ()
+    if sports:
+        # Named for the sport, never "no change". A version with no run for
+        # this sport has not been measured for it, and saying so is the whole
+        # point: two different sports are two different programs' worth of
+        # execution and comparing them would measure the sport.
+        return "; ".join(
+            f"not measured for {sport} ("
+            + _sport_gap(sport, before, after, ledger)
+            + ")"
+            for sport in sports
+        )
     missing = [r.label for r in (before, after) if not r.runtime_run_ids]
     if missing:
         return f"not measured (MODE 2, but no completed Mode A run for {missing!r})"
@@ -1698,6 +1810,20 @@ def _runtime_note(
         "not measured (both versions have Mode A runs, but none of the same "
         "scenario; comparing different scenarios would measure the scenarios)"
     )
+
+
+def _sport_gap(
+    sport: str, before: VersionRecord, after: VersionRecord, ledger: "Ledger"
+) -> str:
+    """Which of the two versions has no completed run of *sport*."""
+    missing = [
+        record.label
+        for record in (before, after)
+        if sport not in set(_run_scenarios(ledger.resolve(record.artifact_dir)).values())
+    ]
+    if missing:
+        return "no completed Mode A run of that scenario for " + ", ".join(missing)
+    return "both versions have a run of it, but the delta was not computed"
 
 
 # ---------------------------------------------------------------------------
