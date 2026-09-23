@@ -89,18 +89,46 @@ METATRON_SETTINGS = {
     #     Mode A refuses to start without a completed static map.
     "MODE": 1,
 
-    # The folder holding your versions. One sub-folder per version.
-    #   versions/
-    #     amun_2026-01-14/        <- a whole engine tree
-    #     amun_2026-02-03/
-    #     amun_v3/
-    "VERSIONS_DIR": "versions",
+    # THE ONE PATH. Everything else lives under it and is derived, so naming
+    # your script is the whole instruction:
+    #
+    #   Metatron_Engine/                     <- WORKSPACE
+    #       AmunEV_Engine_V2/                <- PROJECT, from ENGINE below
+    #           history/
+    #               AmunEV_Engine_V2_history.json        <- open this one
+    #               AmunEV_Engine_V2_fingerprints.jsonl
+    #               AmunEV_Engine_V2_comparisons.jsonl
+    #               runtime/basketball_history.json      <- one per sport
+    #           sources/<content hash>/       <- stored ONCE per distinct content
+    #           io/runs/<UTC timestamp>/      <- the map from that run
+    #           io/reports/
+    "WORKSPACE": "workspace",
 
-    # Where maps are written. One sub-directory per version, named by its id.
-    "OUT_DIR": "out",
+    # The folder under WORKSPACE holding this script's whole history. Empty
+    # means "derive it from ENGINE", which is the point: name the script and
+    # there is nothing left to point at and nothing to mis-point.
+    "PROJECT": "",
 
-    # The history file. Created on first run, appended to for ever after.
-    "LEDGER": "out/metatron_ledger.json",
+    # Keep one copy of each DISTINCT version's tree under sources/. A re-run
+    # of unchanged code stores nothing, so this costs one snapshot per real
+    # change and nothing at all otherwise -- and the history file prints the
+    # number, so it never grows in silence. false is `--no-sources`: the
+    # content hash is still recorded, the copy is not kept.
+    "SOURCES": True,
+
+    # ---- the three keys WORKSPACE replaced ----------------------------
+    #
+    # Left EMPTY, WORKSPACE resolves all three and you can ignore them. Set to
+    # a path, each one still does exactly what it always did, and `track`
+    # prints one line saying what it now means. Nothing you already have on
+    # disk stops working because you upgraded mid-project.
+    #
+    #   VERSIONS_DIR  the drop folder versions are read from
+    #   OUT_DIR       the artifact root, one directory per version id
+    #   LEDGER        a second, flat copy of the history at that path
+    "VERSIONS_DIR": "",
+    "OUT_DIR": "",
+    "LEDGER": "",
 
     # Your final-decision element(s). The single highest-value setting here:
     # everything the tool says about "what drives the decision" is measured
@@ -1189,6 +1217,9 @@ def _settings_from_args(args: Any) -> Settings:
     merged = dict(METATRON_SETTINGS)
     overrides = {
         "MODE": flag("mode"),
+        "WORKSPACE": str(flag("workspace")) if flag("workspace") else None,
+        "PROJECT": flag("project"),
+        "SOURCES": False if flag("no_sources") else None,
         "VERSIONS_DIR": str(flag("versions")) if flag("versions") else None,
         "OUT_DIR": str(flag("out")) if flag("out") else None,
         "LEDGER": str(flag("ledger")) if flag("ledger") else None,
@@ -1275,6 +1306,11 @@ def _build_parser() -> argparse.ArgumentParser:
                           "read (.venv-target in production). Read as text; nothing "
                           "under it is imported. Without it the installed half of "
                           "the dependency map is absent and the report says so.")
+    run.add_argument("--mode", type=int, choices=(1, 2), default=None,
+                     help="overrides MODE. 1 never executes anything. 2 needs "
+                          "a completed static map, which is what this command "
+                          "builds — it will tell you the exact `trace` to run "
+                          "next rather than executing your engine from here.")
     run.add_argument("--no-gate", action="store_true",
                      help="write artifacts even if the completeness gate fails, "
                           "and exit 0. The gate still reports.")
@@ -1318,8 +1354,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="analyse every version in VERSIONS_DIR that has not been analysed "
              "already, compare consecutive versions, and update the ledger",
     )
+    hist.add_argument("--workspace", type=Path, default=None, metavar="DIR",
+                      help="overrides WORKSPACE, the one path everything else "
+                           "is derived from")
+    hist.add_argument("--project", default=None, metavar="NAME",
+                      help="overrides PROJECT, the folder under WORKSPACE "
+                           "holding this script's whole history. Derived from "
+                           "ENGINE when omitted.")
+    hist.add_argument("--no-sources", action="store_true",
+                      help="record each version's content hash without keeping "
+                           "a copy of its tree under the workspace")
     hist.add_argument("--versions", type=Path, default=None, metavar="DIR",
-                      help="overrides VERSIONS_DIR")
+                      help="overrides VERSIONS_DIR (legacy; WORKSPACE derives it)")
     hist.add_argument("--out", type=Path, default=None, help="overrides OUT_DIR")
     hist.add_argument("--ledger", type=Path, default=None, help="overrides LEDGER")
     hist.add_argument("--mode", type=int, choices=(1, 2), default=None,
@@ -1345,6 +1391,46 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="print the whole history, not only what this run did")
     _add_sport_flags(hist)
 
+    story = sub.add_parser(
+        "history",
+        help="read one script's whole development story back out of the workspace",
+    )
+    story.add_argument("project", nargs="?", default=None,
+                       help="omit to list every project in the workspace, newest first")
+    story.add_argument("--workspace", type=Path, default=None, metavar="DIR",
+                       help="overrides WORKSPACE")
+    # dest is not "sport": `track` and `trace` take `--sport` REPEATABLY and
+    # `_settings_from_args` reads that list. A bare string arriving there would
+    # be iterated into its characters and validated as seven unknown sports.
+    story.add_argument("--sport", dest="sport_name", default=None, metavar="NAME",
+                       help="that sport's file only. It declares its own scope, "
+                            "and a scope of UNION ACROSS ALL SPORTS means the "
+                            "data under it is NOT sport-specific.")
+    story.add_argument("--element", default=None, metavar="ID",
+                       help="one element's life across every version: when it "
+                            "appeared, every body change, every time it started "
+                            "or stopped reaching a decision, and which run first "
+                            "observed it executing")
+
+    move = sub.add_parser(
+        "migrate",
+        help="move an existing flat layout into the workspace shape. Idempotent: "
+             "a second run does nothing and says so.",
+    )
+    move.add_argument("--workspace", type=Path, default=None, metavar="DIR",
+                      help="overrides WORKSPACE")
+    move.add_argument("--project", default=None, metavar="NAME",
+                      help="overrides PROJECT")
+    move.add_argument("--ledger", type=Path, default=None, metavar="PATH",
+                      help="the flat ledger to migrate. Defaults to "
+                           "out/metatron_ledger.json, the old default.")
+    move.add_argument("--versions", type=Path, default=None, metavar="DIR",
+                      help="the old flat VERSIONS_DIR. Defaults to versions/.")
+    move.add_argument("--out", type=Path, default=None, metavar="DIR",
+                      help="the old flat OUT_DIR. Defaults to out/.")
+    move.add_argument("--no-sources", action="store_true",
+                      help="reuse the version ids without copying any tree")
+
     run_a = sub.add_parser("trace", help="Mode A — run the target under the harness")
     run_a.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
     run_a.add_argument("--scenarios", type=Path, default=None,
@@ -1355,6 +1441,10 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="a scenario name from --scenarios. Ignored when "
                             "scenarios are derived -- the sport is the name.")
     run_a.add_argument("--out", type=Path, default=Path("out/latest"))
+    run_a.add_argument("--mode", type=int, choices=(1, 2), default=None,
+                       help="overrides MODE. `--mode 1` REFUSES: mode 1 never "
+                            "executes your engine. `--mode 2` runs it, and "
+                            "refuses if no completed static map exists.")
     run_a.add_argument("--preflight", action="store_true",
                        help="say whether this run could start, and what would be "
                             "active, WITHOUT executing anything")
@@ -1405,6 +1495,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             workers=args.workers,
         )
         print(_report(summary, args.out, code))
+        if _mode_of(args) == 2:
+            # Not a silent no-op and not an execution either. `analyze` IS the
+            # mode 1 half; mode 2 is a second, explicit command that runs the
+            # owner's engine, and it is never started as a side effect of a
+            # flag on a command that promised not to.
+            print()
+            print(
+                f"MODE 2 requested. `analyze` builds the static map and never "
+                f"executes anything, which is the half that just finished. "
+                f"Runtime observation is a separate command, so that executing "
+                f"your engine is always something you asked for by name:\n"
+                f"    cascade-map trace {args.out} --mode 2"
+            )
         return EXIT_OK if args.no_gate else code
 
     if args.command == "doctor":
@@ -1461,6 +1564,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return EXIT_GATE_FAILED
         return EXIT_OK
 
+    if args.command == "history":
+        return _history_command(args)
+
+    if args.command == "migrate":
+        return _migrate_command(args)
+
     if args.command == "view":
         # Imported by name, not as a module object: `viewer.render_to_file`
         # needs a `viewer` namespace to exist, and in the single-file build
@@ -1484,6 +1593,141 @@ def main(argv: Sequence[str] | None = None) -> int:
     return _trace_command(args)
 
 
+def _mode_of(args: Any) -> int:
+    """The mode this invocation runs in: the flag, else MODE in the settings.
+
+    One function, so a command cannot read the flag and another read the
+    setting and the two disagree about whether the engine is allowed to run.
+    """
+    flag = getattr(args, "mode", None)
+    if flag in (1, 2):
+        return int(flag)
+    value = METATRON_SETTINGS.get("MODE", 1)
+    return int(value) if value in (1, 2) else 1
+
+
+def _workspace_for(args: Any, project: str | None = None) -> Any:
+    """The workspace a read-only command is pointed at.
+
+    Built from METATRON_SETTINGS with the flags on top, exactly like every
+    other command, so `history` and `track` can never disagree about where the
+    history lives.
+    """
+    from cascade_map.ledger import layout_for
+    from cascade_map.workspace import Workspace
+
+    settings = _settings_from_args(args)
+    layout = layout_for(settings, Path.cwd())
+    if project:
+        return Workspace(root=layout.workspace.root, project=project)
+    return layout.workspace
+
+
+def _history_command(args: Any) -> int:
+    """`history`, in its four forms.
+
+    The fourth -- one element across every version -- is the point of the
+    whole layout, and it is answerable only because every version's
+    fingerprints were kept as lines rather than rewritten as one document.
+    """
+    from cascade_map.workspace import (
+        WorkspaceError,
+        element_life,
+        list_projects,
+        read_history,
+        render_element_life,
+        render_history,
+    )
+    from cascade_map.ledger import Ledger, LedgerError, layout_for, observed_runs_for
+
+    try:
+        settings = _settings_from_args(args)
+    except SettingsError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    layout = layout_for(settings, Path.cwd())
+    root = layout.workspace.root
+
+    if not args.project:
+        projects = list_projects(root)
+        if not projects:
+            # An absence, said as an absence. "No projects" printed over a
+            # workspace that was never written would read as "nothing changed".
+            print(
+                f"No project in {root} carries a history file yet. That is an "
+                f"absence, not an empty history: run `metatron track` to start "
+                f"one, or `metatron migrate` if you have a flat layout from "
+                f"before the workspace existed."
+            )
+            return EXIT_OK
+        print(f"{root} — {len(projects):,} project(s)")
+        for name in projects:
+            space = _workspace_for(args, name)
+            document = read_history(space)
+            print(
+                f"  {name}: {len(document.get('versions', [])):,} version(s), "
+                f"{len(document.get('comparisons', [])):,} comparison(s), "
+                f"{int(document.get('disk', {}).get('total_bytes', 0)):,} B on disk"
+            )
+        return EXIT_OK
+
+    space = _workspace_for(args, args.project)
+    try:
+        if args.element:
+            observed = {}
+            try:
+                ledger = Ledger(settings, root=Path.cwd(), layout=layout).load(
+                    space.history_file
+                )
+                observed = observed_runs_for(ledger, args.element)
+            except LedgerError as exc:
+                # Said out loud. A silent empty `observed` would render as
+                # "never observed executing", which is a different claim.
+                print(f"NOTE  Mode A runs could not be scanned: {exc}", file=sys.stderr)
+            document = read_history(space)
+            document = {**document, "observed_elements": observed}
+            life = element_life(space, args.element, history=document)
+            print(render_element_life(life, project=args.project))
+            return EXIT_OK
+        document = read_history(space)
+        print(render_history(document, workspace=space, sport=args.sport_name or ""))
+        return EXIT_OK
+    except WorkspaceError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+
+
+def _migrate_command(args: Any) -> int:
+    """`migrate`. Copies, never moves, and reuses every version id."""
+    from cascade_map.ledger import layout_for
+    from cascade_map.workspace import WorkspaceError, migrate, render_migration
+
+    try:
+        settings = _settings_from_args(args)
+    except SettingsError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    root = Path.cwd()
+    layout = layout_for(settings, root)
+    ledger_path = args.ledger or Path("out/metatron_ledger.json")
+    if not ledger_path.is_absolute():
+        ledger_path = root / ledger_path
+    try:
+        result = migrate(
+            root=root,
+            workspace=layout.workspace,
+            ledger_path=ledger_path,
+            versions_dir=root / (args.versions or Path("versions")),
+            out_dir=root / (args.out or Path("out")),
+            keep_sources=not args.no_sources,
+        )
+    except WorkspaceError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    print(render_migration(result))
+    return EXIT_OK
+
+
 def _trace_command(args: Any) -> int:
     """`trace`. The only command that executes owner code, and the only one
     that needs the owner to have asked for it by name.
@@ -1504,6 +1748,33 @@ def _trace_command(args: Any) -> int:
     except SettingsError as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
+
+    # `trace` is mode 2 BY NAME. Typing it is the explicit command Mode A
+    # requires, so the MODE setting does not gate it -- gating it would mean an
+    # owner who ran `trace` on purpose was refused by a line in a dict. An
+    # explicit `--mode 1` is different: that is the owner saying "not this
+    # time" out loud, and mode 1's whole definition is that it never executes
+    # anything, so it refuses rather than running anyway.
+    if getattr(args, "mode", None) == 1:
+        print(
+            "REFUSED: MODE 1 never executes your engine, and `trace` is the only "
+            "command that does. Nothing was executed. Run `cascade-map analyze` "
+            "for the static map, or drop `--mode 1` to trace.",
+            file=sys.stderr,
+        )
+        return EXIT_REFUSED
+    static = args.graph_dir / "elements.jsonl"
+    if not static.is_file() or not static.stat().st_size:
+        # Keyed to nothing is worse than not run: a runtime overlay with no
+        # graph to attach to cannot be read, compared or trusted.
+        print(
+            f"REFUSED: MODE 2 always builds on a completed static map, and "
+            f"{args.graph_dir} holds none ({static} is missing or empty). Nothing "
+            f"was executed. Run mode 1 first:\n"
+            f"    cascade-map analyze <your target> --out {args.graph_dir}",
+            file=sys.stderr,
+        )
+        return EXIT_REFUSED
 
     if args.scenarios is not None:
         if args.preflight:

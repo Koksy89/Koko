@@ -180,6 +180,16 @@ MUTATING_METHODS = frozenset(
 _FRAME_NAME_SUFFIXES = ("_df", "_frame")
 _FRAME_NAMES = frozenset({"df", "frame", "dataframe", "data_frame"})
 
+_WEAKNESS: dict[Confidence, int] = {
+    member: sum(1 for other in Confidence if combine(member, other) is member)
+    for member in Confidence
+}
+"""How weak each confidence is, on a scale derived from :func:`combine`
+itself so it cannot drift from the contract: the weaker of two confidences is
+the one with the larger number. Used only where taking a minimum one call at a
+time would cost more than the comparison it performs."""
+
+
 _OVER = "over-approximate: "
 _INSTANCE = ".@instance"
 
@@ -645,12 +655,7 @@ class LineageTracer:
         self._slice_cache: dict[str, Slice] = {}
         self._edge_conf: dict[str, Confidence] = {}
         self._walk_index: dict[
-            str,
-            tuple[
-                dict[str, tuple[str, ...]],
-                dict[str, tuple[str, ...]],
-                dict[str, Confidence],
-            ],
+            str, dict[str, tuple[tuple[str, ...], tuple[str, ...], Confidence]]
         ] = {}
 
     # -- LineageCard -------------------------------------------------------
@@ -742,24 +747,28 @@ class LineageTracer:
         ``combine`` over exactly the traversed edges, which is what the caller
         asked for, and ``None`` when no edge was traversed at all.
         """
-        nodes_of, ids_of, weakest_of = self._walk_index_for(direction)
+        index = self._walk_index_for(direction)
         sinks = set(self.sink_ids)
+        weakness = _WEAKNESS
         members: set[str] = {root_id}
         edge_ids: set[str] = set()
         weakest: Confidence | None = None
         queue: deque[str] = deque([root_id])
-        forward = direction == "forward"
+        # With no declared sink nothing ends a forward slice early, so the
+        # check is dropped rather than run once per node for a set that is
+        # always empty.
+        stop_at_sinks = direction == "forward" and bool(sinks)
         while queue:
             node = queue.popleft()
-            if forward and node in sinks and node != root_id:
+            if stop_at_sinks and node in sinks and node != root_id:
                 continue  # a forward slice ends at a decision sink
-            neighbours = nodes_of.get(node)
-            if not neighbours:
+            entry = index.get(node)
+            if entry is None:
                 continue
-            edge_ids.update(ids_of[node])
-            here = weakest_of[node]
-            if here is not weakest:
-                weakest = here if weakest is None else combine(weakest, here)
+            neighbours, ids, here = entry
+            edge_ids.update(ids)
+            if weakest is None or weakness[here] > weakness[weakest]:
+                weakest = here
             for neighbour in neighbours:  # already sorted
                 if neighbour not in members:
                     members.add(neighbour)
@@ -1166,11 +1175,7 @@ class LineageTracer:
 
     def _walk_index_for(
         self, direction: str
-    ) -> tuple[
-        dict[str, tuple[str, ...]],
-        dict[str, tuple[str, ...]],
-        dict[str, Confidence],
-    ]:
+    ) -> dict[str, tuple[tuple[str, ...], tuple[str, ...], Confidence]]:
         """Per-node view of the adjacency a slice walk actually reads.
 
         A walk wants three things per node and nothing per edge: the
@@ -1185,22 +1190,17 @@ class LineageTracer:
             return built
         adjacency = self._in if direction == "backward" else self._out
         edge_conf = self._edge_conf
-        nodes: dict[str, tuple[str, ...]] = {}
-        ids: dict[str, tuple[str, ...]] = {}
-        weakest: dict[str, Confidence] = {}
+        built = {}
         for key, pairs in adjacency.items():
             if not pairs:
                 continue
-            nodes[key] = tuple([pair[0] for pair in pairs])
             edge_ids = tuple([pair[1] for pair in pairs])
-            ids[key] = edge_ids
             worst = edge_conf[edge_ids[0]]
             for edge_id in edge_ids[1:]:
                 here = edge_conf[edge_id]
-                if here is not worst:
-                    worst = combine(worst, here)
-            weakest[key] = worst
-        built = (nodes, ids, weakest)
+                if _WEAKNESS[here] > _WEAKNESS[worst]:
+                    worst = here
+            built[key] = (tuple([pair[0] for pair in pairs]), edge_ids, worst)
         self._walk_index[direction] = built
         return built
 
@@ -1305,6 +1305,12 @@ class _ModuleWalker:
         left: dict[tuple[str, str], tuple[str, ...]],
         right: dict[tuple[str, str], tuple[str, ...]],
     ) -> dict[tuple[str, str], tuple[str, ...]]:
+        if left == right:
+            # Nothing was bound on one side of the branch or loop that was not
+            # bound identically on the other, which is the usual case. The
+            # per-key union below would rebuild every tuple unchanged; dict
+            # equality settles it in C.
+            return dict(left)
         merged = dict(left)
         # Every value in an env is a sorted tuple of distinct ids: the only
         # place an env entry is written outside this method binds a single id,

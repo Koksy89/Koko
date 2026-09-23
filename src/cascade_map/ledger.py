@@ -160,9 +160,24 @@ class LedgerError(RuntimeError):
 #: in one place cannot go missing in the other.
 SETTING_DEFAULTS: dict[str, Any] = {
     "MODE": 1,
-    "VERSIONS_DIR": "versions",
-    "OUT_DIR": "out",
-    "LEDGER": "out/metatron_ledger.json",
+
+    # Card 18 round 2: the ONE path. Everything else under it is derived, so
+    # naming the script is the whole instruction.
+    "WORKSPACE": "workspace",
+    "PROJECT": "",
+    "SOURCES": True,
+
+    # The three keys WORKSPACE replaces. Still honoured, each resolving into
+    # the new layout and each printing one line saying what it now means --
+    # an owner who upgrades mid-project must never get an error, and must
+    # never get a silently empty history either.
+    # Empty means "WORKSPACE resolves this". A NON-EMPTY value is an owner
+    # who set the key, and it keeps doing exactly what it did before the
+    # workspace existed -- which is what stops an upgrade mid-project from
+    # stranding a history that is already on disk.
+    "VERSIONS_DIR": "",
+    "OUT_DIR": "",
+    "LEDGER": "",
     "SINKS": [],
     "ENTRIES": [],
     "CONFIGS": [],
@@ -196,6 +211,9 @@ SETTING_DEFAULTS: dict[str, Any] = {
 
 _KEY_TO_FIELD: dict[str, str] = {
     "MODE": "mode",
+    "WORKSPACE": "workspace",
+    "PROJECT": "project",
+    "SOURCES": "sources",
     "VERSIONS_DIR": "versions_dir",
     "OUT_DIR": "out_dir",
     "LEDGER": "ledger",
@@ -222,9 +240,18 @@ class Settings:
     """A validated METATRON_SETTINGS. Built only by :meth:`from_mapping`."""
 
     mode: int = 1
-    versions_dir: str = "versions"
-    out_dir: str = "out"
-    ledger: str = "out/metatron_ledger.json"
+    #: The one path. Every other location is derived from it; see
+    #: `cascade_map.workspace.resolve_layout`.
+    workspace: str = "workspace"
+    #: The folder under WORKSPACE holding this script's whole history. Empty
+    #: means "derive it from ENGINE, then from the versions directory".
+    project: str = ""
+    #: Keep a copy of each distinct version's tree under `sources/<hash>/`.
+    #: False is `--no-sources`: the hash is still recorded, the copy is not.
+    sources: bool = True
+    versions_dir: str = ""
+    out_dir: str = ""
+    ledger: str = ""
     sinks: tuple[str, ...] = ()
     entries: tuple[str, ...] = ()
     configs: tuple[str, ...] = ()
@@ -247,6 +274,13 @@ class Settings:
     run_args: tuple[str, ...] = ()
     #: 0 = auto, 1 = in-process, N = ask for N child processes.
     workers: int = 0
+
+    #: Which of the three keys WORKSPACE replaced the owner actually set,
+    #: sorted. Derived, never written by hand: an owner whose VERSIONS_DIR
+    #: still reads "versions" because that is the default has not set it, and
+    #: gets the new layout with no notice at all. `resolve_layout` turns this
+    #: into one printed line per key saying what it now means.
+    legacy_keys: tuple[str, ...] = ()
 
     def selected_sports(self) -> tuple[str, ...]:
         """The sports this run covers. ``SPORT`` empty means all of ``SPORTS``.
@@ -283,6 +317,15 @@ class Settings:
                         f"not {raw!r}."
                     )
                 values["mode"] = int(raw)
+            elif key == "SOURCES":
+                if not isinstance(raw, bool):
+                    raise SettingsError(
+                        f"SOURCES must be true or false -- true keeps one copy of "
+                        f"each DISTINCT version under the workspace, false (the "
+                        f"`--no-sources` flag) records the content hash and keeps "
+                        f"no copy -- not {raw!r}."
+                    )
+                values["sources"] = bool(raw)
             elif key == "WORKERS":
                 if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
                     raise SettingsError(
@@ -306,6 +349,11 @@ class Settings:
                         f"{key} must be a string path, not {type(raw).__name__}."
                     )
                 values[_KEY_TO_FIELD[key]] = raw
+        values["legacy_keys"] = tuple(
+            key
+            for key in ("LEDGER", "OUT_DIR", "VERSIONS_DIR")
+            if str(mapping.get(key, "") or "") != ""
+        )
         settings = Settings(**values)
         # SPORT names one of SPORTS, so it can only be checked once both have
         # been read. An unknown name is an error that LISTS the valid ones:
@@ -775,6 +823,26 @@ def _with_declared_order(record: VersionRecord, index: int) -> VersionRecord:
     )
 
 
+#: How much a time signal is worth, for deciding whether a re-discovery would
+#: replace evidence with less evidence. Not an ordering of versions -- that is
+#: `assign_ordinals`, which refuses to mix ranks at all.
+_TIME_RANK: dict[str, int] = {
+    "owner_declared": 3,
+    "filename": 2,
+    "git_commit": 2,
+    "file_mtime_max": 1,
+    "directory_mtime": 1,
+    "unknown": 0,
+}
+
+
+def _downgrades(stored: VersionRecord, found: VersionRecord) -> bool:
+    """True when re-discovering this version would weaken what is known."""
+    return _TIME_RANK.get(found.version_time_source, 0) < _TIME_RANK.get(
+        stored.version_time_source, 0
+    )
+
+
 def _sorted_records(records: Iterable[VersionRecord]) -> list[VersionRecord]:
     return sorted(records, key=lambda r: r.id)
 
@@ -839,6 +907,63 @@ def _default_analyse(source_root: Path, out_dir: Path, settings: Settings) -> di
     return summary
 
 
+def _jsonl_rows(path: Path) -> list[dict[str, Any]]:
+    """Read a JSON Lines sibling of a workspace history file.
+
+    A missing file is an empty list -- a history written with ``--no-sources``
+    or by hand may legitimately have none. A line that does not parse is an
+    error naming the file and the line, never a silently shorter history.
+    """
+    if not path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise LedgerError(
+                f"{path}:{number} is not valid JSON ({exc.msg}). One line is one "
+                f"record; the history is not read past a line it cannot parse, "
+                f"because a shorter history that looks complete is worse than a "
+                f"refusal."
+            ) from exc
+    return rows
+
+
+def _run_stamp() -> str:
+    """The UTC stamp a run directory is named with.
+
+    A PATH, never a field inside the data. Constraint 4 is about the bytes an
+    identical input produces, and no byte of any document here comes from a
+    clock: the stamp is only allocated when a version is genuinely analysed,
+    so a second ``track`` with nothing new allocates nothing.
+    """
+    return time.strftime("%Y-%m-%dT%H-%M-%SZ", time.gmtime())
+
+
+def layout_for(settings: Settings, root: Path) -> Any:
+    """Resolve every path this tool uses from the one WORKSPACE setting.
+
+    PROJECT is derived from the script being analysed -- ``ENGINE`` first,
+    because naming the script is the whole instruction -- and falls back to the
+    versions folder and then the root. Explicit ``PROJECT`` beats all of them.
+    """
+    from cascade_map.workspace import project_name_for, resolve_layout
+
+    return resolve_layout(
+        root=root,
+        workspace_root=settings.workspace,
+        project=settings.project
+        or project_name_for(settings.engine, settings.versions_dir or None, root.name, "project"),
+        versions_dir=settings.versions_dir,
+        out_dir=settings.out_dir,
+        ledger=settings.ledger,
+        legacy_keys=settings.legacy_keys,
+    )
+
+
 class Ledger:
     """Implements :class:`cascade_map.contracts.interfaces.LedgerCard`.
 
@@ -856,9 +981,23 @@ class Ledger:
         analyse: AnalyseFn | None = None,
         trace: TraceFn | None = None,
         tool_version: str | None = None,
+        layout: Any | None = None,
+        now: Callable[[], str] | None = None,
     ) -> None:
         self.settings = settings if settings is not None else Settings()
         self.root = Path(root) if root is not None else Path.cwd()
+        #: Where every path resolved to, from the one WORKSPACE setting. Built
+        #: here rather than taken as required so that a Ledger constructed
+        #: directly -- which several tests and `history` do -- still knows
+        #: where it lives.
+        self.layout = layout if layout is not None else layout_for(self.settings, self.root)
+        #: Injected so a test can fix it. The stamp names a DIRECTORY, never a
+        #: field inside the data: constraint 4 is about the bytes.
+        self._now: Callable[[], str] = now if now is not None else _run_stamp
+        #: version id -> the run directory stamp allocated to it. Allocated in
+        #: sorted id order so two versions analysed in the same second get
+        #: stable, distinct directories rather than one they overwrite.
+        self._stamps: dict[str, str] = {}
         self._analyse: AnalyseFn = analyse if analyse is not None else _default_analyse
         self._trace = trace
         self.tool_version = tool_version if tool_version is not None else _tool_version()
@@ -885,8 +1024,38 @@ class Ledger:
         path = Path(relative)
         return path if path.is_absolute() else self.root / path
 
-    def artifact_dir(self, version_id: str) -> Path:
-        return self.resolve(self.settings.out_dir) / version_id
+    def artifact_dir(self, version_id: str, discovered_at: str = "") -> Path:
+        """Where this version's map lives.
+
+        Under a legacy ``OUT_DIR`` this is ``<OUT_DIR>/<version id>``, exactly
+        as before, because that key's whole meaning is one directory per
+        version and moving it would strand every artifact the ledger already
+        points at.
+
+        Under the workspace it is ``io/runs/<UTC timestamp>/``, as the layout
+        specifies, and the timestamp is the version's own ``discovered_at`` --
+        not a fresh reading of the clock. That matters for constraint 4: a
+        stamp taken here would be a SECOND wall-clock value in the data, and
+        one that drifts between two otherwise identical runs. ``discovered_at``
+        is written once, when this tool first saw this version, is never
+        recomputed, and is already the field the determinism tests neutralise.
+        So the directory name adds no new non-determinism -- it inherits
+        exactly the one the record already declares.
+
+        Allocated lazily either way: a second ``track`` with nothing new
+        allocates nothing, creates nothing and produces identical bytes.
+        """
+        if not self.layout.timestamped_runs:
+            return self.layout.artifact_root / version_id
+        if version_id not in self._stamps:
+            base = (discovered_at or self._now()).replace(":", "-")
+            taken = set(self._stamps.values())
+            stamp, suffix = base, 2
+            while stamp in taken or (self.layout.artifact_root / stamp).exists():
+                stamp = f"{base}-{suffix}"
+                suffix += 1
+            self._stamps[version_id] = stamp
+        return self.layout.artifact_root / self._stamps[version_id]
 
     def relative(self, path: Path) -> str:
         """A path as the ledger stores it: relative to the ledger's root when
@@ -929,13 +1098,34 @@ class Ledger:
         for row in document.get("versions", []):
             record = _from_jsonable(VersionRecord, row)
             self._versions[record.id] = record
+        # Two shapes, told apart by a key rather than guessed at. The flat
+        # ledger carries every section inline. The workspace history carries
+        # the STORY inline and points at two JSON Lines siblings for the bulk,
+        # because one fingerprint per element per version is 50,000 lines per
+        # version at the owner's scale and a single JSON would have to be
+        # fully rewritten to append one row. Its "comparisons" key is a
+        # human-readable summary, NOT a VersionComparison, so it is not read
+        # back as one -- the real rows come from the sibling.
+        workspace_shape = isinstance(document.get("files"), dict)
+        if workspace_shape:
+            fingerprint_rows: Iterable[Mapping[str, Any]] = _jsonl_rows(
+                file.parent / str(document["files"].get("fingerprints", ""))
+            )
+            comparison_rows: Iterable[Mapping[str, Any]] = _jsonl_rows(
+                file.parent / str(document["files"].get("comparisons", ""))
+            )
+            self.order_status = str(document.get("order", {}).get("status", self.order_status))
+            self.order_reason = str(document.get("order", {}).get("reason", self.order_reason))
+        else:
+            fingerprint_rows = document.get("fingerprints", [])
+            comparison_rows = document.get("comparisons", [])
         grouped: dict[str, list[ElementFingerprint]] = {}
-        for row in document.get("fingerprints", []):
+        for row in fingerprint_rows:
             fingerprint = _from_jsonable(ElementFingerprint, row)
             grouped.setdefault(fingerprint.version_id, []).append(fingerprint)
         for version_id, items in grouped.items():
             self._fingerprints[version_id] = tuple(sorted(items, key=lambda f: f.id))
-        for row in document.get("comparisons", []):
+        for row in comparison_rows:
             comparison = _from_jsonable(VersionComparison, row)
             self._comparisons[comparison.id] = comparison
         return self
@@ -1014,6 +1204,19 @@ class Ledger:
                 # Never re-analysed. Refresh only the facts that describe where
                 # it lives now, so a renamed folder stays the same version.
                 stored = self._versions[record.id]
+                if _downgrades(stored, record):
+                    # A version read back out of the source store is named by
+                    # its content hash and sits in a folder the tool wrote, so
+                    # its folder name carries no date and its mtimes are this
+                    # tool's own. Overwriting a filename or git signal with
+                    # that would silently DEMOTE the evidence the ordering
+                    # rests on -- and a history that reorders itself on a
+                    # re-run is worse than one that never ordered at all. Only
+                    # where it lives is refreshed.
+                    self._versions[record.id] = replace(
+                        stored, source_path=record.source_path
+                    )
+                    continue
                 self._versions[record.id] = replace(
                     stored,
                     label=record.label,
@@ -1107,19 +1310,20 @@ class Ledger:
     def _record_for(self, digest: str, source: Path) -> VersionRecord:
         version_time, source_kind = version_time_of(source)
         note = TIME_SOURCE_PHRASE[source_kind]
+        discovered_at = _utc(time.time())
         return VersionRecord(
             id=digest,
             label=source.name,
             source_path=self.relative(source),
             tree_hash=digest,
-            discovered_at=_utc(time.time()),
+            discovered_at=discovered_at,
             version_time=version_time,
             version_time_source=source_kind,
             ordinal=-1,
             tool_version=self.tool_version,
             schema_version=SCHEMA_VERSION,
             mode=self.settings.mode,
-            artifact_dir=self.relative(self.artifact_dir(digest)),
+            artifact_dir=self.relative(self.artifact_dir(digest, discovered_at)),
             counts={},
             confidence_census={},
             stage_millis={},
@@ -1622,6 +1826,18 @@ class TrackResult:
     runtime_notes: dict[str, str]
     mode: int
     trace_notes: tuple[str, ...] = ()
+    #: Card 18 round 2. Where the workspace files went, what the sources cost,
+    #: and one line per legacy key still doing work. Empty tuples and dicts
+    #: mean the workspace was not written, which the report says in words.
+    workspace_dir: str = ""
+    workspace_files: tuple[str, ...] = ()
+    layout_notices: tuple[str, ...] = ()
+    source_notes: tuple[str, ...] = ()
+    disk: dict[str, int] = field(default_factory=dict)
+    sport_scopes: tuple[tuple[str, str, str], ...] = ()
+    """(sport, scope, reason) per sport file written. ``scope`` is the exact
+    text the file declares, so a UNION file cannot be read as sport-specific
+    from the terminal either."""
 
 
 def track(
@@ -1630,18 +1846,27 @@ def track(
     root: str | Path | None = None,
     analyse: AnalyseFn | None = None,
     trace: TraceFn | None = None,
+    now: Callable[[], str] | None = None,
 ) -> tuple[TrackResult, Ledger]:
     """Discover, analyse what is new, compare consecutive pairs, save, report.
 
     Reuses card 6 for the comparison and card 10's pipeline (cards 1-5, 16 and
     17) for the analysis. This function adds nothing to either; it decides
-    what to run and what to skip.
+    what to run and what to skip, and files the result in the workspace.
     """
-    ledger = Ledger(settings, root=root, analyse=analyse, trace=trace)
-    ledger_path = ledger.resolve(settings.ledger)
+    base = Path(root) if root is not None else Path.cwd()
+    layout = layout_for(settings, base)
+    ledger = Ledger(settings, root=root, analyse=analyse, trace=trace, layout=layout, now=now)
+    ledger_path = layout.ledger_file
     ledger.load(ledger_path)
 
-    discovered = ledger.discover(settings.versions_dir)
+    versions_dir, discovery_notice = _discovery_dir(layout, base)
+    if not versions_dir.is_dir():
+        # A first run in a brand-new workspace has nowhere to read from yet.
+        # Creating the folder is the only way the message can name a place the
+        # owner can actually drop a version into.
+        versions_dir.mkdir(parents=True, exist_ok=True)
+    discovered = ledger.discover(str(versions_dir))
 
     new_ids = [record.id for record in ledger.analyse_new(discovered)]
 
@@ -1676,7 +1901,12 @@ def track(
         last_before, last_after = ledger.consecutive_pairs()[-1]
         computed.append(ledger.compare(last_before, last_after))
 
-    ledger.save(ledger_path)
+    if "LEDGER" in layout.legacy_keys:
+        # The owner's own path still gets the flat file it has always got.
+        ledger.save(ledger_path)
+    workspace_files, source_notes, disk, scopes = _file_in_workspace(
+        ledger, settings, layout, discovered, notices=tuple(layout.notices) + discovery_notice
+    )
     result = TrackResult(
         ledger_path=str(ledger_path),
         versions_known=len(ledger.versions),
@@ -1690,6 +1920,12 @@ def track(
         runtime_notes=runtime_notes,
         mode=settings.mode,
         trace_notes=trace_notes,
+        workspace_dir=str(layout.workspace.project_dir),
+        workspace_files=workspace_files,
+        layout_notices=tuple(layout.notices) + discovery_notice,
+        source_notes=source_notes,
+        disk=disk,
+        sport_scopes=scopes,
     )
     return result, ledger
 
@@ -1716,9 +1952,10 @@ def _run_mode_a(
         # A scenarios file wins. Declared scenarios are the owner's own
         # statement of what to run; nothing is derived on top of them.
         for version_id in sorted(new_ids):
-            out_dir = ledger.artifact_dir(version_id)
+            record = ledger.record(version_id)
+            out_dir = ledger.resolve(record.artifact_dir)
             code, message = trace(out_dir, scenarios, settings.scenario, out_dir)
-            label = ledger.record(version_id).label
+            label = record.label
             head = message.splitlines()[0] if message else ""
             notes.append(f"{label}: trace exit {code} -- {head}")
         return tuple(notes)
@@ -1729,7 +1966,7 @@ def _run_mode_a(
     sports = settings.selected_sports()
     for version_id in sorted(new_ids):
         record = ledger.record(version_id)
-        out_dir = ledger.artifact_dir(version_id)
+        out_dir = ledger.resolve(record.artifact_dir)
         try:
             document = derive_scenario_document(
                 ledger.resolve(record.source_path),
@@ -1852,6 +2089,40 @@ def _sport_gap(
 # ---------------------------------------------------------------------------
 
 
+def _workspace_lines(result: TrackResult) -> list[str]:
+    """What the workspace holds and what it cost.
+
+    Printed before anything else because a legacy key still doing work changes
+    where every other line in this report points. An owner who upgrades
+    mid-project reads the notice first, not after acting on a path that moved.
+    """
+    if not result.workspace_dir:
+        return []
+    lines: list[str] = []
+    for notice in result.layout_notices:
+        lines += [f"NOTICE  {notice}", ""]
+    disk = result.disk
+    lines += [
+        f"Workspace {result.workspace_dir}",
+        "  files       " + (", ".join(Path(f).name for f in result.workspace_files) or "none"),
+        f"  disk        {int(disk.get('total_bytes', 0)):,} B over "
+        f"{int(disk.get('total_files', 0)):,} file(s); sources "
+        f"{int(disk.get('sources_bytes', 0)):,} B in "
+        f"{int(disk.get('sources_distinct', 0)):,} distinct snapshot(s) "
+        f"({int(disk.get('sources_share_percent', 0))}% of it)",
+    ]
+    for note in result.source_notes:
+        lines.append(f"  source      {note}")
+    if result.sport_scopes:
+        lines.append("  per sport   — a file whose scope is the UNION says so and is "
+                     "NOT this sport's map")
+        for sport, scope, reason in result.sport_scopes:
+            lines.append(f"    {sport}: scope {scope}")
+            lines.append(f"      reason: {reason}")
+    lines.append("")
+    return lines
+
+
 def render_track_report(result: TrackResult) -> str:
     """What ``track`` prints. Every number comes from the result, not prose."""
     new = len(result.new_version_ids)
@@ -1860,6 +2131,7 @@ def render_track_report(result: TrackResult) -> str:
         f"{new:,} new",
         "",
     ]
+    lines += _workspace_lines(result)
     if not result.records:
         lines.append("  no versions found in VERSIONS_DIR.")
         return "\n".join(lines)
@@ -2011,3 +2283,317 @@ def render_history_report(ledger: Ledger) -> str:
     for comparison in ledger.comparisons:
         lines += _comparison_lines(comparison, by_id, notes) + [""]
     return "\n".join(lines).rstrip() + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Card 18 round 2 -- filing a run in the workspace
+# ---------------------------------------------------------------------------
+
+
+def _element_spans(out_dir: Path, prefix: str) -> dict[str, str]:
+    """element id -> the POSIX source path it was found at, re-rooted.
+
+    Read straight off card 1's artifact. Nothing here parses or executes a
+    line of the target.
+    """
+    spans: dict[str, str] = {}
+    for row in _jsonl_rows(out_dir / "elements.jsonl"):
+        element_id = reroot_id(str(row.get("id", "")), prefix)
+        span = row.get("span") or {}
+        spans[element_id] = str(span.get("path", ""))
+    return spans
+
+
+def _adjacency(out_dir: Path, prefix: str) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Forward and backward adjacency over card 2's emitted call edges."""
+    forward: dict[str, list[str]] = {}
+    backward: dict[str, list[str]] = {}
+    for row in _jsonl_rows(out_dir / "edges.jsonl"):
+        source = reroot_id(str(row.get("source_id", "")), prefix)
+        target = reroot_id(str(row.get("target_id", "")), prefix)
+        if not source or not target:
+            continue
+        forward.setdefault(source, []).append(target)
+        backward.setdefault(target, []).append(source)
+    return (
+        {k: sorted(set(v)) for k, v in sorted(forward.items())},
+        {k: sorted(set(v)) for k, v in sorted(backward.items())},
+    )
+
+
+def _manifest_sinks(out_dir: Path, prefix: str) -> tuple[str, ...]:
+    path = out_dir / "manifest.json"
+    if not path.is_file():
+        return ()
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ()
+    return tuple(sorted(reroot_id(str(s), prefix) for s in document.get("sink_ids", [])))
+
+
+def _sport_view(
+    ledger: "Ledger", record: VersionRecord, scope: Any, runs: Sequence[str]
+) -> dict[str, Any]:
+    """One version's row in one sport's file.
+
+    Separated, the reachable set is recomputed from THIS SPORT's entry points
+    over the emitted call edges, and decision relevance is that set intersected
+    with what can reach a sink. That is a different computation, not a copy --
+    which is the whole point of the owner's correction.
+
+    UNION, every id is taken verbatim from the script-level artifacts and the
+    file says so at the top. Blending is never presented as separation.
+    """
+    from cascade_map.workspace import reachable_from
+
+    out_dir = ledger.resolve(record.artifact_dir)
+    prefix = Path(record.source_path).name
+    states = {
+        reroot_id(element_id, prefix): state
+        for element_id, state in _reachability_by_element(out_dir).items()
+    }
+    findings = [
+        (reroot_id(str(row.get("element_id", "")), prefix), str(row.get("id", "")))
+        for row in _jsonl_rows(out_dir / "findings.jsonl")
+    ]
+    row: dict[str, Any] = {
+        "label": record.label,
+        "runs": list(runs),
+        "version_id": record.id,
+    }
+    if not (out_dir / "elements.jsonl").is_file():
+        # The artifacts this row is derived from are gone. Empty lists here
+        # would render as "nothing reaches a decision", which is a claim; this
+        # is an absence and says so. The ledger indexes the artifacts, it is
+        # not a copy of them.
+        row.update(
+            {
+                "entry_ids": [],
+                "finding_ids": [],
+                "no_sink_path_ids": [],
+                "out_of_scope_ids": [],
+                "reaches_sink_ids": [],
+                "unavailable": (
+                    f"the artifacts for this version are missing from "
+                    f"{_relative_to(out_dir, ledger.root)}. NOT MEASURED, never "
+                    f"'nothing reaches a decision'. Re-analyse this version to "
+                    f"restore the row."
+                ),
+                "unknown_ids": [],
+            }
+        )
+        return row
+    if not scope.separated:
+        row.update(
+            {
+                "entry_ids": [],
+                "finding_ids": sorted(fid for _element, fid in findings),
+                "no_sink_path_ids": sorted(
+                    e for e, s in states.items() if s == ReachabilityState.NO_SINK_PATH
+                ),
+                "out_of_scope_ids": [],
+                "reaches_sink_ids": sorted(
+                    e for e, s in states.items() if s == ReachabilityState.REACHES_SINK
+                ),
+                "unknown_ids": sorted(
+                    e for e, s in states.items() if s == ReachabilityState.UNKNOWN
+                ),
+            }
+        )
+        return row
+
+    forward, backward = _adjacency(out_dir, prefix)
+    in_sport = set(reachable_from(scope.entry_ids, forward))
+    sinks = _manifest_sinks(out_dir, prefix)
+    can_reach_sink = set(reachable_from(sinks, backward)) if sinks else set()
+    unknown = {e for e in in_sport if states.get(e) == ReachabilityState.UNKNOWN}
+    reaches = sorted((in_sport & can_reach_sink) - unknown)
+    row.update(
+        {
+            "entry_ids": list(scope.entry_ids),
+            "finding_ids": sorted(fid for element, fid in findings if element in in_sport),
+            "no_sink_path_ids": sorted(in_sport - can_reach_sink - unknown),
+            "out_of_scope_ids": sorted(set(states) - in_sport),
+            "reaches_sink_ids": reaches,
+            "unknown_ids": sorted(unknown),
+        }
+    )
+    return row
+
+
+def _relative_to(path: Path, root: Path) -> str:
+    """A path as a document stores it: relative to the root when it lies under
+    it, absolute otherwise. An absolute path in an artifact ties it to one
+    machine, and constraint 4 says two machines must produce the same bytes."""
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _has_version_folders(path: Path) -> bool:
+    """True when *path* holds at least one directory that could be a version."""
+    if not path.is_dir():
+        return False
+    return any(
+        child.is_dir() and not child.name.startswith(".") and child.name not in _EXCLUDED_DIRS
+        for child in path.iterdir()
+    )
+
+
+def _discovery_dir(layout: Any, root: Path) -> tuple[Path, tuple[str, ...]]:
+    """Where this run reads versions from, and one line if that is not obvious.
+
+    The source store is a FIXED POINT: a snapshot under ``sources/<hash>/``
+    re-hashes to the folder it came from, so reading the store back stores
+    nothing and discovers the same versions. That is what makes "no settings at
+    all" work after a migration.
+
+    Before that store exists, an owner who upgraded mid-project still has a
+    flat ``versions/`` folder beside their workspace. Reading it and SAYING SO
+    is the whole of the upgrade requirement: the alternative is an empty
+    history that looks like a lost one.
+    """
+    if "VERSIONS_DIR" in layout.legacy_keys:
+        return layout.versions_dir, ()
+    store = layout.workspace.sources_dir
+    flat = root / "versions"
+    # The owner's own drop folder WINS while it exists. Preferring the store
+    # would make a second `track` read a different place from the first and
+    # produce a different -- still correct, but different -- document, and a
+    # history that changes on a re-run is indistinguishable from one that
+    # changed because the code did.
+    if _has_version_folders(flat):
+        # Relative paths: an absolute one would tie this document to one
+        # machine and one checkout, which constraint 4 forbids outright --
+        # two machines would produce different bytes for the same input.
+        return flat, (
+            f"no versions filed under {_relative_to(store, root)} yet, so this "
+            f"run read the flat folder {_relative_to(flat, root)} beside it. "
+            f"Nothing was moved. Run `metatron migrate` to file it into the "
+            f"workspace, or set VERSIONS_DIR to keep reading it where it is.",
+        )
+    return store, ()
+
+
+def _file_in_workspace(
+    ledger: "Ledger",
+    settings: Settings,
+    layout: Any,
+    discovered: Sequence[VersionRecord],
+    *,
+    notices: Sequence[str] = (),
+) -> tuple[tuple[str, ...], tuple[str, ...], dict[str, int], tuple[tuple[str, str, str], ...]]:
+    """Write the workspace's named files and return what to print.
+
+    Three script-level files, plus one per sport. Sources are filed here rather
+    than during analysis so that a version the ledger already knew -- and
+    therefore never re-analysed -- still gets its snapshot checked, which is
+    what makes the store converge rather than depend on the order runs
+    happened in.
+    """
+    from cascade_map.workspace import (
+        resolve_sport_scope,
+        store_source,
+        write_history,
+        write_runtime_history,
+    )
+
+    workspace = layout.workspace
+    # OLDEST FIRST here, unlike the terminal report, which leads with the
+    # newest. A history is read forwards: "when did this appear, when did it
+    # change" only makes sense in the order it happened, and `element_life`
+    # walks these rows to answer exactly that.
+    records = list(reversed(ledger.ordered_versions()))
+    stored = []
+    for record in sorted(records, key=lambda r: r.id):
+        tree = ledger.resolve(record.source_path)
+        if not tree.is_dir():
+            continue
+        result = store_source(tree, workspace, record.id, keep=settings.sources)
+        stored.append(
+            replace(result, path=_relative_to(Path(result.path), ledger.root))
+            if result.path
+            else result
+        )
+
+    fingerprints = [
+        fingerprint
+        for record in records
+        for fingerprint in ledger.fingerprints(record.id)
+    ]
+    sports = settings.selected_sports()
+    scopes: list[tuple[str, str, str]] = []
+    written: list[str] = []
+    spans: dict[str, str] = {}
+    if records:
+        # The NEWEST version decides which sports can be separated: an older
+        # tree's file layout is not evidence about the code as it stands now.
+        newest = records[-1]
+        spans = _element_spans(
+            ledger.resolve(newest.artifact_dir), Path(newest.source_path).name
+        )
+    # The per-sport files FIRST, so the disk figures the story reports include
+    # them. A measurement taken over half a workspace changes on the next run
+    # for no reason the owner can see, which is exactly the silent growth the
+    # figure exists to prevent.
+    for sport in sports:
+        scope = resolve_sport_scope(
+            sport,
+            element_spans=spans,
+            other_sports=settings.sports,
+            declared_entry_ids=settings.entries,
+        )
+        rows = []
+        for record in records:
+            out_dir = ledger.resolve(record.artifact_dir)
+            scenarios = _run_scenarios(out_dir)
+            runs = sorted(run for run, name in scenarios.items() if name == sport)
+            rows.append(_sport_view(ledger, record, scope, runs))
+        written.append(str(write_runtime_history(
+            workspace, sport, scope, tool_version=ledger.tool_version, versions=rows
+        )))
+        scopes.append((sport, scope.scope_text, scope.reason))
+
+    files, disk = write_history(
+        workspace,
+        tool_version=ledger.tool_version,
+        versions=records,
+        fingerprints=fingerprints,
+        comparisons=list(ledger.comparisons),
+        sources=stored,
+        order_status=ledger.order_status,
+        order_reason=ledger.order_reason,
+        sports=sports,
+        layout_notices=notices,
+    )
+
+    written = [str(path) for path in sorted(files.values(), key=lambda p: p.name)] + written
+    notes = tuple(
+        f"{result.content_hash[:12]}: {result.reason}"
+        for result in sorted(stored, key=lambda r: r.content_hash)
+    )
+    return tuple(written), notes, disk, tuple(scopes)
+
+
+def observed_runs_for(
+    ledger: "Ledger", element_id: str
+) -> dict[str, dict[str, list[str]]]:
+    """Which Mode A runs observed one element executing, per version.
+
+    Scanned on demand rather than stored: one element's presence is a line
+    scan over each run's events, and writing every observed element into the
+    history file would make it grow with the trace rather than with the
+    history. Nothing here executes anything -- ``events.jsonl`` is a recording
+    this tool already wrote.
+    """
+    found: dict[str, dict[str, list[str]]] = {}
+    for record in ledger.ordered_versions():
+        out_dir = ledger.resolve(record.artifact_dir)
+        prefix = Path(record.source_path).name
+        for run_id in _completed_run_ids(out_dir):
+            counts = _event_counts(out_dir, run_id)
+            if any(reroot_id(raw, prefix) == element_id for raw in counts):
+                found.setdefault(record.id, {}).setdefault(run_id, []).append(element_id)
+    return found

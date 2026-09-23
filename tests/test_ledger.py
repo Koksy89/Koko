@@ -166,8 +166,15 @@ def test_a_path_setting_given_a_number_is_an_error() -> None:
 def test_the_shipped_settings_dict_validates() -> None:
     settings = Settings.from_mapping(cli.METATRON_SETTINGS)
     assert settings.mode == 1
-    assert settings.versions_dir == "versions"
-    assert settings.ledger == "out/metatron_ledger.json"
+    # The three keys WORKSPACE replaced ship EMPTY, which is what makes the
+    # workspace the default rather than an opt-in. Non-empty means the owner
+    # set it and the old behaviour is kept for them, key by key.
+    assert settings.workspace == "workspace"
+    assert settings.versions_dir == ""
+    assert settings.out_dir == ""
+    assert settings.ledger == ""
+    assert settings.legacy_keys == ()
+    assert settings.sources is True
     assert settings.env == ".venv-target"
 
 
@@ -563,7 +570,7 @@ def test_incomplete_coverage_makes_the_cli_exit_non_zero(
         )
 
     monkeypatch.setattr(Ledger, "compare", lossy)
-    shutil.rmtree(tmp_path / "out")
+    shutil.rmtree(tmp_path / "workspace")
     assert cli.main(["track", "--env", "no-such-env"]) == cli.EXIT_GATE_FAILED
 
 
@@ -872,14 +879,21 @@ def test_mode_two_without_a_scenarios_file_executes_nothing_and_says_so(
 # ---------------------------------------------------------------------------
 
 
-def _blank_wallclock(text: str) -> str:
+def _blank_wallclock(text: str, *, disk: bool = False) -> str:
     document = json.loads(text)
     for record in document["versions"]:
         record["discovered_at"] = ""
         record["stage_millis"] = {}
         record["total_millis"] = 0
-    for comparison in document["comparisons"]:
-        comparison["analysis_millis_delta"] = {}
+        # The run directory is named by `discovered_at`, which is blanked one
+        # line above. It is the SAME wall-clock value, not a second one: the
+        # stamp is never re-read from the clock, so no new non-determinism is
+        # introduced by the workspace layout.
+        record["artifact_dir"] = ""
+    for comparison in document.get("comparisons", []):
+        comparison.pop("analysis_millis_delta", None)
+    if disk:
+        document.pop("disk", None)
     return json.dumps(document, sort_keys=True, indent=1)
 
 
@@ -914,13 +928,32 @@ def test_two_fresh_runs_agree_across_hash_seeds(tmp_path: Path) -> None:
             cwd=workspace, env=environment, capture_output=True, text=True, timeout=300,
         )
         assert completed.returncode == 0, completed.stderr
-        text = (workspace / "out" / "metatron_ledger.json").read_text(encoding="utf-8")
+        text = (
+            workspace
+            / "workspace"
+            / "AmunEV_Engine_V2"
+            / "history"
+            / "AmunEV_Engine_V2_history.json"
+        ).read_text(encoding="utf-8")
         document = json.loads(text)
         # Two empty ledgers agree trivially. What has to agree is a full one.
         assert len(document["versions"]) == 2
         assert len(document["comparisons"]) == 1
-        assert len(document["fingerprints"]) >= 2
-        outputs.append(_blank_wallclock(text))
+        fingerprints = (
+            workspace
+            / "workspace"
+            / "AmunEV_Engine_V2"
+            / "history"
+            / "AmunEV_Engine_V2_fingerprints.jsonl"
+        ).read_text(encoding="utf-8")
+        assert len(fingerprints.splitlines()) >= 2
+        # `disk` is blanked because it MEASURES the workspace, and the
+        # workspace contains `run_meta.json`, which this project deliberately
+        # keeps outside the byte-identical guarantee (it holds elapsed
+        # seconds). Two fresh runs differ there by a byte or two, which is the
+        # measurement being right rather than the history being unstable. The
+        # same-directory re-run below compares `disk` exactly.
+        outputs.append(_blank_wallclock(text, disk=True) + fingerprints)
     assert outputs[0] == outputs[1]
 
 
@@ -1059,7 +1092,10 @@ def test_the_track_command_reports_what_it_did(
     assert "2 version(s) known, 2 new" in out
     assert "decision paths" in out
     assert "accounted for, 0 unaccounted" in out
-    assert (tmp_path / "out" / "metatron_ledger.json").exists()
+    history = tmp_path / "workspace" / "AmunEV_Engine_V2" / "history"
+    assert (history / "AmunEV_Engine_V2_history.json").exists()
+    assert (history / "AmunEV_Engine_V2_fingerprints.jsonl").exists()
+    assert (history / "AmunEV_Engine_V2_comparisons.jsonl").exists()
 
 
 def test_the_track_command_rejects_a_typo_in_the_settings(

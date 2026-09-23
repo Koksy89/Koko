@@ -251,6 +251,15 @@ def _without_timings(text: str) -> str:
         stripped = line.strip()
         if stripped.startswith(_TIMING_LINE_PREFIXES):
             out.append(stripped.split()[0] + " <timing-dependent>")
+        elif stripped.startswith("disk "):
+            # The workspace's disk figure MEASURES the directory, and the
+            # directory holds `run_meta.json`, which this project deliberately
+            # keeps outside the byte-identical guarantee because it records
+            # elapsed seconds. Two runs differ there by a digit, so the two
+            # shapes differ by a byte. The measurement is right; comparing it
+            # across two runs is comparing a clock. The sources figure inside
+            # it is content-determined and IS compared, below.
+            out.append("disk <measured>")
         else:
             out.append(line)
     return "\n".join(out)
@@ -282,22 +291,39 @@ def test_track_builds_the_same_ledger(single_file: Path, tmp_path: Path) -> None
     assert single_run.returncode == 0, single_run.stderr
 
     def normalized(root: Path) -> str:
+        history = root / "workspace" / "AmunEV_Engine_V2" / "history"
         document = json.loads(
-            (root / "out" / "metatron_ledger.json").read_text(encoding="utf-8")
+            (history / "AmunEV_Engine_V2_history.json").read_text(encoding="utf-8")
         )
+        assert document["versions"], "an empty history compares equal to anything"
         for record in document["versions"]:
             record["discovered_at"] = ""
             record["stage_millis"] = {}
             record["total_millis"] = 0
-            record["artifact_dir"] = Path(record["artifact_dir"]).name
-        for comparison in document["comparisons"]:
-            comparison["analysis_millis_delta"] = {}
-        return json.dumps(document, sort_keys=True, indent=1)
+            # The run directory is named by `discovered_at`, blanked above.
+            record["artifact_dir"] = ""
+        # `disk` measures the workspace, which holds `run_meta.json` -- a file
+        # this project deliberately keeps outside the byte-identical
+        # guarantee. The fingerprints below are inside it and are compared
+        # exactly.
+        document.pop("disk", None)
+        return json.dumps(document, sort_keys=True, indent=1) + (
+            history / "AmunEV_Engine_V2_fingerprints.jsonl"
+        ).read_text(encoding="utf-8")
 
     assert normalized(package_root) == normalized(single_root)
     assert "0 unaccounted" in package_run.stdout
     assert _without_timings(package_run.stdout.replace(str(package_root), "X")) == (
         _without_timings(single_run.stdout.replace(str(single_root), "X"))
+    )
+    # The part of the disk figure that is content-determined must still agree
+    # exactly, so blanking the line above cannot hide a real divergence.
+    def sources_line(text: str) -> str:
+        return next(part for part in text.splitlines() if "distinct snapshot(s)" in part)
+
+    assert "sources" in sources_line(package_run.stdout)
+    assert sources_line(package_run.stdout).split("sources")[1] == (
+        sources_line(single_run.stdout).split("sources")[1]
     )
     # The worker-effectiveness report IS printed by both shapes, and it must
     # be: dropping it here would let it disappear from one of them unnoticed.

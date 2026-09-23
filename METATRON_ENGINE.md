@@ -758,9 +758,12 @@ case.
 ```python
 METATRON_SETTINGS = {
     "MODE": 1,                              # 1 = static only. 2 = static + Mode A tracing.
-    "VERSIONS_DIR": "versions",             # one sub-folder per version
-    "OUT_DIR": "out",                       # one sub-directory per version, named by its id
-    "LEDGER": "out/metatron_ledger.json",   # the history file
+    "WORKSPACE": "workspace",               # THE ONE PATH. Everything else is derived from it.
+    "PROJECT": "",                          # the folder under it; empty = derived from ENGINE
+    "SOURCES": True,                        # keep one copy of each DISTINCT version; False = --no-sources
+    "VERSIONS_DIR": "",                     # legacy; set it and it still means the drop folder
+    "OUT_DIR": "",                          # legacy; set it and it still means the artifact root
+    "LEDGER": "",                           # legacy; set it and a flat copy is written there too
     "SINKS": [],                            # your final-decision element(s) — the highest-value setting here
     "ENTRIES": [],                          # entry point(s); detected when empty
     "CONFIGS": [],                          # config files that wire components, relative to each version root
@@ -771,6 +774,37 @@ METATRON_SETTINGS = {
     "WORKERS": 0,                           # 0 = auto (usable cores less one); 1 = in-process
 }
 ```
+
+`WORKSPACE` replaces `VERSIONS_DIR`, `OUT_DIR` and `LEDGER`, and the layout under it is:
+
+```
+workspace/
+    AmunEV_Engine_V2/                             <- PROJECT, derived from ENGINE
+        history/
+            AmunEV_Engine_V2_history.json         <- the story. Open this one.
+            AmunEV_Engine_V2_fingerprints.jsonl
+            AmunEV_Engine_V2_comparisons.jsonl
+            runtime/basketball_history.json       <- one per sport
+        sources/<content hash>/                   <- stored ONCE per distinct content
+        io/runs/<UTC timestamp>/                  <- the map from that run
+        io/reports/
+```
+
+The three old keys still work. Left empty, `WORKSPACE` resolves them; set to a path,
+each keeps doing exactly what it did before and `track` prints one line saying what it
+now means, so upgrading mid-project neither errors nor silently empties your history.
+A flat `versions/` folder beside the workspace is still read, and said out loud, until
+you run `metatron migrate`.
+
+Read it back with `metatron history`, `metatron history <PROJECT>`,
+`metatron history <PROJECT> --sport etennis`, or
+`metatron history <PROJECT> --element <id>` — one element's whole life across every
+version.
+
+A sport's file says whether it is genuinely that sport's map. Where the sport is chosen
+at runtime and no static rule separates the branches, it declares
+`scope: UNION ACROSS ALL SPORTS` with the reason, and never presents blended data as
+sport-specific.
 
 **These are data, never code.** Nothing here is ever `exec`'d, and an unknown key is an
 error that names the typo:
