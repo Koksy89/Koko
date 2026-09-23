@@ -480,16 +480,21 @@ def analyze(
     if slice_scope is SliceScope.ALL and available_roots:
         say(_all_scope_warning(len(available_roots), len(lineage_edges)))
 
-    # The basis card 5 reasons from is the DECISION set at EVERY scope. The
-    # scope is a storage decision and a finding is a fact; a storage decision
-    # that silently changed a finding would be a defect, so it cannot reach
-    # one. `--slices all` still WRITES every slice.
-    findings_roots = tracer.slice_roots(SliceScope.DECISION, slice_roots)
+    # The basis card 5 reasons from is the SAME SET at every scope, with and
+    # without a declared sink: sinks, what they read, and every feature, plus
+    # any explicit `--slice-root`. The scope is a storage decision and a
+    # finding is a fact; a storage decision that silently changed a finding
+    # would be a defect, so it cannot reach one.
+    #
+    # Since DECISION no longer writes the feature roots, most of these slices
+    # are now computed for card 5 and never written. That is the intended
+    # trade: the cost was the bytes, not the computation, and `lineage.jsonl`
+    # still lets anyone recompute any of them exactly.
     slices = tracer.default_slices(slice_scope, slice_roots)
-    findings_slices = (
-        slices
-        if slice_scope is SliceScope.DECISION
-        else tracer.default_slices(SliceScope.DECISION, slice_roots)
+    findings_slices = tracer.default_slices(
+        SliceScope.NONE,
+        (*tracer.findings_basis_roots(), *slice_roots),
+        emitted_as=SliceScope.DECISION,
     )
     summary["lineage_edges"] = len(lineage_edges)
     summary["barriers"] = len(barriers)
@@ -531,22 +536,20 @@ def analyze(
     findings = tuple(sorted([*findings, *dependency_findings], key=lambda f: f.id))
     summary["findings"] = len(findings)
 
-    # DECISION names "the root of any finding" among its roots, and findings
-    # are only known once card 5 has run. This second pass adds them, so an
-    # owner reading a finding can drill straight into its slice. It runs after
-    # `findings` is final and cannot change it. NONE stays NONE: it was asked
-    # for none.
+    # The root of a finding is NO LONGER an automatic DECISION root: on the
+    # 14.6 MB single-module target card 5 reports 19,227 findings, and a slice
+    # per finding root was 38,454 slices -- more than `ALL` emits, and exactly
+    # the quadratic DECISION exists to avoid. It was one half of the leak that
+    # produced a measured 6.4 GB `slices.jsonl` from a 15 MB input. A finding
+    # the owner wants a slice of is one `--slice-root <id>` away, and
+    # `lineage.jsonl` answers it exactly either way.
     #
-    # Only the two kinds whose EVIDENCE IS A LINEAGE PATH are topped up, and
-    # that bound is measured rather than tidy: on the 14.6 MB single-module
-    # target, with no sink declared, card 5 reports 19,227 findings. A slice
-    # per finding root would be 38,454 slices -- more than `ALL` emits, and
-    # exactly the quadratic DECISION exists to avoid. An UNREACHABLE_ELEMENT
-    # or a VERSION_CONFLICT is not answered by a data-flow slice; an
-    # UNCONSUMED_FEATURE and a DECISION_IRRELEVANT are, which is why those two
-    # are here and the rest are not. Every root left out is still named in the
-    # disclosure and still exactly recomputable from lineage.jsonl.
-    if slice_scope is not SliceScope.NONE:
+    # ALL is unchanged and still tops up, because ALL is the scope that asks
+    # for everything and says what it will cost before paying it. Only the two
+    # kinds whose EVIDENCE IS A LINEAGE PATH are topped up: an
+    # UNREACHABLE_ELEMENT or a VERSION_CONFLICT is not answered by a data-flow
+    # slice; an UNCONSUMED_FEATURE and a DECISION_IRRELEVANT are.
+    if slice_scope is SliceScope.ALL:
         precomputed = {sliced.root_id for sliced in slices}
         top_up = tuple(
             sorted(
@@ -567,6 +570,31 @@ def analyze(
                 merged[sliced.id] = sliced
             slices = tuple(sorted(merged.values(), key=lambda one: one.id))
     _stage("findings")
+
+    # The size guard, BEFORE anything is written and before card 16 links a
+    # record to a slice, so a refusal can never leave a record pointing at a
+    # slice the artifact does not hold.
+    #
+    # The owner of a 14.8 MB engine discovered a 6.4 GB slices.jsonl after the
+    # fact. An estimate costs a sum over ids already in memory; discovering the
+    # size afterwards costs a disk. A refusal the owner can override with
+    # --force-slices is honest, and silently writing 6.4 GB is not.
+    slice_bytes = tracer.estimated_slice_bytes(slices)
+    slice_members = sum(len(one.member_ids) for one in slices)
+    slice_refusal: str | None = None
+    if slices and slice_bytes > slice_size_limit and not force_slices:
+        slice_refusal = _slice_size_refusal(
+            estimated=slice_bytes,
+            limit=slice_size_limit,
+            roots=len({sliced.root_id for sliced in slices}),
+            members=slice_members,
+            has_sink=bool(sink_ids),
+        )
+        say(slice_refusal)
+        # Dropped WHOLE, never shortened. The principle the scope rests on is
+        # "emit fewer slices, never smaller ones", and a truncated slices.jsonl
+        # would be the wrong answer wearing the shape of a right one.
+        slices = ()
 
     # Card 16 — documentation records, then the gate.
     builder = DocumentationBuilder(

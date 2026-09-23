@@ -849,31 +849,73 @@ class LineageTracer:
         )
 
     def all_slice_roots(self) -> tuple[str, ...]:
-        """Every root `SliceScope.ALL` precomputes: feature, key and sink."""
+        """Every root `SliceScope.ALL` precomputes: feature, key and sink.
+
+        The one-hop readers of a declared sink are included so that ALL is a
+        superset of `decision_slice_roots` by construction. A scope named "every
+        root" that omits a root a narrower scope precomputes is a contradiction,
+        and the subset property is what lets a DECISION slice be compared to the
+        ALL slice of the same root to prove neither was shortened.
+        """
         return tuple(
-            sorted({*self.feature_ids(), *self.key_node_ids(), *self.sink_ids})
+            sorted(
+                {
+                    *self.feature_ids(),
+                    *self.key_node_ids(),
+                    *self.sink_ids,
+                    *self._sink_readers(),
+                }
+            )
         )
+
+    def _sink_readers(self) -> set[str]:
+        """What the declared sinks read: the sources of the lineage edges that
+        land on them, one hop. "What the decision reads" in this card's terms."""
+        readers: set[str] = set()
+        for sink in self.sink_ids:
+            for source, _ in self._in.get(sink, ()):
+                readers.add(source)
+        return readers
 
     def decision_slice_roots(self) -> tuple[str, ...]:
         """The roots that bear on a decision, per `SliceScope.DECISION`.
 
-        Declared sinks, what those sinks read -- the sources of the lineage
-        edges that land on them, one hop, which is "what the decision reads"
-        stated in this card's own terms -- and engineered features. Bounded by
-        the number of decision inputs rather than by the size of the codebase.
+        **With no declared sink this is empty, on purpose.** DECISION scope is
+        bounded by the owner's declaration of what the decision is. Without one
+        there is no principled root set: the alternatives are auto-detected sink
+        CANDIDATES -- which this tool refuses to call facts -- plus every
+        feature and the root of every finding, which is thousands of roots on a
+        real engine and the direct cause of a measured 6.4 GB `slices.jsonl`
+        from a 15 MB input. Building thousands of exact answers on top of a
+        guess is wrong twice: enormous, and rooted in something the tool itself
+        will not assert. `lineage.jsonl` still answers any of them on demand,
+        and `--slice-root` precomputes any root by name.
 
-        Container keys are deliberately NOT here. A key that no config declared
-        a feature is a subscript this card found, not something an owner named
-        as bearing on the decision, and on a single-module target they are
-        every root there is: 7,502 of them on the 14.6 MB file, which is the
-        whole of the quadratic. Each one is still answerable on demand from
-        `lineage.jsonl`, and `--slice-root` precomputes any of them by name.
+        With a sink declared: the sinks and what they read. Bounded by the
+        owner's declaration, which is what "decision scope" always meant.
+
+        Engineered features and finding roots are deliberately NOT here. They
+        were the leak -- unbounded in the size of the codebase, not in the
+        number of decision inputs. So are container keys: a key no config
+        declared a feature is a subscript this card found, and on a
+        single-module target there were 7,502 of them.
         """
-        roots = {*self.sink_ids, *self.feature_ids()}
-        for sink in self.sink_ids:
-            for source, _ in self._in.get(sink, ()):
-                roots.add(source)
-        return tuple(sorted(roots))
+        if not self.sink_ids:
+            return ()
+        return tuple(sorted({*self.sink_ids, *self._sink_readers()}))
+
+    def findings_basis_roots(self) -> tuple[str, ...]:
+        """The roots card 5 reasons from. COMPUTED, never written.
+
+        A finding is a fact and the slice scope is a storage decision; a storage
+        decision that silently changed a finding would be a defect. So the basis
+        handed to card 5 is the same set at every scope and with or without a
+        declared sink -- sinks, what they read, and every engineered feature --
+        even though `slices.jsonl` now writes far fewer of these. The slices for
+        roots that are not written are computed for the finding's own use and
+        discarded, which costs time and no bytes.
+        """
+        return tuple(sorted({*self.sink_ids, *self._sink_readers(), *self.feature_ids()}))
 
     def slice_roots(
         self, scope: SliceScope, extra_roots: Sequence[str] = ()
