@@ -34,56 +34,34 @@ behind a worker count.
 
 from __future__ import annotations
 
-import os
-import time
 from collections.abc import Callable, Sequence
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
-#: Below this, the workers are not earning their overhead and the report
-#: says so in words rather than printing a count that implies a benefit.
-GAIN_FLOOR = 1.2
+# One coordinator, one worker policy, one pool -- `cascade_map.parallel`. This
+# module keeps only what is specific to INGESTION: its own wording for the
+# report, because ingestion's unit is a file and the other stages' units are
+# not, and the `fn(payload)` call shape its callers already use.
+from cascade_map.parallel import (
+    GAIN_FLOOR,
+    MAX_WORKERS,
+    StageReport,
+    UnitResult,
+    cpu_budget,
+    resolve_workers,
+    run_stage,
+)
 
-#: Asking for more processes than this has never paid on any shape measured;
-#: beyond the core count they contend rather than help.
-MAX_WORKERS = 32
-
-
-def cpu_budget() -> int:
-    """Usable cores. `sched_getaffinity` rather than `cpu_count` because a
-    container pinned to 2 of 64 cores reports 64, and spawning 63 workers on
-    2 cores is slower than staying in-process."""
-    try:
-        return len(os.sched_getaffinity(0))  # type: ignore[attr-defined]
-    except (AttributeError, OSError):  # pragma: no cover - non-Linux
-        return os.cpu_count() or 1
-
-
-def resolve_workers(requested: int | None) -> int:
-    """`None` = auto: the machine's usable cores minus one, so an `analyze`
-    does not take the whole box, capped at `MAX_WORKERS`.
-
-    `0` and `1` both mean in-process. In-process must always remain
-    reachable: it is how anything here is debugged, and a traceback from a
-    child process is a worse one.
-    """
-    if requested is None:
-        return max(1, min(cpu_budget() - 1, MAX_WORKERS))
-    if requested < 0:
-        raise ValueError(f"--workers must be >= 0, got {requested}")
-    if requested <= 1:
-        return 1
-    return min(requested, MAX_WORKERS)
-
-
-@dataclass(frozen=True)
-class UnitResult:
-    """One unit's outcome plus the CPU seconds it cost inside its worker."""
-
-    key: str
-    value: Any
-    seconds: float
+__all__ = [
+    "GAIN_FLOOR",
+    "MAX_WORKERS",
+    "UnitResult",
+    "WorkerReport",
+    "cpu_budget",
+    "render_worker_report",
+    "resolve_workers",
+    "run_units",
+]
 
 
 @dataclass
@@ -213,40 +191,20 @@ def render_worker_report(report: WorkerReport) -> str:
 
 
 # ---------------------------------------------------------------------------
-# execution
+# execution -- the shared coordinator, in ingestion's call shape
 # ---------------------------------------------------------------------------
 
 
-def _timed(fn: Callable[[Any], Any], job: tuple[str, Any]) -> UnitResult:
-    """Times the unit with `process_time`, i.e. CPU seconds, NOT wall clock.
-
-    This matters and is not a detail. Under a pool with more workers than
-    cores, every unit's *wall* time inflates because the units are competing
-    for the same cores. Summing inflated wall times and dividing by the
-    section's wall clock produces a gain that RISES as the machine gets more
-    oversubscribed and slower -- it reported 5.06x for a run that was
-    measurably slower than the 3.02x one. The work here is CPU-bound, so CPU
-    seconds are what a single process would have spent, and they do not move
-    when the box is contended.
-    """
-    key, payload = job
-    start = time.process_time()
-    value = fn(payload)
-    return UnitResult(key=key, value=value, seconds=time.process_time() - start)
-
-
-class _Call:
-    """A picklable `functools.partial`. `ProcessPoolExecutor` pickles the
-    callable, and a closure is not picklable, so the bound function travels
-    as a module-level class instance instead."""
+class _IngestCall:
+    """A picklable ``fn(opened, arg)`` that ignores the shared payload."""
 
     __slots__ = ("fn",)
 
     def __init__(self, fn: Callable[[Any], Any]) -> None:
         self.fn = fn
 
-    def __call__(self, job: tuple[str, Any]) -> UnitResult:
-        return _timed(self.fn, job)
+    def __call__(self, _opened: Any, payload: Any) -> Any:
+        return self.fn(payload)
 
 
 def run_units(
@@ -262,74 +220,24 @@ def run_units(
     The caller must re-derive its own order from the keys; nothing about the
     returned mapping's construction order is allowed to reach the output.
 
-    Falls back to in-process, recording why, whenever a pool cannot help or
-    cannot start. A failed pool must never become a failed analysis: the work
-    is still done, just serially, and the report says so.
+    Delegates to :func:`cascade_map.parallel.run_stage`, which is the one
+    work-stealing pool in the project. The unit here is a whole file.
     """
-    report.requested = workers
-    report.unit_count = len(jobs)
-
-    if not jobs:
-        report.started = 1
+    stage = StageReport(stage="inventory")
+    out = run_stage(
+        _IngestCall(fn), jobs, workers, stage, payload=None, on_unit=on_unit
+    )
+    report.requested = stage.requested
+    report.started = stage.started
+    report.unit_count = stage.unit_count
+    report.wall_seconds = stage.wall_seconds
+    report.serial_seconds = stage.serial_seconds
+    report.largest_unit_key = stage.largest_unit_key
+    report.largest_unit_seconds = stage.largest_unit_seconds
+    report.unit_seconds.clear()
+    report.unit_seconds.update(stage.unit_seconds)
+    if stage.skipped_reason:
+        report.skipped_reason = stage.skipped_reason
+    elif not jobs:
         report.skipped_reason = "no files needed parsing"
-        return {}
-
-    if workers <= 1 or len(jobs) == 1:
-        if workers > 1 and len(jobs) == 1:
-            report.skipped_reason = (
-                "1 unit of work: a pool was not started because one worker "
-                "would do all of it and the rest would idle"
-            )
-        report.started = 1
-        started_at = time.perf_counter()
-        out: dict[str, Any] = {}
-        for done, job in enumerate(jobs, start=1):
-            r = _timed(fn, job)
-            out[r.key] = r.value
-            report.unit_seconds[r.key] = r.seconds
-            if on_unit is not None:
-                on_unit(done, len(jobs))
-        report.wall_seconds = time.perf_counter() - started_at
-        report.serial_seconds = sum(report.unit_seconds.values())
-        _record_largest(report)
-        return out
-
-    effective = min(workers, len(jobs))
-    started_at = time.perf_counter()
-    try:
-        with ProcessPoolExecutor(max_workers=effective) as pool:
-            # Iterated rather than `list(...)` so progress can be reported as
-            # results arrive. `pool.map` still yields in SUBMISSION order, so
-            # nothing about ordering changes -- only when we hear about it.
-            results = []
-            for done, item in enumerate(pool.map(_Call(fn), jobs, chunksize=1), start=1):
-                results.append(item)
-                if on_unit is not None:
-                    on_unit(done, len(jobs))
-    except Exception as exc:  # pragma: no cover - platform dependent
-        report.started = 1
-        report.skipped_reason = f"pool unavailable ({type(exc).__name__}); ran in-process"
-        report.wall_seconds = 0.0
-        report.unit_seconds.clear()
-        return run_units(fn, jobs, 1, report, on_unit=on_unit)
-
-    report.started = effective
-    out = {}
-    for r in results:
-        out[r.key] = r.value
-        report.unit_seconds[r.key] = r.seconds
-    report.wall_seconds = time.perf_counter() - started_at
-    report.serial_seconds = sum(report.unit_seconds.values())
-    _record_largest(report)
     return out
-
-
-def _record_largest(report: WorkerReport) -> None:
-    if not report.unit_seconds:
-        return
-    # Sorted by (-seconds, key) so ties break on the name, never on dict
-    # insertion order -- the report is printed and an owner comparing two
-    # runs must not see a different file named for the same timings.
-    key = sorted(report.unit_seconds.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
-    report.largest_unit_key = key
-    report.largest_unit_seconds = report.unit_seconds[key]
