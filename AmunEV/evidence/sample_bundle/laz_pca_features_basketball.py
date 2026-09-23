@@ -12,7 +12,7 @@
 #
 # engine   : engine_e2e_test
 # sport    : basketball
-# composites: 8
+# composites: 6
 
 import math as _math
 
@@ -35,19 +35,7 @@ PCA = {
         sdv=[0.5, 1.5, 2.5],
         w=[0.6, -0.5, 0.62],
         n_fit=1200),
-    'pc_6a99ae09': dict(
-        terms=['line_move', 'line_open', 'wall_min'],
-        mu=[1.0, 2.0, 3.0],
-        sdv=[0.5, 1.5, 2.5],
-        w=[0.6, -0.5, 0.62],
-        n_fit=1200),
     'pc_aa16b0a5': dict(
-        terms=['line_move', 'line_open', 'wall_min'],
-        mu=[1.0, 2.0, 3.0],
-        sdv=[0.5, 1.5, 2.5],
-        w=[0.6, -0.5, 0.62],
-        n_fit=1200),
-    'pc_dc4196fb': dict(
         terms=['line_move', 'line_open', 'wall_min'],
         mu=[1.0, 2.0, 3.0],
         sdv=[0.5, 1.5, 2.5],

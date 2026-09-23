@@ -6,7 +6,7 @@ _This document is a pure function of the engine and the book it validated: the
 same run always produces the same bytes. The wall clock lives in MANIFEST.json,
 so a diff between two deployments shows only what actually changed._
 
-128 live · 14 registered but not yet settleable · 142 feature columns · 8 PCA composites
+99 live · 43 registered but not yet settleable · 128 feature columns · 6 PCA composites
 
 ## How to read this
 
@@ -29,13 +29,11 @@ the strategy fires on a default.
 | `X_a_score__over__home_odds` | `x_a_score__over__home_odds` | generated 1:1 from the engine builder |
 | `X_home_odds__x__point_spread_away` | `x_home_odds__x__point_spread_away` | generated 1:1 from the engine builder |
 | `X_minute__minus__u_drought` | `x_minute__minus__u_drought` | manufactured from its leaves: minute, u_drought |
-| `X_minute__minus__u_pace` | `x_minute__minus__u_pace` | generated 1:1 from the engine builder |
 | `X_minute__over__u_pace` | `x_minute__over__u_pace` | generated 1:1 from the engine builder |
 | `X_minute__over__u_vol` | `x_minute__over__u_vol` | manufactured from its leaves: minute, u_vol |
 | `X_u_elapsed__minus__u_time_in_lead` | `x_u_elapsed__minus__u_time_in_lead` | generated 1:1 from the engine builder |
 | `abs_margin_per_remaining_s` | `abs_margin_per_remaining_s` | supplied by the live feature layer |
 | `away_odds` | `away_odds` | generated 1:1 from the engine builder |
-| `backed_pts_last_60s` | `backed_pts_last_60s` | supplied by the live feature layer |
 | `both_scored` | `both_scored` | supplied by the live feature layer |
 | `dog_odds_vol_180` | `dog_odds_vol_180` | generated 1:1 from the engine builder |
 | `dow` | `dow` | supplied by the live feature layer |
@@ -49,7 +47,6 @@ the strategy fires on a default.
 | `hour` | `hour` | generated 1:1 from the engine builder |
 | `imbal` | `imbal` | generated 1:1 from the engine builder |
 | `is_big_lead` | `is_big_lead` | generated 1:1 from the engine builder |
-| `is_favorite` | `is_favorite` | generated 1:1 from the engine builder |
 | `is_trailer` | `is_trailer` | supplied by the live feature layer |
 | `jump_loser` | `jump_loser` | generated 1:1 from the engine builder |
 | `ld_rank` | `ld_rank` | generated 1:1 from the engine builder |
@@ -64,7 +61,6 @@ the strategy fires on a default.
 | `lead_size` | `lead_size` | generated 1:1 from the engine builder |
 | `lead_vs_line` | `lead_vs_line` | supplied by the live feature layer |
 | `lead_vs_med` | `lead_vs_med` | generated 1:1 from the engine builder |
-| `leader_implied_gap` | `leader_implied_gap` | supplied by the live feature layer |
 | `leader_runmax` | `leader_runmax` | supplied by the live feature layer |
 | `line` | `line` | supplied by the live feature layer |
 | `line_flat` | `line_flat` | supplied by the live feature layer |
@@ -73,7 +69,6 @@ the strategy fires on a default.
 | `line_vel` | `line_vel` | supplied by the live feature layer |
 | `loser_runmax` | `loser_runmax` | supplied by the live feature layer |
 | `loser_runmin` | `loser_runmin` | supplied by the live feature layer |
-| `margin_per_possession` | `margin_per_possession` | supplied by the live feature layer |
 | `margin_range_300s` | `margin_range_300s` | supplied by the live feature layer |
 | `margin_rate` | `margin_rate` | supplied by the live feature layer |
 | `motif_0` | `motif_0` | supplied by the live feature layer |
@@ -85,7 +80,6 @@ the strategy fires on a default.
 | `odds_ratio` | `odds_ratio` | generated 1:1 from the engine builder |
 | `open_gap` | `open_gap` | generated 1:1 from the engine builder |
 | `open_vs_now_lead` | `open_vs_now_lead` | supplied by the live feature layer |
-| `opp` | `opp` | generated 1:1 from the engine builder |
 | `opp_drift` | `opp_drift` | generated 1:1 from the engine builder |
 | `opp_o` | `opp_o` | generated 1:1 from the engine builder |
 | `opp_velocity` | `opp_velocity` | generated 1:1 from the engine builder |
@@ -95,9 +89,7 @@ the strategy fires on a default.
 | `pc_2f7f4d0c` | `pc_2f7f4d0c` | frozen PCA transform — see the PCA section |
 | `pc_428f55cf` | `pc_428f55cf` | frozen PCA transform — see the PCA section |
 | `pc_51f228a2` | `pc_51f228a2` | frozen PCA transform — see the PCA section |
-| `pc_6a99ae09` | `pc_6a99ae09` | frozen PCA transform — see the PCA section |
 | `pc_aa16b0a5` | `pc_aa16b0a5` | frozen PCA transform — see the PCA section |
-| `pc_dc4196fb` | `pc_dc4196fb` | frozen PCA transform — see the PCA section |
 | `pc_f3e46219` | `pc_f3e46219` | frozen PCA transform — see the PCA section |
 | `pc_fea3bd2c` | `pc_fea3bd2c` | frozen PCA transform — see the PCA section |
 | `pm_away` | `pm_away` | generated 1:1 from the engine builder |
@@ -111,8 +103,6 @@ the strategy fires on a default.
 | `prog_score` | `prog_score` | supplied by the live feature layer |
 | `prog_x_margin` | `prog_x_margin` | supplied by the live feature layer |
 | `pts_last_60s` | `pts_last_60s` | supplied by the live feature layer |
-| `px_gap_ratio` | `px_gap_ratio` | generated 1:1 from the engine builder |
-| `q` | `q` | generated 1:1 from the engine builder |
 | `recovery_x` | `recovery_x` | generated 1:1 from the engine builder |
 | `req_ratio` | `req_ratio` | supplied by the live feature layer |
 | `retrace_lead` | `retrace_lead` | generated 1:1 from the engine builder |
@@ -125,7 +115,6 @@ the strategy fires on a default.
 | `runmin` | `runmin` | generated 1:1 from the engine builder |
 | `scores_300s` | `scores_300s` | supplied by the live feature layer |
 | `secs_since_price` | `secs_since_price` | generated 1:1 from the engine builder |
-| `secs_since_quarter_start` | `secs_since_quarter_start` | supplied by the live feature layer |
 | `secs_since_run_started` | `secs_since_run_started` | supplied by the live feature layer |
 | `secs_since_score` | `secs_since_score` | supplied by the live feature layer |
 | `spread_cover_now` | `spread_cover_now` | supplied by the live feature layer |
@@ -135,7 +124,6 @@ the strategy fires on a default.
 | `tg_imp_under` | `tg_imp_under` | generated 1:1 from the engine builder |
 | `tg_overround` | `tg_overround` | supplied by the live feature layer |
 | `tg_proj_vs_line` | `tg_proj_vs_line` | supplied by the live feature layer |
-| `tg_px_ratio` | `tg_px_ratio` | supplied by the live feature layer |
 | `time_at_this_price` | `time_at_this_price` | supplied by the live feature layer |
 | `time_left` | `time_left` | supplied by the live feature layer |
 | `tot_vs_line` | `tot_vs_line` | supplied by the live feature layer |
@@ -157,11 +145,9 @@ the strategy fires on a default.
 | `u_overround` | `u_overround` | generated 1:1 from the engine builder |
 | `u_pace` | `u_pace` | generated 1:1 from the engine builder |
 | `u_price` | `u_price` | supplied by the live feature layer |
-| `u_price_open` | `u_price_open` | generated 1:1 from the engine builder |
 | `u_ratio_open` | `u_ratio_open` | supplied by the live feature layer |
 | `u_ratio_shift` | `u_ratio_shift` | generated 1:1 from the engine builder |
 | `u_trend` | `u_trend` | supplied by the live feature layer |
-| `u_vel_t` | `u_vel_t` | supplied by the live feature layer |
 | `u_vf` | `u_vf` | generated 1:1 from the engine builder |
 | `u_vol` | `u_vol` | supplied by the live feature layer |
 | `wall_min` | `wall_min` | supplied by the live feature layer |
@@ -217,37 +203,7 @@ If ANY input is missing or non-finite on a tick, the composite is NULL —
 never 0. The fit dropped exactly those rows, so a 0 would be a value the
 engine never saw.
 
-### `pc_6a99ae09`
-
-Inputs, in this exact order: `line_move`, `line_open`, `wall_min`
-
-```
-pc = ((x - mu) / sdv) . w    as float32
-mu  = [1.0, 2.0, 3.0]
-sdv = [0.5, 1.5, 2.5]
-w   = [0.6, -0.5, 0.62]
-```
-
-If ANY input is missing or non-finite on a tick, the composite is NULL —
-never 0. The fit dropped exactly those rows, so a 0 would be a value the
-engine never saw.
-
 ### `pc_aa16b0a5`
-
-Inputs, in this exact order: `line_move`, `line_open`, `wall_min`
-
-```
-pc = ((x - mu) / sdv) . w    as float32
-mu  = [1.0, 2.0, 3.0]
-sdv = [0.5, 1.5, 2.5]
-w   = [0.6, -0.5, 0.62]
-```
-
-If ANY input is missing or non-finite on a tick, the composite is NULL —
-never 0. The fit dropped exactly those rows, so a 0 would be a value the
-engine never saw.
-
-### `pc_dc4196fb`
 
 Inputs, in this exact order: `line_move`, `line_open`, `wall_min`
 
@@ -308,26 +264,6 @@ Ordered gates, in this order:
 6. `open_gap <= 2.2797`
 7. `ten_mins <= 23.4333`
 8. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0049
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Vision
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `line_move <= 4`
-7. `price_gap <= 1.89`
-8. `X_minute__minus__u_drought <= 27.3487`
-9. `tg_overround <= 1.1237`
-10. `tg_imp_over <= 0.605`
-11. first tick in the match on which all of the above hold
-
-> This strategy reads `minute`, which the bundle supplies in `laz_features_basketball.py`.
 
 ### LZ_V270_BASK_022
 
@@ -397,23 +333,6 @@ Ordered gates, in this order:
 
 > This strategy reads `minute`, which the bundle supplies in `laz_features_basketball.py`.
 
-### BAS_prop:first_s_0062
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `line_move <= 4`
-7. `lead_vs_line <= -143`
-8. `u_ratio_open <= 2.9167`
-9. `tg_overround <= 1.1237`
-10. first tick in the match on which all of the above hold
-
 ### BAS_tg_under_0005
 
 **LIVE** · market `total_points_under` · backs `Total_Points_Under` · price band `1.4` to `None` · tier Npc
@@ -462,23 +381,6 @@ Ordered gates, in this order:
 7. `open_gap <= 3.55`
 8. first tick in the match on which all of the above hold
 
-### BAS_prop:first_s_0056
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `line_move <= 4`
-7. `price_gap <= 1.89`
-8. `opp_drift <= 1.0811`
-9. `tg_overround <= 1.1237`
-10. first tick in the match on which all of the above hold
-
 ### BAS_lead_ml_0081
 
 **LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
@@ -493,22 +395,6 @@ Ordered gates, in this order:
 6. `line_move <= 4`
 7. `trailer_price >= 1.92`
 8. `pc_f3e46219 <= 2.3868`
-9. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0060
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `lead_vs_line <= -150.5`
-7. `u_ratio_open <= 2.5724`
-8. `tg_overround <= 1.1237`
 9. first tick in the match on which all of the above hold
 
 ### BAS_DRIFTED_0046
@@ -540,20 +426,6 @@ Ordered gates, in this order:
 7. `pace_last_300s_vs_line >= -159.72`
 8. first tick in the match on which all of the above hold
 
-### BAS_prop:first_s_0059
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `u_overround <= 1.1109`
-6. `req_ratio <= 1.3805`
-7. first tick in the match on which all of the above hold
-
 ### BAS_tg_under_0009
 
 **LIVE** · market `total_points_under` · backs `Total_Points_Under` · price band `1.4` to `None` · tier Npc
@@ -569,23 +441,6 @@ Ordered gates, in this order:
 7. `pc_51f228a2 <= -0.1057`
 8. `secs_since_price <= 0`
 9. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0054
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `line_open >= 140`
-6. `prog_score <= 0.35`
-7. `rk_odds_ratio <= 2.3716`
-8. `leader_runmax >= 1.8456`
-9. `tot_vs_line <= -128.8692`
-10. first tick in the match on which all of the above hold
 
 ### BAS_late_lead_ho_0007
 
@@ -603,37 +458,6 @@ Ordered gates, in this order:
 8. `opp_drift <= 1.0811`
 9. `trail <= 6`
 10. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0055
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `lead_vs_line <= -140.5`
-7. `req_ratio >= 1.195`
-8. `tg_overround <= 1.1237`
-9. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0098
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `rk_dog_odds >= 1.8351`
-7. `opp >= 1.91`
-8. first tick in the match on which all of the above hold
 
 ### BAS_prop:drifter_0029
 
@@ -747,75 +571,6 @@ Ordered gates, in this order:
 8. `u_ratio_shift >= 0.395`
 9. first tick in the match on which all of the above hold
 
-### BAS_prop:first_s_0089
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `u_ratio_open <= 3.0575`
-7. `trailer_price >= 1.8315`
-8. `pc_f3e46219 <= 2.0943`
-9. `lead_changes_300s <= 1`
-10. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0047
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `line_open >= 140`
-6. `prog_score <= 0.35`
-7. `rk_odds_ratio <= 2.3716`
-8. `X_minute__minus__u_drought <= 28.0923`
-9. `tg_overround <= 1.1237`
-10. first tick in the match on which all of the above hold
-
-> This strategy reads `minute`, which the bundle supplies in `laz_features_basketball.py`.
-
-### BAS_prop:first_s_0097
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `dog_odds_vol_180 <= 0.15546`
-6. `rk_dog_odds >= 1.85`
-7. `pc_f3e46219 <= 2.0943`
-8. `lead_changes_300s <= 1`
-9. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0091
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `total_points_under >= 1.75`
-6. `hour >= 2`
-7. `away_odds >= 1.159999966621399`
-8. `tot_vs_line <= -129.823`
-9. `opp >= 1.53`
-10. first tick in the match on which all of the above hold
-
 ### BAS_prop:held_le_0182
 
 **LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
@@ -849,13 +604,13 @@ Ordered gates, in this order:
 
 ### BAS_spec:Loser_1_0023
 
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Ino
+**LIVE** · market `match_winner` · backs `trailer` · price band `1.4` to `None` · tier Ino
 
 Ordered gates, in this order:
 
 1. the market is open
 2. the feed is fresh
-3. the side resolves: `leader`
+3. the side resolves: `trailer`
 4. the backed price is inside `1.4`–`None`
 5. `time_at_this_price <= 28.2017`
 6. `lead_vs_line <= -170.833`
@@ -1078,21 +833,6 @@ Ordered gates, in this order:
 6. `lead_vs_line >= -173.8462`
 7. first tick in the match on which all of the above hold
 
-### BAS_spec:HT_Unde_0122
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Vision
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `rk_dog_odds >= 1.8351`
-7. `lead_changes_300s <= 2`
-8. first tick in the match on which all of the above hold
-
 ### BAS_tg_under_0001
 
 **LIVE** · market `total_points_under` · backs `Total_Points_Under` · price band `1.4` to `None` · tier Vision
@@ -1107,22 +847,6 @@ Ordered gates, in this order:
 6. `prog_q >= 0.4444`
 7. `tg_proj_vs_line >= -167.5197`
 8. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0052
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `line_open >= 140`
-6. `prog_score <= 0.35`
-7. `rk_odds_ratio <= 2.3716`
-8. `total_line_move >= -4`
-9. first tick in the match on which all of the above hold
 
 ### BAS_late_lead_ho_0114
 
@@ -1139,38 +863,6 @@ Ordered gates, in this order:
 7. `needed_rate_for_over >= 2.9473`
 8. first tick in the match on which all of the above hold
 
-### BAS_prop:first_s_0058
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `lead_vs_line <= -151.823`
-7. `opp_o <= 4.17`
-8. `px_gap_ratio <= 1.442`
-9. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0051
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `lead_vs_line <= -140.5`
-7. `secs_since_quarter_start <= 41.6871`
-8. `rk_fav_odds >= 1.2738`
-9. first tick in the match on which all of the above hold
-
 ### BAS_late_lead_ho_0111
 
 **LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
@@ -1185,23 +877,6 @@ Ordered gates, in this order:
 6. `rk_fav_odds <= 1.75`
 7. `u_overround <= 1.113`
 8. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0096
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `odds_ratio <= 1.2094`
-7. `pts_last_60s <= 6`
-8. `lead_m15 <= 1`
-9. `rk_odds_ratio >= 1.0318`
-10. first tick in the match on which all of the above hold
 
 ### BAS_spec:TG_Hist_0070
 
@@ -1238,40 +913,6 @@ Ordered gates, in this order:
 10. `lead_changes_300s <= 2`
 11. `u_drought <= 3213.791318359375`
 12. first tick in the match on which all of the above hold
-
-### BAS_spec:HT_Unde_0123
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Vision
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `total_points_under >= 1.75`
-6. `pm_away <= 2.85`
-7. `X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead <= -19.1179`
-8. `u_vel_t <= 0.0198`
-9. first tick in the match on which all of the above hold
-
-> This strategy reads `u_elapsed`, `u_time_in_lead`, which the bundle supplies in `laz_features_basketball.py`.
-
-### BAS_prop:first_s_0053
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `line_open >= 140`
-6. `need_frac >= 0.4`
-7. `prog_score <= 0.1318`
-8. `px_gap_ratio <= 1.4925`
-9. first tick in the match on which all of the above hold
 
 ### BAS_tg_under_0004
 
@@ -1424,20 +1065,6 @@ Ordered gates, in this order:
 8. `trailer_drift >= 1.0222`
 9. first tick in the match on which all of the above hold
 
-### BAS_spec:HT_Unde_0124
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Vision
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `imbal >= 0.0217`
-6. `pc_6a99ae09 >= -0.6204`
-7. first tick in the match on which all of the above hold
-
 ### BAS_tg_under_lag_0031
 
 **LIVE** · market `total_points_under` · backs `Total_Points_Under` · price band `1.4` to `None` · tier Vision
@@ -1581,22 +1208,6 @@ Ordered gates, in this order:
 7. `dow >= 2`
 8. first tick in the match on which all of the above hold
 
-### BAS_prop:first_s_0090
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `line_open >= 140`
-6. `need_frac >= 0.4`
-7. `trailer_price >= 1.8471`
-8. `pc_f3e46219 <= 2.3571`
-9. first tick in the match on which all of the above hold
-
 ### BAS_prop:garbage_0128
 
 **LIVE** · market `total_points_under` · backs `Total_Points_Under` · price band `1.4` to `None` · tier Vision
@@ -1673,24 +1284,6 @@ Ordered gates, in this order:
 6. `retrace_lead <= 0.0439`
 7. first tick in the match on which all of the above hold
 
-### BAS_prop:first_s_0065
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `line_open >= 140`
-6. `need_frac >= 0.4`
-7. `prog_score <= 0.35`
-8. `rk_odds_ratio <= 2.8601`
-9. `margin_per_possession <= 0.0166`
-10. `tg_overround <= 1.1236`
-11. first tick in the match on which all of the above hold
-
 ### BAS_prop:dog_lea_0151
 
 **LIVE** · market `match_winner` · backs `dog_leader` · price band `1.4` to `None` · tier Jobber
@@ -1705,23 +1298,6 @@ Ordered gates, in this order:
 6. `u_ratio_open <= 2.8919`
 7. `tg_imp_over <= 0.6235`
 8. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0064
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `line_open >= 140`
-6. `need_frac >= 0.4`
-7. `prog_score <= 0.35`
-8. `rk_odds_ratio <= 2.8601`
-9. `wall_min >= 138.5`
-10. first tick in the match on which all of the above hold
 
 ### BAS_spec:Leader_0078
 
@@ -1769,21 +1345,6 @@ Ordered gates, in this order:
 5. `X_a_score__over__home_odds >= 0`
 6. `lead_m75 <= 1`
 7. first tick in the match on which all of the above hold
-
-### BAS_prop:first_s_0093
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `q <= 1`
-6. `lead_m30 <= 1`
-7. `opp >= 1.5927`
-8. first tick in the match on which all of the above hold
 
 ### BAS_tg_under_0008
 
@@ -1862,24 +1423,6 @@ Ordered gates, in this order:
 9. `ten_mins <= 23.0897`
 10. first tick in the match on which all of the above hold
 
-### BAS_prop:first_s_0095
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `total_points_under >= 1.75`
-6. `hour >= 2`
-7. `away_odds >= 1.159999966621399`
-8. `total_points_over < 1.899999976158142`
-9. `tot_vs_line <= -112.908`
-10. `rk_odds_ratio >= 1.0867`
-11. first tick in the match on which all of the above hold
-
 ### BAS_DRIFTED_0045
 
 **LIVE** · market `match_winner` · backs `drifted` · price band `1.4` to `None` · tier Jobber
@@ -1945,22 +1488,6 @@ Ordered gates, in this order:
 8. `pc_428f55cf <= 2.0819`
 9. first tick in the match on which all of the above hold
 
-### BAS_prop:first_s_0094
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `prog_score <= 0.35`
-6. `rk_fav_odds <= 1.75`
-7. `leader_implied_gap >= -0.1701`
-8. `tg_px_ratio <= 1.1098`
-9. first tick in the match on which all of the above hold
-
 ### BAS_spec:TG_Hist_0016
 
 **LIVE** · market `total_points_under` · backs `Total_Points_Under` · price band `1.4` to `None` · tier Vision
@@ -1977,28 +1504,6 @@ Ordered gates, in this order:
 8. `u_margin_abs >= 2`
 9. `total_points_under <= 1.8388`
 10. first tick in the match on which all of the above hold
-
-### BAS_spec:HT_Unde_0042
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Jobber
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `line_open >= 140`
-6. `need_frac >= 0.4`
-7. `prog_score <= 0.35`
-8. `rk_odds_ratio <= 2.8601`
-9. `margin_per_possession <= 0.0166`
-10. `u_price_open >= 1.34`
-11. `X_minute__minus__u_pace >= -18`
-12. `needed_rate_for_over >= 3.3176`
-13. first tick in the match on which all of the above hold
-
-> This strategy reads `minute`, which the bundle supplies in `laz_features_basketball.py`.
 
 ### BAS_spec:Leader_0076
 
@@ -2098,22 +1603,6 @@ Ordered gates, in this order:
 9. `time_left <= 0.8889`
 10. first tick in the match on which all of the above hold
 
-### BAS_prop:first_s_0099
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `line_open >= 140`
-6. `prog_score <= 0.35`
-7. `h_score <= 16.1205`
-8. `is_favorite >= 1`
-9. first tick in the match on which all of the above hold
-
 ### BAS_spec:Leader_0075
 
 **LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Npc
@@ -2191,21 +1680,6 @@ Ordered gates, in this order:
 4. the backed price is inside `1.4`–`None`
 5. `odds_ratio >= 0.0833`
 6. first tick in the match on which all of the above hold
-
-### BAS_spec:Early_H_0088
-
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Vision
-
-Ordered gates, in this order:
-
-1. the market is open
-2. the feed is fresh
-3. the side resolves: `leader`
-4. the backed price is inside `1.4`–`None`
-5. `lead_m15 <= 0`
-6. `backed_pts_last_60s <= 4.4718`
-7. `pc_dc4196fb <= -2.1901`
-8. first tick in the match on which all of the above hold
 
 ### LZ_V270_BASK_008
 
@@ -2356,13 +1830,13 @@ Ordered gates, in this order:
 
 ### BAS_spec:Loser_1_0024
 
-**LIVE** · market `match_winner` · backs `leader` · price band `1.4` to `None` · tier Ino
+**LIVE** · market `match_winner` · backs `trailer` · price band `1.4` to `None` · tier Ino
 
 Ordered gates, in this order:
 
 1. the market is open
 2. the feed is fresh
-3. the side resolves: `leader`
+3. the side resolves: `trailer`
 4. the backed price is inside `1.4`–`None`
 5. `line_open >= 140`
 6. `pm_away <= 2.92`
@@ -2378,6 +1852,26 @@ Ordered gates, in this order:
 Validated by this run and written to `laz_strategy_registry` with
 `enabled = false`, so they exist in the database, joinable to their
 provenance, and cannot fire or break the load.
+
+### BAS_prop:first_s_0049
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Vision
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
+6. `line_move <= 4`
+7. `price_gap <= 1.89`
+8. `X_minute__minus__u_drought <= 27.3487`
+9. `tg_overround <= 1.1237`
+10. `tg_imp_over <= 0.605`
+11. first tick in the match on which all of the above hold
 
 ### BAS_spread_dog_c_0156
 
@@ -2397,6 +1891,62 @@ Ordered gates, in this order:
 8. `dog_odds_vol_180 <= 0.2508`
 9. first tick in the match on which all of the above hold
 
+### BAS_prop:first_s_0062
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
+6. `line_move <= 4`
+7. `lead_vs_line <= -143`
+8. `u_ratio_open <= 2.9167`
+9. `tg_overround <= 1.1237`
+10. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0056
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
+6. `line_move <= 4`
+7. `price_gap <= 1.89`
+8. `opp_drift <= 1.0811`
+9. `tg_overround <= 1.1237`
+10. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0060
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
+6. `lead_vs_line <= -150.5`
+7. `u_ratio_open <= 2.5724`
+8. `tg_overround <= 1.1237`
+9. first tick in the match on which all of the above hold
+
 ### BAS_spread_dog_c_0154
 
 **REGISTERED, NOT LIVE** · market `None` · backs `None` · price band `1.4` to `None` · tier Vision
@@ -2414,11 +1964,64 @@ Ordered gates, in this order:
 7. `dog_odds_vol_180 <= 0.2346`
 8. first tick in the match on which all of the above hold
 
+### BAS_prop:first_s_0059
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `u_overround <= 1.1109`
+6. `req_ratio <= 1.3805`
+7. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0054
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `line_open >= 140`
+6. `prog_score <= 0.35`
+7. `rk_odds_ratio <= 2.3716`
+8. `leader_runmax >= 1.8456`
+9. `tot_vs_line <= -128.8692`
+10. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0055
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
+6. `lead_vs_line <= -140.5`
+7. `req_ratio >= 1.195`
+8. `tg_overround <= 1.1237`
+9. first tick in the match on which all of the above hold
+
 ### BAS_q1_winner_0139
 
 **REGISTERED, NOT LIVE** · market `None` · backs `None` · price band `1.4` to `None` · tier Npc
 
-> Not enabled: market '' / outcome 'q1_result' (base 'q1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['q1_result']
+> Not enabled: market '' / outcome '' (base 'q1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing
 
 Ordered gates, in this order:
 
@@ -2429,6 +2032,23 @@ Ordered gates, in this order:
 5. `X_q1_lead__minus__u_overround >= 1.88889`
 6. `rk_implied_edge >= 0.0764`
 7. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0098
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
+6. `rk_dog_odds >= 1.8351`
+7. `opp >= 1.91`
+8. first tick in the match on which all of the above hold
 
 ### BAS_spread_dog_c_0118
 
@@ -2449,9 +2069,84 @@ Ordered gates, in this order:
 9. `X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead >= -0.0083`
 10. first tick in the match on which all of the above hold
 
+### BAS_prop:first_s_0089
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
+6. `u_ratio_open <= 3.0575`
+7. `trailer_price >= 1.8315`
+8. `pc_f3e46219 <= 2.0943`
+9. `lead_changes_300s <= 1`
+10. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0047
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `line_open >= 140`
+6. `prog_score <= 0.35`
+7. `rk_odds_ratio <= 2.3716`
+8. `X_minute__minus__u_drought <= 28.0923`
+9. `tg_overround <= 1.1237`
+10. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0097
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `dog_odds_vol_180 <= 0.15546`
+6. `rk_dog_odds >= 1.85`
+7. `pc_f3e46219 <= 2.0943`
+8. `lead_changes_300s <= 1`
+9. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0091
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `total_points_under >= 1.75`
+6. `hour >= 2`
+7. `away_odds >= 1.159999966621399`
+8. `tot_vs_line <= -129.823`
+9. `opp >= 1.53`
+10. first tick in the match on which all of the above hold
+
 ### BAS_prop:match_t_0073
 
-**REGISTERED, NOT LIVE** · market `None` · backs `None` · price band `1.4` to `None` · tier Vision
+**REGISTERED, NOT LIVE** · market `None` · backs `Total_Under` · price band `1.4` to `None` · tier Vision
 
 > Not enabled: base 'prop:match_total_pace' settles a total but its own name does not say UNDER or OVER; registering the wrong direction settles the bet on the opposite event
 
@@ -2459,7 +2154,7 @@ Ordered gates, in this order:
 
 1. the market is open
 2. the feed is fresh
-3. the side resolves: `None`
+3. the side resolves: `Total_Under`
 4. the backed price is inside `1.4`–`None`
 5. `rk_odds_ratio <= 2.6602`
 6. `lead_vs_line >= -173.8462`
@@ -2469,7 +2164,7 @@ Ordered gates, in this order:
 
 **REGISTERED, NOT LIVE** · market `None` · backs `None` · price band `1.4` to `None` · tier Vision
 
-> Not enabled: market '' / outcome 'q1_result' (base 'q1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['q1_result']
+> Not enabled: market '' / outcome '' (base 'q1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing
 
 Ordered gates, in this order:
 
@@ -2481,11 +2176,82 @@ Ordered gates, in this order:
 6. `signed_lead <= 4.5385`
 7. first tick in the match on which all of the above hold
 
+### BAS_spec:HT_Unde_0122
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Vision
+
+> Not enabled: the base backs the winner of a PERIOD. resolve_side answers only the side leading right now; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
+6. `rk_dog_odds >= 1.8351`
+7. `lead_changes_300s <= 2`
+8. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0052
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `line_open >= 140`
+6. `prog_score <= 0.35`
+7. `rk_odds_ratio <= 2.3716`
+8. `total_line_move >= -4`
+9. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0058
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
+6. `lead_vs_line <= -151.823`
+7. `opp_o <= 4.17`
+8. `px_gap_ratio <= 1.442`
+9. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0051
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
+6. `lead_vs_line <= -140.5`
+7. `secs_since_quarter_start <= 41.6871`
+8. `rk_fav_odds >= 1.2738`
+9. first tick in the match on which all of the above hold
+
 ### BAS_h1_winner_0177
 
 **REGISTERED, NOT LIVE** · market `None` · backs `None` · price band `1.4` to `None` · tier Npc
 
-> Not enabled: market '' / outcome 'h1_result' (base 'h1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['h1_result']
+> Not enabled: market '' / outcome '' (base 'h1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing
 
 Ordered gates, in this order:
 
@@ -2498,11 +2264,11 @@ Ordered gates, in this order:
 7. `u_flat <= 0.4769`
 8. first tick in the match on which all of the above hold
 
-### BAS_prop:match_t_0021
+### BAS_prop:first_s_0096
 
-**REGISTERED, NOT LIVE** · market `None` · backs `None` · price band `1.4` to `None` · tier Vision
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
 
-> Not enabled: base 'prop:match_total_pace' settles a total but its own name does not say UNDER or OVER; registering the wrong direction settles the bet on the opposite event
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
 
 Ordered gates, in this order:
 
@@ -2511,12 +2277,67 @@ Ordered gates, in this order:
 3. the side resolves: `None`
 4. the backed price is inside `1.4`–`None`
 5. `prog_score <= 0.35`
+6. `odds_ratio <= 1.2094`
+7. `pts_last_60s <= 6`
+8. `lead_m15 <= 1`
+9. `rk_odds_ratio >= 1.0318`
+10. first tick in the match on which all of the above hold
+
+### BAS_prop:match_t_0021
+
+**REGISTERED, NOT LIVE** · market `None` · backs `Total_Under` · price band `1.4` to `None` · tier Vision
+
+> Not enabled: base 'prop:match_total_pace' settles a total but its own name does not say UNDER or OVER; registering the wrong direction settles the bet on the opposite event
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `Total_Under`
+4. the backed price is inside `1.4`–`None`
+5. `prog_score <= 0.35`
 6. `line_move <= 4`
 7. `price_gap <= 1.89`
 8. `opp_drift <= 1.0811`
 9. `trail <= 6`
 10. `pace_last_300s_vs_line >= -174.5`
 11. first tick in the match on which all of the above hold
+
+### BAS_spec:HT_Unde_0123
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Vision
+
+> Not enabled: the base backs the winner of a PERIOD. resolve_side answers only the side leading right now; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `total_points_under >= 1.75`
+6. `pm_away <= 2.85`
+7. `X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead <= -19.1179`
+8. `u_vel_t <= 0.0198`
+9. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0053
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `line_open >= 140`
+6. `need_frac >= 0.4`
+7. `prog_score <= 0.1318`
+8. `px_gap_ratio <= 1.4925`
+9. first tick in the match on which all of the above hold
 
 ### BAS_spread_dog_c_0155
 
@@ -2535,6 +2356,22 @@ Ordered gates, in this order:
 7. `rk_dog_odds >= 1.8392`
 8. `lead_changes_300s <= 1`
 9. first tick in the match on which all of the above hold
+
+### BAS_spec:HT_Unde_0124
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Vision
+
+> Not enabled: the base backs the winner of a PERIOD. resolve_side answers only the side leading right now; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `imbal >= 0.0217`
+6. `pc_6a99ae09 >= -0.6204`
+7. first tick in the match on which all of the above hold
 
 ### BAS_spread_dog_c_0119
 
@@ -2555,6 +2392,80 @@ Ordered gates, in this order:
 9. `point_spread_handicap <= -1.5`
 10. first tick in the match on which all of the above hold
 
+### BAS_prop:first_s_0090
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `line_open >= 140`
+6. `need_frac >= 0.4`
+7. `trailer_price >= 1.8471`
+8. `pc_f3e46219 <= 2.3571`
+9. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0065
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `line_open >= 140`
+6. `need_frac >= 0.4`
+7. `prog_score <= 0.35`
+8. `rk_odds_ratio <= 2.8601`
+9. `margin_per_possession <= 0.0166`
+10. `tg_overround <= 1.1236`
+11. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0064
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `line_open >= 140`
+6. `need_frac >= 0.4`
+7. `prog_score <= 0.35`
+8. `rk_odds_ratio <= 2.8601`
+9. `wall_min >= 138.5`
+10. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0093
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `q <= 1`
+6. `lead_m30 <= 1`
+7. `opp >= 1.5927`
+8. first tick in the match on which all of the above hold
+
 ### BAS_spread_dog_c_0120
 
 **REGISTERED, NOT LIVE** · market `None` · backs `None` · price band `1.4` to `None` · tier Vision
@@ -2573,6 +2484,26 @@ Ordered gates, in this order:
 8. `X_u_elapsed__minus__u_time_in_lead >= -0.1992`
 9. first tick in the match on which all of the above hold
 
+### BAS_prop:first_s_0095
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `total_points_under >= 1.75`
+6. `hour >= 2`
+7. `away_odds >= 1.159999966621399`
+8. `total_points_over < 1.899999976158142`
+9. `tot_vs_line <= -112.908`
+10. `rk_odds_ratio >= 1.0867`
+11. first tick in the match on which all of the above hold
+
 ### BAS_spread_dog_c_0178
 
 **REGISTERED, NOT LIVE** · market `None` · backs `None` · price band `1.4` to `None` · tier Jobber
@@ -2589,31 +2520,104 @@ Ordered gates, in this order:
 6. `u_overround <= 1.1091`
 7. first tick in the match on which all of the above hold
 
-### BAS_prop:h1_lead_0175
+### BAS_prop:first_s_0094
 
-**REGISTERED, NOT LIVE** · market `None` · backs `leader` · price band `1.4` to `None` · tier Npc
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
 
-> Not enabled: market '' / outcome '' (base 'prop:h1_leader_hold') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
 
 Ordered gates, in this order:
 
 1. the market is open
 2. the feed is fresh
-3. the side resolves: `leader`
+3. the side resolves: `None`
 4. the backed price is inside `1.4`–`None`
-5. `u_elapsed >= 0.05`
-6. `u_elapsed <= 0.49`
-7. `line_open >= 140`
-8. `rk_lead_off_high >= 0.2333`
-9. `lead_m15 <= 1`
-10. `X_point_spread_home__x__q1_lead >= 1.8237`
-11. first tick in the match on which all of the above hold
+5. `prog_score <= 0.35`
+6. `rk_fav_odds <= 1.75`
+7. `leader_implied_gap >= -0.1701`
+8. `tg_px_ratio <= 1.1098`
+9. first tick in the match on which all of the above hold
+
+### BAS_spec:HT_Unde_0042
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Jobber
+
+> Not enabled: the base backs the winner of a PERIOD. resolve_side answers only the side leading right now; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `line_open >= 140`
+6. `need_frac >= 0.4`
+7. `prog_score <= 0.35`
+8. `rk_odds_ratio <= 2.8601`
+9. `margin_per_possession <= 0.0166`
+10. `u_price_open >= 1.34`
+11. `X_minute__minus__u_pace >= -18`
+12. `needed_rate_for_over >= 3.3176`
+13. first tick in the match on which all of the above hold
+
+### BAS_prop:first_s_0099
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `line_open >= 140`
+6. `prog_score <= 0.35`
+7. `h_score <= 16.1205`
+8. `is_favorite >= 1`
+9. first tick in the match on which all of the above hold
+
+### BAS_spec:Early_H_0088
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Vision
+
+> Not enabled: the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `lead_m15 <= 0`
+6. `backed_pts_last_60s <= 4.4718`
+7. `pc_dc4196fb <= -2.1901`
+8. first tick in the match on which all of the above hold
+
+### BAS_prop:h1_lead_0175
+
+**REGISTERED, NOT LIVE** · market `match_winner` · backs `None` · price band `1.4` to `None` · tier Npc
+
+> Not enabled: the base backs the winner of a PERIOD (half, quarter, map or set). resolve_side answers only the side leading RIGHT NOW, which is a different side on most ticks; resolve_side cannot answer it, so it is registered and not enabled
+
+Ordered gates, in this order:
+
+1. the market is open
+2. the feed is fresh
+3. the side resolves: `None`
+4. the backed price is inside `1.4`–`None`
+5. `line_open >= 140`
+6. `rk_lead_off_high >= 0.2333`
+7. `lead_m15 <= 1`
+8. `X_point_spread_home__x__q1_lead >= 1.8237`
+9. first tick in the match on which all of the above hold
 
 ### BAS_h1_winner_0176
 
 **REGISTERED, NOT LIVE** · market `None` · backs `None` · price band `1.4` to `None` · tier Npc
 
-> Not enabled: market '' / outcome 'h1_result' (base 'h1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['h1_result']
+> Not enabled: market '' / outcome '' (base 'h1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing
 
 Ordered gates, in this order:
 

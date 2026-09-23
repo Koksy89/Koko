@@ -32,11 +32,6 @@
    "kind": "manufactured"
   },
   {
-   "column_name": "x_minute__minus__u_pace",
-   "feature": "X_minute__minus__u_pace",
-   "kind": "manufactured"
-  },
-  {
    "column_name": "x_minute__over__u_pace",
    "feature": "X_minute__over__u_pace",
    "kind": "manufactured"
@@ -59,11 +54,6 @@
   {
    "column_name": "away_odds",
    "feature": "away_odds",
-   "kind": "feature"
-  },
-  {
-   "column_name": "backed_pts_last_60s",
-   "feature": "backed_pts_last_60s",
    "kind": "feature"
   },
   {
@@ -129,11 +119,6 @@
   {
    "column_name": "is_big_lead",
    "feature": "is_big_lead",
-   "kind": "feature"
-  },
-  {
-   "column_name": "is_favorite",
-   "feature": "is_favorite",
    "kind": "feature"
   },
   {
@@ -207,11 +192,6 @@
    "kind": "feature"
   },
   {
-   "column_name": "leader_implied_gap",
-   "feature": "leader_implied_gap",
-   "kind": "feature"
-  },
-  {
    "column_name": "leader_runmax",
    "feature": "leader_runmax",
    "kind": "feature"
@@ -249,11 +229,6 @@
   {
    "column_name": "loser_runmin",
    "feature": "loser_runmin",
-   "kind": "feature"
-  },
-  {
-   "column_name": "margin_per_possession",
-   "feature": "margin_per_possession",
    "kind": "feature"
   },
   {
@@ -312,11 +287,6 @@
    "kind": "feature"
   },
   {
-   "column_name": "opp",
-   "feature": "opp",
-   "kind": "feature"
-  },
-  {
    "column_name": "opp_drift",
    "feature": "opp_drift",
    "kind": "feature"
@@ -362,18 +332,8 @@
    "kind": "pca"
   },
   {
-   "column_name": "pc_6a99ae09",
-   "feature": "pc_6a99ae09",
-   "kind": "pca"
-  },
-  {
    "column_name": "pc_aa16b0a5",
    "feature": "pc_aa16b0a5",
-   "kind": "pca"
-  },
-  {
-   "column_name": "pc_dc4196fb",
-   "feature": "pc_dc4196fb",
    "kind": "pca"
   },
   {
@@ -442,16 +402,6 @@
    "kind": "feature"
   },
   {
-   "column_name": "px_gap_ratio",
-   "feature": "px_gap_ratio",
-   "kind": "feature"
-  },
-  {
-   "column_name": "q",
-   "feature": "q",
-   "kind": "feature"
-  },
-  {
    "column_name": "recovery_x",
    "feature": "recovery_x",
    "kind": "feature"
@@ -512,11 +462,6 @@
    "kind": "feature"
   },
   {
-   "column_name": "secs_since_quarter_start",
-   "feature": "secs_since_quarter_start",
-   "kind": "feature"
-  },
-  {
    "column_name": "secs_since_run_started",
    "feature": "secs_since_run_started",
    "kind": "feature"
@@ -559,11 +504,6 @@
   {
    "column_name": "tg_proj_vs_line",
    "feature": "tg_proj_vs_line",
-   "kind": "feature"
-  },
-  {
-   "column_name": "tg_px_ratio",
-   "feature": "tg_px_ratio",
    "kind": "feature"
   },
   {
@@ -672,11 +612,6 @@
    "kind": "feature"
   },
   {
-   "column_name": "u_price_open",
-   "feature": "u_price_open",
-   "kind": "feature"
-  },
-  {
    "column_name": "u_ratio_open",
    "feature": "u_ratio_open",
    "kind": "feature"
@@ -689,11 +624,6 @@
   {
    "column_name": "u_trend",
    "feature": "u_trend",
-   "kind": "feature"
-  },
-  {
-   "column_name": "u_vel_t",
-   "feature": "u_vel_t",
    "kind": "feature"
   },
   {
@@ -717,7 +647,6 @@
   "X_X_u_elapsed__minus__u_time_in_lead__over__X_u_pace__over__u_time_in_lead",
   "X_a_score__over__home_odds",
   "X_home_odds__x__point_spread_away",
-  "X_minute__minus__u_pace",
   "X_minute__over__u_pace",
   "X_minute__x__u_pace",
   "X_u_elapsed__minus__u_time_in_lead",
@@ -732,7 +661,6 @@
   "hour",
   "imbal",
   "is_big_lead",
-  "is_favorite",
   "jump_loser",
   "ld_rank",
   "lead_jump",
@@ -745,7 +673,6 @@
   "needed_rate_for_over",
   "odds_ratio",
   "open_gap",
-  "opp",
   "opp_drift",
   "opp_o",
   "opp_velocity",
@@ -756,8 +683,6 @@
   "price_gap",
   "price_rank_in_match",
   "prog_q",
-  "px_gap_ratio",
-  "q",
   "recovery_x",
   "retrace_lead",
   "rk_dog_odds",
@@ -778,7 +703,6 @@
   "u_open",
   "u_overround",
   "u_pace",
-  "u_price_open",
   "u_ratio",
   "u_ratio_shift",
   "u_time_in_lead",
@@ -817,47 +741,6 @@
     "ten_mins"
    ],
    "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
-    "line_move <= 4",
-    "price_gap <= 1.89",
-    "X_minute__minus__u_drought <= 27.3487",
-    "tg_overround <= 1.1237",
-    "tg_imp_over <= 0.605"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [
-    "minute"
-   ],
-   "needs_pca": [],
-   "odds": 2.23,
-   "oos_roi": 14.1,
-   "oos_win": 52.2,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0049",
-   "terms": [
-    "X_minute__minus__u_drought",
-    "line_move",
-    "price_gap",
-    "prog_score",
-    "tg_imp_over",
-    "tg_overround"
-   ],
-   "tier": "Vision"
   },
   {
    "base_mask": [],
@@ -1005,43 +888,6 @@
   },
   {
    "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
-    "line_move <= 4",
-    "lead_vs_line <= -143",
-    "u_ratio_open <= 2.9167",
-    "tg_overround <= 1.1237"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.36,
-   "oos_roi": 11.1,
-   "oos_win": 48.4,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0062",
-   "terms": [
-    "lead_vs_line",
-    "line_move",
-    "prog_score",
-    "tg_overround",
-    "u_ratio_open"
-   ],
-   "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
    "bet_role": "Total_Points_Under",
    "bets_sha": "",
    "conditions": [
@@ -1152,43 +998,6 @@
    "conditions": [
     "prog_score <= 0.35",
     "line_move <= 4",
-    "price_gap <= 1.89",
-    "opp_drift <= 1.0811",
-    "tg_overround <= 1.1237"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.254,
-   "oos_roi": 8.5,
-   "oos_win": 49.3,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0056",
-   "terms": [
-    "line_move",
-    "opp_drift",
-    "price_gap",
-    "prog_score",
-    "tg_overround"
-   ],
-   "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
-    "line_move <= 4",
     "trailer_price >= 1.92",
     "pc_f3e46219 <= 2.3868"
    ],
@@ -1216,41 +1025,6 @@
     "trailer_price"
    ],
    "tier": "Npc"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
-    "lead_vs_line <= -150.5",
-    "u_ratio_open <= 2.5724",
-    "tg_overround <= 1.1237"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.336,
-   "oos_roi": 8.0,
-   "oos_win": 47.1,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0060",
-   "terms": [
-    "lead_vs_line",
-    "prog_score",
-    "tg_overround",
-    "u_ratio_open"
-   ],
-   "tier": "Jobber"
   },
   {
    "base_mask": [],
@@ -1318,37 +1092,6 @@
   },
   {
    "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "u_overround <= 1.1109",
-    "req_ratio <= 1.3805"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.357,
-   "oos_roi": 7.4,
-   "oos_win": 47.9,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0059",
-   "terms": [
-    "req_ratio",
-    "u_overround"
-   ],
-   "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
    "bet_role": "Total_Points_Under",
    "bets_sha": "",
    "conditions": [
@@ -1387,43 +1130,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "line_open >= 140",
-    "prog_score <= 0.35",
-    "rk_odds_ratio <= 2.3716",
-    "leader_runmax >= 1.8456",
-    "tot_vs_line <= -128.8692"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.254,
-   "oos_roi": 7.1,
-   "oos_win": 47.9,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0054",
-   "terms": [
-    "leader_runmax",
-    "line_open",
-    "prog_score",
-    "rk_odds_ratio",
-    "tot_vs_line"
-   ],
-   "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
     "prog_score <= 0.35",
     "line_move <= 4",
     "price_gap <= 1.89",
@@ -1455,74 +1161,6 @@
     "trail"
    ],
    "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
-    "lead_vs_line <= -140.5",
-    "req_ratio >= 1.195",
-    "tg_overround <= 1.1237"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.429,
-   "oos_roi": 6.8,
-   "oos_win": 45.5,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0055",
-   "terms": [
-    "lead_vs_line",
-    "prog_score",
-    "req_ratio",
-    "tg_overround"
-   ],
-   "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
-    "rk_dog_odds >= 1.8351",
-    "opp >= 1.91"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.568,
-   "oos_roi": 6.4,
-   "oos_win": 67.9,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0098",
-   "terms": [
-    "opp",
-    "prog_score",
-    "rk_dog_odds"
-   ],
-   "tier": "Npc"
   },
   {
    "base_mask": [],
@@ -1772,154 +1410,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "prog_score <= 0.35",
-    "u_ratio_open <= 3.0575",
-    "trailer_price >= 1.8315",
-    "pc_f3e46219 <= 2.0943",
-    "lead_changes_300s <= 1"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.612,
-   "oos_roi": 5.2,
-   "oos_win": 65.5,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0089",
-   "terms": [
-    "lead_changes_300s",
-    "pc_f3e46219",
-    "prog_score",
-    "trailer_price",
-    "u_ratio_open"
-   ],
-   "tier": "Npc"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "line_open >= 140",
-    "prog_score <= 0.35",
-    "rk_odds_ratio <= 2.3716",
-    "X_minute__minus__u_drought <= 28.0923",
-    "tg_overround <= 1.1237"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [
-    "minute"
-   ],
-   "needs_pca": [],
-   "odds": 2.198,
-   "oos_roi": 5.2,
-   "oos_win": 48.7,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0047",
-   "terms": [
-    "X_minute__minus__u_drought",
-    "line_open",
-    "prog_score",
-    "rk_odds_ratio",
-    "tg_overround"
-   ],
-   "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "dog_odds_vol_180 <= 0.15546",
-    "rk_dog_odds >= 1.85",
-    "pc_f3e46219 <= 2.0943",
-    "lead_changes_300s <= 1"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.599,
-   "oos_roi": 5.1,
-   "oos_win": 66.1,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0097",
-   "terms": [
-    "dog_odds_vol_180",
-    "lead_changes_300s",
-    "pc_f3e46219",
-    "rk_dog_odds"
-   ],
-   "tier": "Npc"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "total_points_under >= 1.75",
-    "hour >= 2",
-    "away_odds >= 1.159999966621399",
-    "tot_vs_line <= -129.823",
-    "opp >= 1.53"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.645,
-   "oos_roi": 5.0,
-   "oos_win": 64.7,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0091",
-   "terms": [
-    "away_odds",
-    "hour",
-    "opp",
-    "tot_vs_line",
-    "total_points_under"
-   ],
-   "tier": "Npc"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
     "rk_fav_odds >= 1.23",
     "u_ratio_open <= 2.842"
    ],
@@ -1985,7 +1475,7 @@
   },
   {
    "base_mask": [],
-   "bet_role": "leader",
+   "bet_role": "trailer",
    "bets_sha": "",
    "conditions": [
     "time_at_this_price <= 28.2017",
@@ -2484,39 +1974,6 @@
   },
   {
    "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
-    "rk_dog_odds >= 1.8351",
-    "lead_changes_300s <= 2"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "spec:HT_Underdog_Fade",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.744,
-   "oos_roi": 3.5,
-   "oos_win": 59.4,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_spec:HT_Unde_0122",
-   "terms": [
-    "lead_changes_300s",
-    "prog_score",
-    "rk_dog_odds"
-   ],
-   "tier": "Vision"
-  },
-  {
-   "base_mask": [],
    "bet_role": "Total_Points_Under",
    "bets_sha": "",
    "conditions": [
@@ -2547,41 +2004,6 @@
     "tg_proj_vs_line"
    ],
    "tier": "Vision"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "line_open >= 140",
-    "prog_score <= 0.35",
-    "rk_odds_ratio <= 2.3716",
-    "total_line_move >= -4"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.211,
-   "oos_roi": 3.5,
-   "oos_win": 46.9,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0052",
-   "terms": [
-    "line_open",
-    "prog_score",
-    "rk_odds_ratio",
-    "total_line_move"
-   ],
-   "tier": "Jobber"
   },
   {
    "base_mask": [],
@@ -2622,76 +2044,6 @@
    "bets_sha": "",
    "conditions": [
     "prog_score <= 0.35",
-    "lead_vs_line <= -151.823",
-    "opp_o <= 4.17",
-    "px_gap_ratio <= 1.442"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.231,
-   "oos_roi": 3.4,
-   "oos_win": 46.3,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0058",
-   "terms": [
-    "lead_vs_line",
-    "opp_o",
-    "prog_score",
-    "px_gap_ratio"
-   ],
-   "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
-    "lead_vs_line <= -140.5",
-    "secs_since_quarter_start <= 41.6871",
-    "rk_fav_odds >= 1.2738"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.242,
-   "oos_roi": 3.3,
-   "oos_win": 46.2,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0051",
-   "terms": [
-    "lead_vs_line",
-    "prog_score",
-    "rk_fav_odds",
-    "secs_since_quarter_start"
-   ],
-   "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
     "rk_fav_odds <= 1.75",
     "u_overround <= 1.113"
    ],
@@ -2716,43 +2068,6 @@
     "prog_score",
     "rk_fav_odds",
     "u_overround"
-   ],
-   "tier": "Npc"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
-    "odds_ratio <= 1.2094",
-    "pts_last_60s <= 6",
-    "lead_m15 <= 1",
-    "rk_odds_ratio >= 1.0318"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.629,
-   "oos_roi": 3.2,
-   "oos_win": 64.2,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0096",
-   "terms": [
-    "lead_m15",
-    "odds_ratio",
-    "prog_score",
-    "pts_last_60s",
-    "rk_odds_ratio"
    ],
    "tier": "Npc"
   },
@@ -2831,79 +2146,6 @@
     "u_drought"
    ],
    "tier": "Npc"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "total_points_under >= 1.75",
-    "pm_away <= 2.85",
-    "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead <= -19.1179",
-    "u_vel_t <= 0.0198"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "spec:HT_Underdog_Fade",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [
-    "u_elapsed",
-    "u_time_in_lead"
-   ],
-   "needs_pca": [],
-   "odds": 1.737,
-   "oos_roi": 3.0,
-   "oos_win": 59.5,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_spec:HT_Unde_0123",
-   "terms": [
-    "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead",
-    "pm_away",
-    "total_points_under",
-    "u_vel_t"
-   ],
-   "tier": "Vision"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "line_open >= 140",
-    "need_frac >= 0.4",
-    "prog_score <= 0.1318",
-    "px_gap_ratio <= 1.4925"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.282,
-   "oos_roi": 3.0,
-   "oos_win": 45.9,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0053",
-   "terms": [
-    "line_open",
-    "need_frac",
-    "prog_score",
-    "px_gap_ratio"
-   ],
-   "tier": "Jobber"
   },
   {
    "base_mask": [],
@@ -3236,37 +2478,6 @@
   },
   {
    "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "imbal >= 0.0217",
-    "pc_6a99ae09 >= -0.6204"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "spec:HT_Underdog_Fade",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.719,
-   "oos_roi": 2.3,
-   "oos_win": 59.6,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_spec:HT_Unde_0124",
-   "terms": [
-    "imbal",
-    "pc_6a99ae09"
-   ],
-   "tier": "Vision"
-  },
-  {
-   "base_mask": [],
    "bet_role": "Total_Points_Under",
    "bets_sha": "",
    "conditions": [
@@ -3578,41 +2789,6 @@
   },
   {
    "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "line_open >= 140",
-    "need_frac >= 0.4",
-    "trailer_price >= 1.8471",
-    "pc_f3e46219 <= 2.3571"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.604,
-   "oos_roi": 1.9,
-   "oos_win": 64.0,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0090",
-   "terms": [
-    "line_open",
-    "need_frac",
-    "pc_f3e46219",
-    "trailer_price"
-   ],
-   "tier": "Npc"
-  },
-  {
-   "base_mask": [],
    "bet_role": "Total_Points_Under",
    "bets_sha": "",
    "conditions": [
@@ -3777,45 +2953,6 @@
   },
   {
    "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "line_open >= 140",
-    "need_frac >= 0.4",
-    "prog_score <= 0.35",
-    "rk_odds_ratio <= 2.8601",
-    "margin_per_possession <= 0.0166",
-    "tg_overround <= 1.1236"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.341,
-   "oos_roi": 1.8,
-   "oos_win": 45.8,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0065",
-   "terms": [
-    "line_open",
-    "margin_per_possession",
-    "need_frac",
-    "prog_score",
-    "rk_odds_ratio",
-    "tg_overround"
-   ],
-   "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
    "bet_role": "dog_leader",
    "bets_sha": "",
    "conditions": [
@@ -3844,43 +2981,6 @@
     "tg_imp_over",
     "u_overround",
     "u_ratio_open"
-   ],
-   "tier": "Jobber"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "line_open >= 140",
-    "need_frac >= 0.4",
-    "prog_score <= 0.35",
-    "rk_odds_ratio <= 2.8601",
-    "wall_min >= 138.5"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 2.358,
-   "oos_roi": 1.8,
-   "oos_win": 43.6,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0064",
-   "terms": [
-    "line_open",
-    "need_frac",
-    "prog_score",
-    "rk_odds_ratio",
-    "wall_min"
    ],
    "tier": "Jobber"
   },
@@ -3984,39 +3084,6 @@
    "terms": [
     "X_a_score__over__home_odds",
     "lead_m75"
-   ],
-   "tier": "Npc"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "q <= 1",
-    "lead_m30 <= 1",
-    "opp >= 1.5927"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.653,
-   "oos_roi": 1.6,
-   "oos_win": 62.1,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0093",
-   "terms": [
-    "lead_m30",
-    "opp",
-    "q"
    ],
    "tier": "Npc"
   },
@@ -4191,45 +3258,6 @@
   },
   {
    "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "total_points_under >= 1.75",
-    "hour >= 2",
-    "away_odds >= 1.159999966621399",
-    "total_points_over < 1.899999976158142",
-    "tot_vs_line <= -112.908",
-    "rk_odds_ratio >= 1.0867"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.552,
-   "oos_roi": 1.4,
-   "oos_win": 65.7,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0095",
-   "terms": [
-    "away_odds",
-    "hour",
-    "rk_odds_ratio",
-    "tot_vs_line",
-    "total_points_over",
-    "total_points_under"
-   ],
-   "tier": "Npc"
-  },
-  {
-   "base_mask": [],
    "bet_role": "drifted",
    "bets_sha": "",
    "conditions": [
@@ -4370,41 +3398,6 @@
   },
   {
    "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "prog_score <= 0.35",
-    "rk_fav_odds <= 1.75",
-    "leader_implied_gap >= -0.1701",
-    "tg_px_ratio <= 1.1098"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.586,
-   "oos_roi": 1.2,
-   "oos_win": 64.8,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0094",
-   "terms": [
-    "leader_implied_gap",
-    "prog_score",
-    "rk_fav_odds",
-    "tg_px_ratio"
-   ],
-   "tier": "Npc"
-  },
-  {
-   "base_mask": [],
    "bet_role": "Total_Points_Under",
    "bets_sha": "",
    "conditions": [
@@ -4439,51 +3432,6 @@
     "u_vf"
    ],
    "tier": "Vision"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "line_open >= 140",
-    "need_frac >= 0.4",
-    "prog_score <= 0.35",
-    "rk_odds_ratio <= 2.8601",
-    "margin_per_possession <= 0.0166",
-    "u_price_open >= 1.34",
-    "X_minute__minus__u_pace >= -18",
-    "needed_rate_for_over >= 3.3176"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "spec:HT_Underdog_Fade",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [
-    "minute"
-   ],
-   "needs_pca": [],
-   "odds": 2.478,
-   "oos_roi": 1.2,
-   "oos_win": 41.6,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_spec:HT_Unde_0042",
-   "terms": [
-    "X_minute__minus__u_pace",
-    "line_open",
-    "margin_per_possession",
-    "need_frac",
-    "needed_rate_for_over",
-    "prog_score",
-    "rk_odds_ratio",
-    "u_price_open"
-   ],
-   "tier": "Jobber"
   },
   {
    "base_mask": [],
@@ -4706,41 +3654,6 @@
    "conditions": [
     "line_open >= 140",
     "prog_score <= 0.35",
-    "h_score <= 16.1205",
-    "is_favorite >= 1"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "prop:first_scorer_hold",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.627,
-   "oos_roi": 0.8,
-   "oos_win": 62.3,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_prop:first_s_0099",
-   "terms": [
-    "h_score",
-    "is_favorite",
-    "line_open",
-    "prog_score"
-   ],
-   "tier": "Npc"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "line_open >= 140",
-    "prog_score <= 0.35",
     "rk_dog_odds >= 1.8392",
     "X_u_elapsed__minus__u_time_in_lead <= 1.0763",
     "total_points_handicap >= 150.4538"
@@ -4903,39 +3816,6 @@
     "odds_ratio"
    ],
    "tier": "Npc"
-  },
-  {
-   "base_mask": [],
-   "bet_role": "leader",
-   "bets_sha": "",
-   "conditions": [
-    "lead_m15 <= 0",
-    "backed_pts_last_60s <= 4.4718",
-    "pc_dc4196fb <= -2.1901"
-   ],
-   "enabled": true,
-   "entry_window": 60,
-   "exec_sha": "",
-   "execution": [],
-   "family": "spec:Early_Hammer",
-   "market": "match_winner",
-   "max_odds": null,
-   "min_odds": 1.4,
-   "n_bets": null,
-   "needs_feature": [],
-   "needs_pca": [],
-   "odds": 1.99,
-   "oos_roi": 0.6,
-   "oos_win": 50.9,
-   "spec_sha": "",
-   "sport": "basketball",
-   "strategy": "BAS_spec:Early_H_0088",
-   "terms": [
-    "backed_pts_last_60s",
-    "lead_m15",
-    "pc_dc4196fb"
-   ],
-   "tier": "Vision"
   },
   {
    "base_mask": [],
@@ -5258,7 +4138,7 @@
   },
   {
    "base_mask": [],
-   "bet_role": "leader",
+   "bet_role": "trailer",
    "bets_sha": "",
    "conditions": [
     "line_open >= 140",
@@ -5371,55 +4251,7 @@
     0.62
    ]
   },
-  "pc_6a99ae09": {
-   "mu": [
-    1.0,
-    2.0,
-    3.0
-   ],
-   "n_fit": 1200,
-   "sdv": [
-    0.5,
-    1.5,
-    2.5
-   ],
-   "sport": "basketball",
-   "terms": [
-    "line_move",
-    "line_open",
-    "wall_min"
-   ],
-   "w": [
-    0.6,
-    -0.5,
-    0.62
-   ]
-  },
   "pc_aa16b0a5": {
-   "mu": [
-    1.0,
-    2.0,
-    3.0
-   ],
-   "n_fit": 1200,
-   "sdv": [
-    0.5,
-    1.5,
-    2.5
-   ],
-   "sport": "basketball",
-   "terms": [
-    "line_move",
-    "line_open",
-    "wall_min"
-   ],
-   "w": [
-    0.6,
-    -0.5,
-    0.62
-   ]
-  },
-  "pc_dc4196fb": {
    "mu": [
     1.0,
     2.0,
@@ -5495,6 +4327,25 @@
  "registered_not_live": [
   {
    "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "X_minute__minus__u_drought <= 27.3487",
+    "tg_overround <= 1.1237",
+    "tg_imp_over <= 0.605"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0049",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
    "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
    "conditions": [
     "line_open >= 140",
@@ -5509,6 +4360,59 @@
    "min_odds": 1.4,
    "strategy": "BAS_spread_dog_c_0156",
    "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "lead_vs_line <= -143",
+    "u_ratio_open <= 2.9167",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0062",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "line_move <= 4",
+    "price_gap <= 1.89",
+    "opp_drift <= 1.0811",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0056",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "lead_vs_line <= -150.5",
+    "u_ratio_open <= 2.5724",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0060",
+   "tier": "Jobber"
   },
   {
    "bet_role": null,
@@ -5528,7 +4432,57 @@
   },
   {
    "bet_role": null,
-   "blocked_reason": "market '' / outcome 'q1_result' (base 'q1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['q1_result']",
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "u_overround <= 1.1109",
+    "req_ratio <= 1.3805"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0059",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "leader_runmax >= 1.8456",
+    "tot_vs_line <= -128.8692"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0054",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "lead_vs_line <= -140.5",
+    "req_ratio >= 1.195",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0055",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome '' (base 'q1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing",
    "conditions": [
     "X_q1_lead__minus__u_overround >= 1.88889",
     "rk_implied_edge >= 0.0764"
@@ -5539,6 +4493,22 @@
    "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_q1_winner_0139",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8351",
+    "opp >= 1.91"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0098",
    "tier": "Npc"
   },
   {
@@ -5561,6 +4531,77 @@
   },
   {
    "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "u_ratio_open <= 3.0575",
+    "trailer_price >= 1.8315",
+    "pc_f3e46219 <= 2.0943",
+    "lead_changes_300s <= 1"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0089",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "X_minute__minus__u_drought <= 28.0923",
+    "tg_overround <= 1.1237"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0047",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "dog_odds_vol_180 <= 0.15546",
+    "rk_dog_odds >= 1.85",
+    "pc_f3e46219 <= 2.0943",
+    "lead_changes_300s <= 1"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0097",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "total_points_under >= 1.75",
+    "hour >= 2",
+    "away_odds >= 1.159999966621399",
+    "tot_vs_line <= -129.823",
+    "opp >= 1.53"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0091",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Under",
    "blocked_reason": "base 'prop:match_total_pace' settles a total but its own name does not say UNDER or OVER; registering the wrong direction settles the bet on the opposite event",
    "conditions": [
     "rk_odds_ratio <= 2.6602",
@@ -5576,7 +4617,7 @@
   },
   {
    "bet_role": null,
-   "blocked_reason": "market '' / outcome 'q1_result' (base 'q1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['q1_result']",
+   "blocked_reason": "market '' / outcome '' (base 'q1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing",
    "conditions": [
     "X_pace_ratio__minus__q1_lead <= -2.60393",
     "signed_lead <= 4.5385"
@@ -5591,7 +4632,74 @@
   },
   {
    "bet_role": null,
-   "blocked_reason": "market '' / outcome 'h1_result' (base 'h1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['h1_result']",
+   "blocked_reason": "the base backs the winner of a PERIOD. resolve_side answers only the side leading right now; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "rk_dog_odds >= 1.8351",
+    "lead_changes_300s <= 2"
+   ],
+   "entry_window": 60,
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_spec:HT_Unde_0122",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.3716",
+    "total_line_move >= -4"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0052",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "lead_vs_line <= -151.823",
+    "opp_o <= 4.17",
+    "px_gap_ratio <= 1.442"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0058",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "lead_vs_line <= -140.5",
+    "secs_since_quarter_start <= 41.6871",
+    "rk_fav_odds >= 1.2738"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0051",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "market '' / outcome '' (base 'h1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing",
    "conditions": [
     "time_at_this_price <= 28.2017",
     "price_rank_in_match >= 0.3333",
@@ -5607,6 +4715,24 @@
   },
   {
    "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "prog_score <= 0.35",
+    "odds_ratio <= 1.2094",
+    "pts_last_60s <= 6",
+    "lead_m15 <= 1",
+    "rk_odds_ratio >= 1.0318"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0096",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": "Total_Under",
    "blocked_reason": "base 'prop:match_total_pace' settles a total but its own name does not say UNDER or OVER; registering the wrong direction settles the bet on the opposite event",
    "conditions": [
     "prog_score <= 0.35",
@@ -5626,6 +4752,40 @@
   },
   {
    "bet_role": null,
+   "blocked_reason": "the base backs the winner of a PERIOD. resolve_side answers only the side leading right now; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "total_points_under >= 1.75",
+    "pm_away <= 2.85",
+    "X_X_u_elapsed__minus__u_time_in_lead__minus__X_u_pace__over__u_time_in_lead <= -19.1179",
+    "u_vel_t <= 0.0198"
+   ],
+   "entry_window": 60,
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_spec:HT_Unde_0123",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.1318",
+    "px_gap_ratio <= 1.4925"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0053",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
    "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
    "conditions": [
     "line_open >= 140",
@@ -5639,6 +4799,21 @@
    "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_spread_dog_c_0155",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the winner of a PERIOD. resolve_side answers only the side leading right now; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "imbal >= 0.0217",
+    "pc_6a99ae09 >= -0.6204"
+   ],
+   "entry_window": 60,
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_spec:HT_Unde_0124",
    "tier": "Vision"
   },
   {
@@ -5661,6 +4836,76 @@
   },
   {
    "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "trailer_price >= 1.8471",
+    "pc_f3e46219 <= 2.3571"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0090",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.8601",
+    "margin_per_possession <= 0.0166",
+    "tg_overround <= 1.1236"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0065",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.8601",
+    "wall_min >= 138.5"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0064",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "q <= 1",
+    "lead_m30 <= 1",
+    "opp >= 1.5927"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0093",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
    "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
    "conditions": [
     "line_open >= 140",
@@ -5678,6 +4923,25 @@
   },
   {
    "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "total_points_under >= 1.75",
+    "hour >= 2",
+    "away_odds >= 1.159999966621399",
+    "total_points_over < 1.899999976158142",
+    "tot_vs_line <= -112.908",
+    "rk_odds_ratio >= 1.0867"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0095",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
    "blocked_reason": "market '' / outcome 'spread' (base 'spread_dog_cover') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['spread']",
    "conditions": [
     "price_move_since_score <= 1",
@@ -5692,11 +4956,80 @@
    "tier": "Jobber"
   },
   {
-   "bet_role": "leader",
-   "blocked_reason": "market '' / outcome '' (base 'prop:h1_leader_hold') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing",
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
    "conditions": [
-    "u_elapsed >= 0.05",
-    "u_elapsed <= 0.49",
+    "prog_score <= 0.35",
+    "rk_fav_odds <= 1.75",
+    "leader_implied_gap >= -0.1701",
+    "tg_px_ratio <= 1.1098"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0094",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the winner of a PERIOD. resolve_side answers only the side leading right now; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "line_open >= 140",
+    "need_frac >= 0.4",
+    "prog_score <= 0.35",
+    "rk_odds_ratio <= 2.8601",
+    "margin_per_possession <= 0.0166",
+    "u_price_open >= 1.34",
+    "X_minute__minus__u_pace >= -18",
+    "needed_rate_for_over >= 3.3176"
+   ],
+   "entry_window": 60,
+   "family": "spec:HT_Underdog_Fade",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_spec:HT_Unde_0042",
+   "tier": "Jobber"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "line_open >= 140",
+    "prog_score <= 0.35",
+    "h_score <= 16.1205",
+    "is_favorite >= 1"
+   ],
+   "entry_window": 60,
+   "family": "prop:first_scorer_hold",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_prop:first_s_0099",
+   "tier": "Npc"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the side that scored FIRST. resolve_side has no first-scorer role; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
+    "lead_m15 <= 0",
+    "backed_pts_last_60s <= 4.4718",
+    "pc_dc4196fb <= -2.1901"
+   ],
+   "entry_window": 60,
+   "family": "spec:Early_Hammer",
+   "market": "match_winner",
+   "max_odds": null,
+   "min_odds": 1.4,
+   "strategy": "BAS_spec:Early_H_0088",
+   "tier": "Vision"
+  },
+  {
+   "bet_role": null,
+   "blocked_reason": "the base backs the winner of a PERIOD (half, quarter, map or set). resolve_side answers only the side leading RIGHT NOW, which is a different side on most ticks; resolve_side cannot answer it, so it is registered and not enabled",
+   "conditions": [
     "line_open >= 140",
     "rk_lead_off_high >= 0.2333",
     "lead_m15 <= 1",
@@ -5704,7 +5037,7 @@
    ],
    "entry_window": 60,
    "family": "prop:h1_leader_hold",
-   "market": null,
+   "market": "match_winner",
    "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_prop:h1_lead_0175",
@@ -5712,7 +5045,7 @@
   },
   {
    "bet_role": null,
-   "blocked_reason": "market '' / outcome 'h1_result' (base 'h1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried ['h1_result']",
+   "blocked_reason": "market '' / outcome '' (base 'h1_winner') is not one basketball settles; it settles ['lead_ml', 'match_winner', 'total_points_under', 'trail_ml']. Tried nothing",
    "conditions": [
     "total_points_under <= 1.9407",
     "lead_q1h <= 1",

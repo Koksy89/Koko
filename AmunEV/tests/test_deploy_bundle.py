@@ -157,23 +157,62 @@ if lf:
 
 
 # ── 5. the base masks production cannot reproduce are refused ────────────────
-print('\na base that arms on more than a role is never shipped as that role')
-for b, W in ns['laz_mode3___MASK_WINDOWS'].items():
-    role, mask, why = ns['laz_deploy__role'](dict(base=b, family=b), 'basketball',
-                                             'match_winner', dict(base=b))
-    check(f'{b}: ships as {W[0]!r} with {len(W[4]) + (W[1] is not None) + (W[2] is not None) + (1 if W[3] else 0)} mask clause(s)',
-          role == W[0] and why is None, f'got {role!r} ({why})')
-check('every mask role is one resolve_side answers',
-      all(W[0] in ns['laz_deploy__ROLES'] for W in ns['laz_mode3___MASK_WINDOWS'].values()))
-check('a windowed base is NEVER shipped as the bare role',
-      ns['laz_deploy__role'](dict(base='late_lead_hold', family='late_lead_hold'),
-                             'basketball', 'match_winner', dict(base='late_lead_hold'))[1]
-      == [('u_elapsed', '>=', 0.85), ('u_elapsed', '<=', 1.2), ('abs_lead', '>', 3.0)])
-check('the element doc written at acceptance wins over any re-derivation',
-      ns['laz_deploy__role']({}, 'basketball', 'match_winner',
-                             dict(bet_role='trailer',
-                                  base_mask_clauses=[dict(term='u_elapsed', op='>=', value=0.4)]))
-      == ('trailer', [('u_elapsed', '>=', 0.4)], None))
+print('\nwho is backed is READ FROM THE BASE, not from a table')
+check('there is no family->role table left in the engine',
+      'laz_deploy__FAMILY_ROLE' not in src and 'laz_mode3___MASK_WINDOWS' not in src)
+BSIDE = ns['laz_deploy__base_side']
+# stub the engine's own registries with their real shapes
+_lead_src = ("def laz_registry___lead(c):\n    return (np.where(c['sd'] > 0, 'home', "
+             "np.where(c['sd'] < 0, 'away', None)), 1, 'back the in-play leader')")
+_q4_src = ("lambda C: np.where((C['el'] >= 0.75) & (C['sd'] > 0) & (C['sd'] <= 6), 'away', "
+           "np.where((C['el'] >= 0.75) & (C['sd'] < 0) & (C['sd'] >= -6), 'home', None))")
+_dog_src = ("def laz_registry___dog_lead(c):\n    dog = np.where(c['pm_fav'] == 'home', 'away', "
+            "np.where(c['pm_fav'] == 'away', 'home', None))\n    return (np.where((dog == 'home') "
+            "& (c['sd'] > 0) | (dog == 'away') & (c['sd'] < 0), dog, None), 1, 'the prematch "
+            "underdog who is NOW leading')")
+_drift_src = ("def laz_registry___drifted(c):\n    return (np.where(c['drift_h'] > c['drift_a'], "
+              "'home', 'away'), 1, 'back whichever side has drifted furthest')")
+_STUB = {'lead_ml': (_lead_src, 'moneyline', ''),
+         'q4_close_trailer': (_q4_src, 'match_ml', ''),
+         'dog_leading': (_dog_src, '', ''),
+         'DRIFTED': (_drift_src, '', ''),
+         'Leader_Trap': ('', '', 'Leader by 1 goal, odds <= threshold, last 75%+ of match, '
+                                 'minute >= 2, bet on Draw'),
+         'Leader': ('', '', 'Leader by 1 goal, odds >= threshold, not halftime/fulltime'),
+         'Loser_1G': ('', '', 'Losing team down by 1 goal in 1st half, odds >= threshold'),
+         'HT_Leader_1': ('', '', 'Halftime leader by 1 goal, odds >= threshold'),
+         'Fav_Up_1_Type1': ('', '', 'Favorite scored first goal AND in 1st half'),
+         'nothing_at_all': ('', '', '')}
+ns['laz_deploy__base_source'] = lambda b: _STUB.get(
+    str(b).split(':', 1)[-1] if ':' in str(b) else str(b), ('', '', ''))
+for base, want, why in (
+        ('lead_ml', 'leader', 'the mask returns home when sd > 0'),
+        ('q4_close_trailer', 'trailer', 'the mask returns AWAY when sd > 0 — a regex race '
+                                        'read this as a leader and backed the wrong team'),
+        ('dog_leading', 'dog_leader', 'the filtered role is claimed before the plain one'),
+        ('DRIFTED', 'drifted', 'drift_h > drift_a'),
+        ('spec:Leader_Trap', 'Draw', 'its own rule says "bet on Draw" — the NAME says Leader'),
+        ('spec:Leader', 'leader', 'its own rule says "Leader by 1 goal"'),
+        ('spec:Loser_1G', 'trailer', 'its own rule says "Losing team down by 1 goal"'),
+        ('spec:HT_Leader_1', None, 'a HALFTIME leader is not the side leading right now'),
+        ('spec:Fav_Up_1_Type1', None, 'the first scorer — production has no such role')):
+    got = BSIDE(base)
+    check(f'{base}: {want!r} — {why}', got['role'] == want,
+          f'got {got["role"]!r} ({got.get("evidence") or got.get("why","")[:70]})')
+check('a base the engine never declares yields NO role, and says so',
+      BSIDE('nothing_at_all')['role'] is None
+      and 'states no side' in BSIDE('nothing_at_all')['why'])
+check('every role it can return is one resolve_side answers',
+      all((BSIDE(b)['role'] in ns['laz_deploy__ROLES'] or BSIDE(b)['role'] is None)
+          for b in _STUB))
+check('the derivation records the exact source fragment it read',
+      bool(BSIDE('lead_ml')['evidence']))
+ns['laz_deploy__base_source'] = None
+del ns['laz_deploy__base_source']
+import importlib as _il
+for _n in tree.body:
+    if getattr(_n, 'name', '') == 'laz_deploy__base_source':
+        exec(compile(ast.Module(body=[_n], type_ignores=[]), ENGINE, 'exec'), ns)
 check('an OVER market is refused (production prices no OVER side)',
       ns['laz_deploy__role']({}, 'football', 'total_goals_over', {})[0] is None)
 check('a family-less record is the measured leader population',
@@ -182,9 +221,10 @@ check('a family-less record is the measured leader population',
 check("a pandas-missing base ('nan') is not treated as a base name",
       ns['laz_deploy__role'](dict(base='nan', family='nan'), 'basketball', 'match_winner',
                              dict(base='nan'))[0] == 'leader')
+check('the element doc written at acceptance wins over any re-derivation',
+      ns['laz_deploy__role']({}, 'basketball', 'match_winner',
+                             dict(bet_role='trailer'))[0] == 'trailer')
 
-
-# ── 6. markets: never defaulted ──────────────────────────────────────────────
 print('\nno market is ever defaulted')
 ns['laz_propose__BASES'] = {'c': [dict(name='spread_dog_cover', outcome='match_spread'),
                                   dict(name='late_lead_hold', outcome='match_ml'),
@@ -282,7 +322,10 @@ i_col, i_ns, i_reg = (sql.index('ALTER TABLE rt_allsports_laz_features'),
 check('columns, then namespace, then strategies', i_col < i_ns < i_reg)
 check('one transaction', sql.startswith('-- laz_deploy') and 'BEGIN;' in sql and sql.rstrip().endswith('COMMIT;'))
 check('re-runnable: every write is ADD COLUMN IF NOT EXISTS or ON CONFLICT',
-      sql.count('ADD COLUMN IF NOT EXISTS') == len(NS) and sql.count('ON CONFLICT') >= 3)
+      sql.count('ADD COLUMN IF NOT EXISTS') >= len(NS) and sql.count('ON CONFLICT') >= 3)
+check('the placement policy (GOD-2) is written with the strategies',
+      'laz_placement_policy' in sql and 'market_closed_wait_secs' in sql
+      and 'nan_price_is_no_bet' in sql)
 check('conditions ship as a text[] of single clauses', "ARRAY['a >= 1']::text[]" in sql)
 check('what this run did not re-validate is retired',
       'SET enabled = false WHERE sport' in sql)
@@ -300,6 +343,13 @@ check('a NaN number is written NULL, never the literal nan',
 # ── 11. end to end, and deterministic ────────────────────────────────────────
 print('\nthe bundle is written, complete and byte-identical between runs')
 ns['laz_release__parse_conditions'] = None
+# the emit path reads the base's own source, so the two bases used here must exist
+_EMIT_STUB = {
+    'lead_ml': ("def laz_registry___lead(c):\n    return (np.where(c['sd'] > 0, 'home', "
+                "np.where(c['sd'] < 0, 'away', None)), 1, 'back the in-play leader')",
+                'moneyline', ''),
+    'spread_dog_cover': ('', 'spread', 'the underdog to stay inside the posted spread')}
+ns['laz_deploy__base_source'] = lambda b: _EMIT_STUB.get(str(b), ('', '', ''))
 rows = pd.DataFrame([dict(strategy_name='S1', base='lead_ml', family='lead_ml', tier='Alpha',
                           market='moneyline', band='1.40-4.20', conditions='', odds=2.0,
                           oos_win=60.0, oos_roi=12.0, bets=200, window_sec=60,
@@ -410,10 +460,13 @@ check("[GOD-2] the base-mask window is NOT a gate",
 check("[GOD-2] the margin floor abs_lead > 3 is NOT a gate",
       not any('abs_lead' in x['trigger'] for x in steps if x['step'] > 0))
 check('[GOD-2] there is no feed-freshness gate', 'FEED FRESH' not in gates_live)
-check('the base mask is still RECORDED, as a note that blocks nothing',
-      len(notes) == 1 and 'NOT a gate' in notes[0]['gate']
-      and 'abs_lead > 3.0' in notes[0]['trigger']
-      and 'never blocks' in notes[0]['on_fail'])
+check('[GOD-2] the base arm region is not in the order AT ALL, not even as a note',
+      notes == [] and not any('u_elapsed' in x['trigger'] or 'abs_lead' in x['trigger']
+                              for x in steps))
+check('the base is read only for WHICH SIDE is backed',
+      steps[0]['gate'] == 'SIDE'
+      and ('resolve_side' in steps[0]['trigger']
+           or 'the outcome named by base' in steps[0]['trigger']))
 check("the strategy's OWN conditions are there, verbatim",
       any(x['trigger'] == 'line_move <= 4.0' for x in steps)
       and any(x['trigger'] == 'trailer_price >= 1.92' for x in steps))

@@ -92,12 +92,13 @@ Mode A: [11, 12] → [13, 14] → [15 phase A] → card 10 Mode A (docs/prompts/
 ## GOD-2 — THE VALIDATION AND VERIFICATION BIBLE (owner's rules, sealed)
 
 Sealed in `AmunEV/AmunEV_Engine_V2.py` as `LAZ_GOD2_RULE`,
-sha256 `e5782c68d982f8d999f683d6ae8828b7bf21efea43176566cd49af1819b60005`.
+sha256 `f2d98cea3caedec60de4202e1ed30b4e1126e38f712e87f98a344ca1946123c5`.
 It may be changed **only** by the owner, and only by the explicit reply
 **"Unchained approves"**.
 
 **The owner's PRIMARY rules — a strategy is validated when, and only when:**
-1. mean odds **>= 1.40**. **THERE IS NO MAXIMUM** — no ceiling, no band top, no rung cap.
+1. mean odds **>= 1.40** in mode 3 (the combination finder), **1.50** in every other
+   mode. **THERE IS NO MAXIMUM** in any mode — no ceiling, no band top, no rung cap.
 2. `n_is >= 100`
 3. `n_oos >= 100`
 4. out-of-sample **ROI > 0**
@@ -111,6 +112,11 @@ filter the search:**
    seconds**; the moment it opens, place it if the price is still >= 1.40, otherwise
    abandon **that bet**. A closed market never invalidates the strategy.
 8. **settle** on the outcome the strategy itself names. Never a hard-coded market.
+   **Who is backed is read from the base's own mask and its own prose** — never from a
+   role table, a family map, or any other rule written by someone who is not the owner.
+9. **a NaN price at placement time is a HARD no-bet.** Nothing to multiply a stake
+   against, and because every NaN comparison is False it would otherwise pass the 1.40
+   floor unchecked. This never invalidates the strategy.
 
 **NEVER ADD A BLOCKER.** No rule, gate, filter, threshold, band, cap, window, mask
 clause, quarantine or "safety" check that can stop a strategy being found, validated,

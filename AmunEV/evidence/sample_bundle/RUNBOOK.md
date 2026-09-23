@@ -1,6 +1,6 @@
 # GO LIVE — BASKETBALL
 
-Engine `engine_e2e_test`  ·  128 strategies deployable  ·  14 withheld  ·  142 feature columns  ·  8 PCA composites
+Engine `engine_e2e_test`  ·  99 strategies deployable  ·  43 withheld  ·  128 feature columns  ·  6 PCA composites
 
 ## What this bundle is
 
@@ -60,17 +60,18 @@ bets what the engine measured.
 Every rule above was re-checked against the written bundle, in the loader's
 own order, and passed.
 
-## Withheld — 14 strategies
+## Withheld — 43 strategies
 
 Validated by this run, but not shippable unchanged. Each is here with the
 exact reason; none of them is in `deploy.sql`, because one bad row takes the
 whole sport down at load. See `quarantine.csv` for the full list.
 
+- 25 × the base backs the side that scored FIRST. resolve_side has no first-scorer role
 - 7 × market '' / outcome 'spread'
-- 2 × market '' / outcome 'q1_result'
+- 4 × market '' / outcome ''
+- 4 × the base backs the winner of a PERIOD. resolve_side answers only the side leading right no
 - 2 × base 'prop:match_total_pace' settles a total but its own name does not say UNDER or OVER
-- 2 × market '' / outcome 'h1_result'
-- 1 × market '' / outcome ''
+- 1 × the base backs the winner of a PERIOD
 
 ### Bases production cannot arm
 
@@ -80,15 +81,18 @@ predicate as an ordinary condition before it could ship.
 
 | base | strategies withheld | what is missing |
 |---|---|---|
+| `prop:first_scorer_hold` | 24 | the side that scored FIRST, held from the event; laz_features computes no first-scorer flag |
 | `spread_dog_cover` | 7 | no settleable production market |
+| `spec:HT_Underdog_Fade` | 4 | no settleable production market |
 | `q1_winner` | 2 | no settleable production market |
 | `prop:match_total_pace` | 2 | no settleable production market |
 | `h1_winner` | 2 | no settleable production market |
+| `spec:Early_Hammer` | 1 | no settleable production market |
 | `prop:h1_leader_hold` | 1 | the first-half leader |
 
 ## Terms the generator could not write
 
-`laz_features_basketball.py` emits 70 of 140
+`laz_features_basketball.py` emits 64 of 128
 terms 1:1 from the engine builders. These it could not, so it wrote `NaN`
 for them rather than invent a value — a strategy reading one will not fire
 until the term is implemented. The strategies are still registered and
@@ -100,7 +104,6 @@ enabled: they were validated, and nothing about them is wrong.
 | `X_minute__minus__u_drought` | 0 |
 | `X_minute__over__u_vol` | 0 |
 | `abs_margin_per_remaining_s` | 0 |
-| `backed_pts_last_60s` | 0 |
 | `both_scored` | 0 |
 | `dow` | 0 |
 | `eng_minute_ge_2` | 0 |
@@ -114,7 +117,6 @@ enabled: they were validated, and nothing about them is wrong.
 | `lead_m15` | 0 |
 | `lead_m75` | 0 |
 | `lead_vs_line` | 0 |
-| `leader_implied_gap` | 0 |
 | `leader_runmax` | 0 |
 | `line` | 0 |
 | `line_flat` | 0 |
@@ -123,7 +125,6 @@ enabled: they were validated, and nothing about them is wrong.
 | `line_vel` | 0 |
 | `loser_runmax` | 0 |
 | `loser_runmin` | 0 |
-| `margin_per_possession` | 0 |
 | `margin_range_300s` | 0 |
 | `margin_rate` | 0 |
 | `motif_0` | 0 |
@@ -136,6 +137,9 @@ enabled: they were validated, and nothing about them is wrong.
 | `pace_vs_line_pct` | 0 |
 | `pm_ratio` | 0 |
 | `prog` | 0 |
+| `prog_score` | 0 |
+| `prog_x_margin` | 0 |
+| `pts_last_60s` | 0 |
 
 ## Files
 

@@ -85614,7 +85614,7 @@ def laz_owner___laz_home():
     return _o.environ.get('LAZ_HOME') or _o.getcwd()
 'laz_owner.py — ROUND 1: THE OWNER CONFIGURATION. One place, every setting.\n\nEverything the operator sets lives here: where the parquet files are, which\nsports map to which tables, the strategy families, the mode definitions, and\nthe standing rules. Nothing downstream may hardcode a path, a floor or a\nfamily — it reads LAZ_OWNER.\n\nDATA LINEAGE IS DECLARED HERE, not inferred later. h2h_player_performance\ncomes from public.h2h_player_performance; ebasketball_h2h_player_performance\ncomes from ebasketball_h2h_player_performance. Recording that at the source\nmeans every strategy documented downstream inherits its true origin.\n'
 import os
-laz_owner__LAZ_OWNER = {'paths': {'parquet_dir': os.environ.get('LAZ_PARQUET_DIR', os.path.join(os.getcwd(), 'frames')), 'parquet_search': [os.environ.get('LAZ_PARQUET_DIR', ''), 'AB_frames', 'frames', 'parquets', '.', os.getcwd()], 'csv_dir': os.environ.get('LAZ_CSV_DIR', os.getcwd()), 'output_dir': os.environ.get('LAZ_OUTPUT_DIR', os.getcwd()), 'json_dir': os.environ.get('LAZ_JSON_DIR', os.getcwd()), 'master_document': 'MASTER_DOCUMENT.xlsx', 'memory_json': 'laz_memory.json'}, 'frames': {'football': dict(parquet='AB_football.parquet', source_parquet='AB_Football_games.parquet', tick_sec=5.0, stride=1, csv='Total_Football_Data_24082026.csv', source_table='public.football_matches', elapsed_col='prog', rebuild_script='csv_football.py', days=94), 'efootball': dict(parquet='AB_efootball.parquet', source_parquet='AB_efootball_games.parquet', tick_sec=2.5, stride=1, csv='Total_eFootball_Data_24082026.csv', source_table='public.efootball_matches', elapsed_col='prog', rebuild_script='csv_efootball.py', days=10), 'ebasketball': dict(parquet='AB_ebasketball.parquet', source_parquet='AB_ebasketball_games.parquet', tick_sec=2.5, stride=1, csv='Total_ebasketball_24082026.csv', source_table='public.ebasketball_games', elapsed_col='frac', rebuild_script='csv_ebasketball.py', days=41), 'basketball': dict(parquet='AB_basketball.parquet', source_parquet='AB_basketball_games.parquet', tick_sec=5.0, stride=1, csv='Total_Basketball_Data_24082026.csv', source_table='public.basketball_games', elapsed_col='frac', rebuild_script='csv_basketball.py', days=94), 'tennis': dict(parquet='AB_tennis.parquet', source_parquet='AB_tennis_games.parquet', tick_sec=5.0, stride=1, csv='Total_Tennis_Data_24082026.csv', source_table='public.tennis_games', elapsed_col=None, rebuild_script='csv_tennis.py', days=48), 'tabletennis': dict(parquet='AB_tabletennis.parquet', source_parquet='AB_tabletennis_games.parquet', tick_sec=5.0, stride=1, csv='Total_TableTennis_24082026.csv', source_table='public.tabletennis_games', elapsed_col=None, rebuild_script='csv_tabletennis.py', days=8), 'etennis': dict(parquet='AB_etennis.parquet', source_parquet='AB_etennis_games.parquet', tick_sec=2.5, stride=1, csv='Total_eTennis_24082026.csv', source_table='public.etennis_games', elapsed_col=None, rebuild_script='csv_etennis.py', days=30), 'esports': dict(parquet='AB_esports.parquet', source_parquet='AB_eSports_games.parquet', tick_sec=5.0, stride=1, csv='Total_eSports_Data_24082026.csv', source_table='public.esports_games', elapsed_col=None, rebuild_script='csv_esports.py', days=88)}, 'source_tables': {'h2h_player_performance': dict(db_table='public.h2h_player_performance', parquet_dir_key='parquet_dir', sports=['football', 'efootball', 'basketball', 'tennis', 'tabletennis', 'etennis', 'esports'], note='One row per player per match tick. The base table for every sport except eBasketball.'), 'ebasketball_h2h_player_performance': dict(db_table='ebasketball_h2h_player_performance', parquet_dir_key='parquet_dir', sports=['ebasketball'], note='Separate table. NOTE: its clock is CUMULATIVE match minutes, not within-period — no period offset may be added to it.')}, 'rules': {'min_odds': 1.5, 'min_odds_hard': 1.4, 'min_n_is': 100, 'min_n_oos': 100, 'require_oos_roi': True, 'min_oos_roi': 0.0, 'gate': 'n>=100 IS · n>=100 OOS · OOS ROI>0 · mean odds>=min_odds', 'settlement': 'contract per sport: last validated score for score sports; last validated odds <= 1.35 for tennis/tabletennis/esports/etennis; unsettleable excluded, never proxied', 'unit': 'one bet per match', 'split': 'IS = oldest 50% by match start; OOS = newest 50%; OOS read once', 'redundancy': 'same match AND same tick AND same side; keep the one with MORE bets', 'lookahead': 'a term is forward-looking if its value at the arm tick is not yet DETERMINED; derived terms inherit the LATEST parent resolution', 'documentation': 'every strategy, base, condition and feature is dated at creation and documented for exact re-creation in production'}, 'modes': {1: dict(name='FULL', desc='Generate new strategies AND optimise every existing family for the sport, including legacy. Runs every integrated element except laz_sweep. Validates, documents, writes MASTER_DOCUMENT in real time, updates all learning JSON.', uses_min_odds=True, writes_master=True, realtime_master=True), 2: dict(name='VALIDATION', desc='Validate the strategies already in the engine against the assigned parquets. Every condition and feature required is GENERATED AT STARTUP. Outputs a summary sheet, then per sport a Sport_Tier sheet followed by a 1-to-1 sheet per strategy (one row per match_id).', uses_min_odds=True, writes_master=True, multi_sport=True), 3: dict(name='COMBINATION_FINDER', desc='Create high win-rate, high-volume strategies for combination play across min_odds 1.40 to 2.50+. OVERRIDES the 1.50 floor — this mode is the only exception. 100-1000 stacking rounds per strategy. Optional target count.', uses_min_odds=False, override_min_odds=True, rounds=(100, 1000), writes_master=True), 4: dict(name='BASEFINDER', desc='Find high-value bases and nothing else. A base may be one condition or several combined. Judged on ROI, win rate, volume AND headroom to the noise ceiling — headroom matters most: a base at 62.8% with a 69.8% ceiling yielded 23 strategies where one at 59.3% with a 71.8% ceiling yielded zero.', uses_min_odds=False, writes_master=False), 6: dict(name='PORTFOLIO', desc='Which subset do you actually RUN? De-overlaps on the exact-moment rule, drops strategies whose RETURNS correlate even when their bets differ, weights by edge and reports worst-case single-match exposure.', uses_min_odds=True, writes_master=True), 7: dict(name='DRIFT_MONITOR', desc='Is the book still true? Re-arms every strategy on RECENT data and compares to what it was validated on. Three windows so one bad fortnight is distinguishable from decay. Nothing is deleted; a DEAD verdict is evidence.', uses_min_odds=True, writes_master=True), 5: dict(name='EXPLORATIVE', desc='Pick a sport and a family. Re-stack, re-order and substitute conditions 100-1000 times per strategy, guided by the learning JSON rather than at random. Compare against MASTER_DOCUMENT. Survivors are versioned from the original name.', uses_min_odds=True, allow_min_odds_override=True, rounds=(100, 1000), writes_master=True)}, 'report': {'one_to_one': 25}, 'h2h_files': {'efootball': 'h2h_player_performance.parquet', 'ebasketball': 'ebasketball_h2h_player_table.parquet'}, 'totals': {'lag_seconds': 20.0, 'lag_points': 2.0}, 'motif': {'window_s': 60.0, 'n_pts': 12, 'k': 6, 'window_by_family': {'goal': 60.0, 'quarter': 60.0, 'set': 300.0, 'objective': 120.0}}, 'audit': {'run_on_start': True, 'fail_blocks_run': True, 'gate_kinds': ['audit360', 'audit_full'], 'kinds': None, 'end_to_end': False, 'engine_path': None}, 'production': {'catalogue_json': None, 'n_ref_matches': 50, 'export_after_run': True}, 'draw_sports': ('football', 'efootball', 'efbig', 'efull'), 'match_seconds': {'ebasketball': 960, 'basketball': 2880, 'efootball': 720, 'football': 5400}, 'search': {'memmap_corr_cap': 150, 'workers': 4, 'workers_mode': 'auto', 'pool_backend': 'ram', 'mode1': dict(min_odds=1.4, preferred_odds=1.4, target_new_strategies=0), 'mode3': dict(min_odds=1.4, preferred_odds=1.4, target_new_strategies=0)}, 'combination': {'tiers': {'Unchained': dict(min_win=95.0, max_win=100.0, max_legs=10, colour='95%+'), 'Ultra': dict(min_win=90.0, max_win=95.0, max_legs=5, colour='90-95%'), 'Alpha': dict(min_win=85.0, max_win=90.0, max_legs=4, colour='85-90%'), 'Beta': dict(min_win=80.0, max_win=85.0, max_legs=3, colour='80-85%'), 'Gamma': dict(min_win=75.0, max_win=80.0, max_legs=2, colour='75-80%'), 'Npc': dict(min_win=60.0, max_win=75.0, max_legs=2, colour='60-75%'), 'Vision': dict(min_win=50.0, max_win=60.0, max_legs=0, colour='50-60%'), 'Jobber': dict(min_win=35.0, max_win=50.0, max_legs=0, colour='35-50%'), 'Feeder': dict(min_win=20.0, max_win=35.0, max_legs=0, colour='20-35%'), 'Ino': dict(min_win=10.0, max_win=20.0, max_legs=0, colour='10-20%'), 'Mordi': dict(min_win=5.0, max_win=10.0, max_legs=0, colour='5-10%')}, 'stack_floor_tier': 'Npc', 'roles': {'ANVIL': dict(prec=4, segment_tolerance_pts=3.0, min_bets=300, min_ratio=1.05, tells='the edge does not move — core stake'), 'GLASS': dict(prec=1, min_recorded_win=80.0, drift_pts=-10.0, tells='fading — watch, do not stake until it re-validates'), 'SPARK': dict(prec=5, min_oos_roi=40.0, bets_lo=100, bets_hi=200, min_ratio=1.2, tells='promising, under-sampled — small stake, collect evidence'), 'BINDER': dict(prec=3, fold_minus_single_pts=10.0, min_slips=30, min_ratio=1.05, tells='wins more in company — stack it first'), 'LONER': dict(prec=2, min_single_win=80.0, fold_minus_single_pts=-15.0, min_slips=30, min_ratio=1.05, tells='strong alone, fails in company — singles only')}, 'measure': 'simulation', 'hold_sec': 5.0, 'use_existing_book': True, 'use_basefinder': True, 'use_hazard': False, 'never_combine': {'ebasketball': ('totals', 'total_points_handicap', 'total_goals_handicap')}, 'same_match_forbidden': True, 'status_columns': {'moneyline': ('market_status',), 'total_goals_handicap': ('selection_status_total_goals_over', 'selection_status_total_goals_under'), 'total_points_handicap': ('selection_status_total_points_over', 'selection_status_total_points_under'), 'any': ('total_goals_market_active', 'market_status')}, 'open_values': ('open', 'OPEN', 'Open', 1, True, '1', 'active', 'ACTIVE'), 'min_odds_by_tier': {'Unchained': 1.4, 'Ultra': 1.4, 'Alpha': 1.45, 'Beta': 1.5, 'Gamma': 1.5, 'Npc': 1.5}, 'satoro_max_legs': 4, 'satoro_max_alpha': 1, 'other_mix_max': 2, 'min_odds': 1.4, 'min_roi': 0.0, 'min_bets': 100, 'min_win': 0.75,  'min_roi_note': 'the 15 percent is removed from EVERYWHERE (owner, 21 Sep) — the strategy gate is rules.min_oos_roi (0.0); stacking carries no ROI floor either, tiers RANK by ROI without excluding', 'n_perm': 50, 'one_to_one': 25, 'min_odds_mode1': 1.4, 'max_interactions': 50, 'second_order_parents': 16, 'corr_threshold': 0.97, 'max_corr_conditions': 400, 'max_index_conditions': 0, 'max_distinct_tiers': 2, 'window_sec': 60.0, 'all_window_days': 3, 'index_budget_mb': 1200, 'all_require_every_sport': False, 'allow_rebuilt_ledgers': False, 'require_distinct_matches': True, 'objective': 'ev', 'weights': dict(win=1.0, volume=0.25, cooccurrence=0.08)}, 'families': {'PREMATCH_FAV': 'Backs the prematch favourite. Immutable designation from the first valid-odds tick.', 'PREMATCH_DOG': 'Backs the prematch underdog.', 'LIVE_LEADER': 'Backs whichever side currently leads.', 'LIVE_TRAILER': 'Backs whichever side currently trails — the comeback family.', 'DRIFT': 'Backs the side that has moved furthest from its OWN opening price. Score-agnostic.', 'MARGIN_RATE': 'Built on margin per unit of time remaining. The most productive family found.', 'PERIOD_WINNER': 'Backs the winner of a completed period (Q1, H1, set 1). Period-gated.', 'FORM_H2H': 'Driven by player form or head-to-head history.', 'MARKET_SHAPE': 'Driven by price structure — ratio, overround, vig-free implied.', 'PACE_TOTAL': 'Driven by scoring pace or the projected total against the line.', 'WALL_UNDER': 'Both players low-scoring, armed at 0-0. BLOCKED: the under price does not track the posted line.', 'CLOCK': 'Armed purely on elapsed time or time of day. Note that `hour` is a LEAGUE PROXY, not a mechanism — treat it with scepticism.', 'LINE': 'Driven by the posted total or handicap line as a CONDITION. Distinct from WALL_UNDER, which bets the under MARKET — that market does not settle against the posted line.', 'LEGACY': 'Engine-original specs retained as SEEDS. Recorded n often does not reproduce.', 'MANUFACTURED': 'Led by a condition built from an interaction, with registered parentage.', 'UNCLASSIFIED': 'Not yet assigned — must be resolved before shipping.'}}
+laz_owner__LAZ_OWNER = {'paths': {'parquet_dir': os.environ.get('LAZ_PARQUET_DIR', os.path.join(os.getcwd(), 'frames')), 'parquet_search': [os.environ.get('LAZ_PARQUET_DIR', ''), 'AB_frames', 'frames', 'parquets', '.', os.getcwd()], 'csv_dir': os.environ.get('LAZ_CSV_DIR', os.getcwd()), 'output_dir': os.environ.get('LAZ_OUTPUT_DIR', os.getcwd()), 'json_dir': os.environ.get('LAZ_JSON_DIR', os.getcwd()), 'master_document': 'MASTER_DOCUMENT.xlsx', 'memory_json': 'laz_memory.json'}, 'frames': {'football': dict(parquet='AB_football.parquet', source_parquet='AB_Football_games.parquet', tick_sec=5.0, stride=1, csv='Total_Football_Data_24082026.csv', source_table='public.football_matches', elapsed_col='prog', rebuild_script='csv_football.py', days=94), 'efootball': dict(parquet='AB_efootball.parquet', source_parquet='AB_efootball_games.parquet', tick_sec=2.5, stride=1, csv='Total_eFootball_Data_24082026.csv', source_table='public.efootball_matches', elapsed_col='prog', rebuild_script='csv_efootball.py', days=10), 'ebasketball': dict(parquet='AB_ebasketball.parquet', source_parquet='AB_ebasketball_games.parquet', tick_sec=2.5, stride=1, csv='Total_ebasketball_24082026.csv', source_table='public.ebasketball_games', elapsed_col='frac', rebuild_script='csv_ebasketball.py', days=41), 'basketball': dict(parquet='AB_basketball.parquet', source_parquet='AB_basketball_games.parquet', tick_sec=5.0, stride=1, csv='Total_Basketball_Data_24082026.csv', source_table='public.basketball_games', elapsed_col='frac', rebuild_script='csv_basketball.py', days=94), 'tennis': dict(parquet='AB_tennis.parquet', source_parquet='AB_tennis_games.parquet', tick_sec=5.0, stride=1, csv='Total_Tennis_Data_24082026.csv', source_table='public.tennis_games', elapsed_col=None, rebuild_script='csv_tennis.py', days=48), 'tabletennis': dict(parquet='AB_tabletennis.parquet', source_parquet='AB_tabletennis_games.parquet', tick_sec=5.0, stride=1, csv='Total_TableTennis_24082026.csv', source_table='public.tabletennis_games', elapsed_col=None, rebuild_script='csv_tabletennis.py', days=8), 'etennis': dict(parquet='AB_etennis.parquet', source_parquet='AB_etennis_games.parquet', tick_sec=2.5, stride=1, csv='Total_eTennis_24082026.csv', source_table='public.etennis_games', elapsed_col=None, rebuild_script='csv_etennis.py', days=30), 'esports': dict(parquet='AB_esports.parquet', source_parquet='AB_eSports_games.parquet', tick_sec=5.0, stride=1, csv='Total_eSports_Data_24082026.csv', source_table='public.esports_games', elapsed_col=None, rebuild_script='csv_esports.py', days=88)}, 'source_tables': {'h2h_player_performance': dict(db_table='public.h2h_player_performance', parquet_dir_key='parquet_dir', sports=['football', 'efootball', 'basketball', 'tennis', 'tabletennis', 'etennis', 'esports'], note='One row per player per match tick. The base table for every sport except eBasketball.'), 'ebasketball_h2h_player_performance': dict(db_table='ebasketball_h2h_player_performance', parquet_dir_key='parquet_dir', sports=['ebasketball'], note='Separate table. NOTE: its clock is CUMULATIVE match minutes, not within-period — no period offset may be added to it.')}, 'rules': {'min_odds': 1.5, 'min_odds_hard': 1.4, 'min_n_is': 100, 'min_n_oos': 100, 'require_oos_roi': True, 'min_oos_roi': 0.0, 'band_min_matches_x': 1.0, 'gate': 'n>=100 IS · n>=100 OOS · OOS ROI>0 · mean odds>=min_odds', 'settlement': 'contract per sport: last validated score for score sports; last validated odds <= 1.35 for tennis/tabletennis/esports/etennis; unsettleable excluded, never proxied', 'unit': 'one bet per match', 'split': 'IS = oldest 50% by match start; OOS = newest 50%; OOS read once', 'redundancy': 'same match AND same tick AND same side; keep the one with MORE bets', 'lookahead': 'a term is forward-looking if its value at the arm tick is not yet DETERMINED; derived terms inherit the LATEST parent resolution', 'documentation': 'every strategy, base, condition and feature is dated at creation and documented for exact re-creation in production'}, 'modes': {1: dict(name='FULL', desc='Generate new strategies AND optimise every existing family for the sport, including legacy. Runs every integrated element except laz_sweep. Validates, documents, writes MASTER_DOCUMENT in real time, updates all learning JSON.', uses_min_odds=True, writes_master=True, realtime_master=True), 2: dict(name='VALIDATION', desc='Validate the strategies already in the engine against the assigned parquets. Every condition and feature required is GENERATED AT STARTUP. Outputs a summary sheet, then per sport a Sport_Tier sheet followed by a 1-to-1 sheet per strategy (one row per match_id).', uses_min_odds=True, writes_master=True, multi_sport=True), 3: dict(name='COMBINATION_FINDER', desc='Create high win-rate, high-volume strategies for combination play across min_odds 1.40 to 2.50+. OVERRIDES the 1.50 floor — this mode is the only exception. 100-1000 stacking rounds per strategy. Optional target count.', uses_min_odds=False, override_min_odds=True, rounds=(100, 1000), writes_master=True), 4: dict(name='BASEFINDER', desc='Find high-value bases and nothing else. A base may be one condition or several combined. Judged on ROI, win rate, volume AND headroom to the noise ceiling — headroom matters most: a base at 62.8% with a 69.8% ceiling yielded 23 strategies where one at 59.3% with a 71.8% ceiling yielded zero.', uses_min_odds=False, writes_master=False), 6: dict(name='PORTFOLIO', desc='Which subset do you actually RUN? De-overlaps on the exact-moment rule, drops strategies whose RETURNS correlate even when their bets differ, weights by edge and reports worst-case single-match exposure.', uses_min_odds=True, writes_master=True), 7: dict(name='DRIFT_MONITOR', desc='Is the book still true? Re-arms every strategy on RECENT data and compares to what it was validated on. Three windows so one bad fortnight is distinguishable from decay. Nothing is deleted; a DEAD verdict is evidence.', uses_min_odds=True, writes_master=True), 5: dict(name='EXPLORATIVE', desc='Pick a sport and a family. Re-stack, re-order and substitute conditions 100-1000 times per strategy, guided by the learning JSON rather than at random. Compare against MASTER_DOCUMENT. Survivors are versioned from the original name.', uses_min_odds=True, allow_min_odds_override=True, rounds=(100, 1000), writes_master=True)}, 'report': {'one_to_one': 25}, 'h2h_files': {'efootball': 'h2h_player_performance.parquet', 'ebasketball': 'ebasketball_h2h_player_table.parquet'}, 'totals': {'lag_seconds': 20.0, 'lag_points': 2.0}, 'motif': {'window_s': 60.0, 'n_pts': 12, 'k': 6, 'window_by_family': {'goal': 60.0, 'quarter': 60.0, 'set': 300.0, 'objective': 120.0}}, 'audit': {'run_on_start': True, 'fail_blocks_run': True, 'gate_kinds': ['audit360', 'audit_full'], 'kinds': None, 'end_to_end': False, 'engine_path': None}, 'production': {'catalogue_json': None, 'n_ref_matches': 50, 'export_after_run': True}, 'draw_sports': ('football', 'efootball', 'efbig', 'efull'), 'match_seconds': {'ebasketball': 960, 'basketball': 2880, 'efootball': 720, 'football': 5400}, 'search': {'memmap_corr_cap': 150, 'workers': 4, 'workers_mode': 'auto', 'pool_backend': 'ram', 'mode1': dict(min_odds=1.4, preferred_odds=1.4, target_new_strategies=0), 'mode3': dict(min_odds=1.4, preferred_odds=1.4, target_new_strategies=0)}, 'combination': {'tiers': {'Unchained': dict(min_win=95.0, max_win=100.0, max_legs=10, colour='95%+'), 'Ultra': dict(min_win=90.0, max_win=95.0, max_legs=5, colour='90-95%'), 'Alpha': dict(min_win=85.0, max_win=90.0, max_legs=4, colour='85-90%'), 'Beta': dict(min_win=80.0, max_win=85.0, max_legs=3, colour='80-85%'), 'Gamma': dict(min_win=75.0, max_win=80.0, max_legs=2, colour='75-80%'), 'Npc': dict(min_win=60.0, max_win=75.0, max_legs=2, colour='60-75%'), 'Vision': dict(min_win=50.0, max_win=60.0, max_legs=0, colour='50-60%'), 'Jobber': dict(min_win=35.0, max_win=50.0, max_legs=0, colour='35-50%'), 'Feeder': dict(min_win=20.0, max_win=35.0, max_legs=0, colour='20-35%'), 'Ino': dict(min_win=10.0, max_win=20.0, max_legs=0, colour='10-20%'), 'Mordi': dict(min_win=5.0, max_win=10.0, max_legs=0, colour='5-10%')}, 'stack_floor_tier': 'Npc', 'roles': {'ANVIL': dict(prec=4, segment_tolerance_pts=3.0, min_bets=300, min_ratio=1.05, tells='the edge does not move — core stake'), 'GLASS': dict(prec=1, min_recorded_win=80.0, drift_pts=-10.0, tells='fading — watch, do not stake until it re-validates'), 'SPARK': dict(prec=5, min_oos_roi=40.0, bets_lo=100, bets_hi=200, min_ratio=1.2, tells='promising, under-sampled — small stake, collect evidence'), 'BINDER': dict(prec=3, fold_minus_single_pts=10.0, min_slips=30, min_ratio=1.05, tells='wins more in company — stack it first'), 'LONER': dict(prec=2, min_single_win=80.0, fold_minus_single_pts=-15.0, min_slips=30, min_ratio=1.05, tells='strong alone, fails in company — singles only')}, 'measure': 'simulation', 'hold_sec': 5.0, 'use_existing_book': True, 'use_basefinder': True, 'use_hazard': False, 'never_combine': {'ebasketball': ('totals', 'total_points_handicap', 'total_goals_handicap')}, 'same_match_forbidden': True, 'status_columns': {'moneyline': ('market_status',), 'total_goals_handicap': ('selection_status_total_goals_over', 'selection_status_total_goals_under'), 'total_points_handicap': ('selection_status_total_points_over', 'selection_status_total_points_under'), 'any': ('total_goals_market_active', 'market_status')}, 'open_values': ('open', 'OPEN', 'Open', 1, True, '1', 'active', 'ACTIVE'), 'min_odds_by_tier': {'Unchained': 1.4, 'Ultra': 1.4, 'Alpha': 1.45, 'Beta': 1.5, 'Gamma': 1.5, 'Npc': 1.5}, 'satoro_max_legs': 4, 'satoro_max_alpha': 1, 'other_mix_max': 2, 'min_odds': 1.4, 'min_roi': 0.0, 'min_bets': 100, 'min_win': 0.75,  'min_roi_note': 'the 15 percent is removed from EVERYWHERE (owner, 21 Sep) — the strategy gate is rules.min_oos_roi (0.0); stacking carries no ROI floor either, tiers RANK by ROI without excluding', 'n_perm': 50, 'one_to_one': 25, 'min_odds_mode1': 1.4, 'max_interactions': 50, 'second_order_parents': 16, 'corr_threshold': 0.97, 'max_corr_conditions': 400, 'max_index_conditions': 0, 'max_distinct_tiers': 2, 'window_sec': 60.0, 'all_window_days': 3, 'index_budget_mb': 1200, 'all_require_every_sport': False, 'allow_rebuilt_ledgers': False, 'require_distinct_matches': True, 'objective': 'ev', 'weights': dict(win=1.0, volume=0.25, cooccurrence=0.08)}, 'families': {'PREMATCH_FAV': 'Backs the prematch favourite. Immutable designation from the first valid-odds tick.', 'PREMATCH_DOG': 'Backs the prematch underdog.', 'LIVE_LEADER': 'Backs whichever side currently leads.', 'LIVE_TRAILER': 'Backs whichever side currently trails — the comeback family.', 'DRIFT': 'Backs the side that has moved furthest from its OWN opening price. Score-agnostic.', 'MARGIN_RATE': 'Built on margin per unit of time remaining. The most productive family found.', 'PERIOD_WINNER': 'Backs the winner of a completed period (Q1, H1, set 1). Period-gated.', 'FORM_H2H': 'Driven by player form or head-to-head history.', 'MARKET_SHAPE': 'Driven by price structure — ratio, overround, vig-free implied.', 'PACE_TOTAL': 'Driven by scoring pace or the projected total against the line.', 'WALL_UNDER': 'Both players low-scoring, armed at 0-0. BLOCKED: the under price does not track the posted line.', 'CLOCK': 'Armed purely on elapsed time or time of day. Note that `hour` is a LEAGUE PROXY, not a mechanism — treat it with scepticism.', 'LINE': 'Driven by the posted total or handicap line as a CONDITION. Distinct from WALL_UNDER, which bets the under MARKET — that market does not settle against the posted line.', 'LEGACY': 'Engine-original specs retained as SEEDS. Recorded n often does not reproduce.', 'MANUFACTURED': 'Led by a condition built from an interaction, with registered parentage.', 'UNCLASSIFIED': 'Not yet assigned — must be resolved before shipping.'}}
 laz_owner__ALIASES = {'efbig': 'efootball', 'ef': 'efootball', 'eff': 'efootball', 'tt': 'tabletennis', 'etennis': 'etennis'}
 
 def laz_owner__canon(sport):
@@ -103735,90 +103735,33 @@ def laz_mode3___eval_text(txt, pool, rows=None):
 
 
 def laz_mode3___mask_residual(base_name):
-    """The base's arm mask, as ORDINARY CONDITIONS on terms the engine emits.
+    """The base's arm region, RECORDED for reproducibility. It gates nothing.
 
-    A base is not a label. `late_lead_hold` is `_lead(C, 0.85, 1.2, 3)`: back the leader,
-    but only while elapsed is in [0.85, 1.2] and the margin is over 3. Production's
-    resolve_side says the first half and nothing about the second, so shipping the base as
-    the bare role `leader` fires on every leading tick of the match instead of the last
-    15% at 4+ up. That is a different strategy wearing the same name.
+    Returns (role, clauses, note). `clauses` is always empty and `role` is read from the
+    base's own mask source by laz_deploy__base_side -- there is no table here.
 
-    So the residual is emitted as CLAUSES, in the engine's own terms, and stacked with the
-    strategy's own conditions. u_elapsed IS the engine's `el` -- the generated production
-    feature file emits `out['u_elapsed'] = el` and the replay proof diffs it against the
-    pool -- so the window is reproduced from the same number the search measured on, not
-    from a clock somebody assumed was equivalent.
-
-    Returns (role, [(term, op, value), ...], note). role None means the mask cannot be
-    expressed at all, and the note says what it needs.
+    WHAT THIS USED TO BE, AND WHY IT IS NOT. It held a hand-written map of base ->
+    (role, elapsed window, margin floor), transcribed from the propose lambdas, and the
+    deploy path stacked those windows into the shipped conditions. `late_lead_hold`
+    then shipped as `u_elapsed >= 0.85 AND u_elapsed <= 1.2 AND abs_lead > 3` in front of
+    its own conditions -- rules the owner never wrote, and a margin floor that cuts
+    exactly the long-odds situations. GOD-2 forbids both the table and the stacking.
     """
-    b = str(base_name or '')
-    if ':' in b:
-        b = b.split(':', 1)[1]
-    W = laz_mode3___MASK_WINDOWS.get(b)
-    if W is None:
+    BS = globals().get('laz_deploy__base_side')
+    if BS is None:
         return None, [], ''
-    role, lo, hi, k, extra, note = W
-    cl = []
-    if lo is not None:
-        cl.append(('u_elapsed', '>=', float(lo)))
-    if hi is not None:
-        cl.append(('u_elapsed', '<=', float(hi)))
-    if k:
-        # abs_lead is the UNSIGNED margin, and the role has already fixed which side is
-        # backed, so |margin| > k is the same test the mask makes on the signed one.
-        cl.append(('abs_lead', '>', float(k)))
-    cl += list(extra or ())
-    return role, cl, note
+    try:
+        r = BS(base_name)
+    except Exception as _e:
+        laz_sink__swallow('mode3:mask_residual', _e)
+        return None, [], ''
+    return r.get('role'), [], (r.get('backs') or r.get('why') or '')
 
 
 # base -> (role, elapsed_lo, elapsed_hi, margin_k, extra clauses, note)
 # Transcribed from laz_propose__BASES' own lambdas and laz_registry__BASES. A base absent
 # from this table ships on its family's measured role with no residual; a base whose mask
 # needs a quantity the engine does not emit carries role None and says so.
-laz_mode3___MASK_WINDOWS = {
-    'lead_ml':            ('leader', None, None, 0, (), ''),
-    'trail_ml':           ('trailer', None, None, 0, (), ''),
-    'sets_leader':        ('leader', None, None, 0, (), ''),
-    'sets_trailer':       ('trailer', None, None, 0, (), ''),
-    'maps_leader':        ('leader', None, None, 0, (), ''),
-    'maps_trailer':       ('trailer', None, None, 0, (), ''),
-    'dog_leading':        ('dog_leader', None, None, 0, (), ''),
-    'fav_trailing':       ('fav_trailer', None, None, 0, (), ''),
-    'pm_favourite':       ('pm_favourite', None, None, 0, (), ''),
-    'pm_underdog':        ('pm_underdog', None, None, 0, (), ''),
-    'SHORTENED':          ('shortened', None, None, 0, (), ''),
-    'shortener_vs_open':  ('shortened', None, None, 0, (), ''),
-    'DRIFTED':            ('drifted', None, None, 0, (), ''),
-    'drifter_vs_open':    ('drifted', None, None, 0, (), ''),
-    'draw_hold':          ('Draw', None, None, 0, (), ''),
-    # _lead / _trail with an explicit window: the residual IS the window
-    'late_lead_hold':     ('leader', 0.85, 1.2, 3, (), ''),
-    'mid_leader':         ('leader', 0.4, 0.7, 0, (), ''),
-    'mid_trailer':        ('trailer', 0.4, 0.7, 0, (), ''),
-    'early_trailer':      ('trailer', 0.0, 0.25, 0, (), ''),
-    'q3_run_leader':      ('leader', 0.5, 0.75, 9, (), ''),
-    'two_goal_leader':    ('leader', 0.3, 1.2, 1, (), ''),
-    'dog_leading_late':   ('dog_leader', 0.75, 1.2, 0, (), ''),
-    'dog_leading_mid':    ('dog_leader', 0.4, 0.7, 0, (), ''),
-    'fav_trailing_early': ('fav_trailer', 0.0, 0.35, 0, (), ''),
-    'q4_close_trailer':   ('trailer', 0.75, None, 0, (('abs_lead', '<=', 6.0),), ''),
-    'h1_result_leader':   ('leader', 0.05, 0.49, 0, (), ''),
-    'h1_dnb_leader':      ('leader', 0.05, 0.49, 0, (), ''),
-    'dnb_leader':         ('leader', 0.3, None, 0, (), ''),
-    'h1_leader_hold':     ('leader', 0.05, 0.49, 0, (), ''),
-    # masks whose extra predicate is a term the engine emits
-    'quiet_leader':       ('leader', None, None, 0, (('secs_since_score', '>=', 300.0),), ''),
-    'fresh_lead':         ('leader', None, None, 0, (('secs_since_lead_change', '<=', 60.0),),
-                           'needs secs_since_lead_change from the generated feature file'),
-    'held_lead':          ('leader', None, None, 0, (('secs_since_lead_change', '>=', 600.0),),
-                           'needs secs_since_lead_change from the generated feature file'),
-    'volatile_fav':       ('pm_favourite', None, None, 0, (('lead_changes_300s', '>=', 2.0),),
-                           'needs lead_changes_300s from the generated feature file'),
-    'first_scorer_hold':  ('leader', None, None, 0, (('first_scorer_is_backed', '>=', 1.0),),
-                           'needs first_scorer_is_backed: 1 when the backed side scored first'),
-    'one_goal_leader_late': ('leader', 0.75, None, 0, (('abs_lead', '<=', 1.0),), ''),
-}
 
 
 def laz_mode3___execution_spec(rec, base_name, seed_txt, clauses, lo, hi, sport, market):
@@ -103845,6 +103788,10 @@ def laz_mode3___execution_spec(rec, base_name, seed_txt, clauses, lo, hi, sport,
     Returns a list of steps, each with the exact expression that must be true, what
     happens when it is not, and why it sits at that position.
     """
+    # The base tells us WHICH SIDE is backed, and nothing else. Its arm region is not
+    # read here at all: it is not a gate, and an earlier version that emitted it as one
+    # (an elapsed window and a margin floor in front of the strategy's own conditions)
+    # removed exactly the long-odds bets the owner wanted placed. GOD-2 forbids it.
     role, _resid, _note = laz_mode3___mask_residual(base_name)
     steps = []
 
@@ -103860,10 +103807,12 @@ def laz_mode3___execution_spec(rec, base_name, seed_txt, clauses, lo, hi, sport,
         'the strategy names the outcome it backs; nothing is hard-coded and nothing is '
         'substituted')
     add('PRICE OF THE BACKED SIDE',
-        'price = price_for_side(side)',
+        'price = price_for_side(side) ; price is not null AND price == price',
         ['home_odds', 'away_odds', 'draw_odds', 'total_*_under'],
-        'wait for a real price; a NaN is not a price, and because every NaN comparison '
-        'is False it would otherwise pass the floor below unchecked',
+        'NO BET at this tick. A NaN price is a HARD no-bet: there is nothing to multiply '
+        'a stake against, and because every NaN comparison is False it would otherwise '
+        'pass the floor below unchecked and be struck at an unknown price. The strategy '
+        'is unaffected',
         'the floor compares against this exact number, so it is resolved first')
     add('MINIMUM ODDS',
         f'price >= {float(laz_god2__RULES_min_odds())!r}',
@@ -103897,18 +103846,6 @@ def laz_mode3___execution_spec(rec, base_name, seed_txt, clauses, lo, hi, sport,
         ['the recorded final result'],
         'unsettled bets are excluded, never counted as losses',
         'the same settlement the search graded on')
-    if _resid:
-        # RECORDED, NEVER ENFORCED. The base's own arm mask is part of how the search
-        # found the strategy, and it is written down so the run is reproducible -- but it
-        # is NOT a gate on placement. Making it one is precisely what removed the bets.
-        steps.append(dict(step=0, gate='NOTE — the base mask (NOT a gate)',
-                          trigger='; '.join(f'{t} {o} {v}' for t, o, v in _resid),
-                          reads=[t for t, _o, _v in _resid],
-                          on_fail='nothing: this is recorded for reproducibility only and '
-                                  'never blocks a bet',
-                          why=f'{base_name} armed on this region during the search. It is '
-                              'documented so the run can be reproduced, and deliberately '
-                              'not enforced at placement (GOD-2)'))
     return steps
 
 
@@ -104254,12 +104191,17 @@ def laz_mode3___sweep_one_base(bt, rung_ix=None):
         # [AmunEV V2.14 — LONG ODDS] the band floor was 3 x min_n = 300 matches before the search would even look; the acceptance
         # gate needs 100 bets per half, which 200 matches can satisfy. The long-odds bands are exactly the thin ones (esports 21 Sep:
         # 176 of 394 attempts died here, the largest at 279 matches). The floor is now 2 x min_n — the leg gate decides, not a
-        # pre-filter. LAZ_OWNER['rules']['band_min_matches_x'] sets the multiple (2.0).
-        _bfx = 2.0
+        # pre-filter. LAZ_OWNER['rules']['band_min_matches_x'] sets the multiple.
+        # [OWNER, 23 Sep 2026] 2.0 -> 1.0. At 2.0 a rung needed 200 matches before it was
+        # searched at all, and the long-odds rungs are the thin ones: 176 of 394 attempts
+        # died here on one esports run, the largest at 279 matches. 1.0 searches every
+        # rung that can still meet the owner's own n_is >= 100 / n_oos >= 100 gate, so
+        # nothing below the real bar is admitted and nothing above it is skipped.
+        _bfx = 1.0
         try:
-            _bfx = float(((_m('laz_owner').LAZ_OWNER.get('rules', {}) or {}) if _m('laz_owner') else {}).get('band_min_matches_x', 2.0) or 2.0)
+            _bfx = float(((_m('laz_owner').LAZ_OWNER.get('rules', {}) or {}) if _m('laz_owner') else {}).get('band_min_matches_x', 1.0) or 1.0)
         except Exception:
-            _bfx = 2.0
+            _bfx = 1.0
         if band.sum() < _bfx * _bmin_n:
             _dead_run += 1
             laz_mode3___rej(_REJ, 'band_thin', base=_base_name, rung=f'{lo:.2f}-{hi:.2f}', value=band.sum(), floor=_bfx * _bmin_n)
@@ -107241,8 +107183,10 @@ LAZ_GOD2_RULE = (
     'stop a strategy being found, validated, shipped or placed.\n'
     '\n'
     'PRIMARY RULES - a strategy is VALIDATED when, and only when, all of these hold:\n'
-    '  1. MINIMUM ODDS         mean odds >= 1.40. There is NO maximum. No ceiling,\n'
-    "                          no band top, no rung cap, no 'long odds' limit.\n"
+    '  1. MINIMUM ODDS         mean odds >= 1.40 in mode 3, the combination finder.\n'
+    '                          1.50 in every other mode. There is NO maximum in any\n'
+    "                          mode: no ceiling, no band top, no rung cap, no 'long\n"
+    "                          odds' limit.\n"
     '  2. IN-SAMPLE VOLUME     n_is >= 100 bets.\n'
     '  3. OUT-OF-SAMPLE VOLUME n_oos >= 100 bets.\n'
     '  4. PROFIT               out-of-sample ROI > 0.\n'
@@ -107263,7 +107207,16 @@ LAZ_GOD2_RULE = (
     '                          the bet is abandoned. A closed market never\n'
     '                          invalidates the strategy, only that one bet.\n'
     '  8. SETTLE               on the outcome the strategy itself names. Never a\n'
-    '                          hard-coded market, never a substituted one.\n'
+    '                          hard-coded market, never a substituted one. WHO IS\n'
+    "                          BACKED IS READ FROM THE BASE'S OWN MASK AND ITS OWN\n"
+    '                          PROSE - never from a role table, a family map, or any\n'
+    '                          other rule written by someone who is not the owner.\n'
+    '  9. NaN PRICE            a NaN price at placement time is a HARD NO-BET. The\n'
+    '                          bet is not placed at that tick. There is nothing to\n'
+    '                          multiply a stake against, and because every NaN\n'
+    '                          comparison is False a NaN would otherwise pass the\n'
+    '                          1.40 floor unchecked and be struck at an unknown\n'
+    '                          price. This never invalidates the strategy.\n'
     '\n'
     'WHAT MAY NEVER BE ADDED. No rule, gate, filter, threshold, band, cap, window,\n'
     "mask clause, quarantine or 'safety' check that can stop a strategy being\n"
@@ -107281,12 +107234,14 @@ LAZ_GOD2_RULE = (
     'narrowed by any later change, instruction, refactor or convenience. It may be\n'
     'changed ONLY by the owner, and only by the explicit reply: Unchained approves.\n'
 )
-LAZ_GOD2_RULE_SHA = 'e5782c68d982f8d999f683d6ae8828b7bf21efea43176566cd49af1819b60005'
+LAZ_GOD2_RULE_SHA = 'f2d98cea3caedec60de4202e1ed30b4e1126e38f712e87f98a344ca1946123c5'
 
 # The owner's five primary rules, machine-readable, so the engine can be CHECKED
 # against them instead of trusted. Read by laz_god2__verify and by the bundle.
 LAZ_GOD2_RULES = dict(
-    min_odds=1.40,          # mean odds floor
+    min_odds=1.40,          # mode 3, the combination finder
+    min_odds_other_modes=1.50,   # every other mode; LAZ_OWNER['rules']['min_odds']
+    nan_price_is_no_bet=True,    # a NaN price at placement is a HARD no-bet
     max_odds=None,          # THERE IS NO MAXIMUM. None is the rule, not a missing value.
     min_n_is=100,
     min_n_oos=100,
@@ -107923,7 +107878,7 @@ def laz_mode3__find(sport, stride=1, min_n=100, rounds=300, target=None, ladder=
         # only when everything above it still cannot reach the floor — then, and only then, it cannot hold a strategy anyway.
         _OWl = _m('laz_owner')
         _rules_l = (_OWl.LAZ_OWNER.get('rules', {}) or {}) if _OWl else {}
-        _need = int(round(float(_rules_l.get('band_min_matches_x', 2.0) or 2.0) * min_n))
+        _need = int(round(float(_rules_l.get('band_min_matches_x', 1.0) or 1.0) * min_n))
         _long_from = float(_rules_l.get('long_odds_from', 4.0) or 4.0)
         _max_rungs = max(1, _tot // _need)
         if _max_rungs < len(ladder) - 1 and os.environ.get('LAZ_LADDER_MERGE', 'count') != 'legacy':
@@ -118978,19 +118933,240 @@ laz_deploy__FAMILY_MARKET = {
     'spec:TG_Historical_vs_Handicap_Under': '@total_under',
 }
 
-# The families laz_features MEASURED, for a record whose base is not in the mask table.
-laz_deploy__FAMILY_ROLE = {
-    'lead_ml': 'leader', 'q4_moneyline': 'leader', 'tg_under': 'leader',
-    'tg_under_lag': 'leader', 'tg_over': 'leader',
-    'spec:HT_Leader_1': 'leader', 'spec:Draw_Trap': 'leader', 'spec:Loser_1G': 'leader',
-    'spec:Early_Hammer': 'leader', 'spec:Leader': 'leader',
-    'spec:HT_Underdog_Fade': 'leader',
-    'spec:TG_Historical_vs_Handicap_Under': 'leader',
-    'dog_leading': 'dog_leader',
-    'trail_ml': 'trailer', 'fav_trailing': 'fav_trailer',
-    'pm_favourite': 'pm_favourite', 'pm_underdog': 'pm_underdog',
-    'SHORTENED': 'shortened', 'DRIFTED': 'drifted',
+# ── WHO A STRATEGY BACKS IS READ FROM ITS BASE, NEVER FROM A TABLE ──────────
+# THE CORRECTION THIS IS. An earlier version answered this from a hand-written
+# family->role table. That is exactly the wrong source: the engine already states
+# who is backed, twice, in the base's own code —
+#
+#   laz_registry__BASES[base]['fn'] returns (side_array, resolves_at, prose)
+#       laz_registry___lead    -> np.where(sd > 0, 'home', np.where(sd < 0, 'away', None))
+#                                 'back the in-play leader'
+#       laz_registry___drifted -> np.where(drift_h > drift_a, 'home', 'away')
+#                                 'back whichever side has drifted furthest from its OWN opening price'
+#   laz_propose__BASES entries carry the same thing as a lambda, plus the OUTCOME
+#       _b('late_lead_hold', 'match_ml', lambda C: _lead(C, 0.85, 1.2, 3), ...)
+#
+# So the side is derived from that source, and the derivation records the exact
+# line it read. Nothing here decides anything the engine had not already decided.
+laz_deploy__SIDE_HELPERS = {
+    '_lead': 'leader', '_trail': 'trailer',
+    '_fav': 'pm_favourite', '_dog': 'pm_underdog',
 }
+
+
+def laz_deploy__base_source(base):
+    """The base's own mask source, from whichever registry declares it.
+
+    Returns (source_text, outcome, backs_prose). Empty strings where the engine
+    does not declare that base — never a guess.
+    """
+    import inspect as _ins
+    b = str(base or '')
+    cands = [b] + ([b.split(':', 1)[1]] if ':' in b else [])
+    src, outcome, backs = '', '', ''
+    REG = _m('laz_registry')
+    BASES = ((getattr(REG, 'BASES', None) or {}) if REG is not None else {})
+    for c in cands:
+        B = BASES.get(c) or {}
+        if not B:
+            continue
+        outcome = outcome or str(B.get('market') or '')
+        backs = backs or str(B.get('backs') or '')
+        fn = B.get('fn')
+        if fn is not None and not src:
+            try:
+                src = _ins.getsource(fn)
+            except Exception:
+                src = ''
+    PB = globals().get('laz_propose__BASES') or {}
+    for fam in PB.values():
+        for e in (fam or ()):
+            if str(e.get('name')) in cands:
+                outcome = outcome or str(e.get('outcome') or '')
+                backs = backs or str(e.get('hypothesis') or '')
+                if not src:
+                    try:
+                        src = _ins.getsource(e.get('fn'))
+                    except Exception:
+                        src = ''
+    # THE SPEC STRATEGIES' OWN STATEMENT. `spec:Leader`, `spec:Leader_Trap` and the other
+    # 80-odd spec families are not in either base registry; EXTRA_MASK_DESC is where the
+    # engine writes down what each one backs, in the owner's own words. Reading it is the
+    # only way to get `Leader_Trap` right: its name says Leader and its rule ends
+    # "bet on Draw".
+    if not backs:
+        EMD = globals().get('EXTRA_MASK_DESC') or {}
+        for c in cands:
+            if c in EMD:
+                backs = str(EMD[c])
+                break
+    return src, outcome, backs
+
+
+def laz_deploy___sd_branch(hay):
+    """Which side a live-score mask backs, read by scanning its branches.
+
+    A regex cannot do this reliably. `q4_close_trailer` is
+        np.where((el >= 0.75) & (sd > 0) & (sd <= 6), 'away', ...)
+    and a pattern looking for "sd > 0 ... 'home'" matches the SECOND branch's
+    `sd >= -6), 'home'` instead -- which reads a trailer base as a leader base and backs
+    the wrong team for the strategy's whole life. That was a real defect in the first
+    version of this function.
+
+    So: find the first predicate that says HOME IS AHEAD (sd > / >= / == a non-negative
+    number), then take the first side literal after it. 'home' there means the mask backs
+    the side that is ahead (the leader); 'away' means it backs the other one (the trailer).
+    Returns (role, evidence) or None.
+    """
+    import re as _re
+    m = _re.search(r"(?:sd'\]|_sd)\s*(?:>=|>|==)\s*(\d+(?:\.\d+)?)", hay)
+    if not m:
+        return None
+    nxt = _re.search(r"'(home|away)'", hay[m.end():])
+    if not nxt:
+        return None
+    ev = hay[m.start():m.end() + nxt.end()]
+    ev = (ev[:110] + '…') if len(ev) > 110 else ev
+    return ('leader' if nxt.group(1) == 'home' else 'trailer'), ev
+
+
+def laz_deploy__base_side(base):
+    """WHO THIS BASE BACKS, read from the base's own code.
+
+    Returns dict(role, evidence, backs, outcome, source, resolvable).
+
+    role is one production's resolve_side answers, or None when the base backs
+    something production has no role for (a period winner, a yes/no market, an
+    OVER). `evidence` is the exact fragment of the engine's own source the answer
+    was read from, so the derivation can be checked line by line.
+    """
+    import re as _re
+    src, outcome, backs = laz_deploy__base_source(base)
+    hay = (src or '') + ' ' + (backs or '')
+    if not hay.strip():
+        return dict(role=None, evidence='', backs=backs, outcome=outcome, source=src,
+                    resolvable=False,
+                    why=f'base {base!r} is declared in neither laz_registry__BASES nor '
+                        'laz_propose__BASES, so the engine states no side for it')
+
+    def hit(pat, role, note):
+        m = _re.search(pat, hay, _re.S)
+        return (role, m.group(0)[:120], note) if m else None
+
+    # Read in this order. A FILTERED role must be recognised before the plain role it
+    # is built from, or the filter is silently dropped and the strategy backs the
+    # ordinary case instead of the one it was measured on.
+    tests = [
+        # ── WHAT THE STRATEGY ITSELF SAYS IT BACKS ────────────────────────────
+        # An explicit "bet on X" outranks everything, including the strategy's own
+        # name. `Leader_Trap` is "Leader by 1 goal, odds <= threshold, last 75%+ of
+        # match, minute >= 2, BET ON DRAW" -- reading the name would back the leader
+        # and lose every bet the strategy was measured to win.
+        (r'(?i)\bbet on (the )?draw\b|single-leg bet on draw', 'Draw',
+         'the draw, stated outright by the strategy'),
+        (r'(?i)\bbet on (the )?loser\b|single-leg bet on loser', 'trailer',
+         'the losing side, stated outright by the strategy'),
+        (r'(?i)\bbet on (the )?leader\b', 'leader',
+         'the leading side, stated outright by the strategy'),
+        # ── filtered live roles ───────────────────────────────────────────────
+        (r"dog\s*==\s*'home'\s*\)\s*&\s*\(c\['sd'\]\s*>\s*0", 'dog_leader',
+         'the prematch underdog who is NOW leading'),
+        (r"_lead\(C[^)]*\)\s*!=\s*C\['pm_fav'\]", 'dog_leader',
+         'the leader, filtered to the prematch underdog'),
+        (r"f\s*==\s*'home'\s*\)\s*&\s*\(c\['sd'\]\s*<\s*0", 'fav_trailer',
+         'the prematch favourite who has fallen behind'),
+        (r"_trail\(C[^)]*\)\s*==\s*C\['pm_fav'\]", 'fav_trailer',
+         'the trailer, filtered to the prematch favourite'),
+        (r"_lead\(C[^)]*\)\s*==\s*C\['pm_fav'\]", None,
+         'the prematch FAVOURITE while LEADING. resolve_side has leader, and it has '
+         'pm_favourite, but it has no role for their intersection'),
+        (r"fgs_side'\]\s*==\s*c\['pm_fav'\]", None,
+         'the prematch favourite HAVING SCORED FIRST. resolve_side has no first-scorer '
+         'role'),
+        (r"first_scorer_home'\]", None,
+         'the side that scored FIRST. resolve_side has no first-scorer role'),
+        # ── price movement ────────────────────────────────────────────────────
+        (r"drift_h'\]\s*>\s*c\['drift_a'\]|drift_h'\]\s*>=\s*1\.2", 'drifted',
+         'the side that has drifted furthest from its own opening price'),
+        (r"drift_h'\]\s*<\s*c\['drift_a'\]|drift_h'\]\s*<=\s*0\.8", 'shortened',
+         'the side that has shortened furthest from its own opening price'),
+        # ── prematch price ────────────────────────────────────────────────────
+        (r"pm_fav'\]\s*==\s*'home'\s*,\s*'away'", 'pm_underdog', 'the prematch underdog'),
+        (r"_dog\(C", 'pm_underdog', 'the prematch underdog'),
+        (r"return\s*\(\s*c\['pm_fav'\]|,\s*C\['pm_fav'\]\s*,\s*None|_fav\(C", 'pm_favourite',
+         'the prematch favourite'),
+        # ── a PERIOD leader is not the CURRENT leader ─────────────────────────
+        # h1_h - h1_a, m1_h > m1_a, s1_h > s1_a, c['set1'], c['q1_h'] ... all name the
+        # winner of a PERIOD. resolve_side('leader') answers the side leading RIGHT NOW,
+        # which is a different side on most ticks. Shipping one as the other would back
+        # the wrong team, so it is refused by name.
+        (r"(h1_h|q1_h|m1_h|s1_h|games1_h|games2_h|m1_a|s1_a)'?\]|c\['set1'\]", None,
+         'the winner of a PERIOD (half, quarter, map or set). resolve_side answers only '
+         'the side leading RIGHT NOW, which is a different side on most ticks'),
+        # ── live score ────────────────────────────────────────────────────────
+        (r"_lead\(C", 'leader', 'the in-play leader'),
+        (r"_trail\(C", 'trailer', 'the in-play trailer'),
+        # the live-score branch is read by scan, not by regex race -- see _sd_branch
+        (r"sd'\]\s*==\s*0\s*,\s*'draw'|,\s*'draw'\s*,\s*None|_lvl,\s*'draw'", 'Draw',
+         'the draw'),
+        # ── totals ────────────────────────────────────────────────────────────
+        (r",\s*'under'\s*,\s*None|_total_side\(|w,\s*'under'", 'Total_Under',
+         'the UNDER on the posted total'),
+        (r",\s*'over'\s*,\s*None|over the .*line", None,
+         'the OVER. laz_features._ROLE_FIXED carries no OVER role and price_for_side '
+         'prices no OVER side'),
+        (r",\s*'yes'\s*,\s*None|both-teams-to-score|either side wins|to cover|"
+         r"stays inside the line|inside the posted", None,
+         'a proposition, handicap or double chance. Production settles none of them'),
+        # ── the spec families' prose, read only when nothing above matched ────
+        # A PERIOD leader is named first, because "Halftime leader by 1 goal" also
+        # contains "leader" and is a different side from the one leading right now.
+        (r'(?i)halftime (favou?rite )?(leader|lead)|\bat HT\b|first.half (leader|result)|'
+         r'\bFH (leader|result|draw)\b', None,
+         'the winner of a PERIOD. resolve_side answers only the side leading right now'),
+        (r'(?i)scored (the )?first goal|\bFGS\b|first.scorer', None,
+         'the side that scored FIRST. resolve_side has no first-scorer role'),
+        (r'(?i)favou?rite (is )?losing|fav(ourite)? down|ELO.advantaged favourite losing',
+         'fav_trailer', 'the prematch favourite, currently behind'),
+        (r'(?i)\b(loser|losing team|losing player) (down|is down)|down by \d+ goals?|'
+         r'down 1G', 'trailer', 'the trailing side'),
+        (r'(?i)(team )?leading by|leader by \d|\bleader odds\b|leading in 2nd half',
+         'leader', 'the leading side'),
+        (r'(?i)\bdraw odds\b|tied (match|in)|score is tied|both .* tied|0-0|goalless',
+         'Draw', 'the draw'),
+        (r'(?i)enter the fav|fav odds .*inflated|back the favou?rite', 'pm_favourite',
+         'the prematch favourite'),
+        (r'(?i)\bTG under\b|total goals under|TGU_|combined avg goals BELOW handicap',
+         'Total_Under', 'the UNDER on the total'),
+    ]
+    for pat, role, note in tests:
+        got = hit(pat, role, note)
+        if got is None:
+            continue
+        role, ev, note = got
+        return dict(role=role, evidence=ev, backs=(backs or note), outcome=outcome,
+                    source=src, resolvable=role is not None,
+                    why=('' if role else f'the base backs {note}; resolve_side cannot '
+                                          'answer it, so it is registered and not enabled'))
+    # LAST, and only when nothing above named the side: read the live-score branch.
+    # It runs here and not earlier because a FILTERED mask contains the same `sd > 0`
+    # the plain ones do -- laz_registry___dog_lead is
+    #     np.where((dog == 'home') & (sd > 0) | (dog == 'away') & (sd < 0), dog, None)
+    # and scanning it first reads `sd > 0 ... 'away'` and calls the dog-leading base a
+    # TRAILER. The filtered tests above claim it first, so the scan only ever sees a
+    # mask whose side really is the plain leader or the plain trailer.
+    sdb = laz_deploy___sd_branch(hay)
+    if sdb:
+        role, ev = sdb
+        return dict(role=role, evidence=ev, backs=(backs or f'the in-play {role}'),
+                    outcome=outcome, source=src, resolvable=True, why='')
+    return dict(role=None, evidence='', backs=backs, outcome=outcome, source=src,
+                resolvable=False,
+                why=(f'base {base!r} declares no mask (fn is None), so the engine states '
+                     'no side for it'
+                     if src.strip() in ('', 'None') else
+                     f'the side {base!r} backs could not be read from its own source; it '
+                     'is registered and not enabled rather than guessed'))
 
 
 def laz_deploy__sport(sport):
@@ -119202,61 +119378,52 @@ def laz_deploy__market(rec, sport, doc=None):
 
 
 def laz_deploy__role(rec, sport, market, doc=None):
-    """The production bet_role for a leg, and the base-mask clauses that go with it.
+    """WHO THIS STRATEGY BACKS, read from its base's own code.
 
-    Returns (role, mask_clauses, reason). reason is set ONLY when the mask cannot be
-    expressed at all -- not when it needs more than a bare role.
+    Returns (role, mask_clauses, reason). mask_clauses is always empty: the base's arm
+    region is documentation, never a gate (GOD-2). reason is set only when the base backs
+    something resolve_side cannot answer, and it names what.
 
-    WHAT CHANGED AND WHY. This used to refuse any base that armed on more than a role:
-    `late_lead_hold` is the leader, but only in the last 15% at 4+ up, and production's
-    resolve_side says nothing about a window. Refusing it withheld strategies the search
-    had already validated over every gate it has -- which is not this file's decision to
-    make. The window is not missing information; it is IN the base's own mask, the engine
-    knows it exactly, and it is an ordinary condition on u_elapsed and abs_lead. So it is
-    EMITTED as conditions and stacked with the strategy's own, which is what makes the
-    shipped row fire on exactly the ticks the search measured.
-
-    The clauses are read from the element doc first, where the worker wrote them at
-    acceptance with the base still in hand, and re-derived only for rows that predate it.
+    THERE IS NO ROLE TABLE HERE ANY MORE. An earlier version answered from a hand-written
+    family->role map, which is inventing a rule the owner never wrote. The engine already
+    states who is backed, in the base's own mask and its own prose, and that is the only
+    source read.
     """
     if market in ('total_points_under',):
         return 'Total_Points_Under', [], None
     if market in ('total_goals_under',):
         return 'Total_Goals_Under', [], None
     if market in ('total_points_over', 'total_goals_over'):
-        return None, [], ('production has no OVER role: _ROLE_FIXED and price_for_side '
-                          'both stop at the UNDER, so an over strategy resolves no side')
+        return None, [], ('the strategy backs the OVER. laz_features._ROLE_FIXED carries '
+                          'no OVER role and price_for_side prices no OVER side')
     if market == 'lead_ml':
         return 'leader', [], None
     if market == 'trail_ml':
         return 'trailer', [], None
 
-    # written at acceptance -- the authoritative answer
+    # written at acceptance, inside the worker, with the base in hand
     if doc and doc.get('bet_role'):
-        return (str(doc['bet_role']),
-                [(c.get('term'), c.get('op'), c.get('value'))
-                 for c in (doc.get('base_mask_clauses') or [])], None)
+        return str(doc['bet_role']), [], None
 
     base = laz_deploy___clean(str((doc or {}).get('base') or rec.get('base') or ''))
     fam = laz_deploy___clean(str(rec.get('family') or ''))
-    MR = globals().get('laz_mode3___mask_residual')
     for key in (base, fam):
-        if not key or MR is None:
+        if not key:
             continue
-        role, resid, _note = MR(key)
-        if role:
-            return role, list(resid), None
-    for key in (fam, base):
-        if key in laz_deploy__FAMILY_ROLE:
-            return laz_deploy__FAMILY_ROLE[key], [], None
-        if ':' in key and key.split(':', 1)[1] in laz_deploy__FAMILY_ROLE:
-            return laz_deploy__FAMILY_ROLE[key.split(':', 1)[1]], [], None
-    if not fam and not base:
-        # laz_features measured every family-less strategy at 100% LEADER over 50,928 bets.
+        r = laz_deploy__base_side(key)
+        if r['role']:
+            return r['role'], [], None
+        if r['source'] or r['backs']:
+            # the engine DOES state a side; production simply has no role for it
+            return None, [], r['why']
+    if not base and not fam:
+        # A record with no base at all names no side. laz_features measured every
+        # family-less strategy at 100% leader over 50,928 bets, and that measurement is
+        # the engine's own, not a rule written here.
         return 'leader', [], None
-    return None, [], (f'family {fam!r} / base {base!r} names no side at all: neither the '
-                      'engine\'s base masks nor the measured family table say which side '
-                      'it backs, and resolve_side would answer None on every tick')
+    return None, [], (f'neither base {base!r} nor family {fam!r} is declared in '
+                      'laz_registry__BASES or laz_propose__BASES, so the engine states no '
+                      'side for it and none is guessed')
 
 
 def laz_deploy__band(rec, doc=None):
@@ -119906,6 +120073,10 @@ laz_deploy__PLACEMENT_POLICY = dict(
         "                       price >= 1.40 -> place it.\n"
         "                       price <  1.40 -> abandon THIS BET.\n"
         "  - 60 seconds pass with the market still closed -> abandon THIS BET.\n"
+        "A NaN price is a HARD NO-BET at any point above: not placed, not waited on\n"
+        "past the 60 seconds, never struck. There is nothing to multiply a stake\n"
+        "against, and every NaN comparison being False means it would otherwise pass\n"
+        "the 1.40 floor unchecked.\n"
         "Abandoning a bet never invalidates the strategy, and a closed market never\n"
         "filters the search. THERE IS NO MAXIMUM PRICE at any point in this policy."))
 
@@ -119924,14 +120095,19 @@ def laz_deploy__placement_sql(sport):
          'sport text PRIMARY KEY, min_odds double precision NOT NULL, '
          'max_odds double precision, first_tick_only boolean NOT NULL, '
          'market_closed_wait_secs double precision NOT NULL, '
-         'reprice_on_open boolean NOT NULL, rule text, statement text);',
+         'reprice_on_open boolean NOT NULL, nan_price_is_no_bet boolean NOT NULL '
+         'DEFAULT true, rule text, statement text);',
+         'ALTER TABLE laz_placement_policy ADD COLUMN IF NOT EXISTS '
+         'nan_price_is_no_bet boolean NOT NULL DEFAULT true;',
          'INSERT INTO laz_placement_policy (sport, min_odds, max_odds, first_tick_only, '
-         'market_closed_wait_secs, reprice_on_open, rule, statement) VALUES ('
+         'market_closed_wait_secs, reprice_on_open, nan_price_is_no_bet, rule, statement) '
+         'VALUES ('
          f'{laz_deploy___sql_str(sp)}, {laz_deploy___sql_num(P["min_odds"])}, NULL, true, '
-         f'{laz_deploy___sql_num(P["market_closed_wait_secs"])}, true, '
+         f'{laz_deploy___sql_num(P["market_closed_wait_secs"])}, true, true, '
          f'{laz_deploy___sql_str(P["rule"])}, {laz_deploy___sql_str(P["statement"])}) '
          'ON CONFLICT (sport) DO UPDATE SET min_odds = EXCLUDED.min_odds, '
          'max_odds = NULL, first_tick_only = EXCLUDED.first_tick_only, '
+         'nan_price_is_no_bet = true, '
          'market_closed_wait_secs = EXCLUDED.market_closed_wait_secs, '
          'reprice_on_open = EXCLUDED.reprice_on_open, rule = EXCLUDED.rule, '
          'statement = EXCLUDED.statement;']
