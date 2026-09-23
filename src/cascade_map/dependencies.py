@@ -76,9 +76,27 @@ __all__ = [
 #: this large is not one, and the run says so rather than stalling.
 MAX_MANIFEST_BYTES = 1_000_000
 
-#: A source file bigger than this is not parsed for imports. Card 1 applies
-#: its own limit to inventory; this is the same rule for this card's own scan.
-MAX_SOURCE_BYTES = 4_000_000
+#: A source file bigger than this is not parsed for imports.
+#:
+#: Round 6: raised from 4,000,000, which was chosen against a fixture corpus
+#: and silently excluded the very kind of target this tool exists for. The
+#: owner's engine is 14,804,021 bytes in ONE file; at 4 MB its imports and
+#: interpreter requirements were never read, and the map said so in a way
+#: that read as "this file is not described at all".
+#:
+#: Measured on that file, on this machine, Python 3.12 (see the builder's
+#: report for the run): read 0.31 s, `ast.parse` 23.6 s, the scan's four
+#: `ast.walk` passes 3.0 s -- 30.9 s in total -- for a peak RSS of 679 MB
+#: over 895,811 AST nodes. The limit is set at 20 MB, which is that
+#: measurement plus the headroom of one more chapter of the same engine:
+#: roughly 42 s and under 1 GB, which is a cost a once-per-analysis scan
+#: can pay. It is not raised further, because `ast.parse` cost and memory
+#: both grow with the file and an analysis that is OOM-killed reports
+#: nothing at all.
+#:
+#: Card 1 has its own, separate limit for inventory (16 MB, and it did read
+#: this file). Override this one with `--max-source-mb`.
+MAX_SOURCE_BYTES = 20_000_000
 
 #: Attribute paths reported per distribution. Capped explicitly — a truncated
 #: list that reads as complete is worse than a short one that says it is short.
@@ -579,7 +597,8 @@ class _ManifestReader:
     emitted artifact, because the owner reads artifacts, not source.
     """
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, max_source_bytes: int = MAX_SOURCE_BYTES) -> None:
+        self.max_source_bytes = max_source_bytes
         self.root = root
         #: Resolved once, so an include reached through `-r ../base.txt`
         #: still lands on a path relative to the target root. An absolute
@@ -1139,7 +1158,7 @@ class _ManifestReader:
 
     def _read_pep723(self, path: Path) -> None:
         try:
-            if path.stat().st_size > MAX_SOURCE_BYTES:
+            if path.stat().st_size > self.max_source_bytes:
                 return
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -1734,9 +1753,13 @@ class Dependencies:
         elements: Sequence[Element] = (),
         edges: Sequence[Edge] = (),
         reachability: Sequence[Reachability] = (),
+        max_source_bytes: int = MAX_SOURCE_BYTES,
     ) -> None:
         self.root = Path(root)
         self.environment_root = Path(environment_root) if environment_root else None
+        #: The per-file byte limit this run scans under. Stated in every
+        #: record it causes, together with the flag that raises it.
+        self.max_source_bytes = int(max_source_bytes)
         self._elements = list(elements)
         self._edges = list(edges)
         self._reachability = list(reachability)
@@ -1871,7 +1894,7 @@ class Dependencies:
 
     def _manifests(self) -> _ManifestReader:
         if self._manifest is None:
-            reader = _ManifestReader(self.root)
+            reader = _ManifestReader(self.root, self.max_source_bytes)
             reader.read()
             self._manifest = reader
         return self._manifest
@@ -1949,16 +1972,21 @@ class Dependencies:
                     pass
             rel = path.relative_to(self.root).as_posix()
             try:
-                if path.stat().st_size > MAX_SOURCE_BYTES:
+                size = path.stat().st_size
+                if size > self.max_source_bytes:
+                    megabytes = size / (1024 * 1024)
                     self._unresolved.append(
                         Unresolved(
                             id=f"dep::source::{rel}",
                             reason=UnresolvedReason.TOO_LARGE,
                             span=SourceSpan(path=rel, line=1),
                             description=(
-                                f"file is {path.stat().st_size} bytes, over this "
-                                f"card's {MAX_SOURCE_BYTES}-byte limit; its imports "
-                                "and its syntax requirements were not read"
+                                f"imports and interpreter requirements were not read "
+                                f"for {rel} ({megabytes:.1f} MB, over the dependency "
+                                f"scanner's {self.max_source_bytes}-byte limit; raise "
+                                f"it with --max-source-mb). Every other analysis read "
+                                f"this file under its own limits; this skip is about "
+                                f"this file and this scan only"
                             ),
                             attempted=(Method.AST_DIRECT,),
                         )

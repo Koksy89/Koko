@@ -135,6 +135,14 @@ def _open(browser, html_path: Path) -> _Loaded:
     page.on("pageerror", lambda exc: errors.append(str(exc)))
     page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
     page.goto(html_path.resolve().as_uri())
+    # Round 6: the island is decompressed asynchronously, so "the page has
+    # loaded" is no longer "the script tag has run". `data-cascade-ready`
+    # is set by the last line of `main`; waiting on a fixed timeout instead
+    # would make every test below a race.
+    page.wait_for_function(
+        "document.documentElement.getAttribute('data-cascade-ready') === '1'",
+        timeout=60000,
+    )
     page.wait_for_timeout(1500)
     return _Loaded(page, errors, console_errors)
 
@@ -387,7 +395,7 @@ def test_switching_tabs_paints_that_tabs_own_nodes(browser, diff_html: Path) -> 
     page.click("#btn-toggle-stage-mode")
     page.wait_for_timeout(300)
     data = page.evaluate(
-        "() => JSON.parse(document.getElementById('cascade-blueprint-data').textContent)"
+        "() => window.CASCADE_BLUEPRINT_DATA"
     )
     for tab in ("execution", "lineage", "diff"):
         expected_ids = {n["id"] for n in data[tab]["nodes"]}
@@ -416,7 +424,7 @@ def test_dom_node_count_matches_the_data_island_below_the_collapse_threshold(
     page.click("#btn-toggle-stage-mode")
     page.wait_for_timeout(300)
     data = page.evaluate(
-        "() => JSON.parse(document.getElementById('cascade-blueprint-data').textContent)"
+        "() => window.CASCADE_BLUEPRINT_DATA"
     )
     expected = len(data["execution"]["nodes"])
     assert expected > 0
@@ -630,7 +638,7 @@ def test_collapsed_module_aggregates_carry_the_change_rollup(browser, corpus_dif
     # actually collapsed in this render (all of them: corpus scale exceeds
     # the auto-collapse threshold).
     data = page.evaluate(
-        "() => JSON.parse(document.getElementById('cascade-blueprint-data').textContent)"
+        "() => window.CASCADE_BLUEPRINT_DATA"
     )
     changed_modules = set()
     for node in data["diff"]["nodes"]:
@@ -766,7 +774,7 @@ def test_stages_render_by_default_and_member_counts_match_the_data_island(
     loaded = _open(browser, corpus_html)
     page = loaded.page
     data = page.evaluate(
-        "() => JSON.parse(document.getElementById('cascade-blueprint-data').textContent)"
+        "() => window.CASCADE_BLUEPRINT_DATA"
     )
     stages = data["execution"]["stages"]
     assert stages, "the real corpus produced no stages to check"
@@ -812,7 +820,7 @@ def test_full_graph_remains_reachable_via_show_full_graph(browser, corpus_html: 
     loaded = _open(browser, corpus_html)
     page = loaded.page
     data = page.evaluate(
-        "() => JSON.parse(document.getElementById('cascade-blueprint-data').textContent)"
+        "() => window.CASCADE_BLUEPRINT_DATA"
     )
     expected_elements = sum(1 for n in data["execution"]["nodes"] if n.get("is_element"))
     assert expected_elements > 0
@@ -839,7 +847,7 @@ def test_known_backward_edge_is_classified_and_rendered_distinctly(browser, corp
     loaded = _open(browser, corpus_html)
     page = loaded.page
     data = page.evaluate(
-        "() => JSON.parse(document.getElementById('cascade-blueprint-data').textContent)"
+        "() => window.CASCADE_BLUEPRINT_DATA"
     )
     backward_wires = [w for w in data["execution"]["wires"] if w.get("flow") == "BACKWARD"]
     assert backward_wires, "expected at least one BACKWARD-classified wire in the real corpus"
@@ -856,7 +864,7 @@ def test_flow_readout_totals_sum_to_the_total_wire_count(browser, corpus_html: P
     loaded = _open(browser, corpus_html)
     page = loaded.page
     data = page.evaluate(
-        "() => JSON.parse(document.getElementById('cascade-blueprint-data').textContent)"
+        "() => window.CASCADE_BLUEPRINT_DATA"
     )
     totals = data["execution"]["flow_totals"]
     assert sum(totals.values()) == len(data["execution"]["wires"])
@@ -1016,3 +1024,182 @@ def test_default_page_is_interactive_and_hit_testable(browser, cascade_html: Pat
     assert hit is not None
     assert _fit_scale(page) >= _MIN_FIT_SCALE
     assert loaded.errors == [] and loaded.console_errors == []
+
+
+# ---------------------------------------------------------------------------
+# Round 6 -- the compressed island, decoded by the real browser
+#
+# `test_blueprint_compression.py` proves the Python round trip. That is not
+# the claim: the claim is that the BROWSER rebuilds the same graph. These
+# tests render the same artifacts twice -- once compressed, once with
+# `--no-compress` -- open both, and compare the two reconstructed objects
+# inside the page, deeply, with types. Not a count, not a spot check: every
+# node, every edge, every field.
+# ---------------------------------------------------------------------------
+
+#: A type-strict deep comparison, run in the page. Returns "" when the two
+#: structures are identical and the path to the first difference otherwise,
+#: so a failure names the field rather than saying "not equal".
+_DEEP_DIFF_JS = """
+function deepDiff(a, b, path) {
+  var ta = a === null ? 'null' : Array.isArray(a) ? 'array' : typeof a;
+  var tb = b === null ? 'null' : Array.isArray(b) ? 'array' : typeof b;
+  if (ta !== tb) { return path + ': type ' + ta + ' vs ' + tb; }
+  if (ta === 'array') {
+    if (a.length !== b.length) { return path + ': length ' + a.length + ' vs ' + b.length; }
+    for (var i = 0; i < a.length; i++) {
+      var d = deepDiff(a[i], b[i], path + '[' + i + ']');
+      if (d) { return d; }
+    }
+    return '';
+  }
+  if (ta === 'object') {
+    var ka = Object.keys(a).sort(), kb = Object.keys(b).sort();
+    if (ka.length !== kb.length) { return path + ': ' + ka.length + ' keys vs ' + kb.length; }
+    for (var j = 0; j < ka.length; j++) {
+      if (ka[j] !== kb[j]) { return path + ': key ' + ka[j] + ' vs ' + kb[j]; }
+      var e = deepDiff(a[ka[j]], b[ka[j]], path + '.' + ka[j]);
+      if (e) { return e; }
+    }
+    return '';
+  }
+  if (a !== b) { return path + ': ' + String(a) + ' vs ' + String(b); }
+  return '';
+}
+"""
+
+#: How many leaves the comparison must have walked before its "identical"
+#: verdict means anything. Measured on the corpus render, which carries far
+#: more than this; the floor only has to rule out comparing two empty pages.
+_MIN_LEAVES_COMPARED = 5000
+
+_COUNT_LEAVES_JS = """
+function countLeaves(v) {
+  if (v === null || typeof v !== 'object') { return 1; }
+  if (Array.isArray(v)) { var n = 0; for (var i = 0; i < v.length; i++) { n += countLeaves(v[i]); } return n; }
+  var k = Object.keys(v), m = 0;
+  for (var j = 0; j < k.length; j++) { m += 1 + countLeaves(v[k[j]]); }
+  return m;
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def compressed_and_plain(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
+    """The same corpus graph rendered both ways, into one directory."""
+    root = tmp_path_factory.mktemp("bp_compress")
+    graph_dir = root / "graph"
+    code, summary = analyze(CORPUS, graph_dir, strict_gate=False)
+    assert summary["elements"] > 0
+    gz = root / "compressed.html"
+    plain = root / "plain.html"
+    render_blueprint_to_file(graph_dir, gz, view=FULL)
+    render_blueprint_to_file(
+        graph_dir, plain,
+        view=BlueprintView(scope="full", max_nodes=0, compress=False),
+    )
+    assert gz.stat().st_size < plain.stat().st_size
+    return gz, plain
+
+
+def _data_from(browser, path: Path) -> str:
+    """The page's reconstructed data, serialized for transfer, plus its leaf count."""
+    loaded = _open(browser, path)
+    assert loaded.errors == [] and loaded.console_errors == []
+    return loaded
+
+
+def test_browser_rebuilds_the_compressed_island_exactly(browser, compressed_and_plain) -> None:
+    """Deep, type-strict equality between the compressed page's data and the
+    uncompressed page's data, computed inside the browser over the whole
+    structure -- every node, every edge, every field."""
+    gz, plain = compressed_and_plain
+    gz_page = _data_from(browser, gz)
+    plain_page = _data_from(browser, plain)
+
+    reference = plain_page.page.evaluate("() => JSON.stringify(window.CASCADE_BLUEPRINT_DATA)")
+    verdict = gz_page.page.evaluate(
+        "(ref) => {" + _DEEP_DIFF_JS + _COUNT_LEAVES_JS
+        + " var other = JSON.parse(ref);"
+          " return { diff: deepDiff(window.CASCADE_BLUEPRINT_DATA, other, '$'),"
+          "          leaves: countLeaves(window.CASCADE_BLUEPRINT_DATA) }; }",
+        reference,
+    )
+    assert verdict["diff"] == "", verdict["diff"]
+    assert verdict["leaves"] > _MIN_LEAVES_COMPARED, (
+        f"only {verdict['leaves']} leaves compared -- the verdict proves nothing"
+    )
+
+
+def test_compressed_page_renders_the_same_graph(browser, compressed_and_plain) -> None:
+    """The decoded data is the same; so is what is drawn from it."""
+    gz, plain = compressed_and_plain
+    counts = []
+    for path in (gz, plain):
+        loaded = _open(browser, path)
+        counts.append(loaded.page.eval_on_selector_all("#nodes-layer .node", "els => els.length"))
+        assert loaded.errors == [] and loaded.console_errors == []
+        assert _fit_scale(loaded.page) >= _MIN_FIT_SCALE
+    assert counts[0] == counts[1] > 0
+
+
+def test_page_without_native_gzip_falls_back_and_says_so(browser, compressed_and_plain) -> None:
+    """`DecompressionStream` removed before the page's own script runs.
+
+    The embedded inflater must produce exactly the same object -- proved by
+    the same deep comparison, not by the page merely not crashing -- and
+    the page must SAY which path it took rather than pretending.
+    """
+    gz, plain = compressed_and_plain
+    plain_page = _data_from(browser, plain)
+    reference = plain_page.page.evaluate("() => JSON.stringify(window.CASCADE_BLUEPRINT_DATA)")
+
+    page = browser.new_page(viewport={"width": 1400, "height": 900})
+    errors: list[str] = []
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.add_init_script("delete window.DecompressionStream;")
+    page.goto(gz.resolve().as_uri())
+    page.wait_for_function(
+        "document.documentElement.getAttribute('data-cascade-ready') === '1'", timeout=120000
+    )
+    assert page.evaluate("() => typeof DecompressionStream") == "undefined"
+    verdict = page.evaluate(
+        "(ref) => {" + _DEEP_DIFF_JS + _COUNT_LEAVES_JS
+        + " return { diff: deepDiff(window.CASCADE_BLUEPRINT_DATA, JSON.parse(ref), '$'),"
+          "          leaves: countLeaves(window.CASCADE_BLUEPRINT_DATA) }; }",
+        reference,
+    )
+    assert verdict["diff"] == "", verdict["diff"]
+    assert verdict["leaves"] > _MIN_LEAVES_COMPARED
+    note = page.eval_on_selector("#boot-status", "e => e.textContent + '|' + e.className")
+    assert "no native gzip" in note
+    assert "Nothing is missing" in note
+    assert page.eval_on_selector_all("#nodes-layer .node", "els => els.length") > 0
+    assert errors == []
+    page.close()
+
+
+def test_a_corrupt_island_says_so_instead_of_rendering_nothing(browser, tmp_path: Path) -> None:
+    """The fourth instance of "a failure that renders as success" is the one
+    this card keeps being bitten by. A page that cannot decode its data
+    must state that, not paint an empty canvas."""
+    graph_dir = tmp_path / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    good = tmp_path / "good.html"
+    render_blueprint_to_file(graph_dir, good, view=FULL)
+    html = good.read_text(encoding="utf-8")
+    marker = 'id="cascade-blueprint-data-gz">'
+    start = html.index(marker) + len(marker)
+    end = html.index("</script>", start)
+    broken = tmp_path / "broken.html"
+    broken.write_text(html[:start] + "Tm90IGd6aXAgYXQgYWxs" + html[end:], encoding="utf-8")
+
+    page = browser.new_page(viewport={"width": 1400, "height": 900})
+    page.goto(broken.resolve().as_uri())
+    page.wait_for_function(
+        "document.getElementById('boot-status').className === 'boot-error'", timeout=60000
+    )
+    text = page.eval_on_selector("#boot-status", "e => e.textContent")
+    assert "could not be decoded" in text
+    assert "--no-compress" in text
+    page.close()

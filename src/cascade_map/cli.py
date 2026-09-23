@@ -41,7 +41,7 @@ from cascade_map.contracts.interfaces import (
     canonical_dumps,
     canonical_jsonl,
 )
-from cascade_map.dependencies import Dependencies
+from cascade_map.dependencies import MAX_SOURCE_BYTES, Dependencies
 from cascade_map.diff import diff_snapshots, load_snapshot
 from cascade_map.docrecords import DocumentationBuilder
 from cascade_map.findings import Findings
@@ -425,6 +425,7 @@ def analyze(
     workers: int | None = None,
     worker_report_sink: Callable[[str], None] | None = None,
     progress: Any = None,
+    max_source_bytes: int = MAX_SOURCE_BYTES,
 ) -> tuple[int, dict[str, Any]]:
     """Run the static pipeline over *root* and write artifacts to *out_dir*.
 
@@ -540,6 +541,7 @@ def analyze(
         elements=elements,
         edges=edges,
         reachability=reachability,
+        max_source_bytes=max_source_bytes,
     )
     package_requirements = dependencies.requirements()
     installed_packages = dependencies.installed()
@@ -1782,6 +1784,12 @@ def _build_parser() -> argparse.ArgumentParser:
                           "a completed static map, which is what this command "
                           "builds — it will tell you the exact `trace` to run "
                           "next rather than executing your engine from here.")
+    run.add_argument("--max-source-mb", type=int, default=None, metavar="MB",
+                     help="the dependency scanner's per-file limit: a source file "
+                          "larger than this has its imports and interpreter "
+                          "requirements skipped, and the skip is recorded against "
+                          f"that one file (default {MAX_SOURCE_BYTES // 1_000_000}). "
+                          "Every other analysis has its own limits and is unaffected.")
     run.add_argument("--no-gate", action="store_true",
                      help="write artifacts even if the completeness gate fails, "
                           "and exit 0. The gate still reports.")
@@ -1843,8 +1851,16 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="write the page even when the size guard says a browser "
                            "cannot open it")
     blue.add_argument("--size-limit-mb", type=int, default=50, metavar="MB",
-                      help="the size guard's threshold on the estimated data island "
+                      help="the size guard's threshold on the data island as the "
+                           "browser carries it -- compressed, unless --no-compress "
                            "(default 50). 0 disables the guard, exactly as --force does.")
+    blue.add_argument("--no-compress", action="store_true",
+                      help="write the data island as plain JSON instead of gzip+base64. "
+                           "Lossless either way and the same page either way; this is "
+                           "only for a browser with no DecompressionStream, or for "
+                           "reading the island by hand. Measured on a 116k-line engine "
+                           "at --scope full: 226 MB raw, 76 MB with --no-compress, "
+                           "16 MB compressed.")
 
     hist = sub.add_parser(
         "track",
@@ -2004,6 +2020,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             strict_gate=not args.no_gate,
             env_root=args.env,
             workers=args.workers,
+            max_source_bytes=(
+                args.max_source_mb * 1_000_000 if args.max_source_mb
+                else MAX_SOURCE_BYTES
+            ),
         )
         print(_report(summary, args.out, code))
         if _mode_of(args) == 2:
@@ -2133,6 +2153,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             hops=args.hops,
             force=args.force,
             size_limit_bytes=max(0, args.size_limit_mb) * 1024 * 1024,
+            compress=not args.no_compress,
         )
         try:
             _store, selection, estimate = render_blueprint_to_file(
@@ -2148,6 +2169,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"Wrote {target}  ({_human_bytes(written)}, scope `{selection.view.scope}`)",
             f"  {selection.headline()}",
         ]
+        if estimate.measured:
+            # Every field of every node and edge is in that island; the two
+            # numbers are the same data, losslessly, in two encodings.
+            form = "interned + gzip" if estimate.compressed else "interned"
+            lines.append(
+                f"  data island {_human_bytes(estimate.actual_bytes)} {form}, "
+                f"from {_human_bytes(estimate.total_bytes)} of JSON -- nothing dropped, "
+                "the browser rebuilds it exactly"
+            )
         for note in selection.notes:
             lines.append(f"  - {note}")
         lines.append("Open it in a browser. It needs no network.")

@@ -13,6 +13,8 @@ output goes to `tmp_path`.
 
 from __future__ import annotations
 
+import base64
+import gzip
 import json
 import os
 import subprocess
@@ -63,6 +65,7 @@ from cascade_map.viewer.blueprint import (
     render_blueprint_to_file,
     select,
 )
+from cascade_map.viewer.blueprint import _unpack_data  # noqa: E402
 from cascade_map.viewer.loader import ArtifactStore, RuntimeStore
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -98,10 +101,29 @@ _HOSTILE = "</script><img src=x onerror=alert(1)>&<>  "
 
 
 def _island(html: str) -> dict:
-    marker = 'id="cascade-blueprint-data">'
-    start = html.index(marker) + len(marker)
-    end = html.index("</script>", start)
-    return json.loads(html[start:end])
+    """The page's data, whichever of the two lossless encodings it carries.
+
+    Round 6: the island is always interned and, by default, gzipped and
+    base64-ed. Both forms decode -- exactly, field for field -- to the same
+    object every assertion below was written against, which is the point of
+    `test_blueprint_compression.py`. This helper is deliberately the same
+    inverse the browser applies, so a test that passes here is a test of
+    what the page actually shows.
+    """
+    for marker, decode in (
+        ('id="cascade-blueprint-data-gz">', _decompress_island),
+        ('id="cascade-blueprint-data">', json.loads),
+    ):
+        if marker not in html:
+            continue
+        start = html.index(marker) + len(marker)
+        end = html.index("</script>", start)
+        return _unpack_data(decode(html[start:end]))
+    raise AssertionError("page carries no data island")
+
+
+def _decompress_island(text: str) -> dict:
+    return json.loads(gzip.decompress(base64.b64decode(text)).decode("utf-8"))
 
 
 def _all_node_ids(graph: dict) -> set[str]:
@@ -489,7 +511,10 @@ def test_load_errors_are_surfaced_not_swallowed(tmp_path: Path) -> None:
     assert data["diagnostics"]["static_errors"]
     assert data["diagnostics"]["static_errors"][0]["file"] == "elements.jsonl"
     html = render_blueprint(store_)
-    assert "elements.jsonl" in html  # the error text is present in the data island
+    # Round 6: the island is compressed, so the check is on what the browser
+    # rebuilds from it -- which is the thing that matters and a stronger
+    # assertion than a substring of the bytes.
+    assert "elements.jsonl" in json.dumps(_island(html))
 
 
 # ---------------------------------------------------------------------------
@@ -583,7 +608,7 @@ def test_runtime_overlay_present_and_tagged_with_run_id(tmp_path: Path) -> None:
     assert data["runtime"]["run_id"] == RUN_ID
     assert data["runtime"]["events_by_element"][INGEST_ID]
     html = render_blueprint(store_, rstore=rstore)
-    assert f"\\u0022{RUN_ID}\\u0022" in html or RUN_ID in html
+    assert _island(html)["runtime"]["run_id"] == RUN_ID
 
 
 # ---------------------------------------------------------------------------
@@ -764,7 +789,9 @@ def test_size_guard_refuses_and_writes_absolutely_nothing(tmp_path: Path) -> Non
 
     text = caught.value.estimate.refusal_text()
     assert "Refusing to write it" in text
-    assert "A browser cannot open that" in text
+    # Round 6: the guard's number is now what the browser carries, so the
+    # pre-build refusal says which number it is refusing on.
+    assert "before compression" in text
     for way_out in ("--scope cascade", "--focus", "--max-nodes", "--force"):
         assert way_out in text, way_out
     # the number, not a category

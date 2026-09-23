@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from dataclasses import dataclass, field
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from dataclasses import replace
 from enum import StrEnum
 from html import escape
@@ -63,12 +64,14 @@ from typing import Mapping, Sequence
 from typing import Sequence
 import argparse
 import ast
+import base64
 import builtins
 import builtins as _builtins
 import configparser
 import dataclasses
 import datetime
 import difflib
+import gzip
 import hashlib
 import heapq
 import importlib
@@ -15879,9 +15882,27 @@ __all__ = [
 #: this large is not one, and the run says so rather than stalling.
 MAX_MANIFEST_BYTES = 1_000_000
 
-#: A source file bigger than this is not parsed for imports. Card 1 applies
-#: its own limit to inventory; this is the same rule for this card's own scan.
-MAX_SOURCE_BYTES = 4_000_000
+#: A source file bigger than this is not parsed for imports.
+#:
+#: Round 6: raised from 4,000,000, which was chosen against a fixture corpus
+#: and silently excluded the very kind of target this tool exists for. The
+#: owner's engine is 14,804,021 bytes in ONE file; at 4 MB its imports and
+#: interpreter requirements were never read, and the map said so in a way
+#: that read as "this file is not described at all".
+#:
+#: Measured on that file, on this machine, Python 3.12 (see the builder's
+#: report for the run): read 0.31 s, `ast.parse` 23.6 s, the scan's four
+#: `ast.walk` passes 3.0 s -- 30.9 s in total -- for a peak RSS of 679 MB
+#: over 895,811 AST nodes. The limit is set at 20 MB, which is that
+#: measurement plus the headroom of one more chapter of the same engine:
+#: roughly 42 s and under 1 GB, which is a cost a once-per-analysis scan
+#: can pay. It is not raised further, because `ast.parse` cost and memory
+#: both grow with the file and an analysis that is OOM-killed reports
+#: nothing at all.
+#:
+#: Card 1 has its own, separate limit for inventory (16 MB, and it did read
+#: this file). Override this one with `--max-source-mb`.
+MAX_SOURCE_BYTES = 20_000_000
 
 #: Attribute paths reported per distribution. Capped explicitly — a truncated
 #: list that reads as complete is worse than a short one that says it is short.
@@ -16382,7 +16403,8 @@ class _ManifestReader:
     emitted artifact, because the owner reads artifacts, not source.
     """
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, max_source_bytes: int = MAX_SOURCE_BYTES) -> None:
+        self.max_source_bytes = max_source_bytes
         self.root = root
         #: Resolved once, so an include reached through `-r ../base.txt`
         #: still lands on a path relative to the target root. An absolute
@@ -16942,7 +16964,7 @@ class _ManifestReader:
 
     def _read_pep723(self, path: Path) -> None:
         try:
-            if path.stat().st_size > MAX_SOURCE_BYTES:
+            if path.stat().st_size > self.max_source_bytes:
                 return
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -17537,9 +17559,13 @@ class Dependencies:
         elements: Sequence[Element] = (),
         edges: Sequence[Edge] = (),
         reachability: Sequence[Reachability] = (),
+        max_source_bytes: int = MAX_SOURCE_BYTES,
     ) -> None:
         self.root = Path(root)
         self.environment_root = Path(environment_root) if environment_root else None
+        #: The per-file byte limit this run scans under. Stated in every
+        #: record it causes, together with the flag that raises it.
+        self.max_source_bytes = int(max_source_bytes)
         self._elements = list(elements)
         self._edges = list(edges)
         self._reachability = list(reachability)
@@ -17674,7 +17700,7 @@ class Dependencies:
 
     def _manifests(self) -> _ManifestReader:
         if self._manifest is None:
-            reader = _ManifestReader(self.root)
+            reader = _ManifestReader(self.root, self.max_source_bytes)
             reader.read()
             self._manifest = reader
         return self._manifest
@@ -17752,16 +17778,21 @@ class Dependencies:
                     pass
             rel = path.relative_to(self.root).as_posix()
             try:
-                if path.stat().st_size > MAX_SOURCE_BYTES:
+                size = path.stat().st_size
+                if size > self.max_source_bytes:
+                    megabytes = size / (1024 * 1024)
                     self._unresolved.append(
                         Unresolved(
                             id=f"dep::source::{rel}",
                             reason=UnresolvedReason.TOO_LARGE,
                             span=SourceSpan(path=rel, line=1),
                             description=(
-                                f"file is {path.stat().st_size} bytes, over this "
-                                f"card's {MAX_SOURCE_BYTES}-byte limit; its imports "
-                                "and its syntax requirements were not read"
+                                f"imports and interpreter requirements were not read "
+                                f"for {rel} ({megabytes:.1f} MB, over the dependency "
+                                f"scanner's {self.max_source_bytes}-byte limit; raise "
+                                f"it with --max-source-mb). Every other analysis read "
+                                f"this file under its own limits; this skip is about "
+                                f"this file and this scan only"
                             ),
                             attempted=(Method.AST_DIRECT,),
                         )
@@ -32926,6 +32957,171 @@ def _safe_json(obj: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Round 6: lossless compression of the data island
+#
+# Two independent, purely mechanical transforms, both exactly reversible:
+#
+#   1. `_pack_data` -- string/scalar interning plus a shape table. Every
+#      scalar in the document (string, number, bool, null) is stored ONCE in
+#      a sorted pool and referred to by integer index; every object's key
+#      list is stored ONCE in a sorted shape table and referred to by index.
+#      On this tool's own output the ids dominate the bytes: the owner's
+#      lineage artifacts carry 80,001 rows over 37,500 distinct ids of mean
+#      length 59, so each id is written once instead of tens of thousands of
+#      times.
+#
+#   2. gzip + base64 (`_compress_island`). Applied to the packed form, in
+#      the page, inflated by the browser's own `DecompressionStream` or, if
+#      the browser has none, by the inflater embedded in the page itself.
+#
+# NOTHING IS DROPPED BY EITHER. No node, edge, record or field is removed,
+# shortened, rounded or sampled; `_unpack_data(_pack_data(x)) == x` for
+# every x the page can carry, and the JS decoder is the same inverse. The
+# bounds that DO drop things -- `--scope`, `--max-nodes`, `--focus`, the
+# detail caps -- are round 5's and are unchanged; this is orthogonal to
+# them and can be applied to any of them.
+# ---------------------------------------------------------------------------
+
+#: Marker written into every packed island. A decoder that does not know
+#: this exact string must refuse rather than guess at the layout.
+PACK_FORMAT = "cascade-blueprint-pack/1"
+
+#: The array tag. A packed array is ``[-1, item, ...]``; a packed object is
+#: ``[shape_index, value, ...]`` with ``shape_index >= 0``; a packed scalar
+#: is a bare integer index into the pool. The three are distinguishable in
+#: JavaScript by `typeof`/`Array.isArray` alone, with no per-value tag.
+PACK_ARRAY_TAG = -1
+
+#: Sort rank per scalar type, so the pool's order is a total order over a
+#: heterogeneous set and therefore identical on two runs. Within a rank the
+#: values are of one type and compare directly.
+_POOL_TYPE_RANK = {"null": 0, "bool": 1, "int": 2, "float": 3, "str": 4}
+
+
+def _scalar_key(value: Any) -> tuple[str, Any]:
+    """A pool key that never conflates values JSON keeps apart.
+
+    Python hashes ``True == 1 == 1.0`` equal, so a plain set would merge a
+    boolean, an integer and a float into one pool entry and hand the wrong
+    type back on decode. The type tag keeps them apart, which is the whole
+    difference between "smaller" and "lossless".
+    """
+    if value is None:
+        return ("null", "")
+    if value is True or value is False:
+        return ("bool", value)
+    if isinstance(value, int):
+        return ("int", value)
+    if isinstance(value, float):
+        return ("float", value)
+    if isinstance(value, str):
+        return ("str", value)
+    raise TypeError(f"not a JSON scalar: {type(value).__name__}")
+
+
+def _pack_data(data: Any) -> dict[str, Any]:
+    """*data*, interned. Same information, far fewer bytes.
+
+    Two passes. The first surveys every scalar and every object key-set;
+    both are then sorted, which is what makes the tables -- and so the
+    whole island -- byte-identical on two runs. The second pass rewrites
+    the document against those tables.
+    """
+    scalars: set[tuple[str, Any]] = set()
+    shapes: set[tuple[str, ...]] = set()
+
+    def survey(node: Any) -> None:
+        if isinstance(node, dict):
+            keys = tuple(sorted(node))
+            shapes.add(keys)
+            for key in keys:
+                scalars.add(("str", key))
+                survey(node[key])
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                survey(item)
+        else:
+            scalars.add(_scalar_key(node))
+
+    survey(data)
+    pool_keys = sorted(scalars, key=lambda kv: (_POOL_TYPE_RANK[kv[0]], kv[1]))
+    pool_index = {key: position for position, key in enumerate(pool_keys)}
+    pool = [None if key[0] == "null" else key[1] for key in pool_keys]
+    shape_keys = sorted(shapes)
+    shape_index = {keys: position for position, keys in enumerate(shape_keys)}
+
+    def encode(node: Any) -> Any:
+        if isinstance(node, dict):
+            keys = tuple(sorted(node))
+            packed: list[Any] = [shape_index[keys]]
+            packed.extend(encode(node[key]) for key in keys)
+            return packed
+        if isinstance(node, (list, tuple)):
+            items: list[Any] = [PACK_ARRAY_TAG]
+            items.extend(encode(item) for item in node)
+            return items
+        return pool_index[_scalar_key(node)]
+
+    return {
+        "format": PACK_FORMAT,
+        "pool": pool,
+        "shapes": [[pool_index[("str", key)] for key in keys] for keys in shape_keys],
+        "root": encode(data),
+    }
+
+
+def _unpack_data(packed: dict[str, Any]) -> Any:
+    """The exact inverse of :func:`_pack_data`, and the JS decoder's twin.
+
+    Present so that losslessness is something the suite can *check* rather
+    than something this module asserts: `test_blueprint_compression.py`
+    round-trips the whole island, field by field, in Python, and
+    `test_blueprint_render.py` does the same comparison in a real browser
+    against a page rendered without compression.
+    """
+    if packed.get("format") != PACK_FORMAT:
+        raise ValueError(f"not a {PACK_FORMAT} island: {packed.get('format')!r}")
+    pool = packed["pool"]
+    shapes = [[pool[index] for index in shape] for shape in packed["shapes"]]
+
+    def decode(node: Any) -> Any:
+        if isinstance(node, list):
+            head = node[0]
+            if head == PACK_ARRAY_TAG:
+                return [decode(item) for item in node[1:]]
+            keys = shapes[head]
+            return {key: decode(node[position + 1]) for position, key in enumerate(keys)}
+        return pool[node]
+
+    return decode(packed["root"])
+
+
+def _island_json(packed: dict[str, Any]) -> str:
+    """The packed island as compact JSON, for gzipping.
+
+    ``ensure_ascii`` is off here and only here: this text is never embedded
+    in HTML, it is gzipped and base64-ed, and the browser decodes it as
+    UTF-8. Dropping the ``\\uXXXX`` escaping is both smaller and exactly as
+    deterministic -- UTF-8 encoding of a fixed string is a fixed byte
+    sequence.
+    """
+    return json.dumps(packed, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def _compress_island(packed: dict[str, Any]) -> str:
+    """gzip + base64 of the packed island, as ASCII safe for an HTML script.
+
+    ``mtime=0``: gzip writes the wall clock into its header by default,
+    which would make two runs differ by four bytes and break constraint 4.
+    The base64 alphabet contains none of ``<``, ``>`` or ``&``, so the
+    result needs no further escaping to sit inside a ``<script>`` element.
+    """
+    raw = _island_json(packed).encode("utf-8")
+    blob = gzip.compress(raw, compresslevel=9, mtime=0)
+    return base64.b64encode(blob).decode("ascii")
+
+
+# ---------------------------------------------------------------------------
 # Node views shared across tabs
 # ---------------------------------------------------------------------------
 
@@ -33529,6 +33725,15 @@ PATH_IDS_CAP = 4
 #: How many characters of `Reachability.reason` a node carries.
 REASON_CAP = 160
 
+#: Floors under the compression ratio, used only by the *pre-build* check
+#: (see :meth:`SizeEstimate.effective_limit`). Measured on the owner's real
+#: engine at `--scope full`: interning alone 2.98x, interning + gzip +
+#: base64 14.4x. These are the conservative numbers, not the measured ones,
+#: because a pre-check that refuses a page which would have fitted is a
+#: worse failure than one that lets a page through to the real check.
+PACKED_RATIO_FLOOR = 2
+COMPRESSED_RATIO_FLOOR = 8
+
 #: How many records each class is sampled for when estimating island size.
 #: A stride sample, not a head sample -- see :func:`_stride_sample`.
 _SAMPLE_SIZE = 64
@@ -33567,6 +33772,10 @@ class BlueprintView:
     hops: int = DEFAULT_HOPS
     force: bool = False
     size_limit_bytes: int = SIZE_GUARD_BYTES
+    #: Round 6. The island is always interned; this adds gzip+base64 on
+    #: top. Both are lossless -- see `_pack_data` -- so turning it off
+    #: changes the file's size and nothing else about what the page shows.
+    compress: bool = True
 
     @property
     def node_budget(self) -> int:
@@ -33592,10 +33801,46 @@ class SizeEstimate:
     counts: dict[str, int]
     scope: str
     forced: bool
+    #: Whether the island this estimate describes will be gzipped.
+    compressed: bool = True
+    #: The island's **measured** size in the form the page will carry it.
+    #: Zero until the page has actually been built.
+    actual_bytes: int = 0
+    #: True once `actual_bytes` is a measurement rather than a placeholder.
+    measured: bool = False
+
+    @property
+    def guard_bytes(self) -> int:
+        """The number the guard judges: what the browser actually carries."""
+        return self.actual_bytes if self.measured else self.total_bytes
+
+    @property
+    def effective_limit(self) -> int:
+        """The limit `guard_bytes` is compared against.
+
+        Before the page is built the only number available is round 5's
+        estimate of the island *with no compression at all*, and comparing
+        that to the limit would refuse pages that in fact fit easily:
+        measured on the owner's real engine, `--scope full` is 236,582,738
+        bytes uncompressed, 79,435,487 interned, and 16,390,780 interned +
+        gzip + base64 -- 14.4x. The factors below are deliberate floors
+        well under the measured ratios (2x for interning alone, 8x for
+        interning + gzip), so this pre-check can only ever stop a graph so
+        large that *building* it would exhaust memory; the real refusal is
+        made on `actual_bytes` once the island exists.
+        """
+        if self.limit_bytes <= 0:
+            return 0
+        if self.measured:
+            return self.limit_bytes
+        return self.limit_bytes * (
+            COMPRESSED_RATIO_FLOOR if self.compressed else PACKED_RATIO_FLOOR
+        )
 
     @property
     def over(self) -> bool:
-        return self.limit_bytes > 0 and self.total_bytes > self.limit_bytes
+        limit = self.effective_limit
+        return limit > 0 and self.guard_bytes > limit
 
     def refusal_text(self) -> str:
         counts = self.counts
@@ -33609,12 +33854,26 @@ class SizeEstimate:
             )
             if counts.get(key)
         )
+        if self.measured:
+            head = (
+                f"blueprint data island is {_blueprint__human_bytes(self.actual_bytes)} "
+                f"{'compressed' if self.compressed else 'interned'} "
+                f"({_blueprint__human_bytes(self.total_bytes)} before it was, {shape}), over the "
+                f"{_blueprint__human_bytes(self.limit_bytes)} limit.\n"
+                "Nothing was written."
+            )
+        else:
+            head = (
+                f"blueprint would be ~{_blueprint__human_bytes(self.total_bytes)} before "
+                f"compression ({shape}), too large to build.\n"
+                "Refusing to write it."
+            )
         return (
-            f"blueprint would be ~{_blueprint__human_bytes(self.total_bytes)} ({shape}).\n"
-            "A browser cannot open that. Refusing to write it.\n"
+            head + "\n"
             "Try:  --scope cascade       structure only: modules, stages, decisions, sinks\n"
             "      --focus <element-id>  that element and N hops around it\n"
             "      --max-nodes 2000      the most decision-relevant N\n"
+            "      --size-limit-mb N     raise the limit\n"
             "      --force               write it anyway"
         )
 
@@ -34163,6 +34422,7 @@ def estimate_island_bytes(
         counts=counts,
         scope=view.scope,
         forced=view.force,
+        compressed=view.compress,
     )
 
 
@@ -34619,21 +34879,66 @@ def _capped_detail(store: ArtifactStore, element_id: str, cap: int) -> dict[str,
     return detail
 
 
-#: Unresolved reasons that mean "a whole source file is missing from this
-#: map", as opposed to "one call site inside it could not be resolved".
+#: Unresolved reasons that can mean a source file was not read. Which
+#: *analysis* did not read it, and therefore what is actually missing from
+#: the map, is a separate question answered per record below.
 #: MISSING_TARGET is deliberately NOT here: card 2 emits it per unresolved
 #: call site, tens of thousands of times on a real engine, and it says
 #: nothing about whether the file was read.
 _FILE_LEVEL_UNRESOLVED = ("SYNTAX_ERROR", "DECODE_ERROR", "TOO_LARGE")
 
+#: Which analysis emitted a file-level `Unresolved`, by the prefix each card
+#: puts on its ids. Card 17 (dependencies) namespaces every id `dep::...`;
+#: card 1 (inventory) uses the module's dotted name, which has no `::`.
+#: A prefix this table does not know yields "" and the record's own words
+#: are shown without a name attached -- never a guessed one.
+_UNRESOLVED_SOURCE = {
+    "dep": "the dependency scanner (card 17)",
+}
+
+
+def _analysis_for(unresolved_id: str) -> str:
+    """The named analysis that emitted this record, or "" if unknown."""
+    if "::" not in unresolved_id:
+        return ""
+    return _UNRESOLVED_SOURCE.get(unresolved_id.split("::", 1)[0], "")
+
+
+def _elements_per_path(store: ArtifactStore) -> dict[str, int]:
+    """How many inventory elements each source path contributed.
+
+    A count read straight out of `elements.jsonl`. It is the fact that
+    decides whether "this file was not read" is true of the *map* or only
+    of one analysis, and it is why round 6 stopped saying the former when
+    only the latter happened.
+    """
+    counts: dict[str, int] = {}
+    for element in store.raw["elements"]:
+        span = element.get("span") or {}
+        path = span.get("path")
+        if isinstance(path, str) and path:
+            counts[path] = counts.get(path, 0) + 1
+    return counts
+
 
 def _unparsed_files(store: ArtifactStore) -> list[dict[str, Any]]:
-    """Every source file card 1 could not read, from `unresolved.jsonl`.
+    """Every source file some analysis could not read, from `unresolved.jsonl`.
 
-    Read verbatim: the reason, the path, the line and card 1's own
-    description. Nothing is judged or re-derived here; this is the viewer
-    putting an existing record where it can be seen.
+    Read verbatim: the reason, the path, the line and the emitting card's
+    own description. Nothing is judged or re-derived here.
+
+    Round 6 adds the one fact that makes the difference between a true
+    statement and a false one: **how many elements of this map came from
+    that file**. Card 17 skipped the owner's 14.8 MB engine for dependency
+    analysis only, and the page turned that into "1 source file was NOT
+    read -- this map does not describe it", in red, at the top of a map
+    built from 10,164 elements of that very file. The record was right;
+    the sentence built from it was not. Overstating a limitation costs
+    trust exactly as fast as hiding one, so the page now states what was
+    covered and what was not, per file, and names the analysis that
+    skipped it.
     """
+    per_path = _elements_per_path(store)
     rows: dict[str, dict[str, Any]] = {}
     for record in store.raw["unresolved"]:
         reason = record.get("reason")
@@ -34646,12 +34951,19 @@ def _unparsed_files(store: ArtifactStore) -> list[dict[str, Any]]:
         key = f"{reason}::{path}::{span.get('line')}"
         if key in rows:
             continue
+        element_count = per_path.get(path, 0)
         rows[key] = {
             "reason": reason,
             "path": path,
             "line": span.get("line"),
             "description": record.get("description", ""),
             "id": record.get("id", ""),
+            "analysis": _analysis_for(str(record.get("id", ""))),
+            "elements_from_file": element_count,
+            # True when this map holds no element at all from that path --
+            # the only case in which "this map does not describe it" is a
+            # true sentence.
+            "absent_from_map": element_count == 0,
         }
     return [rows[key] for key in sorted(rows)]
 
@@ -35116,14 +35428,28 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
    fixture corpus left #canvas-wrap 312px tall and Fit at 0.087. */
 #diagnostics { background:rgba(229,72,77,.12); border-bottom:2px solid var(--red); padding:.5rem 1rem;
   font-size:.73rem; max-height:5.5rem; overflow:auto; flex:0 0 auto; }
+/* A narrow skip is not a red-alert fact about the whole map; it reads as
+   information, not as failure. */
+#diagnostics .partial-skip { color:var(--text); margin:.15rem 0; }
+#diagnostics.diag-info { background:var(--panel); border-bottom:1px solid var(--panel-border); }
 #diagnostics summary { cursor:pointer; color:var(--accent); }
 #diagnostics ul { margin:.3rem 0 0; padding-left:1.2rem; }
+/* Round 6: the decoder's own line. Visible from the first paint, replaced
+   by the canvas when the island is decoded, and left showing an explicit
+   error if it never is -- a blank page is the one thing it must not be. */
+#boot-status { background:var(--panel); border-bottom:1px solid var(--panel-border);
+  padding:.4rem 1rem; font-size:.73rem; color:var(--text-dim); flex:0 0 auto; }
+#boot-status.boot-error { background:rgba(229,72,77,.12); border-bottom:2px solid var(--red);
+  color:var(--text); }
+#boot-status.boot-note { background:rgba(255,182,72,.12); border-bottom:2px solid var(--amber);
+  color:var(--text); }
 .lod-hide-labels .node-body, .lod-hide-labels .node-badges { display:none; }
 .lod-hide-badges .node-badges { display:none; }
 </style>"""
 
 _BODY = """<div id="app">
 <div id="diagnostics" hidden></div>
+<div id="boot-status" role="status">Decompressing map data&hellip;</div>
 <header id="topbar">
 <h1>CASCADE-MAP &mdash; blueprint canvas</h1>
 <div id="tabs">
@@ -35207,11 +35533,12 @@ _BODY = """<div id="app">
 </div>
 </div>"""
 
-_SCRIPT = """
-(function () {
-'use strict';
-var dataEl = document.getElementById('cascade-blueprint-data');
-var DATA = JSON.parse(dataEl.textContent);
+_SCRIPT_BODY = """
+function main(DATA) {
+//: Round 6: the page's data arrives as an argument rather than being read
+//: from the DOM here, because decompression is asynchronous. Everything
+//: below is unchanged and still closes over DATA exactly as before.
+window.CASCADE_BLUEPRINT_DATA = DATA;
 //: Every execution-tab node, by id, regardless of current collapse state
 //: -- built once so stage cards can label their member lines without an
 //: O(n) scan per line per render.
@@ -36721,24 +37048,53 @@ function showDiagnostics() {
   if (!hasAny) return;
   var box = document.getElementById('diagnostics');
   box.hidden = false;
+  var anyError = (diag.static_errors && diag.static_errors.length) ||
+    (diag.diff_errors && diag.diff_errors.length) ||
+    (diag.runtime_errors && diag.runtime_errors.length) ||
+    unparsed.some(function (u) { return u.absent_from_map; });
+  // Red is reserved for "part of this map is missing or wrong". A narrow,
+  // named skip in one analysis is information, and is styled as such.
+  if (!anyError) { box.className = 'diag-info'; }
   if (unparsed.length) {
-    // The loudest fact the graph can carry: a source file that is not in
-    // this map at all. The headline is always visible and names the first
-    // file; the full list folds away so that a corpus with dozens of them
-    // cannot squeeze the canvas to a sliver -- which is exactly what an
-    // unbounded list did here, dropping Fit from 0.36 to 0.087.
-    box.appendChild(elWithBreaks('strong', null,
-      unparsed.length + ' source file' + (unparsed.length === 1 ? ' was' : 's were')
-      + ' NOT read \u2014 this map does not describe '
-      + (unparsed.length === 1 ? 'it' : 'them') + ': ' + unparsed[0].path
-      + (unparsed.length > 1 ? ' and ' + (unparsed.length - 1) + ' more' : '')));
+    // Round 6, D-owner-3: this headline used to read "N source files were
+    // NOT read -- this map does not describe them" for ANY file-level
+    // skip. On the owner's engine that named the one file the map is
+    // almost entirely built from: card 17 had skipped it for dependency
+    // analysis only. The distinction is `absent_from_map`, which is the
+    // count of elements this map actually holds from that path -- so the
+    // banner now separates "not in this map at all" from "one analysis
+    // did not read it", states which analysis and what is missing, and
+    // never makes a claim about the whole map from a narrow skip.
+    var absent = unparsed.filter(function (u) { return u.absent_from_map; });
+    var partial = unparsed.filter(function (u) { return !u.absent_from_map; });
+    if (absent.length) {
+      box.appendChild(elWithBreaks('strong', null,
+        absent.length + ' source file' + (absent.length === 1 ? ' was' : 's were')
+        + ' NOT read \u2014 this map does not describe '
+        + (absent.length === 1 ? 'it' : 'them') + ': ' + absent[0].path
+        + (absent.length > 1 ? ' and ' + (absent.length - 1) + ' more' : '')));
+    }
+    partial.forEach(function (u) {
+      // One line per file, naming the analysis that skipped it and what is
+      // therefore missing -- and, in the same sentence, what IS covered.
+      box.appendChild(elWithBreaks('div', 'partial-skip',
+        'Partly covered: ' + u.description
+        + (u.analysis ? ' (' + u.analysis + ')' : '')
+        + '. Everything else in this map covers ' + u.path + ' normally \u2014 '
+        + u.elements_from_file.toLocaleString() + ' element'
+        + (u.elements_from_file === 1 ? '' : 's') + ' in this map come from it.'));
+    });
     var udet = document.createElement('details');
-    udet.appendChild(el('summary', null, 'list every file that was not read'));
+    udet.appendChild(el('summary', null, 'every file some analysis did not read, and what it means'));
     var uul = el('ul');
     unparsed.forEach(function (u) {
       uul.appendChild(elWithBreaks('li', null,
         u.reason + '  ' + u.path + ':' + (u.line === null || u.line === undefined ? '?' : u.line)
-        + '  \u2014 ' + u.description));
+        + '  \u2014 ' + u.description
+        + (u.analysis ? '  [' + u.analysis + ']' : '')
+        + '  \u2014 ' + (u.absent_from_map
+            ? 'no element of this map comes from this file'
+            : u.elements_from_file.toLocaleString() + ' elements of this map come from this file')));
     });
     udet.appendChild(uul);
     box.appendChild(udet);
@@ -36772,8 +37128,282 @@ function init() {
   switchTab('execution');
 }
 init();
-})();
+var status = document.getElementById('boot-status');
+if (status) { status.hidden = true; }
+document.documentElement.setAttribute('data-cascade-ready', '1');
+}
 """
+
+
+#: Round 6: the island decoder, and -- when the browser has no native gzip
+#: -- the inflater itself. No library, no CDN, no network: the page is
+#: still one file that works from `file://`.
+#:
+#: `unpackIsland` is the exact twin of `_unpack_data` above. It rebuilds
+#: every object and every array with every field; nothing is lazy,
+#: approximate or omitted, so from `main(DATA)` onward the page is
+#: byte-for-byte the page round 5 rendered.
+_DECODER = """
+var PACK_FORMAT = 'cascade-blueprint-pack/1';
+
+function bootStatus(text, cls) {
+  var box = document.getElementById('boot-status');
+  if (!box) { return; }
+  box.hidden = false;
+  box.className = cls || '';
+  box.textContent = text;
+}
+
+function bootFailed(err) {
+  // A page that cannot decode its own data says so, with the error and the
+  // way out. It never renders an empty canvas that reads as "nothing here".
+  bootStatus(
+    'This map could not be decoded in this browser: ' + (err && err.message ? err.message : err)
+    + '  \u2014 nothing is wrong with the data; re-render with  metatron blueprint '
+    + '<graph-dir> --no-compress  for a page that needs no decompression.',
+    'boot-error');
+  if (window.console && console.error) { console.error(err); }
+}
+
+function unpackIsland(packed) {
+  if (!packed || packed.format !== PACK_FORMAT) {
+    throw new Error('unknown data island format: ' + (packed && packed.format));
+  }
+  var pool = packed.pool, rawShapes = packed.shapes;
+  var shapes = new Array(rawShapes.length), s, k, ids, keys;
+  for (s = 0; s < rawShapes.length; s++) {
+    ids = rawShapes[s];
+    keys = new Array(ids.length);
+    for (k = 0; k < ids.length; k++) { keys[k] = pool[ids[k]]; }
+    shapes[s] = keys;
+  }
+  function decode(node) {
+    if (typeof node === 'number') { return pool[node]; }
+    var head = node[0], i, n = node.length;
+    if (head === -1) {
+      var arr = new Array(n - 1);
+      for (i = 1; i < n; i++) { arr[i - 1] = decode(node[i]); }
+      return arr;
+    }
+    var objKeys = shapes[head], out = {};
+    for (i = 0; i < objKeys.length; i++) { out[objKeys[i]] = decode(node[i + 1]); }
+    return out;
+  }
+  return decode(packed.root);
+}
+
+function base64Bytes(text) {
+  var binary = atob(text);
+  var n = binary.length, bytes = new Uint8Array(n), i;
+  for (i = 0; i < n; i++) { bytes[i] = binary.charCodeAt(i) & 0xff; }
+  return bytes;
+}
+
+function gunzipNative(bytes) {
+  var stream = new DecompressionStream('gzip');
+  var writer = stream.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+  return new Response(stream.readable).arrayBuffer().then(function (buffer) {
+    return new TextDecoder('utf-8').decode(new Uint8Array(buffer));
+  });
+}
+
+// ---- RFC 1951 / 1952, for browsers without DecompressionStream ----------
+// Decompression only. The algorithm is zlib's own `puff` reference shape:
+// canonical Huffman decoded one bit at a time. Slower than the native
+// path and only ever reached when there is no native path, which is why
+// the page says which one it took.
+var LENGTH_BASE = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+var LENGTH_EXTRA = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+var DIST_BASE = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+var DIST_EXTRA = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+var CODE_LENGTH_ORDER = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+
+function huffmanTable(lengths, count) {
+  var counts = new Int32Array(16), offsets = new Int32Array(16), i, total = 0;
+  for (i = 0; i < count; i++) { counts[lengths[i]]++; }
+  counts[0] = 0;
+  for (i = 1; i < 16; i++) { offsets[i] = total; total += counts[i]; }
+  var symbols = new Int32Array(total);
+  for (i = 0; i < count; i++) { if (lengths[i]) { symbols[offsets[lengths[i]]++] = i; } }
+  return { counts: counts, symbols: symbols };
+}
+
+var FIXED_LIT = null, FIXED_DIST = null;
+function fixedTables() {
+  if (FIXED_LIT) { return; }
+  var lengths = new Int32Array(288), i;
+  for (i = 0; i < 144; i++) { lengths[i] = 8; }
+  for (i = 144; i < 256; i++) { lengths[i] = 9; }
+  for (i = 256; i < 280; i++) { lengths[i] = 7; }
+  for (i = 280; i < 288; i++) { lengths[i] = 8; }
+  FIXED_LIT = huffmanTable(lengths, 288);
+  var dists = new Int32Array(30);
+  for (i = 0; i < 30; i++) { dists[i] = 5; }
+  FIXED_DIST = huffmanTable(dists, 30);
+}
+
+function inflateRaw(input, start, sizeHint) {
+  var out = new Uint8Array(sizeHint > 0 ? sizeHint : 65536), outLen = 0;
+  var pos = start, bitbuf = 0, bitcnt = 0;
+
+  function grow(extra) {
+    if (outLen + extra <= out.length) { return; }
+    var cap = out.length || 1024;
+    while (cap < outLen + extra) { cap *= 2; }
+    var bigger = new Uint8Array(cap);
+    bigger.set(out.subarray(0, outLen));
+    out = bigger;
+  }
+  function getBits(need) {
+    while (bitcnt < need) {
+      if (pos >= input.length) { throw new Error('truncated deflate stream'); }
+      bitbuf |= input[pos++] << bitcnt;
+      bitcnt += 8;
+    }
+    var value = bitbuf & ((1 << need) - 1);
+    bitbuf >>>= need;
+    bitcnt -= need;
+    return value;
+  }
+  function decodeSymbol(table) {
+    var code = 0, first = 0, index = 0, len, cnt;
+    for (len = 1; len < 16; len++) {
+      code |= getBits(1);
+      cnt = table.counts[len];
+      if (code - first < cnt) { return table.symbols[index + (code - first)]; }
+      index += cnt;
+      first = (first + cnt) << 1;
+      code <<= 1;
+    }
+    throw new Error('invalid Huffman code');
+  }
+  function inflateBlock(litTable, distTable) {
+    var symbol, extra, length, distance, from, i;
+    do {
+      symbol = decodeSymbol(litTable);
+      if (symbol < 256) {
+        grow(1);
+        out[outLen++] = symbol;
+      } else if (symbol > 256) {
+        extra = symbol - 257;
+        if (extra >= 29) { throw new Error('invalid length code'); }
+        length = LENGTH_BASE[extra] + getBits(LENGTH_EXTRA[extra]);
+        var dsym = decodeSymbol(distTable);
+        if (dsym >= 30) { throw new Error('invalid distance code'); }
+        distance = DIST_BASE[dsym] + getBits(DIST_EXTRA[dsym]);
+        from = outLen - distance;
+        if (from < 0) { throw new Error('distance too far back'); }
+        grow(length);
+        for (i = 0; i < length; i++) { out[outLen++] = out[from++]; }
+      }
+    } while (symbol !== 256);
+  }
+
+  fixedTables();
+  var last;
+  do {
+    last = getBits(1);
+    var type = getBits(2);
+    if (type === 0) {
+      bitbuf = 0; bitcnt = 0;
+      var stored = input[pos] | (input[pos + 1] << 8);
+      pos += 4;
+      grow(stored);
+      out.set(input.subarray(pos, pos + stored), outLen);
+      outLen += stored;
+      pos += stored;
+    } else if (type === 1) {
+      inflateBlock(FIXED_LIT, FIXED_DIST);
+    } else if (type === 2) {
+      var nlen = getBits(5) + 257, ndist = getBits(5) + 1, ncode = getBits(4) + 4, i;
+      var clen = new Int32Array(19);
+      for (i = 0; i < ncode; i++) { clen[CODE_LENGTH_ORDER[i]] = getBits(3); }
+      var clenTable = huffmanTable(clen, 19);
+      var lengths = new Int32Array(nlen + ndist), index = 0;
+      while (index < nlen + ndist) {
+        var symbol = decodeSymbol(clenTable), repeat, value;
+        if (symbol < 16) {
+          lengths[index++] = symbol;
+        } else {
+          if (symbol === 16) {
+            if (index === 0) { throw new Error('repeat with no previous length'); }
+            value = lengths[index - 1];
+            repeat = 3 + getBits(2);
+          } else if (symbol === 17) {
+            value = 0; repeat = 3 + getBits(3);
+          } else {
+            value = 0; repeat = 11 + getBits(7);
+          }
+          if (index + repeat > nlen + ndist) { throw new Error('too many lengths'); }
+          while (repeat--) { lengths[index++] = value; }
+        }
+      }
+      var litLengths = lengths.subarray(0, nlen);
+      var distLengths = lengths.subarray(nlen, nlen + ndist);
+      inflateBlock(huffmanTable(litLengths, nlen), huffmanTable(distLengths, ndist));
+    } else {
+      throw new Error('invalid deflate block type');
+    }
+  } while (!last);
+  return out.subarray(0, outLen);
+}
+
+function gunzipJS(input) {
+  if (input.length < 18 || input[0] !== 31 || input[1] !== 139 || input[2] !== 8) {
+    throw new Error('not a gzip stream');
+  }
+  var flags = input[3], pos = 10;
+  if (flags & 4) { pos += 2 + (input[pos] | (input[pos + 1] << 8)); }
+  if (flags & 8) { while (input[pos] !== 0) { pos++; } pos++; }
+  if (flags & 16) { while (input[pos] !== 0) { pos++; } pos++; }
+  if (flags & 2) { pos += 2; }
+  var n = input.length;
+  var isize = ((input[n - 4]) | (input[n - 3] << 8) | (input[n - 2] << 16) | (input[n - 1] << 24)) >>> 0;
+  var out = inflateRaw(input, pos, isize);
+  if (out.length !== isize) {
+    throw new Error('gzip length mismatch: ' + out.length + ' vs ' + isize);
+  }
+  return out;
+}
+
+function boot() {
+  var plainEl = document.getElementById('cascade-blueprint-data');
+  var gzEl = document.getElementById('cascade-blueprint-data-gz');
+  if (plainEl) {
+    // `--no-compress`: the island is the packed JSON, in the clear.
+    try {
+      main(unpackIsland(JSON.parse(plainEl.textContent)));
+    } catch (err) { bootFailed(err); }
+    return;
+  }
+  if (!gzEl) { bootFailed(new Error('this page carries no data island')); return; }
+  var native = (typeof DecompressionStream === 'function');
+  if (!native) {
+    bootStatus('This browser has no native gzip (DecompressionStream), so the map is '
+      + 'being inflated in JavaScript instead. Nothing is missing; it is only slower. '
+      + 'Chrome 80+, Edge 80+, Firefox 113+ and Safari 16.4+ take the fast path.',
+      'boot-note');
+  }
+  var bytes;
+  try { bytes = base64Bytes(gzEl.textContent); } catch (err) { bootFailed(err); return; }
+  var pending = native
+    ? gunzipNative(bytes)
+    : new Promise(function (resolve) {
+        // One turn of the event loop first, so the note above is painted
+        // before the inflater blocks the main thread.
+        setTimeout(function () {
+          resolve(new TextDecoder('utf-8').decode(gunzipJS(bytes)));
+        }, 0);
+      });
+  pending.then(function (text) {
+    main(unpackIsland(JSON.parse(text)));
+  }).catch(bootFailed);
+}
+"""
+
+_SCRIPT = "(function () {\n'use strict';\n" + _SCRIPT_BODY + _DECODER + "\nboot();\n})();\n"
 
 
 def render_blueprint(
@@ -36784,6 +37414,7 @@ def render_blueprint(
     report_link: str = "",
     view: BlueprintView | None = None,
     selection: Selection | None = None,
+    compress: bool = True,
 ) -> str:
     """Render the whole offline blueprint page for one loaded artifact root.
 
@@ -36796,22 +37427,45 @@ def render_blueprint(
         store, rstore=rstore, diff_store=diff_store, report_link=report_link,
         view=view, selection=selection,
     )
-    data_json = _safe_json(data)
+    html, _island_bytes = _render_page(data, compress=compress)
+    return html
+
+
+def _render_page(data: dict[str, Any], *, compress: bool) -> tuple[str, int]:
+    """``(html, island_bytes)`` -- the page, and what the browser must carry.
+
+    The island is always interned (:func:`_pack_data`); *compress* adds
+    gzip+base64 on top. Both are exactly reversible, so the two forms
+    render the identical page from the identical object -- which is what
+    `test_blueprint_compression.py` and the browser round-trip test check
+    rather than assume.
+
+    The second element is the **measured** island size, not a prediction:
+    it is the number the size guard judges, because it is the number the
+    browser pays.
+    """
+    packed = _pack_data(data)
+    if compress:
+        island_tag = '<script type="application/gzip-base64" id="cascade-blueprint-data-gz">'
+        island_text = _compress_island(packed)
+    else:
+        island_tag = '<script type="application/json" id="cascade-blueprint-data">'
+        island_text = _safe_json(packed)
     parts = [
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>",
         "<title>CASCADE-MAP &mdash; blueprint canvas</title>",
         _blueprint__STYLE,
         "</head><body>",
         _BODY,
-        '<script type="application/json" id="cascade-blueprint-data">',
-        data_json,
+        island_tag,
+        island_text,
         "</script>",
         "<script>",
         _SCRIPT,
         "</script>",
         "</body></html>",
     ]
-    return "".join(parts)
+    return "".join(parts), len(island_text)
 
 
 def render_blueprint_to_file(
@@ -36863,10 +37517,17 @@ def render_blueprint_to_file(
     report_candidate = out_path.parent / "index.html"
     report_link = report_candidate.name if report_candidate.exists() else ""
 
-    html = render_blueprint(
+    data = build_blueprint_data(
         store, rstore=rstore, diff_store=diff_store, report_link=report_link,
         view=view, selection=selection,
     )
+    html, island_bytes = _render_page(data, compress=view.compress)
+    # Round 6: the guard's real decision, made on the measured island rather
+    # than on a prediction of it. Still before anything is opened, so a
+    # refusal still writes, truncates and creates nothing.
+    estimate = replace(estimate, actual_bytes=island_bytes, measured=True)
+    if estimate.over:
+        raise BlueprintTooLarge(estimate)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
     return store, selection, estimate
@@ -37494,6 +38155,7 @@ def analyze(
     workers: int | None = None,
     worker_report_sink: Callable[[str], None] | None = None,
     progress: Any = None,
+    max_source_bytes: int = MAX_SOURCE_BYTES,
 ) -> tuple[int, dict[str, Any]]:
     """Run the static pipeline over *root* and write artifacts to *out_dir*.
 
@@ -37609,6 +38271,7 @@ def analyze(
         elements=elements,
         edges=edges,
         reachability=reachability,
+        max_source_bytes=max_source_bytes,
     )
     package_requirements = dependencies.requirements()
     installed_packages = dependencies.installed()
@@ -38829,6 +39492,12 @@ def _build_parser() -> argparse.ArgumentParser:
                           "a completed static map, which is what this command "
                           "builds — it will tell you the exact `trace` to run "
                           "next rather than executing your engine from here.")
+    run.add_argument("--max-source-mb", type=int, default=None, metavar="MB",
+                     help="the dependency scanner's per-file limit: a source file "
+                          "larger than this has its imports and interpreter "
+                          "requirements skipped, and the skip is recorded against "
+                          f"that one file (default {MAX_SOURCE_BYTES // 1_000_000}). "
+                          "Every other analysis has its own limits and is unaffected.")
     run.add_argument("--no-gate", action="store_true",
                      help="write artifacts even if the completeness gate fails, "
                           "and exit 0. The gate still reports.")
@@ -38890,8 +39559,16 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="write the page even when the size guard says a browser "
                            "cannot open it")
     blue.add_argument("--size-limit-mb", type=int, default=50, metavar="MB",
-                      help="the size guard's threshold on the estimated data island "
+                      help="the size guard's threshold on the data island as the "
+                           "browser carries it -- compressed, unless --no-compress "
                            "(default 50). 0 disables the guard, exactly as --force does.")
+    blue.add_argument("--no-compress", action="store_true",
+                      help="write the data island as plain JSON instead of gzip+base64. "
+                           "Lossless either way and the same page either way; this is "
+                           "only for a browser with no DecompressionStream, or for "
+                           "reading the island by hand. Measured on a 116k-line engine "
+                           "at --scope full: 226 MB raw, 76 MB with --no-compress, "
+                           "16 MB compressed.")
 
     hist = sub.add_parser(
         "track",
@@ -39051,6 +39728,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             strict_gate=not args.no_gate,
             env_root=args.env,
             workers=args.workers,
+            max_source_bytes=(
+                args.max_source_mb * 1_000_000 if args.max_source_mb
+                else MAX_SOURCE_BYTES
+            ),
         )
         print(_report(summary, args.out, code))
         if _mode_of(args) == 2:
@@ -39173,6 +39854,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             hops=args.hops,
             force=args.force,
             size_limit_bytes=max(0, args.size_limit_mb) * 1024 * 1024,
+            compress=not args.no_compress,
         )
         try:
             _store, selection, estimate = render_blueprint_to_file(
@@ -39188,6 +39870,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"Wrote {target}  ({_cli__human_bytes(written)}, scope `{selection.view.scope}`)",
             f"  {selection.headline()}",
         ]
+        if estimate.measured:
+            # Every field of every node and edge is in that island; the two
+            # numbers are the same data, losslessly, in two encodings.
+            form = "interned + gzip" if estimate.compressed else "interned"
+            lines.append(
+                f"  data island {_cli__human_bytes(estimate.actual_bytes)} {form}, "
+                f"from {_cli__human_bytes(estimate.total_bytes)} of JSON -- nothing dropped, "
+                "the browser rebuilds it exactly"
+            )
         for note in selection.notes:
             lines.append(f"  - {note}")
         lines.append("Open it in a browser. It needs no network.")
