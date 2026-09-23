@@ -35,26 +35,48 @@ attached to a message, or opened months later. `PROJECT` is derived from the scr
 analysed, so naming the script is the whole instruction — the tool resolves the paths
 itself and there is nothing to point at and nothing to mis-point.
 
-### Per sport: runtime only, and here is why
+### Per sport, all the way down — and what that actually requires
 
-The owner asked for `etennis_history.json`, `ebasketball_history.json` and so on, to avoid
-combing through data irrelevant to the run in hand. That is right for runtime and wrong for
-the static map, so the split follows the data rather than the folder.
+The owner's correction, which is right: each sport follows a different cascade and a
+different path, so a single blended map distorts the answer. If the tool reports that an
+element reaches the final decision and that is only true for basketball, someone reading it
+while working on etennis has been misled. Cascade ORDER, REACHABILITY and the
+UNREACHABLE/DECISION_IRRELEVANT findings all genuinely differ by sport.
 
-**The static map does not depend on the sport.** Mode 1 never runs anything, so it produces
-one map of the whole engine — every sport's code at once. Writing it per sport would store
-seven identical copies, make a change appear seven times, and give the owner seven places to
-look for one answer. Worse, it would imply the tool knows which code belongs to which sport,
-which statically it does not: a sport chosen by a runtime string is exactly the link Mode 1
-reports as HEURISTIC rather than claiming.
+Copying one blended map into seven files does not fix that — it is the same distorted data
+in seven places. So the sport becomes a parameter of the ANALYSIS, not of the filing:
 
-**Runtime data is entirely per sport.** A Mode 2 run traces one sport. Its events, values,
-contradictions and observed order belong to that sport and to no other, and comparing
-basketball against basketball across versions is the only comparison that means anything.
-So each sport gets its own runtime history, read only when that sport is in play.
+```
+metatron track --sport basketball     # analysed AS basketball
+metatron track --all-sports           # one pass per sport
+```
 
-That gives the speed gain the owner is after, where the gain is real, without duplicating
-the static map seven times.
+Each pass constrains the graph to that sport's entry point and that sport's configuration,
+so `basketball_history.json` and `etennis_history.json` hold different orders, different
+reachability and different findings — because they were computed differently, not because
+they were filed differently.
+
+**What is shared and what is not.** Elements and their content hashes are properties of the
+source text and do not vary by sport; they stay in the script-level files, once. Everything
+derived from a path through the code — order, reachability, decision relevance, slices, the
+findings that depend on them — is computed per sport and stored per sport. A sport's file
+references the shared elements by id rather than copying them.
+
+**The honesty rule, which is the whole point of the owner's objection.** Static analysis can
+separate the sports only where the selection is statically resolvable: a sport-named module,
+a registry keyed by a literal, a config string the owner passes with `--config`. Where the
+sport is chosen by a runtime value the tool cannot follow, it CANNOT produce a genuinely
+sport-specific map — and in that case the file must say so:
+
+    scope: UNION ACROSS ALL SPORTS
+    reason: the sport is selected at runtime from argv; no static rule separates the
+            branches. Order and reachability below are the union over every sport.
+            Run mode 2 for this sport to get its real path.
+
+It must never present blended data as sport-specific. That is exactly the credibility the
+owner is protecting, and the rule is: separate it where it can be separated, and say plainly
+where it cannot. Mode 2 resolves what Mode 1 cannot, because it watches one sport actually
+run.
 
 ## Why not literally one JSON file
 

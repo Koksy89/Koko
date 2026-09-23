@@ -130,10 +130,20 @@ def test_unknown_setting_is_an_error_that_names_the_typo() -> None:
 
 
 def test_unknown_setting_with_no_near_match_still_lists_the_valid_keys() -> None:
+    # Was "WORKERS", which is a real setting now. The point of the test is a
+    # key with no near match, so it needs one that will not become real.
     with pytest.raises(SettingsError) as excinfo:
-        Settings.from_mapping({"WORKERS": 8})
-    assert "WORKERS" in str(excinfo.value)
+        Settings.from_mapping({"QQZZ_NOT_A_SETTING": 8})
+    assert "QQZZ_NOT_A_SETTING" in str(excinfo.value)
     assert "VERSIONS_DIR" in str(excinfo.value)
+
+
+def test_workers_must_be_a_non_negative_int() -> None:
+    assert Settings.from_mapping({"WORKERS": 8}).workers == 8
+    assert Settings.from_mapping({}).workers == 0, "0 = auto is the default"
+    for bad in (-1, "4", True, 1.5, None):
+        with pytest.raises(SettingsError, match="WORKERS"):
+            Settings.from_mapping({"WORKERS": bad})
 
 
 @pytest.mark.parametrize("bad", [0, 3, "1", True, None])
