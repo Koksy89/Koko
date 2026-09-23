@@ -127,6 +127,21 @@ def preflight(engine, frames, sports, strict=True):
         notes.append('rules: min_odds 1.40 (mode 3) / 1.50 (other) · NO maximum · '
                      'n_is>=100 · n_oos>=100 · ROI>0')
 
+    # THE VERSION RULE. +1 on every change, so any output names the build that made
+    # it. Checked here because a rule nobody checks is the one skipped on the busy day.
+    try:
+        import subprocess as _sp
+        _vg = os.path.join(os.path.dirname(HERE), 'audit', 'laz_version_gate.py')
+        if os.path.exists(_vg):
+            r = _sp.run([sys.executable, _vg, engine], capture_output=True, text=True)
+            for _l in r.stdout.splitlines():
+                if _l.strip().startswith('ok'):
+                    notes.append(_l.split('ok', 1)[1].strip())
+                elif 'FAIL' in _l:
+                    fails.append('VERSION: ' + _l.split('FAIL', 1)[1].strip())
+    except Exception as _e:
+        notes.append(f'version gate not run ({type(_e).__name__})')
+
     # THE ASSEMBLY INVARIANT. A strategy family list that is consumed -- copied into a
     # registry, or walked to stamp defaults onto every member -- and then CHANGED again
     # further down leaves the consumer holding a snapshot. That is how 220 strategies sat
