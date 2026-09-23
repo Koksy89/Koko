@@ -1485,6 +1485,67 @@ def _track_trace(
 # ---------------------------------------------------------------------------
 
 
+#: The name the owner types. Messages that tell them what to run next must
+#: name the command they actually have.
+_PROG = "metatron"
+
+
+def _graph_path(text: str) -> Path:
+    """An argparse type for a path that must NAME something.
+
+    `Path("")` is `Path(".")`, silently, so an unmatched shell glob arrives as
+    the working directory and every downstream check passes on the wrong tree.
+    Rejecting it here means the refusal happens before any command body runs,
+    and nothing can be created on the way.
+    """
+    if not text.strip():
+        raise argparse.ArgumentTypeError(
+            "empty path. An empty argument is a usage error, not the working "
+            "directory -- a shell glob that matched nothing produces exactly "
+            f"this. Pass the directory `{_PROG} analyze --out` wrote."
+        )
+    return Path(text)
+
+
+def _graph_dir_problem(path: Path) -> str:
+    """`""` if *path* already holds a Mode B map; otherwise why it does not.
+
+    Read-only, always: it stats and it reads a size, and it creates nothing.
+    A read command that makes the directory it was supposed to find is how an
+    empty answer gets a filename and a 95 KB page gets believed.
+
+    The four diagnoses are kept distinct on purpose. "No such directory" and
+    "the directory is there and holds no elements" are different problems with
+    different fixes, and the owner should not have to work out which one they
+    have from a single generic sentence.
+    """
+    run_this = f"Run `{_PROG} analyze <target> --out {path}` first."
+    if not path.exists():
+        return f"no map at {path} — the directory does not exist.\n{run_this}"
+    if not path.is_dir():
+        return f"no map at {path} — that is a file, not a directory.\n{run_this}"
+    elements = path / "elements.jsonl"
+    if not elements.is_file():
+        return f"no map at {path} — elements.jsonl is missing.\n{run_this}"
+    if elements.stat().st_size == 0:
+        return (
+            f"no map at {path} — found the directory, found no elements: "
+            f"elements.jsonl is empty.\n"
+            f"That is a map of nothing, not an empty target. Re-run "
+            f"`{_PROG} analyze <target> --out {path}` and read its summary."
+        )
+    return ""
+
+
+def _require_graph_dir(path: Path) -> bool:
+    """Print the refusal and say whether the caller may continue."""
+    problem = _graph_dir_problem(path)
+    if problem:
+        print(problem, file=sys.stderr)
+        return False
+    return True
+
+
 def _add_progress_flags(sub_parser: argparse.ArgumentParser) -> None:
     """Progress flags, identical on `analyze`, `track` and `trace`.
 
@@ -1570,19 +1631,20 @@ def _build_parser() -> argparse.ArgumentParser:
                           "Default 1, 4 and 8.")
 
     cmp_ = sub.add_parser("diff", help="compare two analysed output directories")
-    cmp_.add_argument("before", type=Path)
-    cmp_.add_argument("after", type=Path)
+    cmp_.add_argument("before", type=_graph_path)
+    cmp_.add_argument("after", type=_graph_path)
     cmp_.add_argument("--out", type=Path, default=Path("out/diff"))
 
     show = sub.add_parser("view", help="render an analysed tree as offline HTML")
-    show.add_argument("out_dir", type=Path)
+    show.add_argument("out_dir", type=_graph_path)
     show.add_argument("--html", type=Path, default=None)
 
     blue = sub.add_parser(
         "blueprint",
         help="render an analysed tree as an interactive, UE5-Blueprint-styled node canvas",
     )
-    blue.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
+    blue.add_argument("graph_dir", type=_graph_path,
+                      help="an analysed Mode B output directory")
     blue.add_argument("--html", type=Path, default=None)
     blue.add_argument("--diff", type=Path, default=None,
                       help="a `metatron diff` output directory (changes.jsonl/impacts.jsonl); "
@@ -1595,7 +1657,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="analyse every version in VERSIONS_DIR that has not been analysed "
              "already, compare consecutive versions, and update the ledger",
     )
-    hist.add_argument("--workspace", type=Path, default=None, metavar="DIR",
+    hist.add_argument("--workspace", type=_graph_path, default=None, metavar="DIR",
                       help="overrides WORKSPACE, the one path everything else "
                            "is derived from")
     hist.add_argument("--project", default=None, metavar="NAME",
@@ -1679,7 +1741,8 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="reuse the version ids without copying any tree")
 
     run_a = sub.add_parser("trace", help="Mode A — run the target under the harness")
-    run_a.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
+    run_a.add_argument("graph_dir", type=_graph_path,
+                       help="an analysed Mode B output directory")
     run_a.add_argument("--scenarios", type=Path, default=None,
                        help="JSON file declaring target_root and named scenarios. "
                             "Omitted, scenarios are derived from METATRON_SETTINGS: "
@@ -1783,6 +1846,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
 
     if args.command == "diff":
+        # Both sides, before either is read and before --out is created: a
+        # diff of a map against nothing reports every element as deleted,
+        # which is a dramatic and entirely false answer.
+        if not _require_graph_dir(args.before) or not _require_graph_dir(args.after):
+            return EXIT_USAGE
         changes, impacts = diff_snapshots(
             load_snapshot(args.before), load_snapshot(args.after)
         )
@@ -1845,6 +1913,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         # there are no module namespaces -- only globals.
         from cascade_map.viewer import render_to_file
 
+        if not _require_graph_dir(args.out_dir):
+            return EXIT_USAGE
         target = args.html or (args.out_dir / "index.html")
         render_to_file(args.out_dir, target)
         _crosslink_report_to_blueprint(target)
@@ -1854,6 +1924,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "blueprint":
         from cascade_map.viewer import render_blueprint_to_file
 
+        if not _require_graph_dir(args.graph_dir):
+            return EXIT_USAGE
         target = args.html or (args.graph_dir / "blueprint.html")
         render_blueprint_to_file(args.graph_dir, target, run_id=args.run, diff_root=args.diff)
         print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
@@ -1928,6 +2000,24 @@ def _history_command(args: Any) -> int:
         return EXIT_USAGE
     layout = layout_for(settings, Path.cwd())
     root = layout.workspace.root
+
+    # `history` READS. A workspace that is not there is a usage error naming
+    # the path, never an empty history rendered as a clean answer, and never a
+    # directory created on the way to saying so.
+    if not root.exists():
+        print(
+            f"no workspace at {root} — the directory does not exist.\n"
+            f"Run `{_PROG} track` to create one, or `{_PROG} migrate` if you "
+            f"have a flat layout from before the workspace existed.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+    if not root.is_dir():
+        print(
+            f"no workspace at {root} — that is a file, not a directory.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
 
     if not args.project:
         projects = list_projects(root)
@@ -2044,15 +2134,18 @@ def _trace_command(args: Any) -> int:
             file=sys.stderr,
         )
         return EXIT_REFUSED
-    static = args.graph_dir / "elements.jsonl"
-    if not static.is_file() or not static.stat().st_size:
+    problem = _graph_dir_problem(args.graph_dir)
+    if problem:
         # Keyed to nothing is worse than not run: a runtime overlay with no
-        # graph to attach to cannot be read, compared or trusted.
+        # graph to attach to cannot be read, compared or trusted. The
+        # diagnosis is the shared one, so `trace` distinguishes "no such
+        # directory" from "directory, no elements" exactly as the read-only
+        # commands do -- and REFUSED rather than USAGE, because this is the
+        # one command that would otherwise have executed the owner's engine.
         print(
-            f"REFUSED: MODE 2 always builds on a completed static map, and "
-            f"{args.graph_dir} holds none ({static} is missing or empty). Nothing "
-            f"was executed. Run mode 1 first:\n"
-            f"    cascade-map analyze <your target> --out {args.graph_dir}",
+            f"REFUSED: MODE 2 always builds on a completed static map.\n"
+            f"{problem}\n"
+            f"Nothing was executed.",
             file=sys.stderr,
         )
         return EXIT_REFUSED
