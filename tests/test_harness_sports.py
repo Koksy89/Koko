@@ -744,9 +744,20 @@ def test_trace_refuses_when_the_graph_has_no_manifest(tmp_path: Path, capsys) ->
 
 
 def test_two_runs_of_the_same_sport_are_byte_identical(tmp_path: Path) -> None:
+    """Two separate processes, two different hash seeds, the same bytes.
+
+    Both seeds are non-zero on purpose. `PYTHONHASHSEED=0` *disables* hash
+    randomization, so a run under it legitimately carries one fewer
+    `HASH_ORDERING` nondeterminism finding than a randomized run -- a true
+    observation about the traced process, not a determinism defect, and
+    comparing the two would hide the real guarantee behind a false failure.
+
+    The one field allowed to differ is `sandbox_dir`: it is the `--out` path
+    the caller chose, and `test_amalgamate.py` already treats it the same way.
+    """
     root, graph = _prepared(tmp_path)
 
-    def once(seed: str, out: Path) -> tuple[str, str]:
+    def once(seed: str, out: Path) -> dict[str, str]:
         env = dict(os.environ)
         env["PYTHONHASHSEED"] = seed
         env["PYTHONPATH"] = SRC_PATH
@@ -758,19 +769,26 @@ def test_two_runs_of_the_same_sport_are_byte_identical(tmp_path: Path) -> None:
         assert result.returncode == 0, result.stderr
         runs = sorted((out / "runtime").iterdir())
         assert len(runs) == 1
-        record = json.loads((runs[0] / "run.json").read_text(encoding="utf-8"))
+        produced = {
+            path.relative_to(runs[0]).as_posix(): path.read_text(encoding="utf-8")
+            for path in sorted(runs[0].rglob("*"))
+            if path.is_file()
+        }
+        assert "events.jsonl" in produced and "run.json" in produced
+        record = json.loads(produced.pop("run.json"))
+        assert record["sandbox_dir"] == str((out / "sandbox").resolve())
         record.pop("sandbox_dir")
-        return (
-            json.dumps(record, sort_keys=True),
-            (out / "derived_scenarios.json").read_text(encoding="utf-8"),
-        )
+        produced["run.json"] = json.dumps(record, sort_keys=True)
+        produced["derived_scenarios.json"] = (
+            out / "derived_scenarios.json"
+        ).read_text(encoding="utf-8").replace(str(out), "<OUT>")
+        return produced
 
-    first = once("0", tmp_path / "a")
-    second = once("12345", tmp_path / "b")
-    assert first[0] == second[0], "two runs of the same sport disagreed"
-    assert first[1].replace(str(tmp_path / "a"), "") == second[1].replace(
-        str(tmp_path / "b"), ""
-    )
+    first = once("1", tmp_path / "a")
+    second = once("98765", tmp_path / "b")
+    assert sorted(first) == sorted(second)
+    for name in sorted(first):
+        assert first[name] == second[name], f"{name} differed between two runs"
     assert root.is_dir()
 
 

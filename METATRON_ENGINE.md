@@ -155,12 +155,38 @@ flag that overrides it. See [section 9b](#9b-track--the-version-ledger).
 ### `trace` — watch it actually run (Mode A)
 
 ```
+python3 metatron_engine.py trace GRAPH_DIR --sport basketball --out DIR
 python3 metatron_engine.py trace GRAPH_DIR --scenarios FILE.json --scenario NAME --out DIR
 ```
 
 This is the only command that executes your code, it only does so inside a containment
 harness, and it refuses to start unless a completed `analyze` map already exists. See
 [section 10](#10-mode-a--watching-it-run).
+
+| Option | What it does |
+|---|---|
+| `--sport NAME` | run this sport; repeatable. Overrides `SPORT`. An unknown name is an error that lists the valid ones. |
+| `--all-sports` | every sport in `SPORTS`, each as its own scenario with its own run id |
+| `--run-arg=ARG` | an extra flag passed through to the runner; repeatable. Use the `=` form so the flag is not read as one of this tool's own. |
+| `--preflight` | say whether the run could start, and what would be active, **without executing anything** |
+| `--scenarios FILE` | declare scenarios yourself. Given, it wins; omitted, scenarios are derived from `METATRON_SETTINGS`. |
+
+**Sports need no scenarios file and no edit to any Python file.** With `--scenarios`
+omitted, one scenario is derived per selected sport, named for the sport, built as
+`RUNNER --engine ENGINE --sports <sport> [RUN_ARGS...]` and handed to the runner as its
+`sys.argv` — which is how an `argparse`-driven launcher expects to be called. The derived
+document is written to `DIR/derived_scenarios.json`, so you can read exactly what ran and
+hand-edit it into a scenarios file if you need to declare a stub or a child process.
+Different sports are different scenarios and are never compared against each other.
+
+If the runner cannot be resolved to a module inside the version, the run **refuses** and
+names the path it tried. It never guesses another module.
+
+Three things will bite on a live launcher, and `trace` prints all three with every run:
+the network is blocked (so package installs and data fetches fail), every write is
+redirected into the sandbox (so `Workbooks/`, `production/` and `Logs/` do **not** land
+where you expect them), and process spawning is blocked unless declared — so `--workers 8`
+means eight children that are either blocked or, if declared, unsupervised and unrecorded.
 
 ---
 
@@ -889,6 +915,7 @@ Write a small JSON file describing what to run:
 | `module` | the module to import, addressed the same way element IDs are |
 | `function` | called after import. Leave it empty to make the import itself the scenario (like `python -m`) |
 | `args` | string arguments passed to that function |
+| `argv` | replaces `sys.argv` for the duration of the scenario and is restored afterwards, including when the scenario raises. This is how an `argparse`-driven launcher is driven without adding a shim file to your own tree. Empty leaves `sys.argv` alone |
 | `declared_process_names` | executables this run is allowed to spawn. **Empty means none** |
 | `env_passthrough` | environment variable names the scenario may see. **Empty means none, including secrets** |
 
@@ -901,6 +928,11 @@ python3 metatron_engine.py trace out\amun --scenarios scenarios.json --scenario 
 **Every one of those collections defaults to empty, and that is the mechanism, not a
 convenience.** The harness denies by omission: you do not lock it down, you open exactly
 what you name.
+
+**You do not need this file for sports.** Omit `--scenarios` and the scenarios are
+derived from `METATRON_SETTINGS` — `SPORTS`, `SPORT`, `ENGINE`, `RUNNER`, `RUN_ARGS` —
+one per sport. Write the file only when you need something the derivation deliberately
+will not give you: a declared child process, an environment variable, or a stub.
 
 ### What it guarantees
 

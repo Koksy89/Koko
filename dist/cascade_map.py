@@ -36,6 +36,7 @@ from dataclasses import replace
 from enum import StrEnum
 from html import escape
 from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import CodeType, FrameType
 from types import ModuleType
 from typing import Any
@@ -144,6 +145,43 @@ METATRON_SETTINGS = {
     # MODE 2 only.
     "SCENARIOS": "scenarios.json",
     "SCENARIO": "baseline",
+
+    # MODE 2 / `trace`: sports as first-class scenarios.
+    #
+    # The engine file is a LIBRARY -- running it does nothing. The launcher is
+    # what runs, and it is argv-driven, so a scenario is
+    #   RUNNER --engine ENGINE --sports <sport> [RUN_ARGS...]
+    # one per sport, each its own scenario with its own run id. Different
+    # sports are never compared against each other.
+    #
+    # You do not have to edit any of this to change which sport runs:
+    #   metatron_engine.py trace out/amun --sport basketball
+    #   metatron_engine.py track --mode 2 --all-sports
+    "SPORTS": [
+        "etennis",
+        "esport",
+        "basketball",
+        "tabletennis",
+        "football",
+        "efootball",
+        "ebasketball",
+    ],
+
+    # "" = all of SPORTS. Overridden by --sport / --all-sports.
+    "SPORT": "",
+
+    # The engine file, relative to the version root. Passed as --engine.
+    "ENGINE": "AmunEV_Engine_V2.py",
+
+    # The launcher, relative to the version root. Resolved to an importable
+    # module rooted at the target; an unresolvable path is a refusal naming
+    # the path tried, never a guess at another module.
+    "RUNNER": "bin/go_live.py",
+
+    # Extra flags passed through to the runner, after the sport. Appended to
+    # by --run-arg. Note: --workers N asks for N child processes, which the
+    # harness blocks unless declared, and does not supervise when declared.
+    "RUN_ARGS": [],
 }
 
 
@@ -172,7 +210,7 @@ Three decisions are encoded here, settled as Q5, Q6 and Q7 in OPEN_QUESTIONS.md:
 
 
 
-SCHEMA_VERSION = "1.3.0"
+SCHEMA_VERSION = "1.4.0"
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -2021,6 +2059,69 @@ _FORMATTING_TOKENS = frozenset(
 
 _PROPERTY_DECORATOR_SUFFIXES = (".setter", ".getter", ".deleter")
 
+# The same pattern CPython 3.12's `ast._splitlines_no_ff` uses: split on
+# \r\n / \n / \r only, keeping the terminator, and ignoring form feed and the
+# other characters `str.splitlines` treats as breaks but the parser does not.
+# 3.11's hand-rolled loop produces the same list (minus a trailing empty
+# element on sources that end with a newline, which is never indexed here),
+# so one pattern serves both.
+_LINE_PATTERN = re.compile(r"(.*?(?:\r\n|\n|\r|$))")
+
+
+def _splitlines_no_ff(source: str) -> list[str]:
+    """`ast._splitlines_no_ff`, computed once per file instead of once per
+    node. See `_source_segment` for why this exists."""
+    lines = [m[0] for m in _LINE_PATTERN.finditer(source)]
+    if lines and lines[-1] == "":
+        # 3.12's regex yields a final zero-width match; 3.11's loop does not.
+        # Drop it so the two are literally the same list.
+        lines.pop()
+    return lines
+
+
+def _slice_line(line: str, start: int, stop: int | None) -> str:
+    """`col_offset`/`end_col_offset` are UTF-8 **byte** offsets, so the
+    stdlib slices `line.encode()` and decodes back. For an all-ASCII line
+    byte offsets and character offsets coincide exactly, so the direct slice
+    is identical and skips two transcodes -- which is most lines of most
+    files."""
+    if line.isascii():
+        return line[start:stop]
+    return line.encode()[start:stop].decode()
+
+
+def _source_segment(ctx: _Ctx, node: ast.AST) -> str | None:
+    """`ast.get_source_segment(source, node, padded=False)` with the line
+    split hoisted out.
+
+    The stdlib re-splits the **entire** source file on every call, making
+    inventory O(file_length x elements_in_file). On the shape this tool is
+    built for -- one very large module -- that dominated the whole run
+    (measured: 202.65s -> 2.86s on a 1.3 MB single file). The body below is
+    the stdlib's own body verbatim after its split, so agreement is by
+    construction, not by luck; `tests/test_ingest_source_segment.py` asserts
+    it against `ast.get_source_segment` over a corpus including non-ASCII and
+    multi-line nodes.
+
+    Only `padded=False` is implemented -- the one form this module uses."""
+    try:
+        if node.end_lineno is None or node.end_col_offset is None:  # type: ignore[attr-defined]
+            return None
+        lineno = node.lineno - 1  # type: ignore[attr-defined]
+        end_lineno = node.end_lineno - 1  # type: ignore[attr-defined]
+        col_offset = node.col_offset  # type: ignore[attr-defined]
+        end_col_offset = node.end_col_offset  # type: ignore[attr-defined]
+    except AttributeError:
+        return None
+
+    lines = ctx.source_lines()
+    if end_lineno == lineno:
+        return _slice_line(lines[lineno], col_offset, end_col_offset)
+
+    first = _slice_line(lines[lineno], col_offset, None)
+    last = _slice_line(lines[end_lineno], 0, end_col_offset)
+    return "".join([first, *lines[lineno + 1 : end_lineno], last])
+
 
 @dataclass
 class _python_module__Scope:
@@ -2039,6 +2140,13 @@ class _Ctx:
     elements: list[Element] = field(default_factory=list)
     unresolved: list[Unresolved] = field(default_factory=list)
     pending_blob_spans: dict[int, ast.AST] = field(default_factory=dict)
+    # Lazily split once per file and reused by every `_source_segment` call.
+    lines: list[str] | None = field(default=None, repr=False)
+
+    def source_lines(self) -> list[str]:
+        if self.lines is None:
+            self.lines = _splitlines_no_ff(self.source)
+        return self.lines
 
     def next_ordinal(self, qualname: str) -> int:
         n = self.counts.get(qualname, 0) + 1
@@ -2103,7 +2211,7 @@ def _certain_prov(ctx: _Ctx, node: ast.AST | int, note: str = "") -> Provenance:
 
 
 def _content_hash(ctx: _Ctx, node: ast.AST) -> str:
-    segment = ast.get_source_segment(ctx.source, node)
+    segment = _source_segment(ctx, node)
     if segment is None:
         try:
             segment = ast.unparse(node)
@@ -2143,7 +2251,7 @@ def _normalized_body_hash(ctx: _Ctx, node: ast.AST) -> str:
     if not statements:
         return ""
 
-    segments = [ast.get_source_segment(ctx.source, s) for s in statements]
+    segments = [_source_segment(ctx, s) for s in statements]
     segments = [s for s in segments if s is not None]
     if not segments:
         return ""
@@ -15782,7 +15890,7 @@ _FEATURE_MINIMUMS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _version_tuple(text: str) -> tuple[int, ...]:
+def _dependencies__version_tuple(text: str) -> tuple[int, ...]:
     parts: list[int] = []
     for chunk in text.split("."):
         digits = "".join(c for c in chunk if c.isdigit())
@@ -16523,7 +16631,7 @@ class Dependencies:
                 for owner in owners:
                     if not owner:
                         continue
-                    key = _version_tuple(minimum)
+                    key = _dependencies__version_tuple(minimum)
                     current = best.get(owner)
                     if current is None or (key, feature) > (current[0], current[1]):
                         best[owner] = (key, feature, minimum, span)
@@ -16865,7 +16973,7 @@ class Dependencies:
         if env_version:
             available.append(
                 (
-                    _version_tuple(env_version),
+                    _dependencies__version_tuple(env_version),
                     env_version,
                     f"the environment at {self.environment_label()} "
                     f"runs Python {env_version}",
@@ -16875,7 +16983,7 @@ class Dependencies:
             text, declaration = floor
             available.append(
                 (
-                    _version_tuple(text),
+                    _dependencies__version_tuple(text),
                     text,
                     f"{declaration.path}:{declaration.line} declares "
                     f"{declaration.specifier!r}, which allows Python {text}",
@@ -16884,7 +16992,7 @@ class Dependencies:
 
         out: list[Finding] = []
         for requirement in interpreter:
-            needed = _version_tuple(requirement.minimum_python)
+            needed = _dependencies__version_tuple(requirement.minimum_python)
             for key, text, why in available:
                 if key[: len(needed)] >= needed:
                     continue
@@ -17181,6 +17289,19 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "ORDER": [],
     "SCENARIOS": "scenarios.json",
     "SCENARIO": "baseline",
+    "SPORTS": [
+        "etennis",
+        "esport",
+        "basketball",
+        "tabletennis",
+        "football",
+        "efootball",
+        "ebasketball",
+    ],
+    "SPORT": "",
+    "ENGINE": "AmunEV_Engine_V2.py",
+    "RUNNER": "bin/go_live.py",
+    "RUN_ARGS": [],
 }
 
 _KEY_TO_FIELD: dict[str, str] = {
@@ -17195,9 +17316,14 @@ _KEY_TO_FIELD: dict[str, str] = {
     "ORDER": "order",
     "SCENARIOS": "scenarios",
     "SCENARIO": "scenario",
+    "SPORTS": "sports",
+    "SPORT": "sport",
+    "ENGINE": "engine",
+    "RUNNER": "runner",
+    "RUN_ARGS": "run_args",
 }
 
-_LIST_KEYS = frozenset({"SINKS", "ENTRIES", "CONFIGS", "ORDER"})
+_LIST_KEYS = frozenset({"SINKS", "ENTRIES", "CONFIGS", "ORDER", "SPORTS", "RUN_ARGS"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -17215,6 +17341,29 @@ class Settings:
     order: tuple[str, ...] = ()
     scenarios: str = "scenarios.json"
     scenario: str = "baseline"
+    sports: tuple[str, ...] = (
+        "etennis",
+        "esport",
+        "basketball",
+        "tabletennis",
+        "football",
+        "efootball",
+        "ebasketball",
+    )
+    sport: str = ""
+    engine: str = "AmunEV_Engine_V2.py"
+    runner: str = "bin/go_live.py"
+    run_args: tuple[str, ...] = ()
+
+    def selected_sports(self) -> tuple[str, ...]:
+        """The sports this run covers. ``SPORT`` empty means all of ``SPORTS``.
+
+        A tuple, always in ``SPORTS`` order, because it decides scenario names
+        and therefore run ids: a set would make two identical runs differ.
+        """
+        if self.sport:
+            return (self.sport,)
+        return self.sports
 
     @staticmethod
     def from_mapping(mapping: Mapping[str, Any]) -> "Settings":
@@ -17257,7 +17406,18 @@ class Settings:
                         f"{key} must be a string path, not {type(raw).__name__}."
                     )
                 values[_KEY_TO_FIELD[key]] = raw
-        return Settings(**values)
+        settings = Settings(**values)
+        # SPORT names one of SPORTS, so it can only be checked once both have
+        # been read. An unknown name is an error that LISTS the valid ones:
+        # a misspelled sport that silently ran every sport, or none, is the
+        # same defect class as a misspelled setting key.
+        if settings.sport and settings.sport not in settings.sports:
+            valid = ", ".join(settings.sports) if settings.sports else "(SPORTS is empty)"
+            raise SettingsError(
+                f'unknown SPORT "{settings.sport}". Valid sports: {valid}. '
+                f'SPORT must name one of SPORTS, or be "" for all of them.'
+            )
+        return settings
 
 
 # ---------------------------------------------------------------------------
@@ -17809,6 +17969,12 @@ class Ledger:
         self.order_reason: str = "nothing discovered yet"
         #: label -> the label it duplicates, for trees with identical content.
         self.duplicate_labels: dict[str, str] = {}
+        #: The sports this ledger's Mode A runs are about, in SPORTS order, or
+        #: empty when scenarios come from a scenarios file (or cannot be
+        #: derived at all). Non-empty, it is the ONLY set of scenario names
+        #: two versions may be compared on: basketball is compared with
+        #: basketball or with nothing.
+        self.sports_scenarios: tuple[str, ...] = ()
 
     # -- paths ------------------------------------------------------------
 
@@ -18207,7 +18373,9 @@ class Ledger:
         """
         before_dir = self.resolve(before.artifact_dir)
         after_dir = self.resolve(after.artifact_dir)
-        pair = _common_scenario_runs(before, after, before_dir, after_dir)
+        pair = _common_scenario_runs(
+            before, after, before_dir, after_dir, self.sports_scenarios
+        )
         if pair is None:
             return {}
         scenario, before_run, after_run = pair
@@ -18478,19 +18646,31 @@ def _run_scenarios(artifact_dir: Path) -> dict[str, str]:
 
 
 def _common_scenario_runs(
-    before: VersionRecord, after: VersionRecord, before_dir: Path, after_dir: Path
+    before: VersionRecord,
+    after: VersionRecord,
+    before_dir: Path,
+    after_dir: Path,
+    preferred: Sequence[str] = (),
 ) -> tuple[str, str, str] | None:
     """``(scenario, before_run_id, after_run_id)`` for the one scenario both
     versions were traced under, or None. Comparing two runs of *different*
-    scenarios would measure the scenarios, not the versions."""
+    scenarios would measure the scenarios, not the versions.
+
+    *preferred* names the scenarios this run is about -- the selected sports.
+    Given, nothing outside it is ever compared and the order it declares is
+    the order tried, so "basketball vs basketball" cannot quietly become
+    "basketball vs football" because a leftover run sorted first. Different
+    sports are different scenarios and must never be compared against each
+    other."""
     if not before.runtime_run_ids or not after.runtime_run_ids:
         return None
     before_runs = _run_scenarios(before_dir)
     after_runs = _run_scenarios(after_dir)
-    shared = sorted(
-        {s for s in before_runs.values() if s}
-        & {s for s in after_runs.values() if s}
-    )
+    common = {s for s in before_runs.values() if s} & {s for s in after_runs.values() if s}
+    if preferred:
+        shared = [name for name in preferred if name in common]
+    else:
+        shared = sorted(common)
     if not shared:
         return None
     scenario = shared[0]
@@ -18561,6 +18741,10 @@ def track(
 
     new_ids = [record.id for record in ledger.analyse_new(discovered)]
 
+    # Decided once, before anything is run or compared, so a second `track`
+    # over an unchanged tree reports the same way as the first.
+    ledger.sports_scenarios = _sports_in_play(ledger, settings)
+
     trace_notes = _run_mode_a(ledger, settings, new_ids, trace)
     ledger.refresh_runtime_runs()
     ledger.apply_ordering()
@@ -18573,7 +18757,11 @@ def track(
         if fresh or before_id in new_ids or after_id in new_ids:
             computed.append(comparison)
         runtime_notes[comparison.id] = _runtime_note(
-            settings, ledger.record(before_id), ledger.record(after_id), comparison
+            settings,
+            ledger.record(before_id),
+            ledger.record(after_id),
+            comparison,
+            ledger,
         )
 
     if not computed and ledger.consecutive_pairs():
@@ -18619,19 +18807,86 @@ def _run_mode_a(
             "was executed. Run `metatron trace` per version instead.",
         )
     scenarios = ledger.resolve(settings.scenarios)
-    if not scenarios.is_file():
-        return (
-            f"MODE 2 was set but SCENARIOS file {scenarios} does not exist, so "
-            f"nothing was executed and runtime is not measured.",
-        )
     notes: list[str] = []
+    if scenarios.is_file():
+        # A scenarios file wins. Declared scenarios are the owner's own
+        # statement of what to run; nothing is derived on top of them.
+        for version_id in sorted(new_ids):
+            out_dir = ledger.artifact_dir(version_id)
+            code, message = trace(out_dir, scenarios, settings.scenario, out_dir)
+            label = ledger.record(version_id).label
+            head = message.splitlines()[0] if message else ""
+            notes.append(f"{label}: trace exit {code} -- {head}")
+        return tuple(notes)
+
+    # No scenarios file: derive one scenario per selected sport, per version.
+    # Each sport is its own scenario with its own run id, recorded against
+    # that version, so the ledger can compare the same sport across versions.
+    sports = settings.selected_sports()
     for version_id in sorted(new_ids):
+        record = ledger.record(version_id)
         out_dir = ledger.artifact_dir(version_id)
-        code, message = trace(out_dir, scenarios, settings.scenario, out_dir)
-        label = ledger.record(version_id).label
-        head = message.splitlines()[0] if message else ""
-        notes.append(f"{label}: trace exit {code} -- {head}")
+        try:
+            document = derive_scenario_document(
+                ledger.resolve(record.source_path),
+                sports=sports,
+                runner=settings.runner,
+                engine=settings.engine,
+                run_args=settings.run_args,
+            )
+        except ScenarioDerivationError as exc:
+            notes.append(
+                f"{record.label}: SCENARIOS file {scenarios} does not exist and no "
+                f"scenario could be derived from METATRON_SETTINGS -- {exc} "
+                f"Nothing was executed for this version and runtime is not measured."
+            )
+            continue
+        derived = out_dir / "derived_scenarios.json"
+        derived.parent.mkdir(parents=True, exist_ok=True)
+        derived.write_text(
+            json.dumps(document, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        for sport in sports:
+            code, message = trace(out_dir, derived, sport, out_dir)
+            head = message.splitlines()[0] if message else ""
+            notes.append(f"{record.label} [{sport}]: trace exit {code} -- {head}")
     return tuple(notes)
+
+
+def _sports_in_play(ledger: "Ledger", settings: Settings) -> tuple[str, ...]:
+    """The sports this ledger's comparisons are about, or ``()``.
+
+    Empty whenever scenario names are not sports: MODE 1, a scenarios file
+    that exists, or a RUNNER that resolves against no known version. Deciding
+    it from the settings *and* the tree -- rather than from the fact that
+    SPORTS is never empty -- is what keeps a ledger whose scenarios are named
+    "baseline" and "stress" reading the way it always has.
+
+    Derivation here is a check, not a run: it resolves paths and builds a
+    dict. Nothing is imported and nothing is executed.
+    """
+    if settings.mode != 2:
+        return ()
+    if ledger.resolve(settings.scenarios).is_file():
+        return ()
+    sports = settings.selected_sports()
+    if not sports:
+        return ()
+    for record in ledger.versions:
+        try:
+            derive_scenario_document(
+                ledger.resolve(record.source_path),
+                sports=sports,
+                runner=settings.runner,
+                engine=settings.engine,
+                run_args=settings.run_args,
+            )
+        except ScenarioDerivationError:
+            continue
+        return sports
+    return ()
 
 
 def _runtime_note(
@@ -18639,6 +18894,7 @@ def _runtime_note(
     before: VersionRecord,
     after: VersionRecord,
     comparison: VersionComparison,
+    ledger: "Ledger | None" = None,
 ) -> str:
     """Why ``runtime_delta`` is empty, or what it found. Never "no change"."""
     if comparison.runtime_delta:
@@ -18652,6 +18908,18 @@ def _runtime_note(
         )
     if settings.mode != 2:
         return "not measured (MODE 1; set MODE 2 to observe execution)"
+    sports = ledger.sports_scenarios if ledger is not None else ()
+    if sports:
+        # Named for the sport, never "no change". A version with no run for
+        # this sport has not been measured for it, and saying so is the whole
+        # point: two different sports are two different programs' worth of
+        # execution and comparing them would measure the sport.
+        return "; ".join(
+            f"not measured for {sport} ("
+            + _sport_gap(sport, before, after, ledger)
+            + ")"
+            for sport in sports
+        )
     missing = [r.label for r in (before, after) if not r.runtime_run_ids]
     if missing:
         return f"not measured (MODE 2, but no completed Mode A run for {missing!r})"
@@ -18659,6 +18927,20 @@ def _runtime_note(
         "not measured (both versions have Mode A runs, but none of the same "
         "scenario; comparing different scenarios would measure the scenarios)"
     )
+
+
+def _sport_gap(
+    sport: str, before: VersionRecord, after: VersionRecord, ledger: "Ledger"
+) -> str:
+    """Which of the two versions has no completed run of *sport*."""
+    missing = [
+        record.label
+        for record in (before, after)
+        if sport not in set(_run_scenarios(ledger.resolve(record.artifact_dir)).values())
+    ]
+    if missing:
+        return "no completed Mode A run of that scenario for " + ", ".join(missing)
+    return "both versions have a run of it, but the delta was not computed"
 
 
 # ---------------------------------------------------------------------------
@@ -19651,6 +19933,18 @@ _EXCLUDED_DIR_NAMES = frozenset(
 )
 
 
+def is_target_content(relative_posix: str) -> bool:
+    """Is this POSIX-relative path part of the target's own content?
+
+    The one place the exclusion rule lives. `cli` needs it to compare a
+    manifest written by `analyze` -- whose own walk skips less -- against what
+    this module hashes, and a second copy of the rule is a second answer to
+    "what is the target", which is exactly what the graph hash exists to pin
+    down.
+    """
+    return not any(part in _EXCLUDED_DIR_NAMES for part in PurePosixPath(relative_posix).parts)
+
+
 def compute_target_hashes(target_root: Path) -> dict[str, str]:
     """SHA-256 of every file under *target_root*, keyed by POSIX-relative path.
 
@@ -19745,6 +20039,20 @@ class ScenarioSpec:
     module: str
     function: str = ""
     args: tuple[str, ...] = ()
+    argv: tuple[str, ...] = ()
+    """`sys.argv` for the scenario, when the target is driven by command-line
+    flags rather than by a callable -- which most real launchers are.
+
+    Set, it replaces `sys.argv` for the duration of the scenario and is
+    restored afterwards, so a target using `argparse` sees exactly what it
+    would see from a shell. Empty leaves `sys.argv` alone.
+
+    This exists because the first real target could not be driven at all
+    without it: its runner takes `--engine`, `--sports`, `--frames` and
+    `--workers`, and calling a function with string arguments cannot express
+    that. The alternative was asking the owner to write a shim module inside
+    their own tree, which is a change to the code under analysis -- the one
+    thing this tool must never require."""
 
 
 @dataclass(frozen=True)
@@ -20642,6 +20950,16 @@ class Harness:
         path_added = target_root not in sys.path
         if path_added:
             sys.path.insert(0, target_root)
+        # `sys.argv` is set *before* the import, not between import and call:
+        # an import-only scenario (`function=""`) does all its work at module
+        # top level, which is exactly where `argparse` runs for a real
+        # launcher. Setting it after the import would leave the one shape
+        # this field exists for -- a `python bin/go_live.py --sports ...`
+        # runner -- seeing the harness's own argv.
+        argv_replaced = bool(spec.argv)
+        original_argv = list(sys.argv)
+        if argv_replaced:
+            sys.argv = list(spec.argv)
         try:
             try:
                 module = importlib.import_module(spec.module)
@@ -20658,6 +20976,13 @@ class Harness:
                 except BaseException as exc:
                     raise ScenarioStageError("call", exc) from exc
         finally:
+            # Restored here, in the same `finally` as the sys.path cleanup, so
+            # it is restored when the scenario raises as well as when it
+            # returns. A scenario that leaves the interpreter's argv rewritten
+            # would silently change what every later scenario -- and this tool
+            # itself -- sees.
+            if argv_replaced:
+                sys.argv = original_argv
             if path_added:
                 try:
                     sys.path.remove(target_root)
@@ -20760,6 +21085,299 @@ class Harness:
         path = runtime_dir / "run.json"
         path.write_text(canonical_dumps(record) + "\n", encoding="ascii")
         return path
+
+
+# ==========================================================================
+# harness/scenarios.py
+# ==========================================================================
+
+"""Card 11: scenarios derived from settings, and sports as first-class runs.
+
+The first real target is a library, not a program. ``AmunEV_Engine_V2.py`` is
+~60 modules in one 14.8 MB file that never calls itself; the thing that
+*runs* is a launcher taking ``--engine`` and ``--sports`` on the command
+line. Nothing in a scenario file of module-plus-function shape can express
+that, and asking the owner to add a shim module to their own tree would be a
+change to the code under analysis -- the one thing this tool must never
+require.
+
+So a scenario can carry ``argv`` (see :class:`~cascade_map.harness.config.ScenarioSpec`),
+and this module builds those scenarios from settings so the owner can name a
+sport on the command line and never open a Python file:
+
+    metatron_engine.py trace out/amun --sport basketball
+
+Everything here is **data**. Nothing in this module execs, evals, imports or
+otherwise runs a line of the target: it checks that files exist, turns a
+relative path into an importable module name, and builds a dict. The one
+thing it will not do is guess: a runner it cannot resolve is a refusal
+naming the path it tried, never a fallback to some other module.
+"""
+
+
+
+__all__ = [
+    "ScenarioDerivationError",
+    "SPORT_SCENARIO_KIND",
+    "derive_scenario_document",
+    "derive_scenarios",
+    "harness_warnings",
+    "runner_module_name",
+    "select_sports",
+]
+
+
+class ScenarioDerivationError(RuntimeError):
+    """A scenario could not be derived from settings.
+
+    Always carries the reason and the path that was tried. Raised rather than
+    returning a best guess: a Mode A run pointed at the wrong module executes
+    owner code that nobody asked for, which is exactly what constraint 7
+    exists to prevent.
+    """
+
+
+#: What a derived scenario is, for anything that has to explain itself to the
+#: owner. Not a marker the harness reads -- the harness sees an ordinary
+#: ``ScenarioSpec`` and cannot tell a derived one from a hand-written one.
+SPORT_SCENARIO_KIND = "sport"
+
+
+# ---------------------------------------------------------------------------
+# Sport selection
+# ---------------------------------------------------------------------------
+
+
+def select_sports(
+    known: Sequence[str],
+    sport: str = "",
+    requested: Sequence[str] = (),
+    all_sports: bool = False,
+) -> tuple[str, ...]:
+    """Which sports this run covers, in the order *known* declares them.
+
+    Precedence: ``--all-sports`` beats ``--sport``, which beats the ``SPORT``
+    setting, which beats "every sport in ``SPORTS``". An unknown name raises
+    :class:`ValueError` **listing the valid ones** -- a typo that silently
+    ran a different sport, or no sport at all, is how an owner ends up
+    reading a map of something they did not run.
+    """
+    valid = tuple(known)
+    if all_sports:
+        if requested:
+            raise ValueError(
+                "--all-sports and --sport cannot both be given: one means every "
+                "sport, the other means these sports. Pick one."
+            )
+        return valid
+    chosen: tuple[str, ...]
+    if requested:
+        chosen = tuple(requested)
+    elif sport:
+        chosen = (sport,)
+    else:
+        return valid
+    for name in chosen:
+        if name not in valid:
+            raise ValueError(
+                f"unknown sport {name!r}. Valid sports: "
+                f"{', '.join(valid) if valid else '(SPORTS is empty)'}."
+            )
+    # Deduplicated, in SPORTS order, so `--sport a --sport a` and the order
+    # the flags happened to be typed in cannot change a run id or an output.
+    return tuple(name for name in valid if name in set(chosen))
+
+
+# ---------------------------------------------------------------------------
+# Resolving the runner
+# ---------------------------------------------------------------------------
+
+
+def runner_module_name(target_root: Path, runner: str) -> str:
+    """``bin/go_live.py`` -> ``bin.go_live``, checked against the target tree.
+
+    Resolved the way card 1 addresses elements: a bare importable name rooted
+    at the target, which is exactly what ``Harness._run_scenario`` imports
+    with *target_root* on ``sys.path``. A directory without ``__init__.py``
+    still imports as a namespace package, so no ``__init__.py`` is required
+    of the owner's tree.
+
+    Raises :class:`ScenarioDerivationError`, naming the path tried, when the
+    runner is absent, is not a ``.py`` file, or is not spellable as a module
+    name. Never falls back to guessing a module.
+    """
+    if not runner:
+        raise ScenarioDerivationError(
+            "RUNNER is empty, so there is nothing to run. Set RUNNER to the "
+            "launcher's path relative to the version root (for example "
+            '"bin/go_live.py"), or pass a scenarios file.'
+        )
+    relative = PurePosixPath(runner.replace("\\", "/"))
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ScenarioDerivationError(
+            f"RUNNER {runner!r} must be a path relative to the version root and "
+            f"must not climb out of it with '..'. Tried: {runner!r}."
+        )
+    candidate = target_root / Path(*relative.parts)
+    if not candidate.is_file():
+        raise ScenarioDerivationError(
+            f"cannot resolve RUNNER {runner!r}: no such file. Tried: {candidate}. "
+            f"Refusing rather than guessing which module to run."
+        )
+    if relative.suffix != ".py":
+        raise ScenarioDerivationError(
+            f"cannot resolve RUNNER {runner!r} to a module: it is not a .py file. "
+            f"Tried: {candidate}."
+        )
+    parts = relative.with_suffix("").parts
+    if not parts or not all(part.isidentifier() for part in parts):
+        raise ScenarioDerivationError(
+            f"cannot resolve RUNNER {runner!r} to an importable module name: "
+            f"{'.'.join(parts)!r} is not a legal dotted name. Tried: {candidate}."
+        )
+    return ".".join(parts)
+
+
+def _check_engine(target_root: Path, engine: str) -> Path:
+    if not engine:
+        raise ScenarioDerivationError(
+            "ENGINE is empty. Set ENGINE to the engine file's path relative to "
+            "the version root, or pass a scenarios file."
+        )
+    relative = PurePosixPath(engine.replace("\\", "/"))
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ScenarioDerivationError(
+            f"ENGINE {engine!r} must be a path relative to the version root and "
+            f"must not climb out of it with '..'. Tried: {engine!r}."
+        )
+    candidate = target_root / Path(*relative.parts)
+    if not candidate.is_file():
+        raise ScenarioDerivationError(
+            f"the engine file {engine!r} is not in this version. Tried: "
+            f"{candidate}. The runner is passed --engine {engine}, so it would "
+            f"fail on its own preflight; refusing before executing anything."
+        )
+    return candidate
+
+
+# ---------------------------------------------------------------------------
+# Derivation
+# ---------------------------------------------------------------------------
+
+
+def derive_scenarios(
+    target_root: Path,
+    *,
+    sports: Sequence[str],
+    runner: str,
+    engine: str,
+    run_args: Sequence[str] = (),
+) -> dict[str, dict[str, Any]]:
+    """One scenario per sport, named for the sport.
+
+    ``module`` is the runner's module name, ``function`` is empty (the module
+    is executed for its side effects, the way ``python bin/go_live.py``
+    executes it), and ``argv`` is what a shell would have handed it.
+    """
+    module = runner_module_name(target_root, runner)
+    _check_engine(target_root, engine)
+    if not sports:
+        raise ScenarioDerivationError(
+            "no sport was selected and SPORTS is empty, so there is no scenario "
+            "to derive. Name one with --sport, or set SPORTS."
+        )
+    scenarios: dict[str, dict[str, Any]] = {}
+    for sport in sports:
+        scenarios[sport] = {
+            "module": module,
+            "function": "",
+            "args": [],
+            "argv": [runner, "--engine", engine, "--sports", sport, *run_args],
+        }
+    return scenarios
+
+
+def derive_scenario_document(
+    target_root: Path,
+    *,
+    sports: Sequence[str],
+    runner: str,
+    engine: str,
+    run_args: Sequence[str] = (),
+) -> dict[str, Any]:
+    """The same document a scenarios file holds, built from settings.
+
+    ``declared_process_names`` and ``env_passthrough`` are **empty**: default
+    deny is a property of these defaults, not of a caller remembering to lock
+    something down. An owner who needs a child process or a secret declares
+    it in a scenarios file, which is an explicit, reviewable act.
+    """
+    return {
+        "target_root": str(target_root),
+        "scenarios": derive_scenarios(
+            target_root,
+            sports=sports,
+            runner=runner,
+            engine=engine,
+            run_args=run_args,
+        ),
+        "declared_process_names": [],
+        "env_passthrough": [],
+        "derived_from": "METATRON_SETTINGS",
+    }
+
+
+# ---------------------------------------------------------------------------
+# What the owner is told before they trust the run
+# ---------------------------------------------------------------------------
+
+
+def harness_warnings(
+    sandbox_dir: str,
+    declared_process_names: Sequence[str] = (),
+    run_args: Sequence[str] = (),
+) -> tuple[str, ...]:
+    """The three things that bite on a real launcher, printed with the run.
+
+    Not documentation. A run whose engine could not install a package, could
+    not find the workbook it just wrote, and quietly started eight children
+    nothing was watching is a run an owner will misread, and they read
+    output, not manuals.
+    """
+    worker_flags = [arg for arg in run_args if "worker" in arg or "proc" in arg]
+    lines = [
+        "NETWORK IS BLOCKED, including DNS. If this engine's launcher installs "
+        "packages or fetches data, those calls fail inside the harness. Every "
+        "blocked attempt is recorded in run.json under `blocked` -- read them "
+        "as findings, not as noise. There is no allowlist and no --force.",
+        f"EVERY FILE WRITE IS REDIRECTED into the sandbox at {sandbox_dir}. "
+        f"Workbooks/, production/, Logs/ and anything else this engine "
+        f"normally writes will NOT land in their usual places. Look for them "
+        f"under the sandbox; nothing was written outside it.",
+    ]
+    process = (
+        "PROCESS SPAWNING IS BLOCKED unless the run config declares the "
+        "executable by name. An undeclared spawn is blocked and recorded."
+    )
+    if declared_process_names:
+        process += (
+            " This run DECLARED "
+            + ", ".join(sorted(declared_process_names))
+            + ": a declared child process runs with none of this harness's "
+            "controls attached. It is UNSUPERVISED and UNRECORDED -- whatever "
+            "it does to the network, the filesystem or further processes "
+            "happens unblocked and does not appear in this run's `blocked` "
+            "list."
+        )
+    if worker_flags:
+        process += (
+            " These run arguments ask for child processes: "
+            + ", ".join(worker_flags)
+            + ". Any child they start is either blocked (undeclared) or "
+            "unsupervised and unrecorded (declared). Neither is observed."
+        )
+    lines.append(process)
+    return tuple(lines)
 
 
 # ==========================================================================
@@ -31709,6 +32327,19 @@ def trace(
         known = ", ".join(sorted(spec_doc.get("scenarios", {}))) or "none"
         return EXIT_USAGE, f"no scenario named {scenario!r}. Declared: {known}"
 
+    # The hash the harness checks the target against is the one the GRAPH was
+    # built from, read out of manifest.json. Letting the child recompute it
+    # from the target it is about to run makes the staleness check compare a
+    # number against itself, which can never fail -- a control that always
+    # passes is not a control.
+    expected_graph_hash = _graph_hash_of(graph_dir)
+    if not expected_graph_hash:
+        return EXIT_REFUSED, (
+            f"REFUSED: {graph_dir} carries no manifest.json with target hashes, "
+            f"so this run cannot prove the Mode B graph matches the target it "
+            f"is about to execute. Re-run `analyze`. Nothing was executed."
+        )
+
     elements = _cli__read_jsonl(graph_dir, "elements.jsonl", Element)
     if not elements:
         return EXIT_USAGE, (
@@ -31729,6 +32360,7 @@ def trace(
         sandbox=json.dumps(str(sandbox_root)),
         recordings=json.dumps(str(recordings)),
         record_out=json.dumps(str(record_out)),
+        graph_hash=json.dumps(expected_graph_hash),
         src=json.dumps(str(Path(__file__).resolve().parents[1])),
         self_file=json.dumps(str(Path(__file__).resolve())),
     )
@@ -31808,11 +32440,46 @@ def trace(
             "",
         ] + lines
 
+    stopped = [
+        item for item in run.blocked
+        if item.kind != "filesystem_read_outside_sandbox"
+    ]
+    if stopped:
+        # Loudly, with what was attempted. A blocked connect or a refused
+        # spawn reported only as a count next to four other counts is how a
+        # run that never reached its data reads as a clean run.
+        lines.append(
+            f"THE HARNESS STOPPED {len(stopped):,} REAL SIDE EFFECT(S). These are "
+            f"findings, not noise — your engine tried to do each of these:"
+        )
+        shown = stopped[:_BLOCKED_SHOWN]
+        lines += [f"  - [{item.kind}] {item.detail}" for item in shown]
+        if len(stopped) > len(shown):
+            lines.append(
+                f"  ... and {len(stopped) - len(shown):,} more; all of them are in "
+                f"{run_dir / 'run.json'} under `blocked`."
+            )
+        lines.append("")
+    lines.append("WHAT THE HARNESS DID TO THIS RUN — read before you trust the output:")
+    lines += [
+        f"  - {item}"
+        for item in harness_warnings(
+            str(sandbox_root),
+            spec_doc.get("declared_process_names", ()),
+            spec_doc["scenarios"][scenario].get("argv", ()),
+        )
+    ]
+    lines.append("")
     if run.unguaranteed:
         lines.append("WHAT THIS RUN COULD NOT GUARANTEE:")
         lines += [f"  - {item}" for item in run.unguaranteed]
         lines.append("")
     return EXIT_OK, "\n".join(lines)
+
+
+#: How many blocked attempts the run summary prints in full. The rest are
+#: counted and pointed at run.json -- an explicit cap, never a silent cut.
+_BLOCKED_SHOWN = 20
 
 
 #: How the child gets this tool's own code into scope. A named seam, not an
@@ -31834,7 +32501,8 @@ config = RunConfig(
     scenarios={{
         name: ScenarioSpec(name=name, module=body["module"],
                            function=body.get("function", ""),
-                           args=tuple(body.get("args", ())))
+                           args=tuple(body.get("args", ())),
+                           argv=tuple(body.get("argv", ())))
         for name, body in spec_doc["scenarios"].items()
     }},
     declared_process_names=frozenset(spec_doc.get("declared_process_names", ())),
@@ -31842,7 +32510,7 @@ config = RunConfig(
 )
 index = build_index(Path({graph_dir}), target_root)
 tracer = Tracer(index, recordings_dir=Path({recordings}))
-graph_hash = compute_graph_hash(compute_target_hashes(target_root))
+graph_hash = {graph_hash}
 try:
     run = Harness(config).start({scenario}, graph_hash, tracer)
 except HarnessRefusal as exc:
@@ -31855,6 +32523,264 @@ Path({record_out}).write_text(canonical_dumps(run) + "\\n", encoding="utf-8")
 # ---------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------
+
+
+def target_root_of(graph_dir: Path) -> Path:
+    """The tree the Mode B graph was built from, read back from its own output.
+
+    `analyze` records it in `run_meta.json`. Reading it back is what lets
+    `trace out/amun --sport basketball` work with no scenarios file and no
+    second copy of the path: the graph already knows what it is a map of.
+    Raises `ScenarioDerivationError` naming the file tried rather than
+    guessing a directory to execute code from.
+    """
+    meta = graph_dir / "run_meta.json"
+    if not meta.is_file():
+        raise ScenarioDerivationError(
+            f"cannot tell which tree {graph_dir} is a map of: no run_meta.json. "
+            f"Tried: {meta}. Re-run `analyze`, or declare target_root in a "
+            f"scenarios file."
+        )
+    try:
+        payload = json.loads(meta.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ScenarioDerivationError(f"cannot read {meta}: {exc}") from exc
+    root = str(payload.get("target_root", ""))
+    if not root:
+        raise ScenarioDerivationError(
+            f"{meta} records no target_root, so there is nothing to run. "
+            f"Re-run `analyze`."
+        )
+    return Path(root)
+
+
+def _cli__version_tuple(text: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for chunk in text.split("."):
+        digits = "".join(c for c in chunk if c.isdigit())
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+def _required_python(graph_dir: Path) -> tuple[str, str]:
+    """The highest `minimum_python` card 17 read off the target's own syntax.
+
+    A measured fact -- `match` is 3.10, `except*` is 3.11 -- not a guess at
+    what the engine needs, and not a number this tool invented. Returns
+    ``("", "")`` when the graph carries no interpreter requirements, which is
+    reported as "not measured", never as "any version will do".
+    """
+    path = graph_dir / "interpreter.jsonl"
+    if not path.is_file():
+        return "", ""
+    best, best_element = "", ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        version = str(row.get("minimum_python", ""))
+        if version and _cli__version_tuple(version) > _cli__version_tuple(best):
+            best, best_element = version, str(row.get("element_id", ""))
+    return best, best_element
+
+
+def preflight(
+    graph_dir: Path,
+    out_root: Path,
+    settings: Settings,
+    sports: Sequence[str],
+    scenario_file: Path | None,
+) -> tuple[int, str]:
+    """Can this run start? Answered WITHOUT executing anything.
+
+    Every line is a check that either passed or did not, and the verdict at
+    the end is the same decision `Harness.start` would make on the inputs
+    this can see from outside the harness. It deliberately does not claim to
+    be the harness's own verdict: the audit-hook self-test happens inside the
+    run, and a preflight that promised it would be promising something it
+    never tried.
+    """
+    checks: list[tuple[str, str, bool]] = []
+
+    anchor = graph_dir / "elements.jsonl"
+    graph_ok = anchor.is_file()
+    element_count = (
+        sum(1 for line in anchor.read_text(encoding="utf-8").splitlines() if line.strip())
+        if graph_ok
+        else 0
+    )
+    checks.append((
+        "Mode B graph",
+        f"{anchor} ({element_count:,} elements)" if graph_ok else f"missing: {anchor}",
+        graph_ok,
+    ))
+
+    target_root: Path | None = None
+    document: dict[str, Any] | None = None
+    derivation_error = ""
+    if scenario_file is not None:
+        if scenario_file.is_file():
+            try:
+                document = json.loads(scenario_file.read_text(encoding="utf-8"))
+                target_root = Path(str(document["target_root"]))
+            except (OSError, json.JSONDecodeError, KeyError) as exc:
+                derivation_error = f"cannot read {scenario_file}: {exc}"
+        else:
+            derivation_error = f"no scenarios file at {scenario_file}"
+        checks.append((
+            "scenarios file", str(scenario_file), not derivation_error,
+        ))
+    else:
+        try:
+            target_root = target_root_of(graph_dir)
+            document = derive_scenario_document(
+                target_root,
+                sports=sports,
+                runner=settings.runner,
+                engine=settings.engine,
+                run_args=settings.run_args,
+            )
+        except ScenarioDerivationError as exc:
+            derivation_error = str(exc)
+        checks.append((
+            "runner",
+            f"{settings.runner} -> {document['scenarios'][sports[0]]['module']}"
+            if document and sports
+            else derivation_error or "not resolved",
+            document is not None,
+        ))
+        checks.append((
+            "engine file",
+            str(target_root / settings.engine) if target_root else settings.engine,
+            bool(target_root and (target_root / settings.engine).is_file()),
+        ))
+
+    if target_root is not None:
+        checks.append(("target root", str(target_root), target_root.is_dir()))
+        hashes = compute_target_hashes(target_root)
+        current = compute_graph_hash(hashes)
+        recorded = _graph_hash_of(graph_dir)
+        checks.append((
+            "graph is current",
+            f"target hashes {current[:12]}, graph built from "
+            f"{recorded[:12] if recorded else 'unrecorded'}"
+            + ("" if recorded == current else "  <- STALE: re-run analyze"),
+            bool(recorded) and recorded == current,
+        ))
+
+    needed, needed_by = _required_python(graph_dir)
+    running = platform.python_version()
+    if needed:
+        ok = _cli__version_tuple(running) >= _cli__version_tuple(needed)
+        detail = (
+            f"this interpreter is {running}; the target's own syntax needs "
+            f"{needed} or newer (first seen in {needed_by})"
+        )
+    else:
+        ok = True
+        detail = (
+            f"this interpreter is {running}; the graph carries no interpreter "
+            f"requirements, so the minimum was NOT MEASURED"
+        )
+    checks.append(("python", detail, ok))
+
+    checks.append((
+        "sports",
+        ", ".join(sports) if sports else "none selected",
+        bool(sports) or scenario_file is not None,
+    ))
+
+    lines = ["PREFLIGHT — nothing was executed.", ""]
+    width = max(len(name) for name, _, _ in checks)
+    for name, detail, ok in checks:
+        lines.append(f"  {'OK  ' if ok else 'FAIL'}  {name.ljust(width)}  {detail}")
+    lines.append("")
+
+    sandbox_root = (out_root / "sandbox").resolve()
+    declared = sorted(document.get("declared_process_names", ())) if document else []
+    passthrough = sorted(document.get("env_passthrough", ())) if document else []
+    stubs = sorted(document.get("client_stubs", ())) if document else []
+    lines += [
+        "CONTROLS THAT WILL BE ACTIVE:",
+        "  network           blocked at the socket layer, including DNS. No allowlist exists.",
+        f"  filesystem        every write redirected under {sandbox_root}",
+        "  process           blocked unless declared: "
+        + (", ".join(declared) if declared else "(none declared)"),
+        "  environment       passed through: "
+        + (", ".join(passthrough) if passthrough else "(nothing, including secrets)"),
+        "  external clients  stubbed or replayed: "
+        + (", ".join(stubs) if stubs else "(none declared; an undeclared client is a hard stop)"),
+        "",
+    ]
+    if document:
+        lines.append("SCENARIOS THAT WOULD RUN:")
+        for name in sorted(document.get("scenarios", {})):
+            body = document["scenarios"][name]
+            lines.append(f"  {name}")
+            lines.append(f"    module  {body.get('module', '')}")
+            argv = body.get("argv", ())
+            lines.append(
+                f"    argv    {' '.join(argv) if argv else '(sys.argv left alone)'}"
+            )
+        lines.append("")
+
+    lines.append("WHAT THE HARNESS WILL DO TO THIS RUN:")
+    lines += [
+        f"  - {item}"
+        for item in harness_warnings(str(sandbox_root), declared, settings.run_args)
+    ]
+    lines.append("")
+
+    failed = [name for name, _, ok in checks if not ok]
+    if failed or derivation_error:
+        if derivation_error:
+            lines.append(f"  {derivation_error}")
+            lines.append("")
+        lines.append(
+            "VERDICT: this run WOULD REFUSE TO START — "
+            + ", ".join(failed or ["scenario could not be derived"])
+            + ". Nothing was executed."
+        )
+        return EXIT_REFUSED, "\n".join(lines)
+    lines.append(
+        "VERDICT: every check this can make from outside the harness passes. "
+        "The harness re-verifies its own controls when the run starts, and "
+        "refuses there if any of them cannot be proved active."
+    )
+    return EXIT_OK, "\n".join(lines)
+
+
+def _graph_hash_of(graph_dir: Path) -> str:
+    """The graph hash recorded by `analyze`, or "" when there is none.
+
+    Derived from `manifest.json:target_hashes`, which is the same input
+    `compute_graph_hash` takes inside the harness, so "current" here means
+    exactly what "current" means there.
+    """
+    manifest = graph_dir / "manifest.json"
+    if not manifest.is_file():
+        return ""
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    hashes = payload.get("target_hashes")
+    if not isinstance(hashes, dict):
+        return ""
+    # `analyze` skips only __pycache__; the harness also skips VCS and tool
+    # cache directories. Filtering the manifest through the harness's own set
+    # makes the two key sets identical, so this hash is comparable with the
+    # one the harness computes -- and a mismatch means the target changed,
+    # never that the two sides disagree on what a target file is.
+    return compute_graph_hash(
+        {
+            str(key): str(value)
+            for key, value in hashes.items()
+            if is_target_content(str(key))
+        }
+    )
 
 
 def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
@@ -31991,23 +32917,48 @@ def _settings_from_args(args: Any) -> Settings:
     an error even on a fully flag-driven run. `Settings.from_mapping` names the
     offending key and the nearest real one.
     """
+    def flag(name: str) -> Any:
+        """`trace` and `track` share the sports flags but not the rest, so a
+        namespace missing a key means "not overridden", never an
+        AttributeError deep inside a run."""
+        return getattr(args, name, None)
+
     merged = dict(METATRON_SETTINGS)
     overrides = {
-        "MODE": args.mode,
-        "VERSIONS_DIR": str(args.versions) if args.versions else None,
-        "OUT_DIR": str(args.out) if args.out else None,
-        "LEDGER": str(args.ledger) if args.ledger else None,
-        "SINKS": args.sink,
-        "ENTRIES": args.entry,
-        "CONFIGS": args.config,
-        "ENV": str(args.env) if args.env else None,
-        "ORDER": args.order,
-        "SCENARIOS": str(args.scenarios) if args.scenarios else None,
-        "SCENARIO": args.scenario,
+        "MODE": flag("mode"),
+        "VERSIONS_DIR": str(flag("versions")) if flag("versions") else None,
+        "OUT_DIR": str(flag("out")) if flag("out") else None,
+        "LEDGER": str(flag("ledger")) if flag("ledger") else None,
+        "SINKS": flag("sink"),
+        "ENTRIES": flag("entry"),
+        "CONFIGS": flag("config"),
+        "ENV": str(flag("env")) if flag("env") else None,
+        "ORDER": flag("order"),
+        "SCENARIOS": str(flag("scenarios")) if flag("scenarios") else None,
+        "SCENARIO": flag("scenario"),
     }
     for key, value in overrides.items():
         if value is not None:
             merged[key] = value
+
+    # Sports. `--sport` is validated against SPORTS *before* the override, so
+    # the error lists the sports the owner's own settings declare, and then
+    # narrows SPORTS to the selection: everything downstream reads
+    # `Settings.selected_sports()` and there is one answer, not two.
+    requested = list(flag("sport") or ())
+    all_sports = bool(flag("all_sports"))
+    try:
+        selected = select_sports(
+            tuple(merged["SPORTS"]), str(merged["SPORT"]), requested, all_sports
+        )
+    except ValueError as exc:
+        raise SettingsError(str(exc)) from exc
+    if requested or all_sports:
+        merged["SPORTS"] = list(selected)
+        merged["SPORT"] = selected[0] if len(selected) == 1 else ""
+    extra_args = list(flag("run_arg") or ())
+    if extra_args:
+        merged["RUN_ARGS"] = list(merged["RUN_ARGS"]) + extra_args
     return Settings.from_mapping(merged)
 
 
@@ -32106,14 +33057,47 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="overrides SCENARIO (MODE 2 only)")
     hist.add_argument("--report", action="store_true",
                       help="print the whole history, not only what this run did")
+    _add_sport_flags(hist)
 
     run_a = sub.add_parser("trace", help="Mode A — run the target under the harness")
     run_a.add_argument("graph_dir", type=Path, help="an analysed Mode B output directory")
-    run_a.add_argument("--scenarios", type=Path, required=True,
-                       help="JSON file declaring target_root and named scenarios")
-    run_a.add_argument("--scenario", required=True)
+    run_a.add_argument("--scenarios", type=Path, default=None,
+                       help="JSON file declaring target_root and named scenarios. "
+                            "Omitted, scenarios are derived from METATRON_SETTINGS: "
+                            "one per selected sport, driving RUNNER by argv.")
+    run_a.add_argument("--scenario", default=None,
+                       help="a scenario name from --scenarios. Ignored when "
+                            "scenarios are derived -- the sport is the name.")
     run_a.add_argument("--out", type=Path, default=Path("out/latest"))
+    run_a.add_argument("--preflight", action="store_true",
+                       help="say whether this run could start, and what would be "
+                            "active, WITHOUT executing anything")
+    _add_sport_flags(run_a)
     return parser
+
+
+def _add_sport_flags(sub_parser: argparse.ArgumentParser) -> None:
+    """The sports flags, identical on `trace` and `track`.
+
+    The owner should never have to open a Python file to change which sport
+    runs, and the two commands that run sports must not diverge on how they
+    are named.
+    """
+    sub_parser.add_argument(
+        "--sport", action="append", default=None, metavar="NAME",
+        help="a sport to run; repeatable. Overrides SPORT. An unknown name is "
+             "an error listing the valid ones.",
+    )
+    sub_parser.add_argument(
+        "--all-sports", action="store_true",
+        help="every sport in SPORTS, each as its own scenario",
+    )
+    sub_parser.add_argument(
+        "--run-arg", action="append", default=None, metavar="ARG",
+        help="an extra flag passed through to the runner; repeatable. Appended "
+             "to RUN_ARGS. Use --run-arg=--workers --run-arg=8 for flags, so "
+             "argparse does not read them as this tool's own options.",
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -32189,9 +33173,108 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
         return EXIT_OK
 
-    code, message = trace(args.graph_dir, args.scenarios, args.scenario, args.out)
-    print(message, file=sys.stderr if code else sys.stdout)
-    return code
+    return _trace_command(args)
+
+
+def _trace_command(args: Any) -> int:
+    """`trace`. The only command that executes owner code, and the only one
+    that needs the owner to have asked for it by name.
+
+    Two ways in, and the file wins when it is given:
+
+    * ``--scenarios FILE`` -- the declared path, unchanged.
+    * nothing -- scenarios are DERIVED from METATRON_SETTINGS, one per
+      selected sport, each driving RUNNER through ``argv``. This is what
+      makes `trace out/amun --sport basketball` work with no scenarios file
+      and no edit to any Python file.
+
+    Derivation never guesses. A runner it cannot resolve is a refusal naming
+    the path it tried.
+    """
+    try:
+        settings = _settings_from_args(args)
+    except SettingsError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+
+    if args.scenarios is not None:
+        if args.preflight:
+            code, message = preflight(
+                args.graph_dir, args.out, settings, (), args.scenarios
+            )
+            print(message, file=sys.stderr if code else sys.stdout)
+            return code
+        if not args.scenario:
+            print(
+                "--scenario is required with --scenarios: naming the file is not "
+                "naming which of its scenarios to run.",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+        if not args.scenarios.is_file():
+            print(f"no scenarios file at {args.scenarios}", file=sys.stderr)
+            return EXIT_USAGE
+        code, message = trace(args.graph_dir, args.scenarios, args.scenario, args.out)
+        print(message, file=sys.stderr if code else sys.stdout)
+        return code
+
+    sports = settings.selected_sports()
+    if args.preflight:
+        code, message = preflight(args.graph_dir, args.out, settings, sports, None)
+        print(message, file=sys.stderr if code else sys.stdout)
+        return code
+
+    try:
+        document = derive_scenario_document(
+            target_root_of(args.graph_dir),
+            sports=sports,
+            runner=settings.runner,
+            engine=settings.engine,
+            run_args=settings.run_args,
+        )
+    except ScenarioDerivationError as exc:
+        print(
+            f"REFUSED: {exc}\n\n"
+            f"No scenarios file was given, so scenarios are derived from "
+            f"METATRON_SETTINGS. A refusal is the correct outcome here — nothing "
+            f"was executed. Give --scenarios FILE to declare them explicitly.",
+            file=sys.stderr,
+        )
+        return EXIT_REFUSED
+
+    # Written out, not kept in memory, for two reasons: the owner can read
+    # exactly what was derived and hand-edit it into a scenarios file, and
+    # `trace()` keeps one code path for both ways in.
+    derived_path = args.out / "derived_scenarios.json"
+    derived_path.parent.mkdir(parents=True, exist_ok=True)
+    derived_path.write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    if args.scenario and args.scenario not in sports:
+        print(
+            f"--scenario {args.scenario!r} names no derived scenario. Derived "
+            f"scenarios are named for their sport: "
+            f"{', '.join(sports) if sports else 'none selected'}. Use --sport.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    chosen = (args.scenario,) if args.scenario else sports
+    print(
+        f"Derived {len(chosen)} scenario(s) from METATRON_SETTINGS "
+        f"({', '.join(chosen)}), written to {derived_path}.\n"
+    )
+    worst = EXIT_OK
+    for sport in chosen:
+        code, message = trace(args.graph_dir, derived_path, sport, args.out)
+        print(f"=== {sport} ===")
+        print(message, file=sys.stderr if code else sys.stdout)
+        print()
+        worst = max(worst, code)
+    return worst
 
 
 if __name__ == "__main__":
