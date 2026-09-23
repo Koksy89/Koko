@@ -10,6 +10,12 @@ transport.
 from __future__ import annotations
 
 import dataclasses
+import os
+import re
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -275,6 +281,46 @@ def test_slice_summary_present_when_a_slice_roots_here() -> None:
     [rec] = builder.records()
     assert rec.data_role["backward_slice_summary"]["member_count"] == 1
     assert rec.data_role["forward_slice_summary"]["status"] == "UNKNOWN"
+
+
+def test_withholding_slices_downgrades_to_explicit_unknown_and_still_gates() -> None:
+    """`--slices none` must not make a record claim a summary it does not have.
+
+    The scope decides how many slices are PRECOMPUTED. A record built without
+    one says so, with a reason, and the completeness gate still passes -- an
+    explicit unknown is a filled field. A record that kept a stale summary, or
+    left the field blank, would be the failure mode in both directions.
+    """
+    el = _func_element()
+    sl = Slice(
+        id="s1",
+        root_id=el.id,
+        direction="backward",
+        member_ids=(el.id,),
+        edge_ids=(),
+        barrier_ids=(),
+        reaches_sink_ids=(),
+        confidence=Confidence.CERTAIN,
+        scope="ALL",
+    )
+    with_slices = DocumentationBuilder(elements=[el], slices=[sl])
+    without = DocumentationBuilder(elements=[el], slices=[])
+    [kept] = with_slices.records()
+    [dropped] = without.records()
+
+    assert kept.data_role["backward_slice_summary"]["member_count"] == 1
+    summary = dropped.data_role["backward_slice_summary"]
+    assert summary["status"] == "UNKNOWN"
+    assert "no backward slice computed" in summary["reason"]
+
+    # The gate is a gate at every scope, not a warning at some of them.
+    assert with_slices.completeness_gate(with_slices.records()) == ()
+    assert without.completeness_gate(without.records()) == ()
+
+    # Everything outside the slice summaries is untouched by the scope.
+    assert kept.identity == dropped.identity
+    assert kept.cascade_position == dropped.cascade_position
+    assert kept.decision_relevance == dropped.decision_relevance
 
 
 # ---------------------------------------------------------------------------
@@ -555,3 +601,79 @@ def test_enrichment_payload_never_carries_full_docstring_source_beyond_field(
         }
     )
     assert "body_source" not in seen
+
+
+# ---------------------------------------------------------------------------
+# The empty-return probe: how many of these tests survive a builder that
+# assembles nothing and passes its own gate.
+# ---------------------------------------------------------------------------
+
+REPO = Path(__file__).resolve().parents[1]
+
+_STUB = """
+import sys
+sys.path.insert(0, {src!r})
+import cascade_map.docrecords as docrecords
+
+
+class _Stub:
+    def __init__(self, elements=(), **kwargs):
+        self._elements = list(elements)
+
+    def records(self):
+        return ()
+
+    def completeness_gate(self, records):
+        return ()
+
+    def enrich(self, records, client):
+        return tuple(records)
+
+
+docrecords.DocumentationBuilder = _Stub
+"""
+
+
+def test_the_suite_does_not_pass_against_an_empty_implementation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A test that passes against a stub was never testing this card.
+
+    The stub is the worst plausible card 16: it returns no records at all and
+    reports a clean gate, which is precisely the failure the completeness gate
+    exists to make impossible. The surviving count is printed, not hidden.
+    """
+    if os.environ.get("CASCADE_MAP_STUB_PROBE"):
+        pytest.skip("already inside the stub probe")
+    plugin = tmp_path / "stub_plugin.py"
+    plugin.write_text(textwrap.dedent(_STUB.format(src=str(REPO / "src"))), "utf-8")
+    env = dict(
+        os.environ,
+        PYTHONPATH=f"{tmp_path}{os.pathsep}{REPO / 'src'}",
+        CASCADE_MAP_STUB_PROBE="1",
+    )
+    completed = subprocess.run(
+        [
+            sys.executable, "-m", "pytest", str(Path(__file__).resolve()),
+            "-p", "stub_plugin", "-p", "no:randomly", "--tb=no",
+            "-k", "not empty_implementation",
+        ],
+        capture_output=True, text=True, env=env, cwd=str(REPO), timeout=600,
+    )
+    summary = ""
+    for line in reversed(completed.stdout.splitlines()):
+        if re.search(r"\d+ (passed|failed|error)", line):
+            summary = line.strip()
+            break
+    match = re.search(r"(\d+) passed", summary)
+    passed = int(match.group(1)) if match else 0
+    with capsys.disabled():
+        print(f"\nempty-return probe: {passed} of this file\'s tests pass "
+              f"against a DocumentationBuilder that returns no records "
+              f"({summary})")
+    # Only the tests that exercise something other than the builder --
+    # `parse_signature`, `unknown()` and the enrichment client -- can survive.
+    assert passed <= 12, (
+        f"{passed} tests pass against an empty builder; they are not testing "
+        f"card 16"
+    )

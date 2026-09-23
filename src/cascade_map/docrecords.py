@@ -167,6 +167,82 @@ _DATA_ROLE_KINDS = frozenset(
 
 
 # ---------------------------------------------------------------------------
+# Per-kind constant strings.
+#
+# Every reason string below is a function of the ElementKind alone, so on a
+# 14.6 MB single-module target the old code formatted the same ten f-strings
+# once per element -- hundreds of thousands of identical strings built and
+# thrown away. Interning them per kind changes no byte of output (the strings
+# are equal, and `unknown()` still allocates a fresh dict per record so no two
+# records share a mutable value) and removes the formatting from the inner
+# loop.
+# ---------------------------------------------------------------------------
+
+
+class _KindStrings:
+    """The kind-dependent literals a record needs, computed once per kind."""
+
+    __slots__ = (
+        "kind_str",
+        "no_signature",
+        "outside_module_namespace",
+        "no_module_recorded",
+        "not_decoratable",
+        "no_docstring",
+        "not_ordered",
+        "not_in_call_graph",
+        "root_of_hierarchy",
+        "no_enclosing_scope",
+        "no_data_role",
+    )
+
+    def __init__(self, kind: ElementKind) -> None:
+        self.kind_str = str(kind)
+        self.no_signature = f"{kind} elements have no call signature"
+        self.outside_module_namespace = (
+            f"{kind} elements live outside the Python module namespace"
+        )
+        self.no_module_recorded = (
+            f"no module recorded for this {kind}; expected one for this kind"
+        )
+        self.not_decoratable = f"{kind} elements cannot carry decorators"
+        self.no_docstring = f"no docstring present for this {kind}"
+        self.not_ordered = f"{kind} is not a member of any order node"
+        self.not_in_call_graph = (
+            f"{kind} elements do not appear in the CALLS call graph"
+        )
+        self.root_of_hierarchy = (
+            f"{kind} is at the root of the hierarchy; it has no enclosing scope"
+        )
+        self.no_enclosing_scope = f"no enclosing scope recorded for this {kind}"
+        self.no_data_role = (
+            f"{kind} elements do not read or write features directly"
+        )
+
+
+_KIND_STRINGS: dict[ElementKind, _KindStrings] = {
+    kind: _KindStrings(kind) for kind in ElementKind
+}
+
+_NO_LINEAGE_REASON = "no lineage data supplied to the documentation builder"
+_NO_RETURN_REASON = (
+    "signature has no -> annotation and none could be inferred"
+)
+_NO_SLICE_REASON = {
+    direction: f"no {direction} slice computed rooted at this element"
+    for direction in ("backward", "forward")
+}
+_LINEAGE_WRITE_KINDS = frozenset(
+    {
+        LineageKind.ASSIGNS,
+        LineageKind.COLUMN_WRITE,
+        LineageKind.CONTAINER_WRITE,
+        LineageKind.ATTRIBUTE_WRITE,
+    }
+)
+
+
+# ---------------------------------------------------------------------------
 # Signature parsing -- text already produced by card 1's own AST walk. This
 # is string-splitting the `signature` field the graph already carries, not
 # re-parsing the target: the source of truth remains card 1's AST visit.
@@ -330,6 +406,106 @@ class DocumentationBuilder:
         for edge in self._edges:
             self._adjacency.setdefault(edge.source_id, []).append(edge.target_id)
 
+        # ------------------------------------------------------------------
+        # Prepared indexes.
+        #
+        # Every structure below answers a per-element question in O(1). Each
+        # was previously a scan of a whole collection inside a loop that
+        # already runs once per element -- the shape that made `records()`
+        # quadratic on a single-module target. Building them here costs one
+        # linear pass each and changes no value: the same first-match and the
+        # same sort order are preserved deliberately below.
+        # ------------------------------------------------------------------
+
+        # Lineage: reads and writes per SOURCE element. The old code walked
+        # every lineage edge for every element.
+        self._saw_any_lineage = bool(self._lineage_edges)
+        self._lineage_reads: dict[str, set[str]] = {}
+        self._lineage_writes: dict[str, set[str]] = {}
+        for lineage_edge in self._lineage_edges:
+            if lineage_edge.kind is LineageKind.READS:
+                bucket = self._lineage_reads
+            elif lineage_edge.kind in _LINEAGE_WRITE_KINDS:
+                bucket = self._lineage_writes
+            else:
+                continue
+            target = bucket.get(lineage_edge.source_id)
+            if target is None:
+                bucket[lineage_edge.source_id] = {lineage_edge.target_id}
+            else:
+                target.add(lineage_edge.target_id)
+
+        # Slices, keyed by (root, direction). FIRST wins, exactly as the old
+        # linear search returned the first match in list order.
+        self._slice_by_root: dict[tuple[str, str], Slice] = {}
+        for sliced in self._slices:
+            self._slice_by_root.setdefault((sliced.root_id, sliced.direction), sliced)
+
+        # Reachability to a decision sink. `_sorted_adjacency` is the
+        # `sorted(set(...))` the BFS used to recompute at every visit of every
+        # node of every search; `_reaches_sink` is the reverse-reachable set,
+        # which lets an element that cannot reach a sink answer without a
+        # search at all. Neither changes a returned path: every node on a path
+        # from a start to a sink is by definition in `_reaches_sink`, so
+        # pruning the rest removes only branches that could never have won.
+        self._sorted_adjacency: dict[str, tuple[str, ...]] = {}
+        self._reaches_sink: frozenset[str] = frozenset()
+        if self._decision_sink_ids:
+            self._sorted_adjacency = {
+                source: tuple(sorted(set(targets)))
+                for source, targets in self._adjacency.items()
+            }
+            self._reaches_sink = self._reverse_reachable(self._decision_sink_ids)
+
+        # Runtime overlay indexes, built only when there is an overlay.
+        self._calls_by_element: dict[str, int] = {}
+        self._value_events_by_element: dict[str, list[TraceEvent]] = {}
+        self._verdict_by_element: dict[str, AlignmentVerdict] = {}
+        self._step_by_element: dict[str, NarrativeStep] = {}
+        if self._has_runtime:
+            for event in self._trace_events:
+                if str(event.kind) == "CALL":
+                    self._calls_by_element[event.element_id] = (
+                        self._calls_by_element.get(event.element_id, 0) + 1
+                    )
+                if event.values:
+                    self._value_events_by_element.setdefault(
+                        event.element_id, []
+                    ).append(event)
+            for events in self._value_events_by_element.values():
+                events.sort(key=lambda ev: ev.event_id)
+            # `min` keeps the first element with the smallest key, which is
+            # what `sorted(...)[0]` returned.
+            for verdict in self._alignment_verdicts:
+                held = self._verdict_by_element.get(verdict.element_id)
+                if held is None or verdict.id < held.id:
+                    self._verdict_by_element[verdict.element_id] = verdict
+            for step in self._narrative_steps:
+                for element_id in step.element_ids:
+                    held_step = self._step_by_element.get(element_id)
+                    if held_step is None or step.sequence < held_step.sequence:
+                        self._step_by_element[element_id] = step
+
+    def _reverse_reachable(self, targets: frozenset[str]) -> frozenset[str]:
+        """Every node with a path along `_adjacency` to some node in *targets*.
+
+        A one-off reverse BFS. Anything outside this set provably has no path
+        to a sink, so `_bfs_path` can answer it without searching.
+        """
+        incoming: dict[str, list[str]] = {}
+        for source, outgoing in self._adjacency.items():
+            for target in outgoing:
+                incoming.setdefault(target, []).append(source)
+        seen: set[str] = set(targets)
+        stack: list[str] = list(targets)
+        while stack:
+            node = stack.pop()
+            for predecessor in incoming.get(node, ()):
+                if predecessor not in seen:
+                    seen.add(predecessor)
+                    stack.append(predecessor)
+        return frozenset(seen)
+
     # -- assembly -----------------------------------------------------
 
     def records(self) -> Sequence[DocRecord]:
@@ -368,37 +544,32 @@ class DocumentationBuilder:
 
     def _identity(self, element: Element) -> dict[str, Any]:
         kind = element.kind
+        words = _KIND_STRINGS[kind]
 
         if element.signature:
             params, return_type = parse_signature(element.signature)
             parameters: Any = params
-            return_val: Any = return_type or unknown(
-                "signature has no -> annotation and none could be inferred"
-            )
+            return_val: Any = return_type or unknown(_NO_RETURN_REASON)
             signature_val: Any = element.signature
         else:
-            reason = f"{kind} elements have no call signature"
+            reason = words.no_signature
             parameters = unknown(reason)
             return_val = unknown(reason)
             signature_val = unknown(reason)
 
         if kind in _NO_PYTHON_MODULE_KINDS:
-            module_val: Any = unknown(
-                f"{kind} elements live outside the Python module namespace"
-            )
+            module_val: Any = unknown(words.outside_module_namespace)
         else:
-            module_val = element.module or unknown(
-                f"no module recorded for this {kind}; expected one for this kind"
-            )
+            module_val = element.module or unknown(words.no_module_recorded)
 
         if kind in _DECORATABLE_KINDS:
             decorators_val: Any = list(element.decorators)
         else:
-            decorators_val = unknown(f"{kind} elements cannot carry decorators")
+            decorators_val = unknown(words.not_decoratable)
 
         return {
             "id": element.id,
-            "kind": str(kind),
+            "kind": words.kind_str,
             "name": element.name,
             "qualname": element.qualname or element.name,
             "module": module_val,
@@ -409,33 +580,32 @@ class DocumentationBuilder:
             "parameters": parameters,
             "return_type": return_val,
             "decorators": decorators_val,
-            "docstring": element.docstring or unknown(f"no docstring present for this {kind}"),
+            "docstring": element.docstring or unknown(words.no_docstring),
         }
 
     def _cascade_position(self, element: Element) -> dict[str, Any]:
         kind = element.kind
+        words = _KIND_STRINGS[kind]
         order = self._order_index.get(element.id)
         if order is None:
-            order = unknown(f"{kind} is not a member of any order node")
+            order = unknown(words.not_ordered)
 
         if kind in _CALL_GRAPH_KINDS:
             callers: Any = sorted(set(self._callers.get(element.id, ())))
             callees: Any = sorted(set(self._callees.get(element.id, ())))
         else:
-            reason = f"{kind} elements do not appear in the CALLS call graph"
+            reason = words.not_in_call_graph
             callers = unknown(reason)
             callees = unknown(reason)
 
         if element.parent_id:
             enclosing_scope: Any = element.parent_id
         elif kind in _ROOT_OF_HIERARCHY_KINDS:
-            enclosing_scope = unknown(
-                f"{kind} is at the root of the hierarchy; it has no enclosing scope"
-            )
+            enclosing_scope = unknown(words.root_of_hierarchy)
         elif element.module and kind not in _NO_PYTHON_MODULE_KINDS:
             enclosing_scope = element.module
         else:
-            enclosing_scope = unknown(f"no enclosing scope recorded for this {kind}")
+            enclosing_scope = unknown(words.no_enclosing_scope)
 
         return {
             "order": order,
@@ -447,33 +617,15 @@ class DocumentationBuilder:
     def _data_role(self, element: Element) -> dict[str, Any]:
         kind = element.kind
         if kind not in _DATA_ROLE_KINDS:
-            reason = f"{kind} elements do not read or write features directly"
+            reason = _KIND_STRINGS[kind].no_data_role
             features_read: Any = unknown(reason)
             features_written: Any = unknown(reason)
+        elif self._saw_any_lineage:
+            features_read = sorted(self._lineage_reads.get(element.id, ()))
+            features_written = sorted(self._lineage_writes.get(element.id, ()))
         else:
-            reads: set[str] = set()
-            writes: set[str] = set()
-            write_kinds = {
-                LineageKind.ASSIGNS,
-                LineageKind.COLUMN_WRITE,
-                LineageKind.CONTAINER_WRITE,
-                LineageKind.ATTRIBUTE_WRITE,
-            }
-            saw_any_lineage = bool(self._lineage_edges)
-            for edge in self._lineage_edges:
-                if edge.source_id != element.id:
-                    continue
-                if edge.kind is LineageKind.READS:
-                    reads.add(edge.target_id)
-                elif edge.kind in write_kinds:
-                    writes.add(edge.target_id)
-
-            features_read = sorted(reads) if saw_any_lineage else unknown(
-                "no lineage data supplied to the documentation builder"
-            )
-            features_written = sorted(writes) if saw_any_lineage else unknown(
-                "no lineage data supplied to the documentation builder"
-            )
+            features_read = unknown(_NO_LINEAGE_REASON)
+            features_written = unknown(_NO_LINEAGE_REASON)
 
         backward = self._slice_summary(element.id, "backward")
         forward = self._slice_summary(element.id, "forward")
@@ -485,15 +637,15 @@ class DocumentationBuilder:
         }
 
     def _slice_summary(self, element_id: str, direction: str) -> Any:
-        for sl in self._slices:
-            if sl.root_id == element_id and sl.direction == direction:
-                return {
-                    "member_count": len(sl.member_ids),
-                    "barrier_count": len(sl.barrier_ids),
-                    "reaches_sink_ids": sorted(sl.reaches_sink_ids),
-                    "confidence": str(sl.confidence),
-                }
-        return unknown(f"no {direction} slice computed rooted at this element")
+        sl = self._slice_by_root.get((element_id, direction))
+        if sl is None:
+            return unknown(_NO_SLICE_REASON[direction])
+        return {
+            "member_count": len(sl.member_ids),
+            "barrier_count": len(sl.barrier_ids),
+            "reaches_sink_ids": sorted(sl.reaches_sink_ids),
+            "confidence": str(sl.confidence),
+        }
 
     def _decision_relevance(self, element: Element) -> dict[str, Any]:
         if not self._decision_sink_ids:
@@ -508,33 +660,32 @@ class DocumentationBuilder:
     def _bfs_path(self, start: str, targets: frozenset[str]) -> list[str] | None:
         if start in targets:
             return [start]
+        if start not in self._reaches_sink:
+            # Provably no path, established once by the reverse BFS in
+            # `__init__` instead of by exploring this element's whole
+            # reachable component here.
+            return None
         from collections import deque
 
+        adjacency = self._sorted_adjacency
+        reaches = self._reaches_sink
         visited = {start}
         queue: deque[list[str]] = deque([[start]])
         while queue:
             path = queue.popleft()
             node = path[-1]
-            for neighbor in sorted(set(self._adjacency.get(node, ()))):
+            for neighbor in adjacency.get(node, ()):
                 if neighbor in targets:
                     return path + [neighbor]
-                if neighbor not in visited:
+                if neighbor not in visited and neighbor in reaches:
                     visited.add(neighbor)
                     queue.append(path + [neighbor])
         return None
 
     def _runtime(self, element: Element) -> dict[str, Any]:
-        calls = [
-            ev
-            for ev in self._trace_events
-            if ev.element_id == element.id and str(ev.kind) == "CALL"
-        ]
-        observed_calls = len(calls)
+        observed_calls = self._calls_by_element.get(element.id, 0)
 
-        value_events = sorted(
-            (ev for ev in self._trace_events if ev.element_id == element.id and ev.values),
-            key=lambda ev: ev.event_id,
-        )
+        value_events = self._value_events_by_element.get(element.id, ())
         if value_events:
             value_summary: Any = [
                 {
@@ -551,23 +702,17 @@ class DocumentationBuilder:
         else:
             value_summary = unknown("no value captures recorded for this element")
 
-        verdicts = sorted(
-            (v for v in self._alignment_verdicts if v.element_id == element.id),
-            key=lambda v: v.id,
-        )
+        verdict = self._verdict_by_element.get(element.id)
         alignment_verdict: Any
-        if verdicts:
-            alignment_verdict = str(verdicts[0].verdict)
+        if verdict is not None:
+            alignment_verdict = str(verdict.verdict)
         else:
             alignment_verdict = unknown("no alignment verdict for this element")
 
-        steps = sorted(
-            (s for s in self._narrative_steps if element.id in s.element_ids),
-            key=lambda s: s.sequence,
-        )
+        step = self._step_by_element.get(element.id)
         narrative_fragment: Any
-        if steps:
-            narrative_fragment = steps[0].text
+        if step is not None:
+            narrative_fragment = step.text
         else:
             narrative_fragment = unknown("no narrative step references this element")
 

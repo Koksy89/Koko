@@ -76,7 +76,7 @@ import ast
 import builtins as _builtins
 import hashlib
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -687,8 +687,16 @@ class LineageTracer:
         self.barriers = tuple(sorted(self._barriers.values(), key=lambda b: b.id))
         self._build_adjacency()
 
-    def slice(self, root_id: str, direction: str) -> Slice:
+    def slice(
+        self, root_id: str, direction: str, scope: SliceScope | None = None
+    ) -> Slice:
         """Backward or forward slice of ``root_id`` as a reproducible ID set.
+
+        ``scope`` labels the returned slice with the :class:`SliceScope` it was
+        emitted under, so a ``slices.jsonl`` copied out of its workspace can
+        still say what produced it. It never changes which elements the slice
+        holds -- the label is the scope of the EMISSION, and the membership is
+        exact at every scope.
 
         Every hop is evidenced: each ID in ``edge_ids`` resolves to a
         :class:`LineageEdge` carrying its method, confidence and span. A slice
@@ -703,10 +711,11 @@ class LineageTracer:
             raise ValueError(
                 f"direction must be 'backward' or 'forward', not {direction!r}"
             )
+        label = None if scope is None else str(scope)
         key = f"{direction}:{root_id}"
         cached = self._slice_cache.get(key)
         if cached is not None:
-            return cached
+            return cached if label is None else replace(cached, scope=label)
         known = root_id in self._out or root_id in self._in or root_id in self._barriers
         if not known:
             self.unresolved.append(
@@ -735,7 +744,7 @@ class LineageTracer:
             confidence=confidence,
         )
         self._slice_cache[key] = result
-        return result
+        return result if label is None else replace(result, scope=label)
 
     def _walk(
         self, root_id: str, direction: str
@@ -888,6 +897,8 @@ class LineageTracer:
         self,
         scope: SliceScope = SliceScope.ALL,
         extra_roots: Sequence[str] = (),
+        *,
+        emitted_as: SliceScope | None = None,
     ) -> tuple[Slice, ...]:
         """A backward and a forward slice for every root the scope names.
 
@@ -900,11 +911,19 @@ class LineageTracer:
         caller that does not pass a scope gets the exhaustive answer. The
         command line's default is `DECISION`, and it says so in the summary and
         in `manifest.json`.
+
+        `emitted_as` overrides the label written onto each `Slice.scope` without
+        changing which roots are chosen. The one caller that needs it is the
+        top-up pass, which asks for `NONE` plus an explicit list of finding
+        roots but is emitting into a run whose scope is `DECISION` or `ALL`; the
+        records it produces must agree with the rest of the file about what
+        produced them.
         """
+        label = scope if emitted_as is None else emitted_as
         out: list[Slice] = []
         for root in self.slice_roots(scope, extra_roots):
-            out.append(self.slice(root, "backward"))
-            out.append(self.slice(root, "forward"))
+            out.append(self.slice(root, "backward", label))
+            out.append(self.slice(root, "forward", label))
         return tuple(sorted(out, key=lambda s: s.id))
 
     def estimated_slice_bytes(self, slices: Sequence[Slice]) -> int:

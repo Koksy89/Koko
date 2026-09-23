@@ -109,7 +109,17 @@ def test_a_scoped_slice_is_byte_identical_to_the_same_slice_computed_alone(
     assert decision, "no slices at DECISION scope; the comparison proves nothing"
     for one in decision:
         assert one["id"] in everything, f"{one['id']} vanished at ALL scope"
-        assert one == everything[one["id"]], (
+        twin = everything[one["id"]]
+        # `scope` is the one field that is SUPPOSED to differ: it names the
+        # emission the record came out of, which is the whole point of
+        # carrying it on the record rather than only in manifest.json. Every
+        # other field -- above all `member_ids` -- must be identical, because
+        # a scope may drop a slice and never shorten one.
+        assert one["scope"] == "DECISION"
+        assert twin["scope"] == "ALL"
+        assert {k: v for k, v in one.items() if k != "scope"} == {
+            k: v for k, v in twin.items() if k != "scope"
+        }, (
             f"{one['id']} differs between scopes: a scope may drop a slice, "
             f"never shorten one"
         )
@@ -417,8 +427,47 @@ def test_emitted_slices_round_trip_through_the_canonical_serialiser(
             "barrier_ids",
             "reaches_sink_ids",
             "confidence",
+            "scope",
         }
+        # The record travels: a slices.jsonl copied out of its workspace still
+        # says what produced it, without manifest.json beside it.
+        assert row["scope"] == "DECISION"
     assert canonical_jsonl([]) == ""
+
+
+def test_every_written_slice_declares_its_own_scope(tmp_path: Path) -> None:
+    """At every scope, and including the finding top-up pass.
+
+    The top-up asks the tracer for `NONE` plus an explicit root list, so it is
+    the one place a slice could end up labelled with a scope the run never
+    ran at. A file whose records disagree about what produced them is exactly
+    the "filtered view mistaken for the whole" failure the field exists to
+    stop.
+    """
+    for scope, label in (
+        (SliceScope.DECISION, "DECISION"),
+        (SliceScope.ALL, "ALL"),
+    ):
+        rows = _slices(_run(CORPUS, tmp_path / label.lower(), scope))
+        assert rows, f"no slices at {label}; the check would pass vacuously"
+        assert {row["scope"] for row in rows} == {label}
+
+
+def test_scope_survives_the_round_trip_back_into_a_slice(tmp_path: Path) -> None:
+    """`slices.jsonl` -> `Slice` -> `slices.jsonl` keeps the label.
+
+    Card 6 reads slices back off disk. A field that serialises but does not
+    deserialise would make a re-read run silently claim DECISION.
+    """
+    from cascade_map.diff import _slice_from_dict
+
+    rows = _slices(_run(CORPUS, tmp_path / "rt", SliceScope.ALL))
+    assert rows
+    for row in rows:
+        assert _slice_from_dict(row).scope == "ALL"
+    assert canonical_jsonl(
+        [_slice_from_dict(row) for row in rows]
+    ) == canonical_jsonl([_slice_from_dict(row) for row in rows])
 
 
 def test_the_finding_top_up_is_bounded_by_what_a_slice_answers(

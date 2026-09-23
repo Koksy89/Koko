@@ -230,6 +230,7 @@ def _slice_from_dict(d: dict) -> Slice:
         barrier_ids=tuple(d.get("barrier_ids", ())),
         reaches_sink_ids=tuple(d.get("reaches_sink_ids", ())),
         confidence=Confidence(d["confidence"]),
+        scope=str(d.get("scope", "DECISION")),
     )
 
 

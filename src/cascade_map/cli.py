@@ -546,7 +546,9 @@ def analyze(
         )
         if top_up:
             merged = {sliced.id: sliced for sliced in slices}
-            for sliced in tracer.default_slices(SliceScope.NONE, top_up):
+            for sliced in tracer.default_slices(
+                SliceScope.NONE, top_up, emitted_as=slice_scope
+            ):
                 merged[sliced.id] = sliced
             slices = tuple(sorted(merged.values(), key=lambda one: one.id))
     _stage("findings")
