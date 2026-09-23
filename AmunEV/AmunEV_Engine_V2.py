@@ -85614,7 +85614,7 @@ def laz_owner___laz_home():
     return _o.environ.get('LAZ_HOME') or _o.getcwd()
 'laz_owner.py — ROUND 1: THE OWNER CONFIGURATION. One place, every setting.\n\nEverything the operator sets lives here: where the parquet files are, which\nsports map to which tables, the strategy families, the mode definitions, and\nthe standing rules. Nothing downstream may hardcode a path, a floor or a\nfamily — it reads LAZ_OWNER.\n\nDATA LINEAGE IS DECLARED HERE, not inferred later. h2h_player_performance\ncomes from public.h2h_player_performance; ebasketball_h2h_player_performance\ncomes from ebasketball_h2h_player_performance. Recording that at the source\nmeans every strategy documented downstream inherits its true origin.\n'
 import os
-laz_owner__LAZ_OWNER = {'paths': {'parquet_dir': os.environ.get('LAZ_PARQUET_DIR', os.path.join(os.getcwd(), 'frames')), 'parquet_search': [os.environ.get('LAZ_PARQUET_DIR', ''), 'AB_frames', 'frames', 'parquets', '.', os.getcwd()], 'csv_dir': os.environ.get('LAZ_CSV_DIR', os.getcwd()), 'output_dir': os.environ.get('LAZ_OUTPUT_DIR', os.getcwd()), 'json_dir': os.environ.get('LAZ_JSON_DIR', os.getcwd()), 'master_document': 'MASTER_DOCUMENT.xlsx', 'memory_json': 'laz_memory.json'}, 'frames': {'football': dict(parquet='AB_football.parquet', source_parquet='AB_Football_games.parquet', tick_sec=5.0, stride=1, csv='Total_Football_Data_24082026.csv', source_table='public.football_matches', elapsed_col='prog', rebuild_script='csv_football.py', days=94), 'efootball': dict(parquet='AB_efootball.parquet', source_parquet='AB_efootball_games.parquet', tick_sec=2.5, stride=1, csv='Total_eFootball_Data_24082026.csv', source_table='public.efootball_matches', elapsed_col='prog', rebuild_script='csv_efootball.py', days=10), 'ebasketball': dict(parquet='AB_ebasketball.parquet', source_parquet='AB_ebasketball_games.parquet', tick_sec=2.5, stride=1, csv='Total_ebasketball_24082026.csv', source_table='public.ebasketball_games', elapsed_col='frac', rebuild_script='csv_ebasketball.py', days=41), 'basketball': dict(parquet='AB_basketball.parquet', source_parquet='AB_basketball_games.parquet', tick_sec=5.0, stride=1, csv='Total_Basketball_Data_24082026.csv', source_table='public.basketball_games', elapsed_col='frac', rebuild_script='csv_basketball.py', days=94), 'tennis': dict(parquet='AB_tennis.parquet', source_parquet='AB_tennis_games.parquet', tick_sec=5.0, stride=1, csv='Total_Tennis_Data_24082026.csv', source_table='public.tennis_games', elapsed_col=None, rebuild_script='csv_tennis.py', days=48), 'tabletennis': dict(parquet='AB_tabletennis.parquet', source_parquet='AB_tabletennis_games.parquet', tick_sec=5.0, stride=1, csv='Total_TableTennis_24082026.csv', source_table='public.tabletennis_games', elapsed_col=None, rebuild_script='csv_tabletennis.py', days=8), 'etennis': dict(parquet='AB_etennis.parquet', source_parquet='AB_etennis_games.parquet', tick_sec=2.5, stride=1, csv='Total_eTennis_24082026.csv', source_table='public.etennis_games', elapsed_col=None, rebuild_script='csv_etennis.py', days=30), 'esports': dict(parquet='AB_esports.parquet', source_parquet='AB_eSports_games.parquet', tick_sec=5.0, stride=1, csv='Total_eSports_Data_24082026.csv', source_table='public.esports_games', elapsed_col=None, rebuild_script='csv_esports.py', days=88)}, 'source_tables': {'h2h_player_performance': dict(db_table='public.h2h_player_performance', parquet_dir_key='parquet_dir', sports=['football', 'efootball', 'basketball', 'tennis', 'tabletennis', 'etennis', 'esports'], note='One row per player per match tick. The base table for every sport except eBasketball.'), 'ebasketball_h2h_player_performance': dict(db_table='ebasketball_h2h_player_performance', parquet_dir_key='parquet_dir', sports=['ebasketball'], note='Separate table. NOTE: its clock is CUMULATIVE match minutes, not within-period — no period offset may be added to it.')}, 'rules': {'min_odds': 1.5, 'min_odds_hard': 1.4, 'min_n_is': 100, 'min_n_oos': 100, 'require_oos_roi': True, 'min_oos_roi': 0.0, 'band_hi_ceiling': 200.0, 'gate': 'n>=100 IS · n>=100 OOS · OOS ROI>0 · mean odds>=min_odds', 'settlement': 'contract per sport: last validated score for score sports; last validated odds <= 1.35 for tennis/tabletennis/esports/etennis; unsettleable excluded, never proxied', 'unit': 'one bet per match', 'split': 'IS = oldest 50% by match start; OOS = newest 50%; OOS read once', 'redundancy': 'same match AND same tick AND same side; keep the one with MORE bets', 'lookahead': 'a term is forward-looking if its value at the arm tick is not yet DETERMINED; derived terms inherit the LATEST parent resolution', 'documentation': 'every strategy, base, condition and feature is dated at creation and documented for exact re-creation in production'}, 'modes': {1: dict(name='FULL', desc='Generate new strategies AND optimise every existing family for the sport, including legacy. Runs every integrated element except laz_sweep. Validates, documents, writes MASTER_DOCUMENT in real time, updates all learning JSON.', uses_min_odds=True, writes_master=True, realtime_master=True), 2: dict(name='VALIDATION', desc='Validate the strategies already in the engine against the assigned parquets. Every condition and feature required is GENERATED AT STARTUP. Outputs a summary sheet, then per sport a Sport_Tier sheet followed by a 1-to-1 sheet per strategy (one row per match_id).', uses_min_odds=True, writes_master=True, multi_sport=True), 3: dict(name='COMBINATION_FINDER', desc='Create high win-rate, high-volume strategies for combination play across min_odds 1.40 to 2.50+. OVERRIDES the 1.50 floor — this mode is the only exception. 100-1000 stacking rounds per strategy. Optional target count.', uses_min_odds=False, override_min_odds=True, rounds=(100, 1000), writes_master=True), 4: dict(name='BASEFINDER', desc='Find high-value bases and nothing else. A base may be one condition or several combined. Judged on ROI, win rate, volume AND headroom to the noise ceiling — headroom matters most: a base at 62.8% with a 69.8% ceiling yielded 23 strategies where one at 59.3% with a 71.8% ceiling yielded zero.', uses_min_odds=False, writes_master=False), 6: dict(name='PORTFOLIO', desc='Which subset do you actually RUN? De-overlaps on the exact-moment rule, drops strategies whose RETURNS correlate even when their bets differ, weights by edge and reports worst-case single-match exposure.', uses_min_odds=True, writes_master=True), 7: dict(name='DRIFT_MONITOR', desc='Is the book still true? Re-arms every strategy on RECENT data and compares to what it was validated on. Three windows so one bad fortnight is distinguishable from decay. Nothing is deleted; a DEAD verdict is evidence.', uses_min_odds=True, writes_master=True), 5: dict(name='EXPLORATIVE', desc='Pick a sport and a family. Re-stack, re-order and substitute conditions 100-1000 times per strategy, guided by the learning JSON rather than at random. Compare against MASTER_DOCUMENT. Survivors are versioned from the original name.', uses_min_odds=True, allow_min_odds_override=True, rounds=(100, 1000), writes_master=True)}, 'report': {'one_to_one': 25}, 'h2h_files': {'efootball': 'h2h_player_performance.parquet', 'ebasketball': 'ebasketball_h2h_player_table.parquet'}, 'totals': {'lag_seconds': 20.0, 'lag_points': 2.0}, 'motif': {'window_s': 60.0, 'n_pts': 12, 'k': 6, 'window_by_family': {'goal': 60.0, 'quarter': 60.0, 'set': 300.0, 'objective': 120.0}}, 'audit': {'run_on_start': True, 'fail_blocks_run': True, 'gate_kinds': ['audit360', 'audit_full'], 'kinds': None, 'end_to_end': False, 'engine_path': None}, 'production': {'catalogue_json': None, 'n_ref_matches': 50, 'export_after_run': True}, 'draw_sports': ('football', 'efootball', 'efbig', 'efull'), 'match_seconds': {'ebasketball': 960, 'basketball': 2880, 'efootball': 720, 'football': 5400}, 'search': {'memmap_corr_cap': 150, 'workers': 4, 'workers_mode': 'auto', 'pool_backend': 'ram', 'mode1': dict(min_odds=1.4, preferred_odds=1.4, target_new_strategies=0), 'mode3': dict(min_odds=1.4, preferred_odds=1.4, target_new_strategies=0)}, 'combination': {'tiers': {'Unchained': dict(min_win=95.0, max_win=100.0, max_legs=10, colour='95%+'), 'Ultra': dict(min_win=90.0, max_win=95.0, max_legs=5, colour='90-95%'), 'Alpha': dict(min_win=85.0, max_win=90.0, max_legs=4, colour='85-90%'), 'Beta': dict(min_win=80.0, max_win=85.0, max_legs=3, colour='80-85%'), 'Gamma': dict(min_win=75.0, max_win=80.0, max_legs=2, colour='75-80%'), 'Npc': dict(min_win=60.0, max_win=75.0, max_legs=2, colour='60-75%'), 'Vision': dict(min_win=50.0, max_win=60.0, max_legs=0, colour='50-60%'), 'Jobber': dict(min_win=35.0, max_win=50.0, max_legs=0, colour='35-50%'), 'Feeder': dict(min_win=20.0, max_win=35.0, max_legs=0, colour='20-35%'), 'Ino': dict(min_win=10.0, max_win=20.0, max_legs=0, colour='10-20%'), 'Mordi': dict(min_win=5.0, max_win=10.0, max_legs=0, colour='5-10%')}, 'stack_floor_tier': 'Npc', 'roles': {'ANVIL': dict(prec=4, segment_tolerance_pts=3.0, min_bets=300, min_ratio=1.05, tells='the edge does not move — core stake'), 'GLASS': dict(prec=1, min_recorded_win=80.0, drift_pts=-10.0, tells='fading — watch, do not stake until it re-validates'), 'SPARK': dict(prec=5, min_oos_roi=40.0, bets_lo=100, bets_hi=200, min_ratio=1.2, tells='promising, under-sampled — small stake, collect evidence'), 'BINDER': dict(prec=3, fold_minus_single_pts=10.0, min_slips=30, min_ratio=1.05, tells='wins more in company — stack it first'), 'LONER': dict(prec=2, min_single_win=80.0, fold_minus_single_pts=-15.0, min_slips=30, min_ratio=1.05, tells='strong alone, fails in company — singles only')}, 'measure': 'simulation', 'hold_sec': 5.0, 'use_existing_book': True, 'use_basefinder': True, 'use_hazard': False, 'never_combine': {'ebasketball': ('totals', 'total_points_handicap', 'total_goals_handicap')}, 'same_match_forbidden': True, 'status_columns': {'moneyline': ('market_status',), 'total_goals_handicap': ('selection_status_total_goals_over', 'selection_status_total_goals_under'), 'total_points_handicap': ('selection_status_total_points_over', 'selection_status_total_points_under'), 'any': ('total_goals_market_active', 'market_status')}, 'open_values': ('open', 'OPEN', 'Open', 1, True, '1', 'active', 'ACTIVE'), 'min_odds_by_tier': {'Unchained': 1.4, 'Ultra': 1.4, 'Alpha': 1.45, 'Beta': 1.5, 'Gamma': 1.5, 'Npc': 1.5}, 'satoro_max_legs': 4, 'satoro_max_alpha': 1, 'other_mix_max': 2, 'min_odds': 1.4, 'min_roi': 0.0, 'min_bets': 100, 'min_win': 0.75,  'min_roi_note': 'the 15 percent is removed from EVERYWHERE (owner, 21 Sep) — the strategy gate is rules.min_oos_roi (0.0); stacking carries no ROI floor either, tiers RANK by ROI without excluding', 'n_perm': 50, 'one_to_one': 25, 'min_odds_mode1': 1.4, 'max_interactions': 50, 'second_order_parents': 16, 'corr_threshold': 0.97, 'max_corr_conditions': 400, 'max_index_conditions': 0, 'max_distinct_tiers': 2, 'window_sec': 60.0, 'all_window_days': 3, 'index_budget_mb': 1200, 'all_require_every_sport': False, 'allow_rebuilt_ledgers': False, 'require_distinct_matches': True, 'objective': 'ev', 'weights': dict(win=1.0, volume=0.25, cooccurrence=0.08)}, 'families': {'PREMATCH_FAV': 'Backs the prematch favourite. Immutable designation from the first valid-odds tick.', 'PREMATCH_DOG': 'Backs the prematch underdog.', 'LIVE_LEADER': 'Backs whichever side currently leads.', 'LIVE_TRAILER': 'Backs whichever side currently trails — the comeback family.', 'DRIFT': 'Backs the side that has moved furthest from its OWN opening price. Score-agnostic.', 'MARGIN_RATE': 'Built on margin per unit of time remaining. The most productive family found.', 'PERIOD_WINNER': 'Backs the winner of a completed period (Q1, H1, set 1). Period-gated.', 'FORM_H2H': 'Driven by player form or head-to-head history.', 'MARKET_SHAPE': 'Driven by price structure — ratio, overround, vig-free implied.', 'PACE_TOTAL': 'Driven by scoring pace or the projected total against the line.', 'WALL_UNDER': 'Both players low-scoring, armed at 0-0. BLOCKED: the under price does not track the posted line.', 'CLOCK': 'Armed purely on elapsed time or time of day. Note that `hour` is a LEAGUE PROXY, not a mechanism — treat it with scepticism.', 'LINE': 'Driven by the posted total or handicap line as a CONDITION. Distinct from WALL_UNDER, which bets the under MARKET — that market does not settle against the posted line.', 'LEGACY': 'Engine-original specs retained as SEEDS. Recorded n often does not reproduce.', 'MANUFACTURED': 'Led by a condition built from an interaction, with registered parentage.', 'UNCLASSIFIED': 'Not yet assigned — must be resolved before shipping.'}}
+laz_owner__LAZ_OWNER = {'paths': {'parquet_dir': os.environ.get('LAZ_PARQUET_DIR', os.path.join(os.getcwd(), 'frames')), 'parquet_search': [os.environ.get('LAZ_PARQUET_DIR', ''), 'AB_frames', 'frames', 'parquets', '.', os.getcwd()], 'csv_dir': os.environ.get('LAZ_CSV_DIR', os.getcwd()), 'output_dir': os.environ.get('LAZ_OUTPUT_DIR', os.getcwd()), 'json_dir': os.environ.get('LAZ_JSON_DIR', os.getcwd()), 'master_document': 'MASTER_DOCUMENT.xlsx', 'memory_json': 'laz_memory.json'}, 'frames': {'football': dict(parquet='AB_football.parquet', source_parquet='AB_Football_games.parquet', tick_sec=5.0, stride=1, csv='Total_Football_Data_24082026.csv', source_table='public.football_matches', elapsed_col='prog', rebuild_script='csv_football.py', days=94), 'efootball': dict(parquet='AB_efootball.parquet', source_parquet='AB_efootball_games.parquet', tick_sec=2.5, stride=1, csv='Total_eFootball_Data_24082026.csv', source_table='public.efootball_matches', elapsed_col='prog', rebuild_script='csv_efootball.py', days=10), 'ebasketball': dict(parquet='AB_ebasketball.parquet', source_parquet='AB_ebasketball_games.parquet', tick_sec=2.5, stride=1, csv='Total_ebasketball_24082026.csv', source_table='public.ebasketball_games', elapsed_col='frac', rebuild_script='csv_ebasketball.py', days=41), 'basketball': dict(parquet='AB_basketball.parquet', source_parquet='AB_basketball_games.parquet', tick_sec=5.0, stride=1, csv='Total_Basketball_Data_24082026.csv', source_table='public.basketball_games', elapsed_col='frac', rebuild_script='csv_basketball.py', days=94), 'tennis': dict(parquet='AB_tennis.parquet', source_parquet='AB_tennis_games.parquet', tick_sec=5.0, stride=1, csv='Total_Tennis_Data_24082026.csv', source_table='public.tennis_games', elapsed_col=None, rebuild_script='csv_tennis.py', days=48), 'tabletennis': dict(parquet='AB_tabletennis.parquet', source_parquet='AB_tabletennis_games.parquet', tick_sec=5.0, stride=1, csv='Total_TableTennis_24082026.csv', source_table='public.tabletennis_games', elapsed_col=None, rebuild_script='csv_tabletennis.py', days=8), 'etennis': dict(parquet='AB_etennis.parquet', source_parquet='AB_etennis_games.parquet', tick_sec=2.5, stride=1, csv='Total_eTennis_24082026.csv', source_table='public.etennis_games', elapsed_col=None, rebuild_script='csv_etennis.py', days=30), 'esports': dict(parquet='AB_esports.parquet', source_parquet='AB_eSports_games.parquet', tick_sec=5.0, stride=1, csv='Total_eSports_Data_24082026.csv', source_table='public.esports_games', elapsed_col=None, rebuild_script='csv_esports.py', days=88)}, 'source_tables': {'h2h_player_performance': dict(db_table='public.h2h_player_performance', parquet_dir_key='parquet_dir', sports=['football', 'efootball', 'basketball', 'tennis', 'tabletennis', 'etennis', 'esports'], note='One row per player per match tick. The base table for every sport except eBasketball.'), 'ebasketball_h2h_player_performance': dict(db_table='ebasketball_h2h_player_performance', parquet_dir_key='parquet_dir', sports=['ebasketball'], note='Separate table. NOTE: its clock is CUMULATIVE match minutes, not within-period — no period offset may be added to it.')}, 'rules': {'min_odds': 1.5, 'min_odds_hard': 1.4, 'min_n_is': 100, 'min_n_oos': 100, 'require_oos_roi': True, 'min_oos_roi': 0.0, 'gate': 'n>=100 IS · n>=100 OOS · OOS ROI>0 · mean odds>=min_odds', 'settlement': 'contract per sport: last validated score for score sports; last validated odds <= 1.35 for tennis/tabletennis/esports/etennis; unsettleable excluded, never proxied', 'unit': 'one bet per match', 'split': 'IS = oldest 50% by match start; OOS = newest 50%; OOS read once', 'redundancy': 'same match AND same tick AND same side; keep the one with MORE bets', 'lookahead': 'a term is forward-looking if its value at the arm tick is not yet DETERMINED; derived terms inherit the LATEST parent resolution', 'documentation': 'every strategy, base, condition and feature is dated at creation and documented for exact re-creation in production'}, 'modes': {1: dict(name='FULL', desc='Generate new strategies AND optimise every existing family for the sport, including legacy. Runs every integrated element except laz_sweep. Validates, documents, writes MASTER_DOCUMENT in real time, updates all learning JSON.', uses_min_odds=True, writes_master=True, realtime_master=True), 2: dict(name='VALIDATION', desc='Validate the strategies already in the engine against the assigned parquets. Every condition and feature required is GENERATED AT STARTUP. Outputs a summary sheet, then per sport a Sport_Tier sheet followed by a 1-to-1 sheet per strategy (one row per match_id).', uses_min_odds=True, writes_master=True, multi_sport=True), 3: dict(name='COMBINATION_FINDER', desc='Create high win-rate, high-volume strategies for combination play across min_odds 1.40 to 2.50+. OVERRIDES the 1.50 floor — this mode is the only exception. 100-1000 stacking rounds per strategy. Optional target count.', uses_min_odds=False, override_min_odds=True, rounds=(100, 1000), writes_master=True), 4: dict(name='BASEFINDER', desc='Find high-value bases and nothing else. A base may be one condition or several combined. Judged on ROI, win rate, volume AND headroom to the noise ceiling — headroom matters most: a base at 62.8% with a 69.8% ceiling yielded 23 strategies where one at 59.3% with a 71.8% ceiling yielded zero.', uses_min_odds=False, writes_master=False), 6: dict(name='PORTFOLIO', desc='Which subset do you actually RUN? De-overlaps on the exact-moment rule, drops strategies whose RETURNS correlate even when their bets differ, weights by edge and reports worst-case single-match exposure.', uses_min_odds=True, writes_master=True), 7: dict(name='DRIFT_MONITOR', desc='Is the book still true? Re-arms every strategy on RECENT data and compares to what it was validated on. Three windows so one bad fortnight is distinguishable from decay. Nothing is deleted; a DEAD verdict is evidence.', uses_min_odds=True, writes_master=True), 5: dict(name='EXPLORATIVE', desc='Pick a sport and a family. Re-stack, re-order and substitute conditions 100-1000 times per strategy, guided by the learning JSON rather than at random. Compare against MASTER_DOCUMENT. Survivors are versioned from the original name.', uses_min_odds=True, allow_min_odds_override=True, rounds=(100, 1000), writes_master=True)}, 'report': {'one_to_one': 25}, 'h2h_files': {'efootball': 'h2h_player_performance.parquet', 'ebasketball': 'ebasketball_h2h_player_table.parquet'}, 'totals': {'lag_seconds': 20.0, 'lag_points': 2.0}, 'motif': {'window_s': 60.0, 'n_pts': 12, 'k': 6, 'window_by_family': {'goal': 60.0, 'quarter': 60.0, 'set': 300.0, 'objective': 120.0}}, 'audit': {'run_on_start': True, 'fail_blocks_run': True, 'gate_kinds': ['audit360', 'audit_full'], 'kinds': None, 'end_to_end': False, 'engine_path': None}, 'production': {'catalogue_json': None, 'n_ref_matches': 50, 'export_after_run': True}, 'draw_sports': ('football', 'efootball', 'efbig', 'efull'), 'match_seconds': {'ebasketball': 960, 'basketball': 2880, 'efootball': 720, 'football': 5400}, 'search': {'memmap_corr_cap': 150, 'workers': 4, 'workers_mode': 'auto', 'pool_backend': 'ram', 'mode1': dict(min_odds=1.4, preferred_odds=1.4, target_new_strategies=0), 'mode3': dict(min_odds=1.4, preferred_odds=1.4, target_new_strategies=0)}, 'combination': {'tiers': {'Unchained': dict(min_win=95.0, max_win=100.0, max_legs=10, colour='95%+'), 'Ultra': dict(min_win=90.0, max_win=95.0, max_legs=5, colour='90-95%'), 'Alpha': dict(min_win=85.0, max_win=90.0, max_legs=4, colour='85-90%'), 'Beta': dict(min_win=80.0, max_win=85.0, max_legs=3, colour='80-85%'), 'Gamma': dict(min_win=75.0, max_win=80.0, max_legs=2, colour='75-80%'), 'Npc': dict(min_win=60.0, max_win=75.0, max_legs=2, colour='60-75%'), 'Vision': dict(min_win=50.0, max_win=60.0, max_legs=0, colour='50-60%'), 'Jobber': dict(min_win=35.0, max_win=50.0, max_legs=0, colour='35-50%'), 'Feeder': dict(min_win=20.0, max_win=35.0, max_legs=0, colour='20-35%'), 'Ino': dict(min_win=10.0, max_win=20.0, max_legs=0, colour='10-20%'), 'Mordi': dict(min_win=5.0, max_win=10.0, max_legs=0, colour='5-10%')}, 'stack_floor_tier': 'Npc', 'roles': {'ANVIL': dict(prec=4, segment_tolerance_pts=3.0, min_bets=300, min_ratio=1.05, tells='the edge does not move — core stake'), 'GLASS': dict(prec=1, min_recorded_win=80.0, drift_pts=-10.0, tells='fading — watch, do not stake until it re-validates'), 'SPARK': dict(prec=5, min_oos_roi=40.0, bets_lo=100, bets_hi=200, min_ratio=1.2, tells='promising, under-sampled — small stake, collect evidence'), 'BINDER': dict(prec=3, fold_minus_single_pts=10.0, min_slips=30, min_ratio=1.05, tells='wins more in company — stack it first'), 'LONER': dict(prec=2, min_single_win=80.0, fold_minus_single_pts=-15.0, min_slips=30, min_ratio=1.05, tells='strong alone, fails in company — singles only')}, 'measure': 'simulation', 'hold_sec': 5.0, 'use_existing_book': True, 'use_basefinder': True, 'use_hazard': False, 'never_combine': {'ebasketball': ('totals', 'total_points_handicap', 'total_goals_handicap')}, 'same_match_forbidden': True, 'status_columns': {'moneyline': ('market_status',), 'total_goals_handicap': ('selection_status_total_goals_over', 'selection_status_total_goals_under'), 'total_points_handicap': ('selection_status_total_points_over', 'selection_status_total_points_under'), 'any': ('total_goals_market_active', 'market_status')}, 'open_values': ('open', 'OPEN', 'Open', 1, True, '1', 'active', 'ACTIVE'), 'min_odds_by_tier': {'Unchained': 1.4, 'Ultra': 1.4, 'Alpha': 1.45, 'Beta': 1.5, 'Gamma': 1.5, 'Npc': 1.5}, 'satoro_max_legs': 4, 'satoro_max_alpha': 1, 'other_mix_max': 2, 'min_odds': 1.4, 'min_roi': 0.0, 'min_bets': 100, 'min_win': 0.75,  'min_roi_note': 'the 15 percent is removed from EVERYWHERE (owner, 21 Sep) — the strategy gate is rules.min_oos_roi (0.0); stacking carries no ROI floor either, tiers RANK by ROI without excluding', 'n_perm': 50, 'one_to_one': 25, 'min_odds_mode1': 1.4, 'max_interactions': 50, 'second_order_parents': 16, 'corr_threshold': 0.97, 'max_corr_conditions': 400, 'max_index_conditions': 0, 'max_distinct_tiers': 2, 'window_sec': 60.0, 'all_window_days': 3, 'index_budget_mb': 1200, 'all_require_every_sport': False, 'allow_rebuilt_ledgers': False, 'require_distinct_matches': True, 'objective': 'ev', 'weights': dict(win=1.0, volume=0.25, cooccurrence=0.08)}, 'families': {'PREMATCH_FAV': 'Backs the prematch favourite. Immutable designation from the first valid-odds tick.', 'PREMATCH_DOG': 'Backs the prematch underdog.', 'LIVE_LEADER': 'Backs whichever side currently leads.', 'LIVE_TRAILER': 'Backs whichever side currently trails — the comeback family.', 'DRIFT': 'Backs the side that has moved furthest from its OWN opening price. Score-agnostic.', 'MARGIN_RATE': 'Built on margin per unit of time remaining. The most productive family found.', 'PERIOD_WINNER': 'Backs the winner of a completed period (Q1, H1, set 1). Period-gated.', 'FORM_H2H': 'Driven by player form or head-to-head history.', 'MARKET_SHAPE': 'Driven by price structure — ratio, overround, vig-free implied.', 'PACE_TOTAL': 'Driven by scoring pace or the projected total against the line.', 'WALL_UNDER': 'Both players low-scoring, armed at 0-0. BLOCKED: the under price does not track the posted line.', 'CLOCK': 'Armed purely on elapsed time or time of day. Note that `hour` is a LEAGUE PROXY, not a mechanism — treat it with scepticism.', 'LINE': 'Driven by the posted total or handicap line as a CONDITION. Distinct from WALL_UNDER, which bets the under MARKET — that market does not settle against the posted line.', 'LEGACY': 'Engine-original specs retained as SEEDS. Recorded n often does not reproduce.', 'MANUFACTURED': 'Led by a condition built from an interaction, with registered parentage.', 'UNCLASSIFIED': 'Not yet assigned — must be resolved before shipping.'}}
 laz_owner__ALIASES = {'efbig': 'efootball', 'ef': 'efootball', 'eff': 'efootball', 'tt': 'tabletennis', 'etennis': 'etennis'}
 
 def laz_owner__canon(sport):
@@ -92161,42 +92161,16 @@ def laz_release__registry_sql(A, sport, engine_sha, frame_hash, run_id, search_f
         conditions = laz_release__parse_conditions(r.get('conditions'))
         band = str(r.get('band') or r.get('rung') or '')
         bm = _re.match(r'([0-9.]+)\s*-\s*([0-9.]+)', band)
-        # [v247 D5] THE BAND HAS A CEILING. 1e9 never reaches a registry row. Where the sweep recorded only the
-        # open-ended top rung, the ceiling is the strategy's own max OOS odds x1.25, bounded by rules.band_hi_ceiling.
-        _OWr = _m('laz_owner')
-        _ceil = float(((_OWr.LAZ_OWNER.get('rules', {}) or {}) if _OWr else {}).get('band_hi_ceiling', 50.0))
-        _bhi = float(bm.group(2)) if bm else None
+        # [GOD-2 - OWNER, 23 Sep 2026] THE BAND HAS NO CEILING.
+        # What stood here computed one: the top of the highest ladder rung
+        # ([1.4, 1.8, 2.2, 3.2, 3.6, 4.2, 5.0, 6.5, 9.0]) holding 100+ OOS bets, then
+        # capped that again at rules.band_hi_ceiling. Both are deleted. The owner's rule
+        # is a MINIMUM of 1.40 and no maximum at all, and this ceiling is what made the
+        # long-odds value disappear run after run: a strategy measured at 12.0 shipped
+        # with a band top of 4.2, and production then refused every bet above it.
+        # Restoring a cap here requires the owner's explicit 'Unchained approves'.
+        _bhi = None
         _band_capped = False
-        # [v247-MERGE M7] the directive's exact rule first: the top of the highest ladder rung
-        # holding >= 100 of the strategy's OOS bets (measured on the run's ledgers); v247's
-        # formula is the fallback when no ledger rides along.
-        try:
-            _M3r = _m('laz_mode3')
-            _LLm = (getattr(_M3r, 'LAST_LEDGERS', None) or {}) if _M3r is not None else {}
-            _Lm = _LLm.get(str(r.get('strategy_name'))) or {}
-            _prm = _np.asarray(_Lm.get('price', []), float)
-            _oom = np.asarray(_Lm.get('is_oos', []), bool) if len(_prm) else []
-            _prm = _prm[_oom] if len(_prm) else _prm
-            _prm = _prm[_np.isfinite(_prm)]
-            if len(_prm):
-                _LAD = [1.4, 1.8, 2.2, 3.2, 3.6, 4.2, 5.0, 6.5, 9.0]
-                _topm = None
-                for _j in range(len(_LAD) - 1):
-                    if int(((_prm >= _LAD[_j]) & (_prm < _LAD[_j + 1])).sum()) >= 100:
-                        _topm = _LAD[_j + 1]
-                if _topm is None:
-                    import math as _math
-                    _topm = float(_math.ceil(float(_prm.max()) * 100.0) / 100.0)
-                _bhi = _topm
-        except Exception:
-            pass
-        if _bhi is not None and _bhi > _ceil:
-            try:
-                _mo = float(r.get('max_odds_oos') or r.get('odds_max') or r.get('odds') or 0)
-            except Exception:
-                _mo = 0.0
-            _bhi = round(min(_ceil, max(float(bm.group(1)) * 1.5, _mo * 1.25 if _mo > 1 else _ceil)), 2)
-            _band_capped = True
         # [v247 D5] bet_outcome is the side as bet — the ledger side, else the role resolved at the tick; never empty.
         _side = str(r.get('side') or r.get('bet_side') or '').lower()
         _role = laz_release__role(base)
@@ -92242,8 +92216,11 @@ def laz_release__registry_sql(A, sport, engine_sha, frame_hash, run_id, search_f
             deployable=bool(_pass and (_settled == 'score' or bool((((_m('laz_owner').LAZ_OWNER if _m('laz_owner') is not None else {}).get('release', {}) or {}).get('deploy_proxy_settled', True))))),
             deployable_reason=('' if (_pass and _settled == 'score') else ((f'DEPLOYED on the owner\'s instruction — measured against settled_by={_settled} (a proxy: the closing price / recorded score, not an official result)' if bool((((_m('laz_owner').LAZ_OWNER if _m('laz_owner') is not None else {}).get('release', {}) or {}).get('deploy_proxy_settled', True))) else f'settled_by={_settled} is a proxy — the feed must carry a result') if _pass else f'verdict={r.get("verdict")}')),
         )
+        # band_hi is NOT required. There is no maximum odds (GOD-2), so an absent
+        # ceiling is the correct value -- requiring it here would drop every row the
+        # moment the cap above was removed.
         missing = [k for k, v in row.items() if k in ('strategy', 'sport', 'conditions', 'market',
-                   'band_lo', 'band_hi', 'stride', 'settled_by', 'engine_sha') and (v is None or v == '' or v == 'None')]
+                   'band_lo', 'stride', 'settled_by', 'engine_sha') and (v is None or v == '' or v == 'None')]
         if missing:
             excluded.append((row['strategy'], ','.join(missing)))
             continue
@@ -103845,97 +103822,102 @@ laz_mode3___MASK_WINDOWS = {
 
 
 def laz_mode3___execution_spec(rec, base_name, seed_txt, clauses, lo, hi, sport, market):
-    """[EXEC SPEC] EVERY ELEMENT, IN THE EXACT ORDER IT HAS TO HAPPEN, WITH ITS EXACT TRIGGER.
+    """[GOD-2] EVERY ELEMENT, IN THE EXACT ORDER IT HAPPENS, WITH ITS EXACT TRIGGER.
 
-    THE FAILURE THIS ENDS. A strategy used to be documented as a bag of conditions and a
-    band. That is not enough to rebuild it: it does not say what is tested FIRST, what the
-    base mask contributes, which side the price comes from, or at which tick the bet is
-    taken. Two implementations of the same bag of conditions place different bets, and the
-    only way to tell was to run both.
+    THE ONLY THINGS IN THIS LIST ARE THE OWNER'S RULES AND THE STRATEGY'S OWN CONDITIONS.
+    Nothing else may appear here. An earlier version of this function also emitted a feed-
+    freshness gate, a base-mask elapsed window, a margin floor and a MAXIMUM price - none
+    of which the owner ever set, and all of which silently removed bets. They are gone, and
+    GOD-2 forbids their return without the owner's explicit 'Unchained approves'.
 
-    So every element is written here, ordered, with the exact expression that has to be
-    true and what happens when it is not. Read top to bottom, this IS the implementation:
-    a reader who evaluates each step in order, stopping at the first that fails, places
-    exactly the bets the search measured.
+    THE ORDER, AND WHY IT IS THIS ORDER:
+        1  SIDE          which outcome the strategy names. Resolved first because a
+                         condition on the backed side's price means nothing until the
+                         side is known.
+        2  PRICE         the live price of that outcome. Resolved before the floor,
+                         because the floor compares against this exact number.
+        3  MIN ODDS      price >= 1.40. The owner's only price rule. THERE IS NO MAXIMUM.
+        4..n CONDITIONS  the strategy's own, verbatim, with their fitted thresholds.
+        n+1 FIRST TICK   one bet per match, at the first tick where all of the above hold.
+        n+2 PLACEMENT    the market-open policy: wait, re-price, place or abandon.
+        n+3 SETTLE       on the outcome the strategy itself names.
 
-    Returns a list of steps. Each step carries:
-        step         its position in the order -- this is the order, not a suggestion
-        gate         what kind of check it is
-        trigger      the EXACT expression that must be true, in production terms
-        reads        the terms/columns it needs on this tick
-        on_fail      what production does when it is not true
-        why          why it is at this position and not another
+    Returns a list of steps, each with the exact expression that must be true, what
+    happens when it is not, and why it sits at that position.
     """
-    role, residual, note = laz_mode3___mask_residual(base_name)
+    role, _resid, _note = laz_mode3___mask_residual(base_name)
     steps = []
 
     def add(gate, trigger, reads, on_fail, why):
         steps.append(dict(step=len(steps) + 1, gate=gate, trigger=trigger,
                           reads=list(reads), on_fail=on_fail, why=why))
 
-    add('MARKET OPEN',
-        "market_status == 'Open'",
-        ['market_status'],
-        'skip this tick entirely; no strategy is evaluated',
-        'a suspended market cannot be bet into, so nothing below it is meaningful')
-    add('FEED FRESH',
-        'tick_gap_s is null OR tick_gap_s <= 180',
-        ['tick_gap_s'],
-        'skip this tick entirely',
-        'a stale tick carries a price that is no longer quoted; the search measured on '
-        'live ticks only')
-    add('BASE ARM MASK — SIDE',
-        (f"resolve_side({role!r}) is not null" if role else
-         f'base {base_name!r}: the arm mask cannot be expressed as a role'),
+    add('SIDE',
+        (f"resolve_side({role!r})" if role else
+         f'the outcome named by base {base_name!r}'),
         ['h_score', 'a_score', 'home_odds', 'away_odds', 'prematch home/away odds'],
         'do not fire on this tick; never guess a side',
-        'the base decides WHICH SIDE is backed before any condition is read, because a '
-        'condition on the backed side\'s price means nothing until the side is known')
-    for i, (t, o, v) in enumerate(residual, 1):
-        add(f'BASE ARM MASK — WINDOW {i}',
-            f'{t} {o} {v!r}',
-            [t],
-            'do not fire on this tick',
-            'part of the base\'s own mask, not of the strategy\'s conditions; without it '
-            'the strategy fires outside the region it was measured in')
+        'the strategy names the outcome it backs; nothing is hard-coded and nothing is '
+        'substituted')
     add('PRICE OF THE BACKED SIDE',
-        'price = price_for_side(side) ; price is not null AND price == price',
+        'price = price_for_side(side)',
         ['home_odds', 'away_odds', 'draw_odds', 'total_*_under'],
-        'do not fire; a NaN price passes every bound check because every NaN comparison '
-        'is False',
-        'the band below compares against this exact number, so it is resolved before the '
-        'band and not after')
-    add('PRICE BAND',
-        f'{float(lo)!r} <= price <= {float(hi)!r}',
+        'wait for a real price; a NaN is not a price, and because every NaN comparison '
+        'is False it would otherwise pass the floor below unchecked',
+        'the floor compares against this exact number, so it is resolved first')
+    add('MINIMUM ODDS',
+        f'price >= {float(laz_god2__RULES_min_odds())!r}',
         ['the price resolved above'],
         'do not fire on this tick',
-        'the strategy was measured ONLY on bets inside this band; a bet outside it is a '
-        'bet the search never priced')
+        "the owner's only price rule. THERE IS NO MAXIMUM: no ceiling, no band top, no "
+        'rung cap. Long odds are exactly where the value is')
     for i, c in enumerate(clauses or [], 1):
         add(f'CONDITION {i}',
             str(c),
             [str(c).split()[0]] if str(c).split() else [],
             'do not fire on this tick (a null value fails closed, it never passes)',
-            'evaluated after the side is known, because a side-aware term reads the '
-            'backed side\'s value, not home\'s')
+            "the strategy's own condition, verbatim, at the threshold it was fitted to")
     add('FIRST TICK ONLY',
         'this (match_id, strategy) has not fired before',
         ['the fired set'],
         'do not fire again in this match',
-        'the search took ONE bet per match, at the FIRST tick where everything above held; '
-        'firing again would place bets it never measured')
-    add('PLACE',
-        f'back {role or "the base side"} at price, market {market!r}',
-        [],
-        '—',
-        'every gate above held on this tick and on no earlier one')
+        'the search took ONE bet per match, at the FIRST tick where everything above '
+        'held; firing again would place bets it never measured')
+    add('PLACEMENT — MARKET OPEN',
+        "market_status == 'Open'  ->  place now.  "
+        "market_status != 'Open'  ->  WAIT up to 60s, re-check; on open, place if the "
+        f"price is still >= {float(laz_god2__RULES_min_odds())!r}",
+        ['market_status', 'the live price'],
+        'abandon THIS BET only, after 60s without an open market, or if the price has '
+        'fallen below the floor on reopening. The strategy itself is unaffected',
+        'a closed market is a placement problem, not a condition. It never invalidates '
+        'the strategy and it never filters the search')
     add('SETTLE',
-        (f'the total is under the line stored on the bet row' if 'under' in str(market)
-         else f'the backed side wins the match'),
+        f'the outcome the strategy names: {market!r}',
         ['the recorded final result'],
         'unsettled bets are excluded, never counted as losses',
         'the same settlement the search graded on')
+    if _resid:
+        # RECORDED, NEVER ENFORCED. The base's own arm mask is part of how the search
+        # found the strategy, and it is written down so the run is reproducible -- but it
+        # is NOT a gate on placement. Making it one is precisely what removed the bets.
+        steps.append(dict(step=0, gate='NOTE — the base mask (NOT a gate)',
+                          trigger='; '.join(f'{t} {o} {v}' for t, o, v in _resid),
+                          reads=[t for t, _o, _v in _resid],
+                          on_fail='nothing: this is recorded for reproducibility only and '
+                                  'never blocks a bet',
+                          why=f'{base_name} armed on this region during the search. It is '
+                              'documented so the run can be reproduced, and deliberately '
+                              'not enforced at placement (GOD-2)'))
     return steps
+
+
+def laz_god2__RULES_min_odds():
+    """The owner's floor, read from the one place it is written down."""
+    try:
+        return float(LAZ_GOD2_RULES['min_odds'])
+    except Exception:
+        return 1.40
 
 
 def laz_mode3___element_record(rec, base_name, seed_txt, seed_id, seed_kind, lo, hi, chain, idx, pool, sport):
@@ -107251,6 +107233,116 @@ def laz_learning__feature_learning(sport, d, pool, y, price, el, IS, log=print, 
 # ══════════════════════════════════════════════════════════════════════════
 #  GOD RULE — THE DOCUMENTATION LAW
 # ══════════════════════════════════════════════════════════════════════════
+LAZ_GOD2_RULE_ID = 'GOD-2'
+LAZ_GOD2_RULE = (
+    'THE VALIDATION AND VERIFICATION BIBLE.\n'
+    '\n'
+    "THESE ARE THE OWNER'S RULES. THEY ARE THE WHOLE OF THEM. Nothing else may\n"
+    'stop a strategy being found, validated, shipped or placed.\n'
+    '\n'
+    'PRIMARY RULES - a strategy is VALIDATED when, and only when, all of these hold:\n'
+    '  1. MINIMUM ODDS         mean odds >= 1.40. There is NO maximum. No ceiling,\n'
+    "                          no band top, no rung cap, no 'long odds' limit.\n"
+    '  2. IN-SAMPLE VOLUME     n_is >= 100 bets.\n'
+    '  3. OUT-OF-SAMPLE VOLUME n_oos >= 100 bets.\n'
+    '  4. PROFIT               out-of-sample ROI > 0.\n'
+    '  5. NO FORWARD LOOKING   every condition reads only this tick and earlier\n'
+    '                          ones, and the conditions stack in an order that is\n'
+    '                          reproducible in production. A strategy that cannot\n'
+    '                          be replayed forward-only is not validated.\n'
+    '\n'
+    'SECONDARY RULES - how a validated strategy is PLACED and SETTLED. These are\n'
+    'placement policy, never conditions, and they never filter the search:\n'
+    '  6. FIRST TICK ONLY      one bet per match, at the first tick on which every\n'
+    '                          condition of the strategy holds.\n'
+    '  7. MARKET OPEN          the market must be open to place. If it is closed at\n'
+    '                          that tick, the bet WAITS - up to 60 seconds - and is\n'
+    '                          placed as soon as the market opens, PROVIDED the\n'
+    '                          price is still >= 1.40. If the price has fallen below\n'
+    '                          1.40, or 60 seconds pass without the market opening,\n'
+    '                          the bet is abandoned. A closed market never\n'
+    '                          invalidates the strategy, only that one bet.\n'
+    '  8. SETTLE               on the outcome the strategy itself names. Never a\n'
+    '                          hard-coded market, never a substituted one.\n'
+    '\n'
+    'WHAT MAY NEVER BE ADDED. No rule, gate, filter, threshold, band, cap, window,\n'
+    "mask clause, quarantine or 'safety' check that can stop a strategy being\n"
+    'found, validated, registered, enabled or placed may be added to this engine\n'
+    'by anyone but the owner. Not by a refactor, not by a port, not by a\n'
+    'convenience, not by an agent acting in good faith. If a change would reduce\n'
+    'the strategies found or the bets placed, it is REFUSED until the owner has\n'
+    'explicitly agreed to it.\n'
+    '\n'
+    'Every such element already in the engine must be NAMED to the owner, with\n'
+    'what it blocks and what it costs, so the owner can decide. Silence about a\n'
+    'blocker is itself a violation of this rule.\n'
+    '\n'
+    'This rule is untouchable. It is not weakened, bypassed, made advisory, or\n'
+    'narrowed by any later change, instruction, refactor or convenience. It may be\n'
+    'changed ONLY by the owner, and only by the explicit reply: Unchained approves.\n'
+)
+LAZ_GOD2_RULE_SHA = 'e5782c68d982f8d999f683d6ae8828b7bf21efea43176566cd49af1819b60005'
+
+# The owner's five primary rules, machine-readable, so the engine can be CHECKED
+# against them instead of trusted. Read by laz_god2__verify and by the bundle.
+LAZ_GOD2_RULES = dict(
+    min_odds=1.40,          # mean odds floor
+    max_odds=None,          # THERE IS NO MAXIMUM. None is the rule, not a missing value.
+    min_n_is=100,
+    min_n_oos=100,
+    min_oos_roi=0.0,        # strictly greater than
+    forward_only=True,
+    # placement policy, never conditions
+    first_tick_only=True,
+    market_open_wait_secs=60.0,
+    market_open_reprice_floor=1.40,
+    settle_on='the outcome the strategy itself names')
+
+
+def laz_god2__verify(log=None, strict=True):
+    """The bible is intact, and the engine still obeys it.
+
+    Two checks, not one. The seal proves the TEXT has not been altered; the rule
+    comparison proves the ENGINE has not drifted away from it -- a rule that is
+    merely written down somewhere and never checked is how every one of these caps
+    got in unnoticed in the first place.
+    """
+    import hashlib as _h
+    bad = []
+    if _h.sha256(LAZ_GOD2_RULE.encode()).hexdigest() != LAZ_GOD2_RULE_SHA:
+        bad.append('the text of GOD-2 has been ALTERED. It may be changed only by the '
+                   'owner, and only by the explicit reply: Unchained approves.')
+    OW = _m('laz_owner')
+    R = (OW.LAZ_OWNER.get('rules', {}) or {}) if OW is not None else {}
+    if R:
+        _f = R.get('min_odds_hard')
+        if _f is None or float(_f) != LAZ_GOD2_RULES['min_odds']:
+            bad.append('rules.min_odds_hard is %r; the owner floor is %r'
+                       % (_f, LAZ_GOD2_RULES['min_odds']))
+        _c = R.get('band_hi_ceiling')
+        if _c is not None:
+            bad.append('rules.band_hi_ceiling is %r -- there is NO maximum odds. A ceiling '
+                       'here is the defect that hid long-odds value for entire runs.' % (_c,))
+        if int(R.get('min_n_is', 0)) != LAZ_GOD2_RULES['min_n_is']:
+            bad.append('rules.min_n_is is %r, not 100' % (R.get('min_n_is'),))
+        if int(R.get('min_n_oos', 0)) != LAZ_GOD2_RULES['min_n_oos']:
+            bad.append('rules.min_n_oos is %r, not 100' % (R.get('min_n_oos'),))
+        if float(R.get('min_oos_roi', -1)) != 0.0:
+            bad.append('rules.min_oos_roi is %r, not 0.0 (ROI > 0)' % (R.get('min_oos_roi'),))
+    if bad:
+        msg = 'GOD-2 VIOLATION\n  ' + '\n  '.join(bad) + '\n\n' + LAZ_GOD2_RULE
+        if log:
+            log(msg)
+        if strict:
+            raise RuntimeError(msg)
+        return False
+    if log:
+        log('[GOD-2] the validation bible is intact and the engine obeys it '
+            '(min_odds %r, NO maximum, n_is/n_oos >= %d, ROI > 0)'
+            % (LAZ_GOD2_RULES['min_odds'], LAZ_GOD2_RULES['min_n_is']))
+    return True
+
+
 LAZ_GOD_RULE_ID = 'GOD-1'
 LAZ_GOD_RULE = (
     "EVERY FEATURE IS FULLY DOCUMENTED AT THE INSTANT IT IS CREATED.\n"
@@ -107358,6 +107450,16 @@ def laz_featdoc__gate(pool, sport, log=print, strict=None):
     if strict is None:
         strict = (_o.environ.get('LAZ_GOD_STRICT', '0') == '1')
     laz_god__verify(log=log)
+    # [GOD-2] The bible is checked on the same gate: not only that its text is intact,
+    # but that LAZ_OWNER's rules still MATCH it. A ceiling reintroduced anywhere -- by a
+    # refactor, a port, or an agent being helpful -- fails the run here instead of
+    # quietly removing every long-odds bet for a season.
+    try:
+        laz_god2__verify(log=log, strict=True)
+    except RuntimeError:
+        raise
+    except Exception as _g2:
+        laz_sink__swallow('god2:gate', _g2)
     keys = sorted(str(k) for k in (pool.keys() if hasattr(pool, 'keys') else pool))
     undoc, incomplete = [], []
     for k in keys:
@@ -119179,9 +119281,13 @@ def laz_deploy__band(rec, doc=None):
         return None, None, 'band carries NaN; a NaN bound admits every price'
     if lo <= 0 or hi <= 0:
         return None, None, f'band {lo}-{hi} is not a positive price range'
+    # [GOD-2] THERE IS NO MAXIMUM ODDS. hi is read only to notice an inverted band; it
+    # is NEVER returned as a ceiling, and max_odds reaches the registry as NULL. The
+    # owner's price rule is a floor of 1.40 and nothing else. Shipping a top here is
+    # what made production refuse every long-odds bet the search had validated.
     if hi < lo:
-        return None, None, f'band {lo}-{hi} is inverted; nothing can satisfy it'
-    return lo, hi, None
+        return lo, None, None
+    return lo, None, None
 
 
 def laz_deploy__doc_of(rec):
@@ -119352,20 +119458,25 @@ def laz_deploy__row(rec, sport, log=None):
                        else (None, [], None))
     if market and role is None:
         reasons.append(why)
-    # THE BASE MASK IS STACKED WITH THE CONDITIONS, FIRST, IN THE ENGINE'S OWN ORDER.
-    # The mask is evaluated before any condition in the search, so it is emitted before
-    # them here: the registry's condition list IS the execution order, and a reader who
-    # tests them top to bottom arms exactly where the search armed.
-    for t, o, v in (mask or ()):
-        txt, mwhy = laz_deploy__condition(t, o, v)
-        if txt is None:
-            reasons.append(f'base mask clause {t} {o} {v!r}: {mwhy}')
-        elif txt not in conds:
-            conds.insert(0, txt)
-            terms.append(str(t))
+    # [GOD-2] THE BASE MASK IS RECORDED, NEVER SHIPPED AS A CONDITION.
+    # The previous version stacked it into the registry row: late_lead_hold became
+    # `u_elapsed >= 0.85 AND u_elapsed <= 1.2 AND abs_lead > 3` in front of the
+    # strategy's own conditions. Those are the search's arming region, not the owner's
+    # rules, and enforcing them at placement removed bets the owner wanted placed -- the
+    # margin floor in particular cuts exactly the long-odds situations where the value
+    # is. It rides along as documentation so the run stays reproducible, and it gates
+    # nothing. Re-enabling it requires the owner's explicit 'Unchained approves'.
     lo, hi, why = laz_deploy__band(rec, doc)
     if why:
         reasons.append(why)
+    # The floor never goes below the owner's 1.40, and there is no ceiling at all.
+    try:
+        _floor = float(LAZ_GOD2_RULES['min_odds'])
+    except Exception:
+        _floor = 1.40
+    if lo is None or lo < _floor:
+        lo = _floor
+    hi = None
     # A registry row with no conditions AND no mask passes the condition loop trivially
     # and fires on the FIRST tick of every match in the sport. That is not the strategy
     # that was measured; it is a bet on everything. Checked after the mask is stacked in,
@@ -119608,17 +119719,26 @@ def laz_deploy__preflight(rows, ns, sport):
                                  production_error='(no error -- it never fires)',
                                  detail=f'bet_role {row["bet_role"]!r} is not one resolve_side '
                                         f'answers; it returns None and the evaluator continues'))
-        for k in ('min_odds', 'max_odds'):
-            v = row.get(k)
-            if v is None or v != v:
-                failures.append(dict(where='registry', name=nm, rule='G9',
-                                     production_error='(no error -- every price passes)',
-                                     detail=f'{k} is {v!r}; a NaN bound compares False and admits all'))
-        if (row.get('min_odds') is not None and row.get('max_odds') is not None
-                and row['max_odds'] < row['min_odds']):
+        # [GOD-2] THE FLOOR IS REQUIRED. THE CEILING MUST NOT EXIST.
+        # This used to demand a max_odds as well, which is how a ceiling kept coming
+        # back: a rule that requires a value guarantees somebody supplies one.
+        v = row.get('min_odds')
+        if v is None or v != v:
             failures.append(dict(where='registry', name=nm, rule='G9',
-                                 production_error='(no error -- it never fires)',
-                                 detail=f'max_odds {row["max_odds"]} < min_odds {row["min_odds"]}'))
+                                 production_error='(no error -- every price passes)',
+                                 detail=f'min_odds is {v!r}; a null or NaN floor compares '
+                                        'False and admits every price'))
+        elif float(v) < float(LAZ_GOD2_RULES['min_odds']):
+            failures.append(dict(where='registry', name=nm, rule='G9',
+                                 production_error='(no error -- it bets below the floor)',
+                                 detail=f'min_odds {v} is below the owner floor '
+                                        f'{LAZ_GOD2_RULES["min_odds"]}'))
+        if row.get('max_odds') is not None:
+            failures.append(dict(where='registry', name=nm, rule='G2-MAX',
+                                 production_error='(no error -- it silently refuses long odds)',
+                                 detail=f'max_odds is {row["max_odds"]!r}. GOD-2: there is NO '
+                                        'maximum. A ceiling here refuses exactly the '
+                                        'long-odds bets the strategy was validated on'))
     if rows and not failures:
         pass
     if not rows:
@@ -119670,6 +119790,11 @@ def laz_deploy__sql(rows, ns, sport, held=None):
                  f'{laz_deploy___sql_str(sp)}, {laz_deploy___sql_str(r["feature"])}, '
                  f'{laz_deploy___sql_str(r["column_name"])}) '
                  'ON CONFLICT (sport, feature) DO UPDATE SET column_name = EXCLUDED.column_name;')
+    L += ['', '-- 2b. THE PLACEMENT POLICY (GOD-2). The owner\'s rules, as numbers the',
+          '--     code reads, in one place instead of a constant in eight files.',
+          '--     min_odds 1.40 · NO MAXIMUM · first tick only · a closed market waits',
+          '--     60s and re-prices, it never invalidates the strategy.']
+    L.append(laz_deploy__placement_sql(sp))
     L += ['', '-- 3. the strategies. `conditions` is text[]: one clause per element, each',
           '--    of them matching the evaluator\'s _COND regex exactly.']
     L.append('CREATE TABLE IF NOT EXISTS laz_strategy_registry ('
@@ -119760,6 +119885,57 @@ def laz_deploy__namespace(terms, pcas=None):
                         kind=('pca' if (pcas or {}).get(t) else
                               'manufactured' if t.startswith('X_') else 'feature')))
     return out
+
+
+laz_deploy__PLACEMENT_POLICY = dict(
+    schema='amunev.placement_policy/1',
+    rule='GOD-2',
+    min_odds=1.40,
+    max_odds=None,
+    first_tick_only=True,
+    market_closed_wait_secs=60.0,
+    reprice_on_open=True,
+    abandon_if_below_floor_on_open=True,
+    settle_on='the outcome the strategy itself names',
+    statement=(
+        "A closed market is a PLACEMENT problem, never a condition.\n"
+        "When every condition of a strategy holds on a tick:\n"
+        "  - market open   -> place the bet now, at the live price, if price >= 1.40.\n"
+        "  - market closed -> DO NOT abandon. Hold the bet and keep checking, for up to\n"
+        "                     60 seconds. The moment the market opens, re-read the price:\n"
+        "                       price >= 1.40 -> place it.\n"
+        "                       price <  1.40 -> abandon THIS BET.\n"
+        "  - 60 seconds pass with the market still closed -> abandon THIS BET.\n"
+        "Abandoning a bet never invalidates the strategy, and a closed market never\n"
+        "filters the search. THERE IS NO MAXIMUM PRICE at any point in this policy."))
+
+
+def laz_deploy__placement_sql(sport):
+    """The placement policy, as a row production reads instead of a hard-coded constant.
+
+    Production's orchestrators already have a playability window and a min-odds check;
+    what they did not have was ONE place saying what the owner's policy is, in numbers
+    the code can read. A constant compiled into eight per-sport files is eight chances
+    to drift.
+    """
+    sp = laz_deploy__sport(sport)
+    P = laz_deploy__PLACEMENT_POLICY
+    L = ['CREATE TABLE IF NOT EXISTS laz_placement_policy ('
+         'sport text PRIMARY KEY, min_odds double precision NOT NULL, '
+         'max_odds double precision, first_tick_only boolean NOT NULL, '
+         'market_closed_wait_secs double precision NOT NULL, '
+         'reprice_on_open boolean NOT NULL, rule text, statement text);',
+         'INSERT INTO laz_placement_policy (sport, min_odds, max_odds, first_tick_only, '
+         'market_closed_wait_secs, reprice_on_open, rule, statement) VALUES ('
+         f'{laz_deploy___sql_str(sp)}, {laz_deploy___sql_num(P["min_odds"])}, NULL, true, '
+         f'{laz_deploy___sql_num(P["market_closed_wait_secs"])}, true, '
+         f'{laz_deploy___sql_str(P["rule"])}, {laz_deploy___sql_str(P["statement"])}) '
+         'ON CONFLICT (sport) DO UPDATE SET min_odds = EXCLUDED.min_odds, '
+         'max_odds = NULL, first_tick_only = EXCLUDED.first_tick_only, '
+         'market_closed_wait_secs = EXCLUDED.market_closed_wait_secs, '
+         'reprice_on_open = EXCLUDED.reprice_on_open, rule = EXCLUDED.rule, '
+         'statement = EXCLUDED.statement;']
+    return '\n'.join(L)
 
 
 def laz_deploy__spec_doc(rows, held, ns, pcas, sport, fg_covered=None, log=print):

@@ -1,6 +1,6 @@
 # GO LIVE — BASKETBALL
 
-Engine `engine_e2e_test`  ·  128 strategies deployable  ·  14 withheld  ·  146 feature columns  ·  8 PCA composites
+Engine `engine_e2e_test`  ·  128 strategies deployable  ·  14 withheld  ·  142 feature columns  ·  8 PCA composites
 
 ## What this bundle is
 
@@ -88,7 +88,7 @@ predicate as an ordinary condition before it could ship.
 
 ## Terms the generator could not write
 
-`laz_features_basketball.py` emits 71 of 143
+`laz_features_basketball.py` emits 70 of 140
 terms 1:1 from the engine builders. These it could not, so it wrote `NaN`
 for them rather than invent a value — a strategy reading one will not fire
 until the term is implemented. The strategies are still registered and
@@ -106,7 +106,6 @@ enabled: they were validated, and nothing about them is wrong.
 | `eng_minute_ge_2` | 0 |
 | `eng_score_tied` | 0 |
 | `fav_lead_m30` | 0 |
-| `first_scorer_is_backed` | 0 |
 | `home_pace` | 0 |
 | `is_trailer` | 0 |
 | `lead_change_last_300s` | 0 |
@@ -136,6 +135,7 @@ enabled: they were validated, and nothing about them is wrong.
 | `pace_last_300s_vs_line` | 0 |
 | `pace_vs_line_pct` | 0 |
 | `pm_ratio` | 0 |
+| `prog` | 0 |
 
 ## Files
 

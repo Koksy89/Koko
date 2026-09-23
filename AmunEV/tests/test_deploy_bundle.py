@@ -16,13 +16,15 @@ ns = {'os': os, 'json': json, 're': re, 'sys': sys}
 import pandas as pd, numpy as np
 ns['pd'] = pd
 ns['np'] = np
-_EXTRA = ('laz_mode3___mask_residual', 'laz_mode3___execution_spec')
+_EXTRA = ('laz_mode3___mask_residual', 'laz_mode3___execution_spec',
+          'laz_god2__RULES_min_odds', 'laz_god2__verify')
 for n in tree.body:
     nm = getattr(n, 'name', None)
     if (nm and str(nm).startswith('laz_deploy')) or nm in _EXTRA:
         exec(compile(ast.Module(body=[n], type_ignores=[]), ENGINE, 'exec'), ns)
     elif isinstance(n, ast.Assign) and any(
-            str(getattr(t, 'id', '')).startswith(('laz_deploy', 'laz_mode3___MASK_WINDOWS'))
+            str(getattr(t, 'id', '')).startswith(
+                ('laz_deploy', 'laz_mode3___MASK_WINDOWS', 'LAZ_GOD2_'))
             for t in n.targets):
         exec(compile(ast.Module(body=[n], type_ignores=[]), ENGINE, 'exec'), ns)
 _SW = []
@@ -33,6 +35,7 @@ ns['laz_xl___engine_sha256'] = lambda: 'testsha00000000'
 ns['LAZ_ENGINE_VERSION'] = 'test'
 ns['laz_propose__BASES'] = {}
 ns['laz_production___load_production_catalogue'] = lambda: (set(), set())
+ns['laz_god2__RULES_min_odds'] = lambda: 1.40
 ns['globals'] = lambda: ns
 print(f'extracted {sum(1 for k in ns if k.startswith("laz_deploy"))} laz_deploy names by AST '
       '— engine never imported\n')
@@ -203,15 +206,17 @@ check('an unknown sport is refused outright',
 print('\nthe price band is a real band')
 check('a NaN bound is refused (it would admit every price)',
       ns['laz_deploy__band'](dict(band='nan-3.0'), {})[0] is None)
-check('an inverted band is refused', ns['laz_deploy__band']({}, dict(band=dict(lo=4.0, hi=2.0)))[2])
 lo, hi, why = ns['laz_deploy__band']({}, dict(band=dict(lo=1.4, hi=4.2)))
-check('a real band passes through exactly', (lo, hi, why) == (1.4, 4.2, None))
+check('[GOD-2] the floor passes through and the CEILING IS DISCARDED',
+      (lo, hi, why) == (1.4, None, None))
+check('[GOD-2] an inverted band still yields no ceiling',
+      ns['laz_deploy__band']({}, dict(band=dict(lo=4.0, hi=2.0)))[1] is None)
 
 
 # ── 8. preflight catches each gate ───────────────────────────────────────────
 print('\npreflight replays every load-time rule')
 good = dict(sport='basketball', strategy='S1', conditions=['a >= 1'], market='match_winner',
-            min_odds=1.4, max_odds=4.0, tier='Alpha', family=None, entry_window=60,
+            min_odds=1.4, max_odds=None, tier='Alpha', family=None, entry_window=60,
             bet_role='leader', enabled=True, terms=['a'], spec_sha='x', bets_sha='y',
             n_bets=10, oos_win=60.0, oos_roi=12.0, odds=2.0)
 NS = [dict(feature='a', column_name='a', kind='feature')]
@@ -222,7 +227,12 @@ check('G1 unparseable clause', 'G1' in rules({**good, 'conditions': ['a >= 1e-5'
 check('G4 unsettleable market', 'G4' in rules({**good, 'market': 'asian_handicap'}))
 check('G5 term with no namespace row', 'G5' in rules({**good, 'conditions': ['zz >= 1']}))
 check('G7 unresolvable role', 'G7' in rules({**good, 'bet_role': 'prop:late_lead_hold'}))
-check('G9 NaN bound', 'G9' in rules({**good, 'min_odds': float('nan')}))
+check('G9 a null or NaN FLOOR', 'G9' in rules({**good, 'min_odds': float('nan')}))
+check('G9 a floor below the owner 1.40', 'G9' in rules({**good, 'min_odds': 1.2}))
+check('[GOD-2] a max_odds ceiling is itself a preflight FAILURE',
+      'G2-MAX' in rules({**good, 'max_odds': 4.2}))
+check('[GOD-2] no ceiling is the correct, passing state',
+      ns['laz_deploy__preflight']([{**good, 'max_odds': None}], NS, 'basketball') == [])
 check('G10 zero conditions', 'G10' in rules({**good, 'conditions': []}))
 check('G11 a column name over 63 bytes',
       'G11' in rules(good, [dict(feature='a', column_name='a' * 64, kind='feature')]))
@@ -376,50 +386,95 @@ check('the legacy PCA manifest merges instead of overwriting',
       '_old_pc.update({' in src and "_jp.dump(_old_pc, _pf1" in src)
 
 
-# ── 13. the ordered execution spec: every element, in order, with its trigger ─
+# ── 13. the ordered spec: the OWNER'S rules and the strategy's own, nothing else ─
 print('\nevery element is documented in the exact order it happens')
 ES = ns['laz_mode3___execution_spec']
 steps = ES(dict(market='moneyline'), 'late_lead_hold', None,
            ['line_move <= 4.0', 'trailer_price >= 1.92'], 1.40, 4.20, 'basketball',
            'match_winner')
-gates = [x['gate'] for x in steps]
-check('the steps are numbered 1..n with no gaps',
-      [x['step'] for x in steps] == list(range(1, len(steps) + 1)))
-check('the market gate is first', gates[0] == 'MARKET OPEN')
-check('the side is resolved BEFORE the price',
-      gates.index('BASE ARM MASK — SIDE') < gates.index('PRICE OF THE BACKED SIDE'))
-check('the price is resolved BEFORE the band',
-      gates.index('PRICE OF THE BACKED SIDE') < gates.index('PRICE BAND'))
-check('the band is checked BEFORE the conditions',
-      gates.index('PRICE BAND') < gates.index('CONDITION 1'))
-check('the base mask window is part of the order, not a footnote',
-      'BASE ARM MASK — WINDOW 1' in gates)
-check('one bet per match is an explicit step', 'FIRST TICK ONLY' in gates)
-check('placement and settlement are stated', gates[-2:] == ['PLACE', 'SETTLE'])
-check('every step says exactly what must be true',
-      all(x['trigger'] and isinstance(x['trigger'], str) for x in steps))
-check('every step says what happens when it is not',
-      all(x['on_fail'] for x in steps))
-check('every step says why it is at that position', all(x['why'] for x in steps))
-check('the band step carries the exact numbers',
-      any('1.4 <= price <= 4.2' in x['trigger'] for x in steps))
-check('each condition appears verbatim, with its exact threshold',
+gates_live = [x['gate'] for x in steps if x['step'] > 0]
+notes = [x for x in steps if x['step'] == 0]
+check('the gates are numbered 1..n with no gaps',
+      [x['step'] for x in steps if x['step'] > 0] == list(range(1, len(gates_live) + 1)))
+check('the side is resolved first', gates_live[0] == 'SIDE')
+check('the price is resolved BEFORE the floor',
+      gates_live.index('PRICE OF THE BACKED SIDE') < gates_live.index('MINIMUM ODDS'))
+check('the floor is the owner 1.40',
+      any(x['trigger'] == 'price >= 1.4' for x in steps))
+check('[GOD-2] there is NO maximum odds anywhere in the order',
+      not any('<= 4.2' in x['trigger'] or 'max' in x['gate'].lower()
+              or 'BAND' in x['gate'] for x in steps))
+check("[GOD-2] the base-mask window is NOT a gate",
+      'BASE ARM MASK — WINDOW 1' not in gates_live
+      and not any('u_elapsed' in x['trigger'] for x in steps if x['step'] > 0))
+check("[GOD-2] the margin floor abs_lead > 3 is NOT a gate",
+      not any('abs_lead' in x['trigger'] for x in steps if x['step'] > 0))
+check('[GOD-2] there is no feed-freshness gate', 'FEED FRESH' not in gates_live)
+check('the base mask is still RECORDED, as a note that blocks nothing',
+      len(notes) == 1 and 'NOT a gate' in notes[0]['gate']
+      and 'abs_lead > 3.0' in notes[0]['trigger']
+      and 'never blocks' in notes[0]['on_fail'])
+check("the strategy's OWN conditions are there, verbatim",
       any(x['trigger'] == 'line_move <= 4.0' for x in steps)
       and any(x['trigger'] == 'trailer_price >= 1.92' for x in steps))
-MR = ns['laz_mode3___mask_residual']
-check('a windowed base decomposes to clauses on terms the engine emits',
-      MR('late_lead_hold') == ('leader',
-                               [('u_elapsed', '>=', 0.85), ('u_elapsed', '<=', 1.2),
-                                ('abs_lead', '>', 3.0)], ''))
-check('the prop:/spec: prefix does not hide a base',
-      MR('prop:late_lead_hold')[0] == 'leader')
-check('a base that is exactly its role has no residual',
-      MR('lead_ml') == ('leader', [], ''))
-check('every mask clause is renderable in production grammar',
-      all(ns['laz_deploy__condition'](t, o, v)[0] is not None
-          for W in ns['laz_mode3___MASK_WINDOWS'].values()
-          for t, o, v in MR([k for k, vv in ns['laz_mode3___MASK_WINDOWS'].items()
-                             if vv is W][0])[1]))
+check('one bet per match is an explicit gate', 'FIRST TICK ONLY' in gates_live)
+check('market open is PLACEMENT, and it comes after the conditions',
+      gates_live.index('PLACEMENT — MARKET OPEN') > gates_live.index('CONDITION 2'))
+check('the placement step states the 60-second wait and the re-price',
+      any('60s' in x['trigger'] and 'WAIT' in x['trigger'] for x in steps))
+check('a closed market abandons the BET, never the strategy',
+      any('abandon THIS BET only' in x['on_fail'] for x in steps))
+check('settlement is the outcome the strategy names, not a hard-coded one',
+      any(x['gate'] == 'SETTLE' and 'the outcome the strategy names' in x['trigger']
+          for x in steps))
+check('every gate says what must be true, what happens if not, and why',
+      all(x['trigger'] and x['on_fail'] and x['why'] for x in steps))
+
+print('\nGOD-2: the validation and verification bible')
+import hashlib as _hh
+check('the seal verifies',
+      _hh.sha256(ns['LAZ_GOD2_RULE'].encode()).hexdigest() == ns['LAZ_GOD2_RULE_SHA'])
+check('it names all five primary rules',
+      all(k in ns['LAZ_GOD2_RULE'] for k in
+          ('MINIMUM ODDS', 'IN-SAMPLE VOLUME', 'OUT-OF-SAMPLE VOLUME', 'PROFIT',
+           'NO FORWARD LOOKING')))
+check('it names the three secondary rules',
+      all(k in ns['LAZ_GOD2_RULE'] for k in
+          ('FIRST TICK ONLY', 'MARKET OPEN', 'SETTLE')))
+check('it states there is NO maximum odds',
+      'There is NO maximum' in ns['LAZ_GOD2_RULE']
+      or 'no maximum' in ns['LAZ_GOD2_RULE'].lower())
+check('it forbids adding any blocker without the owner',
+      'WHAT MAY NEVER BE ADDED' in ns['LAZ_GOD2_RULE'])
+check('it requires every existing blocker to be NAMED to the owner',
+      'Silence about a' in ns['LAZ_GOD2_RULE'])
+check('it may be changed only by "Unchained approves"',
+      'Unchained approves' in ns['LAZ_GOD2_RULE'])
+check('the machine-readable rules match the text',
+      ns['LAZ_GOD2_RULES']['min_odds'] == 1.40
+      and ns['LAZ_GOD2_RULES']['max_odds'] is None
+      and ns['LAZ_GOD2_RULES']['min_n_is'] == 100
+      and ns['LAZ_GOD2_RULES']['min_n_oos'] == 100
+      and ns['LAZ_GOD2_RULES']['min_oos_roi'] == 0.0
+      and ns['LAZ_GOD2_RULES']['market_open_wait_secs'] == 60.0)
+_keep = ns['LAZ_GOD2_RULE']
+ns['LAZ_GOD2_RULE'] = _keep.replace('There is NO maximum', 'A maximum may be set')
+try:
+    ns['laz_god2__verify'](strict=True)
+    tampered = False
+except RuntimeError as e:
+    tampered = 'ALTERED' in str(e) and 'Unchained approves' in str(e)
+ns['LAZ_GOD2_RULE'] = _keep
+check('weakening the bible is DETECTED and refused', tampered)
+check('the engine rules block no longer carries a band_hi_ceiling',
+      "'band_hi_ceiling':" not in src,
+      'the key is still set somewhere in LAZ_OWNER')
+check("the engine's own floor is the owner's 1.40",
+      "'min_odds_hard': 1.4" in src)
+check('the release path no longer computes a ceiling',
+      'THE BAND HAS NO CEILING' in src and '_LAD = [1.4, 1.8, 2.2' not in src)
+check('band_hi is no longer a required registry column, so a NULL top is legal',
+      "'band_lo', 'stride', 'settled_by', 'engine_sha'" in src)
 
 print('\nnothing the search validated is thrown away')
 _sql_held = ns['laz_deploy__sql'](

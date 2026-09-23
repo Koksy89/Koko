@@ -52,11 +52,6 @@
    "kind": "manufactured"
   },
   {
-   "column_name": "abs_lead",
-   "feature": "abs_lead",
-   "kind": "feature"
-  },
-  {
    "column_name": "abs_margin_per_remaining_s",
    "feature": "abs_margin_per_remaining_s",
    "kind": "feature"
@@ -109,11 +104,6 @@
   {
    "column_name": "fav_odds_trend_60",
    "feature": "fav_odds_trend_60",
-   "kind": "feature"
-  },
-  {
-   "column_name": "first_scorer_is_backed",
-   "feature": "first_scorer_is_backed",
    "kind": "feature"
   },
   {
@@ -517,11 +507,6 @@
    "kind": "feature"
   },
   {
-   "column_name": "secs_since_lead_change",
-   "feature": "secs_since_lead_change",
-   "kind": "feature"
-  },
-  {
    "column_name": "secs_since_price",
    "feature": "secs_since_price",
    "kind": "feature"
@@ -652,11 +637,6 @@
    "kind": "feature"
   },
   {
-   "column_name": "u_elapsed",
-   "feature": "u_elapsed",
-   "kind": "feature"
-  },
-  {
    "column_name": "u_hazard",
    "feature": "u_hazard",
    "kind": "feature"
@@ -743,7 +723,6 @@
   "X_u_elapsed__minus__u_time_in_lead",
   "X_u_pace__over__u_time_in_lead",
   "a_score",
-  "abs_lead",
   "away_odds",
   "dog_odds_vol_180",
   "drift_ratio",
@@ -821,7 +800,7 @@
    "execution": [],
    "family": null,
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -844,7 +823,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "line_move <= 4",
     "price_gap <= 1.89",
@@ -858,7 +836,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -873,7 +851,6 @@
    "strategy": "BAS_prop:first_s_0049",
    "terms": [
     "X_minute__minus__u_drought",
-    "first_scorer_is_backed",
     "line_move",
     "price_gap",
     "prog_score",
@@ -897,7 +874,7 @@
    "execution": [],
    "family": null,
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -931,7 +908,7 @@
    "execution": [],
    "family": "prop:drifter_vs_open",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -967,7 +944,7 @@
    "execution": [],
    "family": null,
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -990,9 +967,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "line_open >= 140",
     "need_frac >= 0.4",
     "open_vs_now_lead <= 0.9043",
@@ -1006,7 +980,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -1021,13 +995,11 @@
    "strategy": "BAS_late_lead_ho_0169",
    "terms": [
     "X_minute__minus__u_drought",
-    "abs_lead",
     "line_open",
     "motif_0",
     "need_frac",
     "open_vs_now_lead",
-    "tg_overround",
-    "u_elapsed"
+    "tg_overround"
    ],
    "tier": "Jobber"
   },
@@ -1036,7 +1008,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "line_move <= 4",
     "lead_vs_line <= -143",
@@ -1049,7 +1020,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1061,7 +1032,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0062",
    "terms": [
-    "first_scorer_is_backed",
     "lead_vs_line",
     "line_move",
     "prog_score",
@@ -1085,7 +1055,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1108,9 +1078,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "prog_score <= 0.35",
     "line_move <= 4",
     "odds_ratio <= 1.227",
@@ -1124,7 +1091,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1136,14 +1103,12 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0110",
    "terms": [
-    "abs_lead",
     "lead_changes_300s",
     "line_move",
     "odds_ratio",
     "prog_score",
     "total_points_over",
-    "trailer_price",
-    "u_elapsed"
+    "trailer_price"
    ],
    "tier": "Npc"
   },
@@ -1152,9 +1117,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "lead_size >= 3",
     "u_ratio_open <= 2.8107",
     "open_gap <= 3.55"
@@ -1165,7 +1127,7 @@
    "execution": [],
    "family": "prop:late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1177,10 +1139,8 @@
    "sport": "basketball",
    "strategy": "BAS_prop:late_le_0181",
    "terms": [
-    "abs_lead",
     "lead_size",
     "open_gap",
-    "u_elapsed",
     "u_ratio_open"
    ],
    "tier": "Jobber"
@@ -1190,7 +1150,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "line_move <= 4",
     "price_gap <= 1.89",
@@ -1203,7 +1162,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1215,7 +1174,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0056",
    "terms": [
-    "first_scorer_is_backed",
     "line_move",
     "opp_drift",
     "price_gap",
@@ -1240,7 +1198,7 @@
    "execution": [],
    "family": "lead_ml",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1264,7 +1222,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "lead_vs_line <= -150.5",
     "u_ratio_open <= 2.5724",
@@ -1276,7 +1233,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1288,7 +1245,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0060",
    "terms": [
-    "first_scorer_is_backed",
     "lead_vs_line",
     "prog_score",
     "tg_overround",
@@ -1310,7 +1266,7 @@
    "execution": [],
    "family": "DRIFTED",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1342,7 +1298,7 @@
    "execution": [],
    "family": "spec:TG_Historical_vs_Handicap_Under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1365,7 +1321,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "u_overround <= 1.1109",
     "req_ratio <= 1.3805"
    ],
@@ -1375,7 +1330,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1387,7 +1342,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0059",
    "terms": [
-    "first_scorer_is_backed",
     "req_ratio",
     "u_overround"
    ],
@@ -1409,7 +1363,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1433,7 +1387,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "line_open >= 140",
     "prog_score <= 0.35",
     "rk_odds_ratio <= 2.3716",
@@ -1446,7 +1399,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1458,7 +1411,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0054",
    "terms": [
-    "first_scorer_is_backed",
     "leader_runmax",
     "line_open",
     "prog_score",
@@ -1484,7 +1436,7 @@
    "execution": [],
    "family": null,
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1509,7 +1461,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "lead_vs_line <= -140.5",
     "req_ratio >= 1.195",
@@ -1521,7 +1472,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1533,7 +1484,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0055",
    "terms": [
-    "first_scorer_is_backed",
     "lead_vs_line",
     "prog_score",
     "req_ratio",
@@ -1546,7 +1496,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "rk_dog_odds >= 1.8351",
     "opp >= 1.91"
@@ -1557,7 +1506,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1569,7 +1518,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0098",
    "terms": [
-    "first_scorer_is_backed",
     "opp",
     "prog_score",
     "rk_dog_odds"
@@ -1595,7 +1543,7 @@
    "execution": [],
    "family": "prop:drifter_vs_open",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1632,7 +1580,7 @@
    "execution": [],
    "family": "prop:drifter_vs_open",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -1657,9 +1605,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "prog_score <= 0.35",
     "u_ratio_open <= 3.0575",
     "trailer_price >= 1.8315",
@@ -1671,7 +1616,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1683,11 +1628,9 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0115",
    "terms": [
-    "abs_lead",
     "prematch_dog_odds",
     "prog_score",
     "trailer_price",
-    "u_elapsed",
     "u_ratio_open"
    ],
    "tier": "Npc"
@@ -1697,9 +1640,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "dog_odds_vol_180 <= 0.15546",
     "price_gap >= 0.04",
     "lead_changes_300s <= 2",
@@ -1711,7 +1651,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1723,12 +1663,10 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0103",
    "terms": [
-    "abs_lead",
     "dog_odds_vol_180",
     "lead_changes_300s",
     "line_open",
-    "price_gap",
-    "u_elapsed"
+    "price_gap"
    ],
    "tier": "Npc"
   },
@@ -1746,7 +1684,7 @@
    "execution": [],
    "family": "spec:TG_Historical_vs_Handicap_Under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1777,7 +1715,7 @@
    "execution": [],
    "family": "prop:garbage_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1810,7 +1748,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1834,7 +1772,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "u_ratio_open <= 3.0575",
     "trailer_price >= 1.8315",
@@ -1847,7 +1784,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1859,7 +1796,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0089",
    "terms": [
-    "first_scorer_is_backed",
     "lead_changes_300s",
     "pc_f3e46219",
     "prog_score",
@@ -1873,7 +1809,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "line_open >= 140",
     "prog_score <= 0.35",
     "rk_odds_ratio <= 2.3716",
@@ -1886,7 +1821,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -1901,7 +1836,6 @@
    "strategy": "BAS_prop:first_s_0047",
    "terms": [
     "X_minute__minus__u_drought",
-    "first_scorer_is_backed",
     "line_open",
     "prog_score",
     "rk_odds_ratio",
@@ -1914,7 +1848,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "dog_odds_vol_180 <= 0.15546",
     "rk_dog_odds >= 1.85",
     "pc_f3e46219 <= 2.0943",
@@ -1926,7 +1859,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1939,7 +1872,6 @@
    "strategy": "BAS_prop:first_s_0097",
    "terms": [
     "dog_odds_vol_180",
-    "first_scorer_is_backed",
     "lead_changes_300s",
     "pc_f3e46219",
     "rk_dog_odds"
@@ -1951,7 +1883,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "total_points_under >= 1.75",
     "hour >= 2",
     "away_odds >= 1.159999966621399",
@@ -1964,7 +1895,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -1977,7 +1908,6 @@
    "strategy": "BAS_prop:first_s_0091",
    "terms": [
     "away_odds",
-    "first_scorer_is_backed",
     "hour",
     "opp",
     "tot_vs_line",
@@ -1990,7 +1920,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "secs_since_lead_change >= 600",
     "rk_fav_odds >= 1.23",
     "u_ratio_open <= 2.842"
    ],
@@ -2000,7 +1929,7 @@
    "execution": [],
    "family": "prop:held_lead",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2013,7 +1942,6 @@
    "strategy": "BAS_prop:held_le_0182",
    "terms": [
     "rk_fav_odds",
-    "secs_since_lead_change",
     "u_ratio_open"
    ],
    "tier": "Jobber"
@@ -2035,7 +1963,7 @@
    "execution": [],
    "family": "dog_leading",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2071,7 +1999,7 @@
    "execution": [],
    "family": "spec:Loser_1G",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2106,7 +2034,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2144,7 +2072,7 @@
    "execution": [],
    "family": "lead_ml",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -2185,7 +2113,7 @@
    "execution": [],
    "family": "spec:TG_Historical_vs_Handicap_Under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2221,7 +2149,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2255,7 +2183,7 @@
    "execution": [],
    "family": "lead_ml",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2288,7 +2216,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -2326,7 +2254,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2363,7 +2291,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2388,9 +2316,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "line_open >= 140",
     "prog_score <= 0.35",
     "rk_odds_ratio <= 2.3716",
@@ -2404,7 +2329,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -2419,13 +2344,11 @@
    "strategy": "BAS_late_lead_ho_0166",
    "terms": [
     "X_minute__minus__u_drought",
-    "abs_lead",
     "lead_changes_300s",
     "line_open",
     "prog_score",
     "rk_odds_ratio",
-    "tg_overround",
-    "u_elapsed"
+    "tg_overround"
    ],
    "tier": "Jobber"
   },
@@ -2443,7 +2366,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2475,7 +2398,7 @@
    "execution": [],
    "family": "spec:Leader",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2509,7 +2432,7 @@
    "execution": [],
    "family": "spec:TG_Historical_vs_Handicap_Under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2542,7 +2465,7 @@
    "execution": [],
    "family": "spec:TG_Historical_vs_Handicap_Under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2574,7 +2497,7 @@
    "execution": [],
    "family": "spec:HT_Underdog_Fade",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2607,7 +2530,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2630,7 +2553,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "line_open >= 140",
     "prog_score <= 0.35",
     "rk_odds_ratio <= 2.3716",
@@ -2642,7 +2564,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2654,7 +2576,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0052",
    "terms": [
-    "first_scorer_is_backed",
     "line_open",
     "prog_score",
     "rk_odds_ratio",
@@ -2667,9 +2588,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "dog_odds_vol_180 <= 0.15546",
     "u_pace <= 58.0667",
     "needed_rate_for_over >= 2.9473"
@@ -2680,7 +2598,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2692,10 +2610,8 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0114",
    "terms": [
-    "abs_lead",
     "dog_odds_vol_180",
     "needed_rate_for_over",
-    "u_elapsed",
     "u_pace"
    ],
    "tier": "Npc"
@@ -2705,7 +2621,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "lead_vs_line <= -151.823",
     "opp_o <= 4.17",
@@ -2717,7 +2632,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2729,7 +2644,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0058",
    "terms": [
-    "first_scorer_is_backed",
     "lead_vs_line",
     "opp_o",
     "prog_score",
@@ -2742,7 +2656,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "lead_vs_line <= -140.5",
     "secs_since_quarter_start <= 41.6871",
@@ -2754,7 +2667,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2766,7 +2679,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0051",
    "terms": [
-    "first_scorer_is_backed",
     "lead_vs_line",
     "prog_score",
     "rk_fav_odds",
@@ -2779,9 +2691,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "prog_score <= 0.35",
     "rk_fav_odds <= 1.75",
     "u_overround <= 1.113"
@@ -2792,7 +2701,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2804,10 +2713,8 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0111",
    "terms": [
-    "abs_lead",
     "prog_score",
     "rk_fav_odds",
-    "u_elapsed",
     "u_overround"
    ],
    "tier": "Npc"
@@ -2817,7 +2724,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "odds_ratio <= 1.2094",
     "pts_last_60s <= 6",
@@ -2830,7 +2736,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2842,7 +2748,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0096",
    "terms": [
-    "first_scorer_is_backed",
     "lead_m15",
     "odds_ratio",
     "prog_score",
@@ -2866,7 +2771,7 @@
    "execution": [],
    "family": "spec:TG_Historical_vs_Handicap_Under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -2891,9 +2796,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "line_open >= 140",
     "prog_score <= 0.35",
     "rk_odds_ratio <= 2.3716",
@@ -2908,7 +2810,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2920,15 +2822,13 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0116",
    "terms": [
-    "abs_lead",
     "lead_changes_300s",
     "line_open",
     "pc_2f7f4d0c",
     "prog_score",
     "rk_dog_odds",
     "rk_odds_ratio",
-    "u_drought",
-    "u_elapsed"
+    "u_drought"
    ],
    "tier": "Npc"
   },
@@ -2948,7 +2848,7 @@
    "execution": [],
    "family": "spec:HT_Underdog_Fade",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -2975,7 +2875,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "line_open >= 140",
     "need_frac >= 0.4",
     "prog_score <= 0.1318",
@@ -2987,7 +2886,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -2999,7 +2898,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0053",
    "terms": [
-    "first_scorer_is_backed",
     "line_open",
     "need_frac",
     "prog_score",
@@ -3026,7 +2924,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3064,7 +2962,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3088,9 +2986,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "dog_odds_vol_180 <= 0.15546",
     "price_gap >= 0.04",
     "lead_changes_300s <= 2",
@@ -3102,7 +2997,7 @@
    "execution": [],
    "family": "prop:late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3114,12 +3009,10 @@
    "sport": "basketball",
    "strategy": "BAS_prop:late_le_0157",
    "terms": [
-    "abs_lead",
     "dog_odds_vol_180",
     "lead_changes_300s",
     "line_flat",
-    "price_gap",
-    "u_elapsed"
+    "price_gap"
    ],
    "tier": "Npc"
   },
@@ -3128,9 +3021,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "line_open >= 140",
     "pm_away <= 2.92",
     "leader_runmax <= 3.66",
@@ -3144,7 +3034,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3156,13 +3046,11 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0102",
    "terms": [
-    "abs_lead",
     "lead_vs_med",
     "leader_runmax",
     "line_open",
     "pm_away",
     "rk_dog_odds",
-    "u_elapsed",
     "u_trend"
    ],
    "tier": "Npc"
@@ -3172,9 +3060,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "line_open >= 140",
     "need_frac >= 0.4",
     "trailer_price >= 1.8471",
@@ -3186,7 +3071,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3198,12 +3083,10 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0105",
    "terms": [
-    "abs_lead",
     "line_open",
     "need_frac",
     "pc_2f7f4d0c",
-    "trailer_price",
-    "u_elapsed"
+    "trailer_price"
    ],
    "tier": "Npc"
   },
@@ -3223,7 +3106,7 @@
    "execution": [],
    "family": "spec:TG_Historical_vs_Handicap_Under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3260,7 +3143,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3286,9 +3169,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "line_open >= 140",
     "need_frac >= 0.4",
     "price_gap >= 0.2",
@@ -3300,7 +3180,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3312,12 +3192,10 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0101",
    "terms": [
-    "abs_lead",
     "jump_loser",
     "line_open",
     "need_frac",
-    "price_gap",
-    "u_elapsed"
+    "price_gap"
    ],
    "tier": "Npc"
   },
@@ -3326,9 +3204,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "pm_ratio <= 3.6843",
     "imbal >= 0.0164",
     "line_flat >= 0.8667",
@@ -3340,7 +3215,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3352,12 +3227,10 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0112",
    "terms": [
-    "abs_lead",
     "imbal",
     "line_flat",
     "pm_ratio",
-    "trailer_drift",
-    "u_elapsed"
+    "trailer_drift"
    ],
    "tier": "Npc"
   },
@@ -3375,7 +3248,7 @@
    "execution": [],
    "family": "spec:HT_Underdog_Fade",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3408,7 +3281,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3442,7 +3315,7 @@
    "execution": [],
    "family": "pm_underdog",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3476,7 +3349,7 @@
    "execution": [],
    "family": "dog_leading",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -3514,7 +3387,7 @@
    "execution": [],
    "family": "spec:Leader",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3547,7 +3420,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3580,7 +3453,7 @@
    "execution": [],
    "family": "prop:shortener_vs_open",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3603,9 +3476,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "line_open >= 140",
     "prog_score <= 0.35",
     "h_score <= 16.1205",
@@ -3618,7 +3488,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3630,12 +3500,10 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0104",
    "terms": [
-    "abs_lead",
     "h_score",
     "line_open",
     "opp_velocity",
     "prog_score",
-    "u_elapsed",
     "u_hazard"
    ],
    "tier": "Npc"
@@ -3655,7 +3523,7 @@
    "execution": [],
    "family": "lead_ml",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -3690,7 +3558,7 @@
    "execution": [],
    "family": "lead_ml",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3713,7 +3581,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "line_open >= 140",
     "need_frac >= 0.4",
     "trailer_price >= 1.8471",
@@ -3725,7 +3592,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3737,7 +3604,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0090",
    "terms": [
-    "first_scorer_is_backed",
     "line_open",
     "need_frac",
     "pc_f3e46219",
@@ -3759,7 +3625,7 @@
    "execution": [],
    "family": "prop:garbage_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3792,7 +3658,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -3820,7 +3686,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "secs_since_lead_change >= 600",
     "rk_implied_edge >= 0.1704",
     "pc_428f55cf <= 2.0819"
    ],
@@ -3830,7 +3695,7 @@
    "execution": [],
    "family": "prop:held_lead",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3843,8 +3708,7 @@
    "strategy": "BAS_prop:held_le_0170",
    "terms": [
     "pc_428f55cf",
-    "rk_implied_edge",
-    "secs_since_lead_change"
+    "rk_implied_edge"
    ],
    "tier": "Npc"
   },
@@ -3863,7 +3727,7 @@
    "execution": [],
    "family": null,
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3885,9 +3749,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "trailer_price >= 1.34",
     "retrace_lead <= 0.0439"
    ],
@@ -3897,7 +3758,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3909,10 +3770,8 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0168",
    "terms": [
-    "abs_lead",
     "retrace_lead",
-    "trailer_price",
-    "u_elapsed"
+    "trailer_price"
    ],
    "tier": "Jobber"
   },
@@ -3921,7 +3780,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "line_open >= 140",
     "need_frac >= 0.4",
     "prog_score <= 0.35",
@@ -3935,7 +3793,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3947,7 +3805,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0065",
    "terms": [
-    "first_scorer_is_backed",
     "line_open",
     "margin_per_possession",
     "need_frac",
@@ -3962,8 +3819,6 @@
    "bet_role": "dog_leader",
    "bets_sha": "",
    "conditions": [
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.75",
     "u_overround <= 1.1109",
     "u_ratio_open <= 2.8919",
     "tg_imp_over <= 0.6235"
@@ -3974,7 +3829,7 @@
    "execution": [],
    "family": "prop:dog_leading_late",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -3987,7 +3842,6 @@
    "strategy": "BAS_prop:dog_lea_0151",
    "terms": [
     "tg_imp_over",
-    "u_elapsed",
     "u_overround",
     "u_ratio_open"
    ],
@@ -3998,7 +3852,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "line_open >= 140",
     "need_frac >= 0.4",
     "prog_score <= 0.35",
@@ -4011,7 +3864,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4023,7 +3876,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0064",
    "terms": [
-    "first_scorer_is_backed",
     "line_open",
     "need_frac",
     "prog_score",
@@ -4047,7 +3899,7 @@
    "execution": [],
    "family": "spec:Leader",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4083,7 +3935,7 @@
    "execution": [],
    "family": "prop:drifter_vs_open",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4118,7 +3970,7 @@
    "execution": [],
    "family": null,
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4140,7 +3992,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "q <= 1",
     "lead_m30 <= 1",
     "opp >= 1.5927"
@@ -4151,7 +4002,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4163,7 +4014,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0093",
    "terms": [
-    "first_scorer_is_backed",
     "lead_m30",
     "opp",
     "q"
@@ -4185,7 +4035,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4218,7 +4068,7 @@
    "execution": [],
    "family": null,
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4251,7 +4101,7 @@
    "execution": [],
    "family": "DRIFTED",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4274,9 +4124,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "dog_odds_vol_180 <= 0.15546",
     "margin_range_300s >= 4",
     "ten_mins <= 23.4436"
@@ -4287,7 +4134,7 @@
    "execution": [],
    "family": "prop:late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4299,11 +4146,9 @@
    "sport": "basketball",
    "strategy": "BAS_prop:late_le_0158",
    "terms": [
-    "abs_lead",
     "dog_odds_vol_180",
     "margin_range_300s",
-    "ten_mins",
-    "u_elapsed"
+    "ten_mins"
    ],
    "tier": "Npc"
   },
@@ -4324,7 +4169,7 @@
    "execution": [],
    "family": "prop:shortener_vs_open",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4349,7 +4194,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "total_points_under >= 1.75",
     "hour >= 2",
     "away_odds >= 1.159999966621399",
@@ -4363,7 +4207,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4376,7 +4220,6 @@
    "strategy": "BAS_prop:first_s_0095",
    "terms": [
     "away_odds",
-    "first_scorer_is_backed",
     "hour",
     "rk_odds_ratio",
     "tot_vs_line",
@@ -4400,7 +4243,7 @@
    "execution": [],
    "family": "DRIFTED",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4423,7 +4266,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "secs_since_lead_change <= 60",
     "lead_vs_med <= 1.0759",
     "margin_range_300s <= 5"
    ],
@@ -4433,7 +4275,7 @@
    "execution": [],
    "family": "prop:fresh_lead",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4446,8 +4288,7 @@
    "strategy": "BAS_prop:fresh_l_0183",
    "terms": [
     "lead_vs_med",
-    "margin_range_300s",
-    "secs_since_lead_change"
+    "margin_range_300s"
    ],
    "tier": "Npc"
   },
@@ -4469,7 +4310,7 @@
    "execution": [],
    "family": "dog_leading",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -4508,7 +4349,7 @@
    "execution": [],
    "family": "lead_ml",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4532,7 +4373,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "prog_score <= 0.35",
     "rk_fav_odds <= 1.75",
     "leader_implied_gap >= -0.1701",
@@ -4544,7 +4384,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4556,7 +4396,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0094",
    "terms": [
-    "first_scorer_is_backed",
     "leader_implied_gap",
     "prog_score",
     "rk_fav_odds",
@@ -4581,7 +4420,7 @@
    "execution": [],
    "family": "spec:TG_Historical_vs_Handicap_Under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4621,7 +4460,7 @@
    "execution": [],
    "family": "spec:HT_Underdog_Fade",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -4664,7 +4503,7 @@
    "execution": [],
    "family": "spec:Leader",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4700,7 +4539,7 @@
    "execution": [],
    "family": "dog_leading",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4735,7 +4574,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4770,7 +4609,7 @@
    "execution": [],
    "family": "lead_ml",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4804,7 +4643,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4840,7 +4679,7 @@
    "execution": [],
    "family": "dog_leading",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4865,7 +4704,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "first_scorer_is_backed >= 1",
     "line_open >= 140",
     "prog_score <= 0.35",
     "h_score <= 16.1205",
@@ -4877,7 +4715,7 @@
    "execution": [],
    "family": "prop:first_scorer_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4889,7 +4727,6 @@
    "sport": "basketball",
    "strategy": "BAS_prop:first_s_0099",
    "terms": [
-    "first_scorer_is_backed",
     "h_score",
     "is_favorite",
     "line_open",
@@ -4914,7 +4751,7 @@
    "execution": [],
    "family": "spec:Leader",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -4942,7 +4779,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "secs_since_lead_change >= 600",
     "line_open >= 140",
     "loser_runmin >= 1.2769",
     "overround_now <= 1.121"
@@ -4953,7 +4789,7 @@
    "execution": [],
    "family": "prop:held_lead",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -4967,8 +4803,7 @@
    "terms": [
     "line_open",
     "loser_runmin",
-    "overround_now",
-    "secs_since_lead_change"
+    "overround_now"
    ],
    "tier": "Npc"
   },
@@ -4977,9 +4812,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "prog_score <= 0.35",
     "lead_vs_line <= -151.823",
     "opp_o <= 4.17",
@@ -4991,7 +4823,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5003,12 +4835,10 @@
    "sport": "basketball",
    "strategy": "BAS_late_lead_ho_0113",
    "terms": [
-    "abs_lead",
     "lead_vs_line",
     "opp_o",
     "pace_last_300s_vs_line",
-    "prog_score",
-    "u_elapsed"
+    "prog_score"
    ],
    "tier": "Npc"
   },
@@ -5027,7 +4857,7 @@
    "execution": [],
    "family": "dog_leading",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5058,7 +4888,7 @@
    "execution": [],
    "family": null,
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5089,7 +4919,7 @@
    "execution": [],
    "family": "spec:Early_Hammer",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5122,7 +4952,7 @@
    "execution": [],
    "family": null,
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5145,8 +4975,6 @@
    "bet_role": "trailer",
    "bets_sha": "",
    "conditions": [
-    "abs_lead <= 6",
-    "u_elapsed >= 0.75",
     "line_open >= 140",
     "pm_away <= 2.92",
     "rk_fav_odds >= 1.0142",
@@ -5158,7 +4986,7 @@
    "execution": [],
    "family": "prop:q4_close_trailer",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5170,12 +4998,10 @@
    "sport": "basketball",
    "strategy": "BAS_prop:q4_clos_0129",
    "terms": [
-    "abs_lead",
     "lead_change_last_300s",
     "line_open",
     "pm_away",
-    "rk_fav_odds",
-    "u_elapsed"
+    "rk_fav_odds"
    ],
    "tier": "Feeder"
   },
@@ -5193,7 +5019,7 @@
    "execution": [],
    "family": "trail_ml",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5215,9 +5041,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "abs_lead > 3",
-    "u_elapsed <= 1.2",
-    "u_elapsed >= 0.85",
     "line_open >= 140",
     "prog_score <= 0.35",
     "rk_dog_odds >= 1.8392",
@@ -5230,7 +5053,7 @@
    "execution": [],
    "family": "late_lead_hold",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -5246,11 +5069,9 @@
    "strategy": "BAS_late_lead_ho_0106",
    "terms": [
     "X_u_elapsed__minus__u_time_in_lead",
-    "abs_lead",
     "line_open",
     "prog_score",
     "rk_dog_odds",
-    "u_elapsed",
     "wall_min"
    ],
    "tier": "Npc"
@@ -5271,7 +5092,7 @@
    "execution": [],
    "family": "tg_under",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [
@@ -5298,7 +5119,6 @@
    "bet_role": "leader",
    "bets_sha": "",
    "conditions": [
-    "secs_since_lead_change >= 600",
     "line_open >= 140",
     "pm_away <= 2.92",
     "leader_runmax <= 3.66",
@@ -5311,7 +5131,7 @@
    "execution": [],
    "family": "prop:held_lead",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5327,8 +5147,7 @@
     "leader_runmax",
     "line_flat",
     "line_open",
-    "pm_away",
-    "secs_since_lead_change"
+    "pm_away"
    ],
    "tier": "Npc"
   },
@@ -5347,7 +5166,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5382,7 +5201,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5418,7 +5237,7 @@
    "execution": [],
    "family": "tg_under_lag",
    "market": "total_points_under",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5456,7 +5275,7 @@
    "execution": [],
    "family": "spec:Loser_1G",
    "market": "match_winner",
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "n_bets": null,
    "needs_feature": [],
@@ -5686,7 +5505,7 @@
    "entry_window": 60,
    "family": "spread_dog_cover",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_spread_dog_c_0156",
    "tier": "Vision"
@@ -5702,7 +5521,7 @@
    "entry_window": 60,
    "family": "spread_dog_cover",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_spread_dog_c_0154",
    "tier": "Vision"
@@ -5717,7 +5536,7 @@
    "entry_window": 60,
    "family": "q1_winner",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_q1_winner_0139",
    "tier": "Npc"
@@ -5735,7 +5554,7 @@
    "entry_window": 60,
    "family": "spread_dog_cover",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_spread_dog_c_0118",
    "tier": "Vision"
@@ -5750,7 +5569,7 @@
    "entry_window": 60,
    "family": "prop:match_total_pace",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_prop:match_t_0073",
    "tier": "Vision"
@@ -5765,7 +5584,7 @@
    "entry_window": 60,
    "family": "q1_winner",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_q1_winner_0130",
    "tier": "Vision"
@@ -5781,7 +5600,7 @@
    "entry_window": 60,
    "family": "h1_winner",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_h1_winner_0177",
    "tier": "Npc"
@@ -5800,7 +5619,7 @@
    "entry_window": 60,
    "family": "prop:match_total_pace",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_prop:match_t_0021",
    "tier": "Vision"
@@ -5817,7 +5636,7 @@
    "entry_window": 60,
    "family": "spread_dog_cover",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_spread_dog_c_0155",
    "tier": "Vision"
@@ -5835,7 +5654,7 @@
    "entry_window": 60,
    "family": "spread_dog_cover",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_spread_dog_c_0119",
    "tier": "Vision"
@@ -5852,7 +5671,7 @@
    "entry_window": 60,
    "family": "spread_dog_cover",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_spread_dog_c_0120",
    "tier": "Vision"
@@ -5867,7 +5686,7 @@
    "entry_window": 60,
    "family": "spread_dog_cover",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_spread_dog_c_0178",
    "tier": "Jobber"
@@ -5886,7 +5705,7 @@
    "entry_window": 60,
    "family": "prop:h1_leader_hold",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_prop:h1_lead_0175",
    "tier": "Npc"
@@ -5902,7 +5721,7 @@
    "entry_window": 60,
    "family": "h1_winner",
    "market": null,
-   "max_odds": 4.2,
+   "max_odds": null,
    "min_odds": 1.4,
    "strategy": "BAS_h1_winner_0176",
    "tier": "Npc"

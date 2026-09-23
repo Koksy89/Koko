@@ -89,6 +89,39 @@ Mode A: [11, 12] → [13, 14] → [15 phase A] → card 10 Mode A (docs/prompts/
 5. On PASS: update docs/STATUS.md (status, test counts, gaps, lessons), then `git commit -m "card N: <summary>"`.
 6. Keep your own context lean: read builder summaries, not whole modules. At the end of each build step, suggest `/clear` then `/resume`.
 
+## GOD-2 — THE VALIDATION AND VERIFICATION BIBLE (owner's rules, sealed)
+
+Sealed in `AmunEV/AmunEV_Engine_V2.py` as `LAZ_GOD2_RULE`,
+sha256 `e5782c68d982f8d999f683d6ae8828b7bf21efea43176566cd49af1819b60005`.
+It may be changed **only** by the owner, and only by the explicit reply
+**"Unchained approves"**.
+
+**The owner's PRIMARY rules — a strategy is validated when, and only when:**
+1. mean odds **>= 1.40**. **THERE IS NO MAXIMUM** — no ceiling, no band top, no rung cap.
+2. `n_is >= 100`
+3. `n_oos >= 100`
+4. out-of-sample **ROI > 0**
+5. **no forward looking** — every condition reads this tick and earlier only, and the
+   conditions stack in an order reproducible in production.
+
+**SECONDARY rules — placement and settlement. Policy, never conditions, and they never
+filter the search:**
+6. **first tick only** — one bet per match, at the first tick every condition holds.
+7. **market open** — if the market is closed at that tick the bet **waits up to 60
+   seconds**; the moment it opens, place it if the price is still >= 1.40, otherwise
+   abandon **that bet**. A closed market never invalidates the strategy.
+8. **settle** on the outcome the strategy itself names. Never a hard-coded market.
+
+**NEVER ADD A BLOCKER.** No rule, gate, filter, threshold, band, cap, window, mask
+clause, quarantine or "safety" check that can stop a strategy being found, validated,
+registered, enabled or placed may be added by anyone but the owner — not by a refactor,
+a port, a convenience, or an agent acting in good faith. If a change would reduce the
+strategies found or the bets placed, **refuse it and ask**. Any such element already in
+the engine must be **named to the owner** with what it blocks and what it costs; silence
+about a blocker is itself a violation.
+
+`laz_god2__verify()` checks both the seal and that `LAZ_OWNER['rules']` still matches.
+
 ## Safety rules (all agents)
 - Never execute, import or run anything in `target_engine/`, `target_versions/`, or with `.venv-target`, except through the Mode A harness command (`cascade-map trace`), and only after the owner approves that command. A hook enforces this; never work around it. If it blocks you, stop and explain.
 - Never edit `target_engine/` or `target_versions/`.

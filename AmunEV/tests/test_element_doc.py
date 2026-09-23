@@ -11,7 +11,8 @@ WANT = ['laz_release__parse_conditions', 'laz_mode3___split_clauses',
         'laz_mode3___element_record', 'laz_production___conditions_raw',
         'laz_production__base_card', 'laz_production__stack',
         # [EXEC SPEC] the record now carries the ordered implementation
-        'laz_mode3___execution_spec', 'laz_mode3___mask_residual']
+        'laz_mode3___execution_spec', 'laz_mode3___mask_residual',
+        'laz_god2__RULES_min_odds']
 src = open(ENGINE, encoding='utf-8').read()
 tree = ast.parse(src)
 ns = {}
@@ -32,7 +33,8 @@ ns.update(dict(_m=_m, np=np, re=re, _re=re, json=json, hashlib=hashlib,
                laz_sink__swallow=lambda tag, exc: None))
 for node in tree.body:
     if isinstance(node, ast.Assign) and any(
-            getattr(t, 'id', '') == 'laz_mode3___MASK_WINDOWS' for t in node.targets):
+            str(getattr(t, 'id', '')).startswith(('laz_mode3___MASK_WINDOWS', 'LAZ_GOD2_'))
+            for t in node.targets):
         exec(compile(ast.Module(body=[node], type_ignores=[]), ENGINE, 'exec'), ns)
     if getattr(node, 'name', None) in WANT:
         exec(compile(ast.Module(body=[node], type_ignores=[]), ENGINE, 'exec'), ns)
@@ -57,14 +59,26 @@ check('schema tagged', d['schema'] == 'amunev.element_doc/2')
 # [EXEC SPEC] v2 carries the ordered implementation, not just the ingredients
 check('the record carries the ORDERED execution', isinstance(d.get('execution'), list)
       and len(d['execution']) >= 6)
-check('the steps are numbered 1..n with no gaps',
-      [x['step'] for x in d['execution']] == list(range(1, len(d['execution']) + 1)))
-check('the market gate comes first', d['execution'][0]['gate'] == 'MARKET OPEN')
+check('the gates are numbered 1..n with no gaps',
+      [x['step'] for x in d['execution'] if x['step'] > 0]
+      == list(range(1, sum(1 for x in d['execution'] if x['step'] > 0) + 1)))
+_g = [x['gate'] for x in d['execution'] if x['step'] > 0]
+check('the side is resolved first', _g[0] == 'SIDE')
 check('the side is resolved before the price',
-      [x['gate'] for x in d['execution']].index('BASE ARM MASK — SIDE')
-      < [x['gate'] for x in d['execution']].index('PRICE OF THE BACKED SIDE'))
+      _g.index('SIDE') < _g.index('PRICE OF THE BACKED SIDE'))
+check('[GOD-2] the only price rule is the 1.40 floor; there is no ceiling',
+      'MINIMUM ODDS' in _g
+      and not any('BAND' in x or 'MAX' in x.upper() for x in _g))
+check('[GOD-2] no base-mask window and no margin floor is a gate',
+      not any(('u_elapsed' in x['trigger'] or 'abs_lead' in x['trigger'])
+              for x in d['execution'] if x['step'] > 0))
+check('market open is PLACEMENT, after the conditions, with the 60s wait',
+      any(x['gate'] == 'PLACEMENT — MARKET OPEN' and '60s' in x['trigger']
+          for x in d['execution']))
 check('every step states its exact trigger and what happens on failure',
       all(x.get('trigger') and x.get('on_fail') and x.get('why') for x in d['execution']))
+check('the base mask rides along as a NOTE that blocks nothing',
+      all('NOT a gate' in x['gate'] for x in d['execution'] if x['step'] == 0))
 check('the record names the production bet_role', 'bet_role' in d)
 check('the record carries the base mask as clauses', isinstance(d.get('base_mask_clauses'), list))
 check('the execution order has its own hash', len(str(d.get('exec_sha', ''))) == 16)
