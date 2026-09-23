@@ -539,6 +539,7 @@ def build() -> str:
         rel = path.relative_to(PACKAGE).as_posix()
         bodies.append(f"\n\n# {'=' * 74}\n# {rel}\n# {'=' * 74}\n\n{body.strip()}\n")
 
+    version = (PACKAGE.parents[1] / "VERSION").read_text(encoding="utf-8").strip()
     header = '''"""CASCADE-MAP — a static and runtime map of a Python decision engine.
 
 Single file. Generated from the package by `tools/amalgamate.py`; every line
@@ -560,7 +561,7 @@ that matters.
 
 from __future__ import annotations
 
-__version__ = "0.0.0"
+__version__ = "{version}"
 
 '''
     alias_block = ""
@@ -571,6 +572,7 @@ __version__ = "0.0.0"
             "# the answer: `views.browser_view` finds the global `browser_view`.\n"
             + "".join(f"{name} = sys.modules[__name__]\n" for name in sorted(aliases))
         )
+    header = header.replace("{version}", version)
     text = (
         header
         + "\n".join(sorted(i for i in hoisted if i))

@@ -556,3 +556,358 @@ def test_the_finding_top_up_is_bounded_by_what_a_slice_answers(
     assert excluded - rooted, (
         "every excluded-kind finding still got a slice; the bound did nothing"
     )
+
+
+# ---------------------------------------------------------------------------
+# DECISION is bounded by the owner's declaration, or it emits nothing
+#
+# A 14.8 MB single-file engine produced a 6.4 GB slices.jsonl at DECISION
+# scope: with no declared sink the root set fell back to every feature plus
+# the root of every finding -- thousands of roots, each pulling a slice that
+# can name much of the codebase. Auto-detected sinks are candidates, and
+# building thousands of expensive exact answers on top of a guess is wrong
+# twice over. So: no declared sink, no principled roots, no slices, and the
+# artifact says exactly that.
+# ---------------------------------------------------------------------------
+
+
+def test_decision_scope_with_no_declared_sink_emits_no_slices(tmp_path: Path) -> None:
+    out = _run(CORPUS, tmp_path / "unrooted", SliceScope.DECISION)
+    assert _read(out, "slices.jsonl") == ""
+    manifest = json.loads(_read(out, "manifest.json"))["slice_scope"]
+    assert manifest["slices_written"] == 0
+    assert manifest["roots_not_precomputed"] == manifest["roots_total"] > 0
+
+
+def test_the_corpus_really_has_features_so_that_zero_means_something(
+    tmp_path: Path,
+) -> None:
+    """The guard on the test above.
+
+    "Zero slices" is only evidence of the fix if there were roots to emit. The
+    same corpus at ALL scope emits slices rooted at named features, which are
+    precisely the roots DECISION used to pull in and no longer does.
+    """
+    rows = _slices(_run(CORPUS, tmp_path / "all", SliceScope.ALL))
+    features = {one["root_id"] for one in rows if one["root_id"].startswith("@feature:")}
+    assert len(features) >= 4, f"expected several features, saw {sorted(features)}"
+
+
+def test_the_unrooted_decision_scope_states_its_reason_in_the_artifact(
+    tmp_path: Path,
+) -> None:
+    """In `manifest.json`, not only on a terminal that has scrolled.
+
+    A count of zero with no reason beside it reads as "this target has no
+    lineage", which is the opposite of what happened.
+    """
+    out = _run(CORPUS, tmp_path / "unrooted", SliceScope.DECISION)
+    reason = json.loads(_read(out, "manifest.json"))["slice_scope"]["reason"]
+    assert "no decision sink declared" in reason
+    assert "no principled set of roots" in reason
+    # Every alternative named, including the one that gets the owner a single
+    # feature without turning on the exhaustive mode.
+    assert "--sink" in reason
+    assert "--slices all" in reason
+    assert "--slice-root" in reason
+
+
+def test_the_summary_says_it_too(tmp_path: Path) -> None:
+    from cascade_map.cli import _report
+
+    out = tmp_path / "unrooted"
+    _code, summary = _run_full(CORPUS, out, SliceScope.DECISION)
+    text = _report(summary, out, 0)
+    assert "slices               0" in text
+    assert "no decision sink declared" in text
+    assert "--slice-root" in text
+
+
+def test_a_declared_sink_bounds_the_roots_to_the_sink_and_what_it_reads(
+    tmp_path: Path,
+) -> None:
+    """The bounded root set, stated as a set and not as a size.
+
+    Features and finding roots were the leak. With a sink declared the roots
+    are the sinks plus the one-hop sources of the lineage edges that land on
+    them -- bounded by the owner's declaration of what the decision is.
+    """
+    from cascade_map.ingest.inventory import Ingestor
+
+    probe = tmp_path / "probe"
+    ingestor = Ingestor(cache_dir=probe, workers=1)
+    elements, _ = ingestor.inventory(str(CORPUS))
+    edges, _ = Resolver(CORPUS).resolve(elements)
+    tracer = LineageTracer(CORPUS, sink_ids=CORPUS_SINK)
+    tracer.trace_values(elements, edges)
+    expected = set(tracer.decision_slice_roots())
+    assert expected, "the declared sink produced no roots; nothing is bounded"
+    assert set(CORPUS_SINK) <= expected
+
+    out = _run(CORPUS, tmp_path / "rooted", SliceScope.DECISION, CORPUS_SINK)
+    written = {one["root_id"] for one in _slices(out)}
+    assert written == expected
+    # And the leak is gone: no feature is a root just for being a feature.
+    features = {one for one in written if one.startswith("@feature:")}
+    assert not features, f"features are automatic roots again: {sorted(features)}"
+
+
+def test_no_feature_or_finding_root_is_automatic_at_decision_scope(
+    tmp_path: Path,
+) -> None:
+    """Measured against the roots that exist, not asserted in the abstract."""
+    rooted = {
+        one["root_id"]
+        for one in _slices(_run(CORPUS, tmp_path / "rooted", SliceScope.DECISION,
+                                CORPUS_SINK))
+    }
+    everything = {
+        one["root_id"]
+        for one in _slices(_run(CORPUS, tmp_path / "all", SliceScope.ALL, CORPUS_SINK))
+    }
+    assert everything - rooted, "DECISION precomputed everything ALL does"
+    assert len(rooted) < len(everything) / 2, (
+        f"DECISION precomputed {len(rooted)} of {len(everything)} roots; the "
+        f"scope is meant to be bounded by the declaration, not by the codebase"
+    )
+
+
+def test_a_feature_is_one_slice_root_away(tmp_path: Path) -> None:
+    """The message tells the owner this; the test proves it is true.
+
+    No declared sink, one named feature, and the slice for it is precomputed
+    and exact -- identical to the one ALL writes for the same root.
+    """
+    everything = {
+        one["id"]: one
+        for one in _slices(_run(CORPUS, tmp_path / "all", SliceScope.ALL))
+    }
+    wanted = sorted(
+        {one["root_id"] for one in everything.values()
+         if one["root_id"].startswith("@feature:")}
+    )[0]
+    out = _run(
+        CORPUS, tmp_path / "one", SliceScope.DECISION, (), (), slice_roots=(wanted,)
+    )
+    rows = _slices(out)
+    assert {one["root_id"] for one in rows} == {wanted}
+    for one in rows:
+        twin = everything[one["id"]]
+        assert {k: v for k, v in one.items() if k != "scope"} == {
+            k: v for k, v in twin.items() if k != "scope"
+        }
+
+
+# ---------------------------------------------------------------------------
+# The findings are a fact; the scope is a storage decision
+# ---------------------------------------------------------------------------
+
+
+def test_findings_are_identical_across_scopes_with_a_declared_sink(
+    tmp_path: Path,
+) -> None:
+    produced = {
+        scope: _read(
+            _run(CORPUS, tmp_path / str(scope), scope, CORPUS_SINK), "findings.jsonl"
+        )
+        for scope in SCOPES
+    }
+    assert produced[SliceScope.DECISION].strip(), "no findings; nothing compared"
+    assert produced[SliceScope.DECISION] == produced[SliceScope.ALL]
+    assert produced[SliceScope.DECISION] == produced[SliceScope.NONE]
+
+
+def test_card_five_still_sees_the_feature_roots_that_are_no_longer_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The unwritten slices are COMPUTED for the finding's own use.
+
+    DECISION with no declared sink writes nothing. If that had also emptied
+    the basis card 5 reasons from, a storage decision would have changed a
+    fact -- the defect this whole change exists to avoid. So the basis is
+    captured directly and compared against the roots that are written.
+    """
+    import cascade_map.cli as cli_module
+
+    seen: dict[str, tuple[str, ...]] = {}
+    original = cli_module.Findings
+
+    class Recording(original):  # type: ignore[misc,valid-type]
+        def __init__(self, **kwargs: object) -> None:
+            seen[Recording.scope] = tuple(
+                sorted(one.root_id for one in kwargs.get("slices", ()))  # type: ignore[union-attr]
+            )
+            super().__init__(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(cli_module, "Findings", Recording)
+    for scope in SCOPES:
+        Recording.scope = str(scope)  # type: ignore[attr-defined]
+        _run(CORPUS, tmp_path / str(scope), scope)
+
+    bases = set(seen.values())
+    assert len(bases) == 1, "card 5 saw a different basis per scope"
+    basis = set(next(iter(bases)))
+    assert any(one.startswith("@feature:") for one in basis), (
+        "card 5 lost the feature roots when they stopped being written"
+    )
+    written = {
+        one["root_id"]
+        for one in _slices(tmp_path / str(SliceScope.DECISION))
+    }
+    assert written == set()
+    assert basis - written, "nothing was computed-and-not-written; the check is vacuous"
+
+
+# ---------------------------------------------------------------------------
+# The size guard
+#
+# The owner discovered 6.4 GB after the fact. An estimate costs a sum over ids
+# already in memory.
+# ---------------------------------------------------------------------------
+
+
+def test_the_size_guard_refuses_and_names_the_number(tmp_path: Path) -> None:
+    from cascade_map.cli import EXIT_REFUSED
+
+    said: list[str] = []
+    out = tmp_path / "guarded"
+    code, summary = _run_full(
+        CORPUS, out, SliceScope.ALL, say=said, slice_size_limit=2_000
+    )
+    assert code == EXIT_REFUSED, "a refusal that exits 0 reads as success"
+    spoken = "\n".join(said)
+    assert "Refusing to write it" in spoken
+    assert "roots," in spoken and "member ids" in spoken
+    # Every alternative, including the override.
+    assert "--sink" in spoken
+    assert "--slices none" in spoken
+    assert "--force-slices" in spoken
+    payload = summary["slices"]
+    assert payload["refused"] is True
+    assert payload["estimated_bytes"] > payload["size_limit_bytes"] == 2_000
+    assert payload["slices_written"] == 0
+
+
+def test_the_guard_never_truncates_it_refuses_whole(tmp_path: Path) -> None:
+    """Emit fewer slices, never smaller ones -- including when refusing."""
+    out = tmp_path / "guarded"
+    _run_full(CORPUS, out, SliceScope.ALL, slice_size_limit=2_000)
+    assert _read(out, "slices.jsonl") == ""
+    # And nothing else was withheld: the run is otherwise complete, so the
+    # analysis does not have to be paid for twice.
+    whole = _run(CORPUS, tmp_path / "whole", SliceScope.ALL)
+    for name in ("lineage.jsonl", "barriers.jsonl", "findings.jsonl"):
+        assert _read(out, name) == _read(whole, name)
+
+
+def test_the_refusal_is_recorded_in_the_manifest(tmp_path: Path) -> None:
+    out = tmp_path / "guarded"
+    _run_full(CORPUS, out, SliceScope.ALL, slice_size_limit=2_000)
+    disclosed = json.loads(_read(out, "manifest.json"))["slice_scope"]
+    assert disclosed["refused"] is True
+    assert "Refusing to write it" in disclosed["reason"]
+    assert disclosed["estimated_bytes"] > 2_000
+
+
+def test_force_slices_writes_it_anyway_and_exactly(tmp_path: Path) -> None:
+    """A refusal the owner can override is honest; one they cannot is an
+    obstruction. The override must produce the same bytes as no guard at all."""
+    forced = _run(
+        CORPUS, tmp_path / "forced", SliceScope.ALL,
+        slice_size_limit=2_000, force_slices=True,
+    )
+    unguarded = _run(CORPUS, tmp_path / "unguarded", SliceScope.ALL)
+    assert _read(forced, "slices.jsonl") == _read(unguarded, "slices.jsonl")
+    assert _read(forced, "slices.jsonl").strip(), "the comparison is vacuous"
+
+
+def test_the_guard_is_quiet_when_the_estimate_is_under_the_limit(
+    tmp_path: Path,
+) -> None:
+    """A guard that fires on every run is a guard nobody reads."""
+    said: list[str] = []
+    code, summary = _run_full(CORPUS, tmp_path / "small", SliceScope.ALL, say=said)
+    assert code == 0
+    assert "Refusing" not in "\n".join(said)
+    assert summary["slices"]["refused"] is False
+
+
+def test_a_refusal_leaves_no_record_pointing_at_a_slice_that_is_not_there(
+    tmp_path: Path,
+) -> None:
+    """The guard runs BEFORE card 16 builds its records.
+
+    A record whose drill-down link resolves to nothing is the defect card 15
+    was corrected for. The guard must not create it.
+    """
+    import re
+
+    out = tmp_path / "guarded"
+    _run_full(CORPUS, out, SliceScope.ALL, slice_size_limit=2_000)
+    present = {one["id"] for one in _slices(out)}
+    assert present == set()
+    # Every artifact, not only the one that happens to link today: a general
+    # sweep for any `@slice:` id that no written slice answers.
+    dangling: dict[str, set[str]] = {}
+    for artifact in sorted(out.glob("*.jsonl")):
+        if artifact.name == "slices.jsonl":
+            continue
+        found = set(re.findall(r"@slice:[^\"\\]+", artifact.read_text(encoding="utf-8")))
+        missing = found - present
+        if missing:
+            dangling[artifact.name] = missing
+    assert not dangling, f"artifacts point at slices that were not written: {dangling}"
+
+
+def test_the_dangling_sweep_can_actually_see_a_slice_id(tmp_path: Path) -> None:
+    """The guard on the sweep above.
+
+    The sweep is a search for a string. If no artifact ever contained a slice
+    id it would pass on anything, so the same search is run against a file
+    that certainly holds them.
+    """
+    import re
+
+    out = _run(CORPUS, tmp_path / "all", SliceScope.ALL)
+    found = set(
+        re.findall(r"@slice:[^\"\\]+", _read(out, "slices.jsonl"))
+    )
+    assert len(found) > 10, f"the sweep pattern matches nothing: {sorted(found)[:3]}"
+
+
+def test_the_guard_flag_exists_and_defaults_to_off() -> None:
+    from cascade_map.cli import SLICE_SIZE_LIMIT_BYTES, _build_parser
+    from cascade_map.ledger import Settings, SettingsError
+
+    parser = _build_parser()
+    assert parser.parse_args(["analyze", "."]).force_slices is False
+    assert parser.parse_args(["analyze", ".", "--force-slices"]).force_slices is True
+    assert SLICE_SIZE_LIMIT_BYTES == 1 << 30
+    assert Settings.from_mapping({"FORCE_SLICES": True}).force_slices is True
+    assert Settings.from_mapping({}).force_slices is False
+    with pytest.raises(SettingsError) as caught:
+        Settings.from_mapping({"FORCE_SLICES": "yes"})
+    assert "true or false" in str(caught.value)
+
+
+def test_the_ledger_passes_force_slices_through(tmp_path: Path) -> None:
+    from cascade_map.ledger import Settings, _default_analyse
+
+    seen: dict[str, object] = {}
+
+    def fake_analyze(root, out_dir, **kwargs):  # type: ignore[no-untyped-def]
+        seen.update(kwargs)
+        return 0, {}
+
+    import cascade_map.cli as cli_module
+
+    original = cli_module.analyze
+    cli_module.analyze = fake_analyze  # type: ignore[assignment]
+    try:
+        _default_analyse(
+            tmp_path, tmp_path / "out", Settings.from_mapping({"FORCE_SLICES": True})
+        )
+    finally:
+        cli_module.analyze = original  # type: ignore[assignment]
+
+    assert seen["force_slices"] is True
