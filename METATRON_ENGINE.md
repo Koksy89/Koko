@@ -95,6 +95,7 @@ python3 metatron_engine.py analyze ROOT --out DIR [options]
 | `--config PATH` | a JSON/config file that wires components by name; repeatable | when your engine names classes/functions in config |
 | `--env PATH` | the interpreter whose installed packages to read (`.venv-target`) | **to catch wrong-package-version bugs** — see [section 8b](#8b-package-versions--which-versions-each-element-is-applicable-to) |
 | `--cache DIR` | move the incremental cache (default `./.cascade_map/cache`) | to keep it off a network drive, or out of your repo |
+| `--workers N` | child processes for ingestion. Omitted or `0` = auto; `1` = in-process | when you want to cap the load, or to debug. **Workers split work across FILES, never inside one**, so a single-large-file target gains nothing -- the run measures it and says so |
 | `--no-gate` | write the map even if the completeness check fails, and exit 0 | rarely; the gate exists for a reason |
 
 **About `--sink`.** A "sink" is where your final decision comes out — the function or
@@ -152,7 +153,29 @@ analysed, compares consecutive versions element by element, and keeps one JSON l
 Configured by the `METATRON_SETTINGS` dict at the top of this file; every setting has a
 flag that overrides it. See [section 9b](#9b-track--the-version-ledger).
 
-### `trace` — watch it actually run (Mode A)
+### `doctor` -- one file you can send back
+
+```
+python3 metatron_engine.py doctor --out DIR
+python3 metatron_engine.py doctor --out DIR --target path/to/your/engine
+```
+
+Measures this machine on this target and writes
+`DIR/metatron_doctor_<UTC timestamp>.log` plus the same data as JSON beside it, then
+prints the full path on its own last line so you can copy it straight out of the
+terminal. With no `--target` it measures metatron's own source; with `--target` it
+measures yours, which is the more useful run to send.
+
+It records per-stage timings, file and element counts, the worker scaling at 1, 4 and 8
+workers with a cold cache at every point, the interpreter version, the machine's usable
+core count, and the cache location and whether it was warm.
+
+**It is safe to send.** It contains no source code, no element names, no docstrings and
+no values from your engine -- only timings, counts, versions, and the root-relative path
+of the file that dominated the work, which is the answer to "why did workers not help".
+The file says so in its own header. Nothing in the target is executed to produce it.
+
+### `trace` -- watch it actually run (Mode A)
 
 ```
 python3 metatron_engine.py trace GRAPH_DIR --sport basketball --out DIR
@@ -745,6 +768,7 @@ METATRON_SETTINGS = {
     "ORDER": [],                            # explicit ordering, oldest first; empty = work it out and report how
     "SCENARIOS": "scenarios.json",          # MODE 2 only
     "SCENARIO": "baseline",                 # MODE 2 only
+    "WORKERS": 0,                           # 0 = auto (usable cores less one); 1 = in-process
 }
 ```
 
@@ -761,9 +785,32 @@ without the setting you thought you had applied. Every key also has a flag —
 `--order`, `--scenarios`, `--scenario` — and the merged result is validated as a whole,
 so a typo in the dict is caught even on a fully flag-driven run.
 
-There is deliberately **no worker or core count**. Ingestion parallelises across files
-and the right degree is what the machine knows; a number written on one machine is wrong
-on every other one.
+`WORKERS` defaults to `0` = auto, which is what the machine knows rather than what a
+number written on a different machine guessed. `1` means in-process, and stays available
+always because it is how anything here is debugged.
+
+**Workers parallelise ACROSS FILES, and a file is never split.** One file is one unit of
+work; half a function is not parseable and the IDs minted from it would be wrong rather
+than merely untidy. So if your target is ONE large file, extra workers cannot help it --
+one worker takes the file and the rest idle. Every `analyze` and `track` therefore prints
+what the workers actually bought on that run, measured, not asserted:
+
+```
+workers        8 requested, 1 started
+parallel gain  0.99x vs single process   <- measured on this target (1 file(s), 20.5s of work done in 20.7s)
+why            1 file holds 100% of the work; parallelism is across files and cannot split a single file's parse
+recommendation use --workers 1 for this target; more workers help when files are many and evenly sized
+```
+
+A worker count on its own is not a benefit, so it is never printed as one.
+
+Measured on a 14.6 MB single file and on a 47-file package, same machine, cold cache
+every run, output byte-identical at every worker count:
+
+| target | `--workers 1` | `--workers 4` | `--workers 8` |
+|---|---|---|---|
+| one 14.6 MB file | 20.67s | 21.58s (1 worker started) | 21.90s (1 worker started) |
+| 47-file package | 1.74s | 0.83s | 0.97s |
 
 ### Identity is the tree's content hash, never the folder name
 

@@ -237,7 +237,29 @@ def test_trace_output_matches_the_package(single_file: Path, tmp_path: Path) -> 
     shutil.rmtree(single_out / "sandbox", ignore_errors=True)
 
 
+#: Lines of the worker-effectiveness report that carry a wall-clock
+#: measurement. They are a timing, so they cannot be byte-identical between
+#: two runs and are compared by SHAPE rather than value -- the same disclosed
+#: exception this file already makes for `sandbox_dir` and `external_frames`.
+#: The lines that do not carry a timing are still compared exactly.
+_TIMING_LINE_PREFIXES = ("parallel gain", "why", "recommendation")
+
+
+def _without_timings(text: str) -> str:
+    out = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(_TIMING_LINE_PREFIXES):
+            out.append(stripped.split()[0] + " <timing-dependent>")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 @needs_312
+
+
+
 def test_track_builds_the_same_ledger(single_file: Path, tmp_path: Path) -> None:
     """Card 18 through both shapes. The ledger is the artifact an owner keeps
     for the life of the project, so the two builds must write the same bytes --
@@ -274,6 +296,11 @@ def test_track_builds_the_same_ledger(single_file: Path, tmp_path: Path) -> None
 
     assert normalized(package_root) == normalized(single_root)
     assert "0 unaccounted" in package_run.stdout
-    assert package_run.stdout.replace(str(package_root), "X") == (
-        single_run.stdout.replace(str(single_root), "X")
+    assert _without_timings(package_run.stdout.replace(str(package_root), "X")) == (
+        _without_timings(single_run.stdout.replace(str(single_root), "X"))
     )
+    # The worker-effectiveness report IS printed by both shapes, and it must
+    # be: dropping it here would let it disappear from one of them unnoticed.
+    for run in (package_run, single_run):
+        assert "parallel gain" in run.stdout
+        assert "recommendation" in run.stdout

@@ -59,7 +59,7 @@ ORDER = [
     "contracts/interfaces.py",
     "ingest/constants.py", "ingest/hashing.py", "ingest/walker.py",
     "ingest/python_module.py", "ingest/data_files.py", "ingest/cache.py",
-    "ingest/inventory.py",
+    "ingest/parallel.py", "ingest/inventory.py",
     "resolve.py", "cascade.py", "lineage.py", "findings.py", "diff.py",
     "dependencies.py", "ledger.py", "docrecords.py", "enrichment.py",
     "harness/errors.py", "harness/hashing.py", "harness/config.py",
@@ -71,6 +71,7 @@ ORDER = [
     "viewer/loader.py", "viewer/views.py", "viewer/html_export.py",
     "viewer/blueprint.py",
     "viewer/__init__.py",
+    "doctor.py",
     "cli.py",
 ]
 

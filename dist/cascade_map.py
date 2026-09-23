@@ -24,8 +24,9 @@ __version__ = "0.0.0"
 from collections import defaultdict
 from collections import defaultdict, deque
 from collections import deque
+from collections.abc import Callable, Sequence
 from collections.abc import Iterable, Mapping, Sequence
-from collections.abc import Sequence
+from concurrent.futures import ProcessPoolExecutor
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from dataclasses import dataclass
@@ -75,6 +76,7 @@ import os
 import platform
 import posixpath
 import re
+import shutil
 import sys
 import tempfile
 import textwrap
@@ -100,9 +102,9 @@ views = sys.modules[__name__]
 # thought they had applied. Every key can still be overridden by a flag, so
 # scripting stays possible.
 #
-# Deliberately absent: worker/core count. Ingestion parallelises across files
-# and the right degree is what the machine knows, not what a config file
-# written on a different machine guessed.
+# WORKERS is here but defaults to 0 = auto, because the right degree is what
+# the machine knows, not what a config file written on a different machine
+# guessed. Every run prints what the workers actually bought.
 
 METATRON_SETTINGS = {
     # 1 = static only (never executes your engine).
@@ -133,6 +135,17 @@ METATRON_SETTINGS = {
 
     # Config files that wire components by name, relative to each version root.
     "CONFIGS": [],
+
+    # Child processes for ingestion. 0 = auto (usable cores less one, so an
+    # analysis does not take the whole box); 1 = in-process, which is how
+    # anything here is debugged and always stays available.
+    #
+    # Parallelism is ACROSS FILES: one file is one unit, and a unit is never
+    # split because half a function is not parseable. If your target is ONE
+    # large file, workers cannot help it -- the run will say so, with the
+    # measured gain, rather than printing a worker count as if it were a
+    # benefit.
+    "WORKERS": 0,
 
     # Card 17: the interpreter whose installed packages to read, as TEXT.
     # Nothing here is ever imported or executed.
@@ -3007,6 +3020,329 @@ class Cache:
 
 
 # ==========================================================================
+# ingest/parallel.py
+# ==========================================================================
+
+"""Worker policy, the process pool, and the worker-effectiveness report.
+
+Three things live here, and the third is the one that matters most to an
+owner:
+
+1. `resolve_workers` — how many child processes to ask for. Auto is derived
+   from the machine, with headroom, never a fixed number written in a config
+   file on a different machine.
+2. `run_units` — run a list of independent units, in-process or across a
+   pool. Results come back keyed by unit id; the caller re-orders them, so
+   output can never depend on which worker finished first.
+3. `WorkerReport` — what the workers actually bought **on this run**,
+   measured, not asserted. A worker count printed on its own reads as a
+   benefit; it is not one. Where the gain is below `GAIN_FLOOR` the report
+   says plainly that the workers did not help, and why.
+
+Why the gain is measurable without running the whole thing twice: every unit
+is timed individually in CPU seconds, so the sum of the per-unit times is
+what one process would have spent on the same work; adding the serial
+remainder that no worker count can remove gives a single-process control for
+the whole stage. `gain = that control / this run's wall clock`. It is
+computed from data already held, and it is checked against a genuine
+`--workers 1` run in the tests -- on `src/cascade_map` the estimate said
+2.4x and the real control said 2.35x.
+
+A LIMIT THE OWNER MUST KNOW, measured on a 14.6 MB single-file target:
+parallelism here is ACROSS FILES. One file is one unit and a unit is never
+split, because half a function is not parseable and the facts derived from
+it would be wrong rather than merely untidy. A target that is one large file
+therefore has exactly one unit: one worker takes it and the rest idle. See
+`explain_no_gain` -- that case is detected and stated rather than hidden
+behind a worker count.
+"""
+
+
+
+#: Below this, the workers are not earning their overhead and the report
+#: says so in words rather than printing a count that implies a benefit.
+GAIN_FLOOR = 1.2
+
+#: Asking for more processes than this has never paid on any shape measured;
+#: beyond the core count they contend rather than help.
+MAX_WORKERS = 32
+
+
+def cpu_budget() -> int:
+    """Usable cores. `sched_getaffinity` rather than `cpu_count` because a
+    container pinned to 2 of 64 cores reports 64, and spawning 63 workers on
+    2 cores is slower than staying in-process."""
+    try:
+        return len(os.sched_getaffinity(0))  # type: ignore[attr-defined]
+    except (AttributeError, OSError):  # pragma: no cover - non-Linux
+        return os.cpu_count() or 1
+
+
+def resolve_workers(requested: int | None) -> int:
+    """`None` = auto: the machine's usable cores minus one, so an `analyze`
+    does not take the whole box, capped at `MAX_WORKERS`.
+
+    `0` and `1` both mean in-process. In-process must always remain
+    reachable: it is how anything here is debugged, and a traceback from a
+    child process is a worse one.
+    """
+    if requested is None:
+        return max(1, min(cpu_budget() - 1, MAX_WORKERS))
+    if requested < 0:
+        raise ValueError(f"--workers must be >= 0, got {requested}")
+    if requested <= 1:
+        return 1
+    return min(requested, MAX_WORKERS)
+
+
+@dataclass(frozen=True)
+class UnitResult:
+    """One unit's outcome plus the CPU seconds it cost inside its worker."""
+
+    key: str
+    value: Any
+    seconds: float
+
+
+@dataclass
+class WorkerReport:
+    """What the workers bought on this run. Never written into an analysis
+    artifact -- it is a timing, and timings are not reproducible, and
+    constraint 4 says identical input gives identical bytes."""
+
+    requested: int = 1
+    started: int = 1
+    unit_count: int = 0
+    wall_seconds: float = 0.0
+    serial_seconds: float = 0.0
+    largest_unit_key: str = ""
+    largest_unit_seconds: float = 0.0
+
+    #: Wall clock for the WHOLE ingestion, not just the parallel section.
+    #: Set by the caller once it has finished; the gain the owner feels is
+    #: the one over the whole stage, and the serial parts (walking, reading,
+    #: hashing, writing the cache) do not shrink with more workers.
+    total_seconds: float = 0.0
+
+    #: Set when the caller skipped the pool entirely and says why.
+    skipped_reason: str = ""
+
+    unit_seconds: dict[str, float] = field(default_factory=dict, repr=False)
+
+    @property
+    def serial_control_seconds(self) -> float:
+        """What this same ingestion would have cost in one process: the CPU
+        the units actually consumed, plus the serial remainder that no
+        number of workers can remove.
+
+        A control computed from data already held rather than by running the
+        whole thing twice. `test_estimated_gain_matches_a_real_single_process
+        _control` checks it against a genuine `--workers 1` run.
+        """
+        total = self.total_seconds or self.wall_seconds
+        non_parallel = max(0.0, total - self.wall_seconds)
+        return self.serial_seconds + non_parallel
+
+    @property
+    def gain(self) -> float:
+        """Measured speed-up of the whole ingestion stage. 1.00x means the
+        workers bought nothing."""
+        total = self.total_seconds or self.wall_seconds
+        if total <= 0.0:
+            return 1.0
+        return self.serial_control_seconds / total
+
+    @property
+    def largest_unit_share(self) -> float:
+        if self.serial_seconds <= 0.0:
+            return 0.0
+        return self.largest_unit_seconds / self.serial_seconds
+
+    @property
+    def helped(self) -> bool:
+        return self.started > 1 and self.gain >= GAIN_FLOOR
+
+    def explain_no_gain(self) -> str:
+        """Why the workers did not help. Always a measured reason."""
+        if self.unit_count == 0:
+            return "nothing to do -- no files needed parsing (cache was warm)"
+        if self.unit_count == 1:
+            return (
+                "1 file holds 100% of the work; parallelism is across files "
+                "and cannot split a single file's parse"
+            )
+        share = self.largest_unit_share
+        if share >= 0.5:
+            return (
+                f"1 file ({self.largest_unit_key}) holds {share * 100:.0f}% of the "
+                "work; parallelism is across files and cannot split a file's parse"
+            )
+        if self.started <= 1:
+            return "running in-process; no child workers were started"
+        if self.unit_count < self.started:
+            return (
+                f"{self.unit_count} unit(s) for {self.started} worker(s); "
+                f"{self.started - self.unit_count} idled"
+            )
+        return (
+            "per-file work is small enough that process startup and sending "
+            "results back cost about as much as they save"
+        )
+
+    def recommendation(self) -> str:
+        if self.helped:
+            return f"--workers {self.started} is earning its overhead on this target"
+        if self.unit_count <= 1 or self.largest_unit_share >= 0.5:
+            return (
+                "use --workers 1 for this target; more workers help when files "
+                "are many and evenly sized"
+            )
+        return "use --workers 1 for this target; the gain here does not cover the overhead"
+
+
+def render_worker_report(report: WorkerReport) -> str:
+    """Four lines, in the shape the owner asked for. `parallel gain` is
+    always present and is always a measurement of this run."""
+    lines = [
+        f"workers        {report.requested} requested, {report.started} started",
+    ]
+    if report.unit_count == 0:
+        reason = report.skipped_reason or "no files needed parsing"
+        lines.append(f"parallel gain  n/a ({reason})")
+        lines.append(f"why            {report.explain_no_gain()}")
+        lines.append(f"recommendation {report.recommendation()}")
+        return "\n".join(lines)
+
+    total = report.total_seconds or report.wall_seconds
+    lines.append(
+        f"parallel gain  {report.gain:.2f}x vs single process   "
+        f"<- measured on this target ({report.unit_count} file(s), "
+        f"{report.serial_control_seconds:.1f}s of work done in {total:.1f}s)"
+    )
+    if report.helped:
+        lines.append(
+            f"why            work spread over {report.started} workers; "
+            f"largest single file is {report.largest_unit_share * 100:.0f}% of it"
+        )
+    else:
+        lines.append(f"why            {report.explain_no_gain()}")
+    lines.append(f"recommendation {report.recommendation()}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# execution
+# ---------------------------------------------------------------------------
+
+
+def _timed(fn: Callable[[Any], Any], job: tuple[str, Any]) -> UnitResult:
+    """Times the unit with `process_time`, i.e. CPU seconds, NOT wall clock.
+
+    This matters and is not a detail. Under a pool with more workers than
+    cores, every unit's *wall* time inflates because the units are competing
+    for the same cores. Summing inflated wall times and dividing by the
+    section's wall clock produces a gain that RISES as the machine gets more
+    oversubscribed and slower -- it reported 5.06x for a run that was
+    measurably slower than the 3.02x one. The work here is CPU-bound, so CPU
+    seconds are what a single process would have spent, and they do not move
+    when the box is contended.
+    """
+    key, payload = job
+    start = time.process_time()
+    value = fn(payload)
+    return UnitResult(key=key, value=value, seconds=time.process_time() - start)
+
+
+class _Call:
+    """A picklable `functools.partial`. `ProcessPoolExecutor` pickles the
+    callable, and a closure is not picklable, so the bound function travels
+    as a module-level class instance instead."""
+
+    __slots__ = ("fn",)
+
+    def __init__(self, fn: Callable[[Any], Any]) -> None:
+        self.fn = fn
+
+    def __call__(self, job: tuple[str, Any]) -> UnitResult:
+        return _timed(self.fn, job)
+
+
+def run_units(
+    fn: Callable[[Any], Any],
+    jobs: Sequence[tuple[str, Any]],
+    workers: int,
+    report: WorkerReport,
+) -> dict[str, Any]:
+    """Run every `(key, payload)` job through `fn` and return `{key: value}`.
+
+    The caller must re-derive its own order from the keys; nothing about the
+    returned mapping's construction order is allowed to reach the output.
+
+    Falls back to in-process, recording why, whenever a pool cannot help or
+    cannot start. A failed pool must never become a failed analysis: the work
+    is still done, just serially, and the report says so.
+    """
+    report.requested = workers
+    report.unit_count = len(jobs)
+
+    if not jobs:
+        report.started = 1
+        report.skipped_reason = "no files needed parsing"
+        return {}
+
+    if workers <= 1 or len(jobs) == 1:
+        if workers > 1 and len(jobs) == 1:
+            report.skipped_reason = (
+                "1 unit of work: a pool was not started because one worker "
+                "would do all of it and the rest would idle"
+            )
+        report.started = 1
+        started_at = time.perf_counter()
+        out: dict[str, Any] = {}
+        for job in jobs:
+            r = _timed(fn, job)
+            out[r.key] = r.value
+            report.unit_seconds[r.key] = r.seconds
+        report.wall_seconds = time.perf_counter() - started_at
+        report.serial_seconds = sum(report.unit_seconds.values())
+        _record_largest(report)
+        return out
+
+    effective = min(workers, len(jobs))
+    started_at = time.perf_counter()
+    try:
+        with ProcessPoolExecutor(max_workers=effective) as pool:
+            results = list(pool.map(_Call(fn), jobs, chunksize=1))
+    except Exception as exc:  # pragma: no cover - platform dependent
+        report.started = 1
+        report.skipped_reason = f"pool unavailable ({type(exc).__name__}); ran in-process"
+        report.wall_seconds = 0.0
+        report.unit_seconds.clear()
+        return run_units(fn, jobs, 1, report)
+
+    report.started = effective
+    out = {}
+    for r in results:
+        out[r.key] = r.value
+        report.unit_seconds[r.key] = r.seconds
+    report.wall_seconds = time.perf_counter() - started_at
+    report.serial_seconds = sum(report.unit_seconds.values())
+    _record_largest(report)
+    return out
+
+
+def _record_largest(report: WorkerReport) -> None:
+    if not report.unit_seconds:
+        return
+    # Sorted by (-seconds, key) so ties break on the name, never on dict
+    # insertion order -- the report is printed and an owner comparing two
+    # runs must not see a different file named for the same timings.
+    key = sorted(report.unit_seconds.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+    report.largest_unit_key = key
+    report.largest_unit_seconds = report.unit_seconds[key]
+
+
+# ==========================================================================
 # ingest/inventory.py
 # ==========================================================================
 
@@ -3020,6 +3356,36 @@ execs, evals or unpickles anything under the walked root -- `ast` and
 
 
 
+
+
+@dataclass
+class _Step:
+    """One file's place in the output, decided serially in walk order before
+    any worker starts. Exactly one of `job_key` (work still to do) or the
+    inline `elements`/`unresolved` (already known) is populated."""
+
+    elements: list[Element] = field(default_factory=list)
+    unresolved: list[Unresolved] = field(default_factory=list)
+    #: Set when this file's records came from the cache; carried forward.
+    reuse_key: str | None = None
+    #: Set when this file still has to be parsed; the key into the results.
+    job_key: str | None = None
+    content_hash: str = ""
+
+
+def _run_unit(payload: tuple) -> tuple[list[Element], list[Unresolved]]:
+    """The whole of one file's work, and the only thing a worker ever runs.
+
+    Module level and pure: a `ProcessPoolExecutor` pickles what it is given,
+    and this takes bytes and returns dataclasses, both of which pickle. It
+    parses; it does not read files, write the cache, or order anything.
+    """
+    tag = payload[0]
+    if tag == "python":
+        _, module, relkey, raw, local_top_names = payload
+        return Ingestor._parse_python(module, relkey, raw, local_top_names)
+    _, kind, relkey, raw = payload
+    return parse_data_file(kind, relkey, raw)
 
 
 def _default_cache_dir() -> Path:
@@ -3056,10 +3422,19 @@ class Ingestor:
     target -- `inventory(root)` itself takes no extra arguments, matching the
     contract's `IngestionCard` protocol exactly."""
 
-    def __init__(self, cache_dir: str | Path | None = None) -> None:
+    def __init__(
+        self, cache_dir: str | Path | None = None, workers: int | None = None
+    ) -> None:
         self.cache_dir = Path(cache_dir) if cache_dir is not None else _default_cache_dir()
+        #: `None` = auto (see `parallel.resolve_workers`); 0 or 1 = in-process.
+        self.workers = resolve_workers(workers)
+        #: Filled in by every `inventory()` call: what the workers bought.
+        #: Read by the CLI and printed; never written into an artifact,
+        #: because it is a timing and constraint 4 forbids timings in output.
+        self.worker_report = WorkerReport()
 
     def inventory(self, root: str) -> tuple[list[Element], list[Unresolved]]:
+        stage_started = time.perf_counter()
         root_path = Path(root)
         root_resolved = root_path.resolve()
         files = list(walk(root))
@@ -3074,31 +3449,51 @@ class Ingestor:
         unresolved: list[Unresolved] = []
         module_names_seen: set[str] = set()
 
+        # ---- pass 1: plan, serially. -------------------------------------
+        # Everything that touches the filesystem, the cache, or the ordering
+        # of records happens here, in walk order, in this process. A worker
+        # only ever receives bytes already in memory and returns facts; it
+        # never reads a file, never sees the cache, and never decides where
+        # its output lands. That is what keeps the parallel run byte-identical
+        # to the in-process one (and to itself) rather than merely usually
+        # equal.
+        steps: list[_Step] = []
+        jobs: list[tuple[str, tuple]] = []
+
         for f in files:
             relkey = _relative_to_root(f.path, root_resolved)
             if relkey is None:
-                unresolved.append(
-                    Unresolved(
-                        id=file_id(f.path.as_posix()),
-                        reason=UnresolvedReason.AMBIGUOUS,
-                        span=SourceSpan(path=f.path.name, line=1),
-                        description=(
-                            f"{f.path} resolves outside the target root {root_resolved} "
-                            "(a symlink escaping the tree, or the root itself is a symlink "
-                            "elsewhere) -- no root-relative path can be emitted for it"
-                        ),
+                steps.append(
+                    _Step(
+                        unresolved=[
+                            Unresolved(
+                                id=file_id(f.path.as_posix()),
+                                reason=UnresolvedReason.AMBIGUOUS,
+                                span=SourceSpan(path=f.path.name, line=1),
+                                description=(
+                                    f"{f.path} resolves outside the target root "
+                                    f"{root_resolved} (a symlink escaping the tree, or "
+                                    "the root itself is a symlink elsewhere) -- no "
+                                    "root-relative path can be emitted for it"
+                                ),
+                            )
+                        ]
                     )
                 )
                 continue
             try:
                 raw = f.path.read_bytes()
             except OSError as exc:
-                unresolved.append(
-                    Unresolved(
-                        id=file_id(relkey),
-                        reason=UnresolvedReason.DECODE_ERROR,
-                        span=SourceSpan(path=relkey, line=1),
-                        description=f"could not read {relkey}: {exc}",
+                steps.append(
+                    _Step(
+                        unresolved=[
+                            Unresolved(
+                                id=file_id(relkey),
+                                reason=UnresolvedReason.DECODE_ERROR,
+                                span=SourceSpan(path=relkey, line=1),
+                                description=f"could not read {relkey}: {exc}",
+                            )
+                        ]
                     )
                 )
                 continue
@@ -3110,38 +3505,72 @@ class Ingestor:
                 module_names_seen.add(module)
 
                 if len(raw) > MAX_FILE_BYTES:
+                    steps.append(
+                        _Step(
+                            unresolved=[
+                                Unresolved(
+                                    id=module,
+                                    reason=UnresolvedReason.TOO_LARGE,
+                                    span=SourceSpan(path=relkey, line=1),
+                                    description=(
+                                        f"{relkey} is {len(raw)} bytes, exceeds the "
+                                        f"{MAX_FILE_BYTES}-byte parse limit"
+                                    ),
+                                )
+                            ]
+                        )
+                    )
+                    continue
+                payload: tuple = ("python", module, relkey, raw, local_top_names)
+            else:
+                payload = ("data", f.kind, relkey, raw)
+
+            cached = cache.get(relkey, content_hash)
+            if cached is not None:
+                els, unr = cached
+                steps.append(_Step(elements=els, unresolved=unr, reuse_key=relkey))
+                continue
+
+            # A unit is a WHOLE file and is never split. Half a function is
+            # not parseable, and the IDs minted from it would be wrong rather
+            # than merely ugly.
+            steps.append(_Step(job_key=relkey, content_hash=content_hash))
+            jobs.append((relkey, payload))
+
+        # ---- pass 2: do the work, in-process or across the pool. ---------
+        self.worker_report = WorkerReport()
+        results = run_units(_run_unit, jobs, self.workers, self.worker_report)
+
+        # ---- pass 3: assemble, serially, in walk order. ------------------
+        # Results are looked up by key in the order pass 1 recorded, so the
+        # order workers happened to finish in cannot reach the output. The
+        # parent owns every cache write: no child ever touches the cache
+        # file, so there is nothing for concurrent writes to corrupt.
+        for step in steps:
+            if step.job_key is not None:
+                got = results.get(step.job_key)
+                if got is None:  # pragma: no cover - run_units returns every key
                     unresolved.append(
                         Unresolved(
-                            id=module,
-                            reason=UnresolvedReason.TOO_LARGE,
-                            span=SourceSpan(path=relkey, line=1),
+                            id=file_id(step.job_key),
+                            reason=UnresolvedReason.AMBIGUOUS,
+                            span=SourceSpan(path=step.job_key, line=1),
                             description=(
-                                f"{relkey} is {len(raw)} bytes, exceeds the "
-                                f"{MAX_FILE_BYTES}-byte parse limit"
+                                f"worker returned no result for {step.job_key}; "
+                                "the file was not analysed"
                             ),
                         )
                     )
                     continue
-
-                cached = cache.get(relkey, content_hash)
-                if cached is not None:
-                    els, unr = cached
-                    cache.reuse(relkey)
-                else:
-                    els, unr = self._parse_python(module, relkey, raw, local_top_names)
-                    cache.put(relkey, content_hash, els, unr)
+                els, unr = got
+                cache.put(step.job_key, step.content_hash, els, unr)
                 elements.extend(els)
                 unresolved.extend(unr)
-            else:
-                cached = cache.get(relkey, content_hash)
-                if cached is not None:
-                    els, unr = cached
-                    cache.reuse(relkey)
-                else:
-                    els, unr = parse_data_file(f.kind, relkey, raw)
-                    cache.put(relkey, content_hash, els, unr)
-                elements.extend(els)
-                unresolved.extend(unr)
+                continue
+            if step.reuse_key is not None:
+                cache.reuse(step.reuse_key)
+            elements.extend(step.elements)
+            unresolved.extend(step.unresolved)
 
         cache.save()
 
@@ -3149,6 +3578,12 @@ class Ingestor:
 
         elements, collision_unresolved = _resolve_id_collisions(elements)
         unresolved.extend(collision_unresolved)
+
+        # The gain the owner feels is over the WHOLE stage, including the
+        # serial walking, reading, hashing and cache writing that no worker
+        # count removes. Recording it here rather than around the pool alone
+        # is the difference between an honest number and a flattering one.
+        self.worker_report.total_seconds = time.perf_counter() - stage_started
 
         return elements, unresolved
 
@@ -3262,9 +3697,18 @@ def _resolve_id_collisions(elements: list[Element]) -> tuple[list[Element], list
     return kept, unresolved
 
 
-def inventory(root: str, cache_dir: str | Path | None = None) -> tuple[list[Element], list[Unresolved]]:
-    """Functional convenience wrapper around `Ingestor`."""
-    return Ingestor(cache_dir=cache_dir).inventory(root)
+def inventory(
+    root: str,
+    cache_dir: str | Path | None = None,
+    workers: int | None = None,
+) -> tuple[list[Element], list[Unresolved]]:
+    """Functional convenience wrapper around `Ingestor`.
+
+    `workers` is `None` for auto, 0 or 1 for in-process. Callers that
+    want the worker-effectiveness report build an `Ingestor` themselves
+    and read `.worker_report`; this wrapper keeps the two-value return
+    the `IngestionCard` contract specifies."""
+    return Ingestor(cache_dir=cache_dir, workers=workers).inventory(root)
 
 
 # ==========================================================================
@@ -17302,6 +17746,15 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "ENGINE": "AmunEV_Engine_V2.py",
     "RUNNER": "bin/go_live.py",
     "RUN_ARGS": [],
+
+    # Child processes for ingestion. 0 = auto (the machine's usable cores,
+    # less one, so an analysis does not take the whole box); 1 = in-process.
+    #
+    # Parallelism here is ACROSS FILES: one file is one unit and a unit is
+    # never split, because half a function is not parseable. A target that is
+    # one large file therefore has one unit, and every run prints what the
+    # workers actually bought rather than only how many were asked for.
+    "WORKERS": 0,
 }
 
 _KEY_TO_FIELD: dict[str, str] = {
@@ -17321,6 +17774,7 @@ _KEY_TO_FIELD: dict[str, str] = {
     "ENGINE": "engine",
     "RUNNER": "runner",
     "RUN_ARGS": "run_args",
+    "WORKERS": "workers",
 }
 
 _LIST_KEYS = frozenset({"SINKS", "ENTRIES", "CONFIGS", "ORDER", "SPORTS", "RUN_ARGS"})
@@ -17354,6 +17808,8 @@ class Settings:
     engine: str = "AmunEV_Engine_V2.py"
     runner: str = "bin/go_live.py"
     run_args: tuple[str, ...] = ()
+    #: 0 = auto, 1 = in-process, N = ask for N child processes.
+    workers: int = 0
 
     def selected_sports(self) -> tuple[str, ...]:
         """The sports this run covers. ``SPORT`` empty means all of ``SPORTS``.
@@ -17390,6 +17846,13 @@ class Settings:
                         f"not {raw!r}."
                     )
                 values["mode"] = int(raw)
+            elif key == "WORKERS":
+                if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+                    raise SettingsError(
+                        f"WORKERS must be a non-negative integer -- 0 for auto, "
+                        f"1 for in-process, N for N child processes -- not {raw!r}."
+                    )
+                values["workers"] = int(raw)
             elif key in _LIST_KEYS:
                 if isinstance(raw, (str, bytes)) or not isinstance(raw, (list, tuple)):
                     raise SettingsError(
@@ -17931,6 +18394,8 @@ def _default_analyse(source_root: Path, out_dir: Path, settings: Settings) -> di
         config_paths=settings.configs,
         strict_gate=False,
         env_root=env,
+        # 0 in the settings means auto, which `Ingestor` spells `None`.
+        workers=settings.workers or None,
     )
     summary["exit_code"] = code
     return summary
@@ -31926,6 +32391,340 @@ def render_to_file_with_runtime(
 
 
 # ==========================================================================
+# doctor.py
+# ==========================================================================
+
+"""`metatron doctor` — one file the owner can send back after a real run.
+
+It answers three questions and nothing else:
+
+1. How long does each stage take on this machine, on this target?
+2. Do workers help this target, and if not, why not?
+3. What is this machine and this interpreter?
+
+WHAT IT DELIBERATELY DOES NOT CONTAIN. No source code, no element names, no
+docstrings, no literals, no configuration values — only timings, counts,
+versions, and the shape of the machine. The one thing it names from the
+target is the ROOT-RELATIVE PATH of the file that dominates the work, because
+that is the answer to "why did workers not help" and a path is not content.
+The header of the file says so, so the owner can see what they are sending
+before they send it.
+
+It never executes the target. `doctor` is Mode B only; it calls the same
+static pipeline `analyze` does.
+"""
+
+
+
+
+#: The worker counts measured. 1 is the control; the rest are the question.
+SCALING_POINTS: tuple[int, ...] = (1, 4, 8)
+
+_HEADER = """\
+METATRON DOCTOR
+This file is safe to send. It contains timings, counts, interpreter and
+machine details, and the root-relative path of the file that dominated the
+work. It contains no source code, no element names and no values from the
+analysed target. Nothing in the target was executed to produce it.
+"""
+
+
+@dataclass
+class ScalingPoint:
+    workers_requested: int
+    workers_started: int
+    seconds: float
+    gain: float
+    unit_count: int
+    largest_unit_key: str
+    largest_unit_share: float
+    report_text: str
+
+    def as_dict(self) -> dict[str, Any]:
+        # Milliseconds as ints and ratios as pre-formatted strings, because
+        # `canonical_dumps` refuses floats outright -- they are not
+        # byte-identical across platforms, and this project keeps one
+        # serialiser rather than making an exception for a timing file.
+        return {
+            "gain_vs_single_process": f"{self.gain:.3f}",
+            "largest_unit_key": self.largest_unit_key,
+            "largest_unit_share": f"{self.largest_unit_share:.4f}",
+            "millis": int(round(self.seconds * 1000)),
+            "unit_count": self.unit_count,
+            "workers_requested": self.workers_requested,
+            "workers_started": self.workers_started,
+        }
+
+
+@dataclass
+class DoctorResult:
+    target: str
+    target_kind: str
+    file_count: int = 0
+    python_file_count: int = 0
+    total_bytes: int = 0
+    largest_file_bytes: int = 0
+    largest_file_key: str = ""
+    elements: int = 0
+    unresolved: int = 0
+    stage_millis: dict[str, int] = field(default_factory=dict)
+    scaling: list[ScalingPoint] = field(default_factory=list)
+    cache_dir: str = ""
+    cache_was_warm: bool = False
+    errors: list[str] = field(default_factory=list)
+    machine: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "cache": {"dir": self.cache_dir, "warm_at_start": self.cache_was_warm},
+            "counts": {
+                "elements": self.elements,
+                "files": self.file_count,
+                "largest_file_bytes": self.largest_file_bytes,
+                "largest_file_key": self.largest_file_key,
+                "python_files": self.python_file_count,
+                "total_bytes": self.total_bytes,
+                "unresolved": self.unresolved,
+            },
+            "errors": list(self.errors),
+            "machine": dict(self.machine),
+            "scaling": [p.as_dict() for p in self.scaling],
+            "stage_millis": dict(self.stage_millis),
+            "target": {"kind": self.target_kind, "path": self.target},
+        }
+
+
+def machine_shape() -> dict[str, Any]:
+    """Interpreter and machine. `cpu_budget` rather than `os.cpu_count`
+    because a container pinned to 2 of 64 cores reports 64, and that
+    difference is exactly what a worker-count question turns on."""
+    return {
+        "cpu_count": os.cpu_count() or 0,
+        "cpu_usable": cpu_budget(),
+        "machine": platform.machine(),
+        "platform": platform.platform(terse=True),
+        "python_build": platform.python_implementation(),
+        "python_version": platform.python_version(),
+        "workers_auto_would_be": resolve_workers(None),
+    }
+
+
+def self_target(tmp_root: Path) -> tuple[Path, str]:
+    """The tool's own source, as something `analyze` can walk.
+
+    Running as a package, that is the package directory. Running as the
+    single-file build there is no package directory, so the one file is
+    copied into a scratch directory — which also happens to reproduce the
+    owner's own shape exactly: one large module, one unit of work.
+    """
+    import cascade_map
+
+    pkg_paths = list(getattr(cascade_map, "__path__", []) or [])
+    if pkg_paths:
+        return Path(pkg_paths[0]), "metatron's own package"
+
+    own = Path(getattr(sys.modules["__main__"], "__file__", "") or cascade_map.__file__)
+    staged = tmp_root / "self"
+    staged.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(own, staged / own.name)
+    return staged, "metatron's own single-file build"
+
+
+def _measure_tree(root: Path) -> tuple[int, int, int, int, str]:
+    """File counts and sizes, read-only. Sorted so two runs on the same tree
+    name the same largest file when two files tie on size."""
+
+    files = sorted(walk(str(root)), key=lambda f: f.path.as_posix())
+    total = 0
+    py = 0
+    largest = 0
+    largest_key = ""
+    for f in files:
+        try:
+            size = f.path.stat().st_size
+        except OSError:
+            continue
+        total += size
+        if f.kind == "python":
+            py += 1
+        if size > largest:
+            largest = size
+            try:
+                largest_key = f.path.relative_to(root).as_posix()
+            except ValueError:
+                largest_key = f.path.name
+    return len(files), py, total, largest, largest_key
+
+
+def run_doctor(
+    target: Path | None = None,
+    *,
+    scaling_points: tuple[int, ...] = SCALING_POINTS,
+    cache_dir: Path | None = None,
+) -> DoctorResult:
+    """Measure. Never executes the target; `analyze` is Mode B."""
+
+    with tempfile.TemporaryDirectory(prefix="metatron-doctor-") as tmp:
+        tmp_root = Path(tmp)
+        if target is None:
+            root, kind = self_target(tmp_root)
+        else:
+            root, kind = target, "owner-supplied target"
+
+        result = DoctorResult(target=str(root), target_kind=kind, machine=machine_shape())
+
+        if not root.is_dir():
+            result.errors.append(f"not a directory: {root}")
+            return result
+
+        (
+            result.file_count,
+            result.python_file_count,
+            result.total_bytes,
+            result.largest_file_bytes,
+            result.largest_file_key,
+        ) = _measure_tree(root)
+
+        # Stage timings, through the real pipeline, with a cold cache of its
+        # own so the numbers describe the work and not a previous run.
+        pipeline_cache = cache_dir or (tmp_root / "cache")
+        result.cache_dir = str(pipeline_cache)
+        result.cache_was_warm = pipeline_cache.exists() and any(pipeline_cache.iterdir())
+        try:
+            _, summary = analyze(
+                root,
+                tmp_root / "out",
+                cache_dir=pipeline_cache,
+                strict_gate=False,
+                workers=1,
+                worker_report_sink=lambda _text: None,
+            )
+            result.elements = int(summary.get("elements", 0))
+            result.unresolved = int(summary.get("unresolved", 0))
+            stages = summary.get("stage_millis") or {}
+            result.stage_millis = {str(k): int(v) for k, v in sorted(stages.items())}
+        except Exception as exc:  # pragma: no cover - reported, never swallowed
+            result.errors.append(f"pipeline: {type(exc).__name__}: {exc}")
+
+        # Worker scaling. Ingestion only, because ingestion is the only stage
+        # that takes workers; a cold cache per point, because a warm one makes
+        # every point instant and proves nothing.
+        for n in scaling_points:
+            scale_cache = tmp_root / f"cache-w{n}"
+            ing = Ingestor(cache_dir=scale_cache, workers=n)
+            started = time.perf_counter()
+            try:
+                ing.inventory(str(root))
+            except Exception as exc:  # pragma: no cover
+                result.errors.append(f"workers={n}: {type(exc).__name__}: {exc}")
+                continue
+            elapsed = time.perf_counter() - started
+            rep = ing.worker_report
+            result.scaling.append(
+                ScalingPoint(
+                    workers_requested=n,
+                    workers_started=rep.started,
+                    seconds=elapsed,
+                    gain=rep.gain,
+                    unit_count=rep.unit_count,
+                    largest_unit_key=rep.largest_unit_key,
+                    largest_unit_share=rep.largest_unit_share,
+                    report_text=render_worker_report(rep),
+                )
+            )
+
+    return result
+
+
+def render(result: DoctorResult) -> str:
+    """The .log body. Plain text, because it is read by a person."""
+    lines = [_HEADER, ""]
+    lines.append(f"target          {result.target}")
+    lines.append(f"                ({result.target_kind})")
+    lines.append(
+        f"size            {result.file_count:,} file(s), "
+        f"{result.python_file_count:,} python, {result.total_bytes / 1e6:.2f} MB"
+    )
+    if result.largest_file_key:
+        lines.append(
+            f"largest file    {result.largest_file_key} "
+            f"({result.largest_file_bytes / 1e6:.2f} MB, "
+            f"{result.largest_file_bytes / max(result.total_bytes, 1) * 100:.0f}% of the tree)"
+        )
+    lines.append(f"elements        {result.elements:,}")
+    lines.append(f"unresolved      {result.unresolved:,}")
+    lines.append("")
+
+    lines.append("MACHINE")
+    for key in sorted(result.machine):
+        lines.append(f"  {key:<24} {result.machine[key]}")
+    lines.append("")
+
+    lines.append("CACHE")
+    lines.append(f"  location                 {result.cache_dir}")
+    lines.append(f"  warm at start            {'yes' if result.cache_was_warm else 'no (cold)'}")
+    lines.append("")
+
+    lines.append("STAGE TIMINGS (single process)")
+    if result.stage_millis:
+        total = sum(result.stage_millis.values())
+        for name in sorted(result.stage_millis, key=lambda k: (-result.stage_millis[k], k)):
+            ms = result.stage_millis[name]
+            share = ms / total * 100 if total else 0.0
+            lines.append(f"  {name:<24} {ms / 1000:8.2f}s  {share:5.1f}%")
+        lines.append(f"  {'TOTAL':<24} {total / 1000:8.2f}s")
+    else:
+        lines.append("  (not measured -- see ERRORS)")
+    lines.append("")
+
+    lines.append("WORKER SCALING (ingestion only, cold cache per point)")
+    if result.scaling:
+        control = next((p for p in result.scaling if p.workers_requested == 1), None)
+        for p in result.scaling:
+            measured = (
+                f"  {control.seconds / p.seconds:5.2f}x measured vs --workers 1"
+                if control and p.seconds > 0
+                else ""
+            )
+            lines.append(
+                f"  --workers {p.workers_requested:<3} {p.workers_started} started  "
+                f"{p.seconds:7.2f}s{measured}"
+            )
+        lines.append("")
+        lines.append("  verdict, from the highest worker count measured:")
+        for line in result.scaling[-1].report_text.splitlines():
+            lines.append(f"    {line}")
+    else:
+        lines.append("  (not measured -- see ERRORS)")
+    lines.append("")
+
+    lines.append("ERRORS")
+    if result.errors:
+        for err in result.errors:
+            lines.append(f"  {err}")
+    else:
+        lines.append("  none")
+    return "\n".join(lines) + "\n"
+
+
+def utc_stamp(now: float | None = None) -> str:
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now if now is not None else time.time()))
+
+
+def write_report(result: DoctorResult, out_dir: Path, stamp: str | None = None) -> Path:
+    """Writes `<out>/metatron_doctor_<UTC>.log` and the same data as JSON
+    beside it. Returns the .log path -- the one the owner sends."""
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = stamp or utc_stamp()
+    log_path = out_dir / f"metatron_doctor_{stamp}.log"
+    json_path = out_dir / f"metatron_doctor_{stamp}.json"
+    log_path.write_text(render(result), encoding="utf-8")
+    json_path.write_text(canonical_dumps(result.as_dict()), encoding="utf-8")
+    return log_path
+
+
+# ==========================================================================
 # cli.py
 # ==========================================================================
 
@@ -32101,6 +32900,8 @@ def analyze(
     cache_dir: Path | None = None,
     strict_gate: bool = True,
     env_root: Path | None = None,
+    workers: int | None = None,
+    worker_report_sink: Callable[[str], None] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Run the static pipeline over *root* and write artifacts to *out_dir*.
 
@@ -32131,9 +32932,16 @@ def analyze(
         _stage_started = now
 
     # Card 1 — inventory.
-    elements, unresolved = inventory(str(root), cache_dir=cache_dir)
+    #
+    # `Ingestor` rather than the `inventory()` wrapper so the worker report
+    # can be read back. That report is PRINTED and never written into an
+    # artifact: it is wall-clock, and constraint 4 says identical input gives
+    # identical bytes.
+    ingestor = Ingestor(cache_dir=cache_dir, workers=workers)
+    elements, unresolved = ingestor.inventory(str(root))
     summary["elements"] = len(elements)
     _stage("inventory")
+    (worker_report_sink or print)(render_worker_report(ingestor.worker_report))
 
     # Card 2 — resolution.
     resolver = Resolver(root, config_paths=tuple(config_paths))
@@ -32936,6 +33744,7 @@ def _settings_from_args(args: Any) -> Settings:
         "ORDER": flag("order"),
         "SCENARIOS": str(flag("scenarios")) if flag("scenarios") else None,
         "SCENARIO": flag("scenario"),
+        "WORKERS": flag("workers"),
     }
     for key, value in overrides.items():
         if value is not None:
@@ -32999,6 +33808,13 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--config", action="append", default=[], metavar="PATH",
                      help="config file that wires components by name; repeatable")
     run.add_argument("--cache", type=Path, default=None)
+    run.add_argument("--workers", type=int, default=None, metavar="N",
+                     help="child processes for ingestion. Omitted or 0 = auto "
+                          "(usable cores less one); 1 = in-process, which is how "
+                          "this is debugged and always stays available. "
+                          "Parallelism is ACROSS FILES and never splits one file, "
+                          "so a single-large-file target gains nothing -- the run "
+                          "measures and prints what the workers actually bought.")
     run.add_argument("--env", type=Path, default=None, metavar="PATH",
                      help="interpreter tree whose installed package metadata to "
                           "read (.venv-target in production). Read as text; nothing "
@@ -33007,6 +33823,19 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--no-gate", action="store_true",
                      help="write artifacts even if the completeness gate fails, "
                           "and exit 0. The gate still reports.")
+
+    doc = sub.add_parser(
+        "doctor",
+        help="measure this machine on this target and write one file you can send",
+    )
+    doc.add_argument("--out", type=Path, default=Path("out/doctor"),
+                     help="where to write metatron_doctor_<UTC>.log and .json")
+    doc.add_argument("--target", type=Path, default=None, metavar="PATH",
+                     help="the tree to measure. Omitted, metatron measures its "
+                          "OWN source. Nothing under PATH is ever executed.")
+    doc.add_argument("--workers", type=int, action="append", default=None, metavar="N",
+                     help="a worker count to measure; repeatable. "
+                          "Default 1, 4 and 8.")
 
     cmp_ = sub.add_parser("diff", help="compare two analysed output directories")
     cmp_.add_argument("before", type=Path)
@@ -33055,6 +33884,8 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="overrides SCENARIOS (MODE 2 only)")
     hist.add_argument("--scenario", default=None,
                       help="overrides SCENARIO (MODE 2 only)")
+    hist.add_argument("--workers", type=int, default=None, metavar="N",
+                      help="overrides WORKERS. 0 = auto, 1 = in-process.")
     hist.add_argument("--report", action="store_true",
                       help="print the whole history, not only what this run did")
     _add_sport_flags(hist)
@@ -33116,9 +33947,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             cache_dir=args.cache,
             strict_gate=not args.no_gate,
             env_root=args.env,
+            workers=args.workers,
         )
         print(_report(summary, args.out, code))
         return EXIT_OK if args.no_gate else code
+
+    if args.command == "doctor":
+
+        if args.target is not None and not args.target.is_dir():
+            print(f"not a directory: {args.target}", file=sys.stderr)
+            return EXIT_USAGE
+        points = tuple(args.workers) if args.workers else SCALING_POINTS
+        result = run_doctor(args.target, scaling_points=points)
+        path = write_report(result, args.out)
+        # The full path last, on its own line, so it can be copied straight
+        # out of the terminal.
+        print(f"Measured {result.target}")
+        print(f"  {result.elements:,} elements, {result.file_count:,} file(s)")
+        if result.errors:
+            print(f"  {len(result.errors)} error(s) recorded in the report")
+        print("Send this file:")
+        print(path.resolve())
+        return EXIT_OK
 
     if args.command == "diff":
         changes, impacts = diff_snapshots(
