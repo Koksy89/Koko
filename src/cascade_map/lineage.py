@@ -92,6 +92,7 @@ from .contracts.interfaces import (
     Method,
     Provenance,
     Slice,
+    SliceScope,
     SourceSpan,
     Unresolved,
     UnresolvedReason,
@@ -824,14 +825,103 @@ class LineageTracer:
             )
         )
 
-    def default_slices(self) -> tuple[Slice, ...]:
-        """A backward and a forward slice for every feature, key and sink."""
-        roots = [*self.feature_ids(), *self.key_node_ids(), *self.sink_ids]
+    def has_lineage_node(self, node_id: str) -> bool:
+        """Whether a slice rooted here would be a slice of something.
+
+        A root that is not a lineage node still produces a `Slice` -- an empty
+        one, with an `Unresolved` saying why -- which is the right answer to an
+        explicit request and the wrong one to an automatic top-up. Callers that
+        add roots on the owner's behalf ask this first.
+        """
+        return (
+            node_id in self._out
+            or node_id in self._in
+            or node_id in self._barriers
+        )
+
+    def all_slice_roots(self) -> tuple[str, ...]:
+        """Every root `SliceScope.ALL` precomputes: feature, key and sink."""
+        return tuple(
+            sorted({*self.feature_ids(), *self.key_node_ids(), *self.sink_ids})
+        )
+
+    def decision_slice_roots(self) -> tuple[str, ...]:
+        """The roots that bear on a decision, per `SliceScope.DECISION`.
+
+        Declared sinks, what those sinks read -- the sources of the lineage
+        edges that land on them, one hop, which is "what the decision reads"
+        stated in this card's own terms -- and engineered features. Bounded by
+        the number of decision inputs rather than by the size of the codebase.
+
+        Container keys are deliberately NOT here. A key that no config declared
+        a feature is a subscript this card found, not something an owner named
+        as bearing on the decision, and on a single-module target they are
+        every root there is: 7,502 of them on the 14.6 MB file, which is the
+        whole of the quadratic. Each one is still answerable on demand from
+        `lineage.jsonl`, and `--slice-root` precomputes any of them by name.
+        """
+        roots = {*self.sink_ids, *self.feature_ids()}
+        for sink in self.sink_ids:
+            for source, _ in self._in.get(sink, ()):
+                roots.add(source)
+        return tuple(sorted(roots))
+
+    def slice_roots(
+        self, scope: SliceScope, extra_roots: Sequence[str] = ()
+    ) -> tuple[str, ...]:
+        """The roots a given scope precomputes, plus any explicitly asked for.
+
+        `extra_roots` is honoured at every scope including `NONE`: someone
+        chasing one feature should not have to turn on the exhaustive mode to
+        get it.
+        """
+        if scope is SliceScope.ALL:
+            chosen = set(self.all_slice_roots())
+        elif scope is SliceScope.DECISION:
+            chosen = set(self.decision_slice_roots())
+        else:
+            chosen = set()
+        chosen.update(extra_roots)
+        return tuple(sorted(chosen))
+
+    def default_slices(
+        self,
+        scope: SliceScope = SliceScope.ALL,
+        extra_roots: Sequence[str] = (),
+    ) -> tuple[Slice, ...]:
+        """A backward and a forward slice for every root the scope names.
+
+        The scope decides HOW MANY slices are precomputed, never how complete
+        any one of them is. No slice returned here is truncated, sampled or
+        capped -- a half-slice answering "what produces this feature" would be
+        a wrong answer wearing the shape of a right one.
+
+        The default is `ALL`, which is what this method has always done, so a
+        caller that does not pass a scope gets the exhaustive answer. The
+        command line's default is `DECISION`, and it says so in the summary and
+        in `manifest.json`.
+        """
         out: list[Slice] = []
-        for root in sorted(set(roots)):
+        for root in self.slice_roots(scope, extra_roots):
             out.append(self.slice(root, "backward"))
             out.append(self.slice(root, "forward"))
         return tuple(sorted(out, key=lambda s: s.id))
+
+    def estimated_slice_bytes(self, slices: Sequence[Slice]) -> int:
+        """Roughly how large `slices.jsonl` will be, before serialising it.
+
+        Counted from the ids the slices already hold rather than from a rule of
+        thumb, so the number an owner is warned with is derived from this run
+        and not from another one. It is an estimate because it prices each id
+        at its own length plus JSON's quoting and separator, and ignores the
+        few fixed fields per record.
+        """
+        total = 0
+        for sliced in slices:
+            for group in (sliced.member_ids, sliced.edge_ids, sliced.barrier_ids):
+                total += sum(len(one) + 3 for one in group)
+            total += 200
+        return total
 
     def emit(self, slices: Sequence[Slice] | None = None) -> dict[str, str]:
         """The card's three artifacts, byte-identical across runs."""

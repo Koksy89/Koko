@@ -165,6 +165,26 @@ METATRON_SETTINGS = {
     # Config files that wire components by name, relative to each version root.
     "CONFIGS": [],
 
+    # Which roots get a PRECOMPUTED slice in slices.jsonl. This decides HOW
+    # MANY slices are stored, never how complete any one of them is: every
+    # slice emitted is exact and whole, and none is ever truncated or sampled.
+    #
+    #   "DECISION"  default. The roots that bear on a decision: your SINKS,
+    #               what they read, engineered features, and the root of any
+    #               finding. Bounded by the number of decision inputs, not by
+    #               the size of your codebase.
+    #   "ALL"       every root. Exhaustive, correct, and quadratic in OUTPUT --
+    #               measured 211 MB of slices for 1.4 MB of source, 1.6 GB for
+    #               5.6 MB, and gigabytes for a 14.8 MB engine. The run says so
+    #               before it writes them.
+    #   "NONE"      none at all. lineage.jsonl still holds every edge, so any
+    #               slice remains answerable on demand.
+    "SLICES": "DECISION",
+
+    # Roots to precompute WHATEVER SLICES says, by element or feature id.
+    # Chasing one feature should never mean switching to the exhaustive mode.
+    "SLICE_ROOTS": [],
+
     # Child processes for ingestion. 0 = auto (usable cores less one, so an
     # analysis does not take the whole box); 1 = in-process, which is how
     # anything here is debugged and always stays available.
@@ -252,7 +272,7 @@ Three decisions are encoded here, settled as Q5, Q6 and Q7 in OPEN_QUESTIONS.md:
 
 
 
-SCHEMA_VERSION = "1.4.0"
+SCHEMA_VERSION = "1.5.0"
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -279,6 +299,7 @@ __all__ = [
     "LineageEdge",
     "Barrier",
     "Slice",
+    "SliceScope",
     "FindingKind",
     "Finding",
     "ChangeKind",
@@ -937,10 +958,48 @@ class Slice:
     """"backward" -- what produces this. "forward" -- what a change affects."""
 
     member_ids: tuple[str, ...]
+    """Every element in the slice. Exact, never sampled.
+
+    This is the field that makes `slices.jsonl` quadratic in OUTPUT, and the
+    reason `SliceScope` exists. N roots whose slices each hold O(N) members is
+    O(N^2) ids: measured at 211 MB for a 1.4 MB input, 1.6 GB for 5.6 MB, and
+    an estimated 9 GB for the 14.8 MB target this tool was built for. The cost
+    is in emitting a slice for every possible root, not in any single slice.
+
+    No slice is ever truncated to save space. A half-slice answering "what
+    produces this" would be a wrong answer wearing the shape of a right one.
+    Emit fewer slices, never smaller ones."""
+
     edge_ids: tuple[str, ...]
     barrier_ids: tuple[str, ...]
     reaches_sink_ids: tuple[str, ...]
     confidence: Confidence
+
+
+class SliceScope(StrEnum):
+    """Which roots get a precomputed slice.
+
+    A slice is a QUESTION -- "what produces this", "what does changing this
+    affect" -- and the answer for any root is recomputable from `lineage.jsonl`,
+    which is always emitted in full. So precomputing every slice stores a
+    derivable answer at quadratic cost, and the scope decides how many are worth
+    storing rather than how complete each one is.
+    """
+
+    DECISION = "DECISION"
+    """Default. Roots that bear on a decision: declared sinks, what they read,
+    engineered features, and the roots any finding cites. Bounded by the number
+    of decision inputs rather than by the size of the codebase, and it is the
+    set an owner actually asks about."""
+
+    ALL = "ALL"
+    """Every root. Exhaustive, quadratic in output, and correct. Available
+    because on a small target it is cheap and complete; the run must state the
+    cost before paying it."""
+
+    NONE = "NONE"
+    """No precomputed slices. `lineage.jsonl` still holds everything needed to
+    answer any slice on demand."""
 
 
 # ---------------------------------------------------------------------------
@@ -11468,14 +11527,103 @@ class LineageTracer:
             )
         )
 
-    def default_slices(self) -> tuple[Slice, ...]:
-        """A backward and a forward slice for every feature, key and sink."""
-        roots = [*self.feature_ids(), *self.key_node_ids(), *self.sink_ids]
+    def has_lineage_node(self, node_id: str) -> bool:
+        """Whether a slice rooted here would be a slice of something.
+
+        A root that is not a lineage node still produces a `Slice` -- an empty
+        one, with an `Unresolved` saying why -- which is the right answer to an
+        explicit request and the wrong one to an automatic top-up. Callers that
+        add roots on the owner's behalf ask this first.
+        """
+        return (
+            node_id in self._out
+            or node_id in self._in
+            or node_id in self._barriers
+        )
+
+    def all_slice_roots(self) -> tuple[str, ...]:
+        """Every root `SliceScope.ALL` precomputes: feature, key and sink."""
+        return tuple(
+            sorted({*self.feature_ids(), *self.key_node_ids(), *self.sink_ids})
+        )
+
+    def decision_slice_roots(self) -> tuple[str, ...]:
+        """The roots that bear on a decision, per `SliceScope.DECISION`.
+
+        Declared sinks, what those sinks read -- the sources of the lineage
+        edges that land on them, one hop, which is "what the decision reads"
+        stated in this card's own terms -- and engineered features. Bounded by
+        the number of decision inputs rather than by the size of the codebase.
+
+        Container keys are deliberately NOT here. A key that no config declared
+        a feature is a subscript this card found, not something an owner named
+        as bearing on the decision, and on a single-module target they are
+        every root there is: 7,502 of them on the 14.6 MB file, which is the
+        whole of the quadratic. Each one is still answerable on demand from
+        `lineage.jsonl`, and `--slice-root` precomputes any of them by name.
+        """
+        roots = {*self.sink_ids, *self.feature_ids()}
+        for sink in self.sink_ids:
+            for source, _ in self._in.get(sink, ()):
+                roots.add(source)
+        return tuple(sorted(roots))
+
+    def slice_roots(
+        self, scope: SliceScope, extra_roots: Sequence[str] = ()
+    ) -> tuple[str, ...]:
+        """The roots a given scope precomputes, plus any explicitly asked for.
+
+        `extra_roots` is honoured at every scope including `NONE`: someone
+        chasing one feature should not have to turn on the exhaustive mode to
+        get it.
+        """
+        if scope is SliceScope.ALL:
+            chosen = set(self.all_slice_roots())
+        elif scope is SliceScope.DECISION:
+            chosen = set(self.decision_slice_roots())
+        else:
+            chosen = set()
+        chosen.update(extra_roots)
+        return tuple(sorted(chosen))
+
+    def default_slices(
+        self,
+        scope: SliceScope = SliceScope.ALL,
+        extra_roots: Sequence[str] = (),
+    ) -> tuple[Slice, ...]:
+        """A backward and a forward slice for every root the scope names.
+
+        The scope decides HOW MANY slices are precomputed, never how complete
+        any one of them is. No slice returned here is truncated, sampled or
+        capped -- a half-slice answering "what produces this feature" would be
+        a wrong answer wearing the shape of a right one.
+
+        The default is `ALL`, which is what this method has always done, so a
+        caller that does not pass a scope gets the exhaustive answer. The
+        command line's default is `DECISION`, and it says so in the summary and
+        in `manifest.json`.
+        """
         out: list[Slice] = []
-        for root in sorted(set(roots)):
+        for root in self.slice_roots(scope, extra_roots):
             out.append(self.slice(root, "backward"))
             out.append(self.slice(root, "forward"))
         return tuple(sorted(out, key=lambda s: s.id))
+
+    def estimated_slice_bytes(self, slices: Sequence[Slice]) -> int:
+        """Roughly how large `slices.jsonl` will be, before serialising it.
+
+        Counted from the ids the slices already hold rather than from a rule of
+        thumb, so the number an owner is warned with is derived from this run
+        and not from another one. It is an estimate because it prices each id
+        at its own length plus JSON's quoting and separator, and ignores the
+        few fixed fields per record.
+        """
+        total = 0
+        for sliced in slices:
+            for group in (sliced.member_ids, sliced.edge_ids, sliced.barrier_ids):
+                total += sum(len(one) + 3 for one in group)
+            total += 200
+        return total
 
     def emit(self, slices: Sequence[Slice] | None = None) -> dict[str, str]:
         """The card's three artifacts, byte-identical across runs."""
@@ -18023,6 +18171,23 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "SINKS": [],
     "ENTRIES": [],
     "CONFIGS": [],
+
+    # Which roots get a PRECOMPUTED slice in `slices.jsonl`. Never how
+    # complete a slice is -- every slice emitted is exact and whole.
+    #
+    #   "DECISION"  the roots that bear on a decision: your sinks, what they
+    #               read, engineered features, and the root of any finding.
+    #               Bounded by decision inputs, not by how big your code is.
+    #   "ALL"       every root. Exhaustive, correct, and quadratic in OUTPUT:
+    #               measured 211 MB of slices for 1.4 MB of source, 1.6 GB for
+    #               5.6 MB, and gigabytes for a 14.8 MB engine.
+    #   "NONE"      none. `lineage.jsonl` still answers any slice on demand.
+    "SLICES": "DECISION",
+
+    # Roots to precompute WHATEVER the scope, by id. Chasing one feature
+    # should not mean turning on the exhaustive mode to get it.
+    "SLICE_ROOTS": [],
+
     "ENV": ".venv-target",
     "ORDER": [],
     "SCENARIOS": "scenarios.json",
@@ -18062,6 +18227,8 @@ _KEY_TO_FIELD: dict[str, str] = {
     "SINKS": "sinks",
     "ENTRIES": "entries",
     "CONFIGS": "configs",
+    "SLICES": "slices",
+    "SLICE_ROOTS": "slice_roots",
     "ENV": "env",
     "ORDER": "order",
     "SCENARIOS": "scenarios",
@@ -18074,7 +18241,9 @@ _KEY_TO_FIELD: dict[str, str] = {
     "WORKERS": "workers",
 }
 
-_LIST_KEYS = frozenset({"SINKS", "ENTRIES", "CONFIGS", "ORDER", "SPORTS", "RUN_ARGS"})
+_LIST_KEYS = frozenset(
+    {"SINKS", "ENTRIES", "CONFIGS", "SLICE_ROOTS", "ORDER", "SPORTS", "RUN_ARGS"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -18097,6 +18266,11 @@ class Settings:
     sinks: tuple[str, ...] = ()
     entries: tuple[str, ...] = ()
     configs: tuple[str, ...] = ()
+    #: Which roots get a precomputed slice. A storage decision, never a
+    #: completeness one: no slice is ever truncated to save space.
+    slices: SliceScope = SliceScope.DECISION
+    #: Roots precomputed whatever the scope says.
+    slice_roots: tuple[str, ...] = ()
     env: str = ".venv-target"
     order: tuple[str, ...] = ()
     scenarios: str = "scenarios.json"
@@ -18175,6 +18349,16 @@ class Settings:
                         f"1 for in-process, N for N child processes -- not {raw!r}."
                     )
                 values["workers"] = int(raw)
+            elif key == "SLICES":
+                try:
+                    values["slices"] = SliceScope(str(raw).strip().upper())
+                except ValueError:
+                    raise SettingsError(
+                        f'SLICES must be one of '
+                        f'{", ".join(member.value for member in SliceScope)} '
+                        f"-- which roots get a PRECOMPUTED slice, never how "
+                        f"complete one is -- not {raw!r}."
+                    ) from None
             elif key in _LIST_KEYS:
                 if isinstance(raw, (str, bytes)) or not isinstance(raw, (list, tuple)):
                     raise SettingsError(
@@ -18739,6 +18923,8 @@ def _default_analyse(source_root: Path, out_dir: Path, settings: Settings) -> di
         entry_ids=tuple(qualify_id(i, prefix) for i in settings.entries),
         sink_ids=tuple(qualify_id(i, prefix) for i in settings.sinks),
         config_paths=settings.configs,
+        slice_scope=settings.slices,
+        slice_roots=tuple(qualify_id(i, prefix) for i in settings.slice_roots),
         strict_gate=False,
         env_root=env,
         # 0 in the settings means auto, which `Ingestor` spells `None`.
@@ -35243,6 +35429,8 @@ def analyze(
     entry_ids: Sequence[str] = (),
     sink_ids: Sequence[str] = (),
     config_paths: Sequence[str] = (),
+    slice_scope: SliceScope = SliceScope.DECISION,
+    slice_roots: Sequence[str] = (),
     cache_dir: Path | None = None,
     strict_gate: bool = True,
     env_root: Path | None = None,
@@ -35312,9 +35500,31 @@ def analyze(
     _stage("cascade")
 
     # Card 4 — lineage and slices.
+    #
+    # `slice_scope` decides HOW MANY slices are precomputed and written. It
+    # never decides how complete one is: every slice emitted here is exact and
+    # whole, because a half-slice answering "what produces this feature" is a
+    # wrong answer wearing the shape of a right one. `lineage.jsonl` is always
+    # written in full, so any root not precomputed is still answerable.
     tracer = LineageTracer(root, sink_ids=tuple(sink_ids))
     lineage_edges, barriers = tracer.trace_values(elements, edges)
-    slices = tracer.default_slices()
+
+    say = worker_report_sink or print
+    available_roots = tracer.all_slice_roots()
+    if slice_scope is SliceScope.ALL and available_roots:
+        say(_all_scope_warning(len(available_roots), len(lineage_edges)))
+
+    # The basis card 5 reasons from is the DECISION set at EVERY scope. The
+    # scope is a storage decision and a finding is a fact; a storage decision
+    # that silently changed a finding would be a defect, so it cannot reach
+    # one. `--slices all` still WRITES every slice.
+    findings_roots = tracer.slice_roots(SliceScope.DECISION, slice_roots)
+    slices = tracer.default_slices(slice_scope, slice_roots)
+    findings_slices = (
+        slices
+        if slice_scope is SliceScope.DECISION
+        else tracer.default_slices(SliceScope.DECISION, slice_roots)
+    )
     summary["lineage_edges"] = len(lineage_edges)
     summary["barriers"] = len(barriers)
     _stage("lineage")
@@ -35348,12 +35558,35 @@ def analyze(
         decision_points=decisions,
         lineage_edges=lineage_edges,
         barriers=barriers,
-        slices=slices,
+        slices=findings_slices,
         reachability=reachability,
         entry_ids=tuple(entry_ids),
     ).find()
     findings = tuple(sorted([*findings, *dependency_findings], key=lambda f: f.id))
     summary["findings"] = len(findings)
+
+    # DECISION names "the root of any finding" among its roots, and findings
+    # are only known once card 5 has run. This second pass adds the ones that
+    # are lineage nodes, so an owner reading a finding can drill straight into
+    # its slice. It runs after `findings` is final and cannot change it.
+    # NONE stays NONE: it was asked for none.
+    if slice_scope is not SliceScope.NONE:
+        precomputed = {sliced.root_id for sliced in slices}
+        top_up = tuple(
+            sorted(
+                {
+                    finding.element_id
+                    for finding in findings
+                    if finding.element_id not in precomputed
+                    and tracer.has_lineage_node(finding.element_id)
+                }
+            )
+        )
+        if top_up:
+            merged = {sliced.id: sliced for sliced in slices}
+            for sliced in tracer.default_slices(SliceScope.NONE, top_up):
+                merged[sliced.id] = sliced
+            slices = tuple(sorted(merged.values(), key=lambda one: one.id))
     _stage("findings")
 
     # Card 16 — documentation records, then the gate.
@@ -35372,6 +35605,31 @@ def analyze(
     offenders = builder.completeness_gate(records)
     summary["incomplete_records"] = len(offenders)
     _stage("records")
+
+    precomputed_roots = {sliced.root_id for sliced in slices}
+    root_universe = {*available_roots, *precomputed_roots}
+    slice_disclosure = {
+        "scope": str(slice_scope),
+        "slices_written": len(slices),
+        "roots_precomputed": len(precomputed_roots),
+        "roots_total": len(root_universe),
+        "roots_not_precomputed": len(root_universe) - len(precomputed_roots),
+        "note": (
+            "Scope decides how many slices are PRECOMPUTED, never how complete "
+            "one is: every slice here is exact and whole. Any root not "
+            "precomputed is still answerable from lineage.jsonl, which is "
+            "always written in full."
+        ),
+    }
+    summary["slices"] = slice_disclosure
+    if slice_scope is SliceScope.ALL and slices:
+        say(
+            f"  slices.jsonl will be about "
+            f"{_human_bytes(tracer.estimated_slice_bytes(slices))} "
+            f"({len(slices):,} slices over {len(precomputed_roots):,} roots). "
+            f"`--slices decision` writes only the roots that bear on a "
+            f"decision; the rest stay recomputable from lineage.jsonl."
+        )
 
     for name, payload in (
         ("elements.jsonl", canonical_jsonl(elements)),
@@ -35418,6 +35676,10 @@ def analyze(
                 "target_hashes": _target_hashes(root),
                 "entry_ids": sorted(entry_ids),
                 "sink_ids": sorted(sink_ids),
+                # An owner must never mistake a scoped artifact for an
+                # exhaustive one, so the scope travels with the artifacts
+                # rather than only appearing on a terminal that has scrolled.
+                "slice_scope": slice_disclosure,
             }
         )
         + "\n",
@@ -35937,6 +36199,32 @@ def _graph_hash_of(graph_dir: Path) -> str:
     )
 
 
+def _human_bytes(count: int) -> str:
+    """A size an owner can act on. Never rounded up into a smaller unit."""
+    for unit, size in (("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)):
+        if count >= size:
+            return f"{count / size:.1f} {unit}"
+    return f"{count} bytes"
+
+
+def _all_scope_warning(roots: int, lineage_edges: int) -> str:
+    """Said BEFORE the exhaustive scope is paid for, never after.
+
+    ALL is correct and it is available on purpose. What it must never be is a
+    surprise: the numbers below are measured, and the scope that avoids them is
+    named in the same breath.
+    """
+    return (
+        f"  --slices all: precomputing a backward and a forward slice for each "
+        f"of {roots:,} roots over {lineage_edges:,} lineage edges.\n"
+        f"  slices.jsonl is quadratic in OUTPUT -- measured 211 MB for 1.4 MB "
+        f"of source, 1.6 GB for 5.6 MB, gigabytes for a 14.8 MB engine.\n"
+        f"  Correct, and expensive. `--slices decision` precomputes only the "
+        f"roots that bear on a decision; every other slice stays exactly "
+        f"recomputable from lineage.jsonl."
+    )
+
+
 def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
     """The owner-facing summary. Honest about what it could not work out."""
     lines = [
@@ -35949,9 +36237,9 @@ def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
         f"  findings      {summary['findings']:>8,}",
         f"  unresolved    {summary['unresolved']:>8,}   <- reported, never dropped",
         f"  barriers      {summary['barriers']:>8,}   <- value flow stops being traceable",
-        "",
-        "Confidence of the edges the map is built from:",
     ]
+    lines += _slice_lines(summary)
+    lines += ["", "Confidence of the edges the map is built from:"]
     census = summary["confidence"]
     total = sum(census.values()) or 1
     for level in ("CERTAIN", "RESOLVED", "PROBABLE", "HEURISTIC", "UNKNOWN"):
@@ -35977,6 +36265,30 @@ def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
             "The artifacts were still written so you can see what is missing.",
         ]
     return "\n".join(lines)
+
+
+def _slice_lines(summary: dict[str, Any]) -> list[str]:
+    """One line for slices, and it always names the scope.
+
+    A scoped artifact that reports only its own count reads exactly like an
+    exhaustive one, and an owner who mistakes the first for the second
+    concludes that a root with no slice has no lineage. The count of roots NOT
+    precomputed is therefore printed next to the count of slices, with where
+    to get them.
+    """
+    payload = summary.get("slices")
+    if not payload:
+        return []
+    line = f"  slices        {payload['slices_written']:>8,}   <- scope {payload['scope']}"
+    missing = payload["roots_not_precomputed"]
+    if missing:
+        line += (
+            f"; {missing:,} of {payload['roots_total']:,} roots not "
+            f"precomputed, each still exactly recomputable from lineage.jsonl"
+        )
+    else:
+        line += "; every root precomputed"
+    return [line]
 
 
 def _dependency_lines(summary: dict[str, Any]) -> list[str]:
@@ -36089,6 +36401,8 @@ def _settings_from_args(args: Any) -> Settings:
         "SINKS": flag("sink"),
         "ENTRIES": flag("entry"),
         "CONFIGS": flag("config"),
+        "SLICES": flag("slices"),
+        "SLICE_ROOTS": flag("slice_root"),
         "ENV": str(flag("env")) if flag("env") else None,
         "ORDER": flag("order"),
         "SCENARIOS": str(flag("scenarios")) if flag("scenarios") else None,
@@ -36156,6 +36470,10 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="decision sink element id; repeatable. Detected if omitted.")
     run.add_argument("--config", action="append", default=[], metavar="PATH",
                      help="config file that wires components by name; repeatable")
+    run.add_argument("--slices", choices=("decision", "all", "none"), default=None,
+                     help='which roots get a PRECOMPUTED slice. Never how complete one is -- every slice written is exact and whole. decision (default): the roots that bear on a decision. all: every root, exhaustive and quadratic in output. none: no precomputed slices; lineage.jsonl still answers any of them.')
+    run.add_argument("--slice-root", action="append", default=[], metavar="ID",
+                     help='precompute the slice rooted at this id whatever --slices says; repeatable')
     run.add_argument("--cache", type=Path, default=None)
     run.add_argument("--workers", type=int, default=None, metavar="N",
                      help="child processes for ingestion. Omitted or 0 = auto "
@@ -36238,6 +36556,10 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="overrides SINKS; repeatable")
     hist.add_argument("--entry", action="append", default=None, metavar="ID",
                       help="overrides ENTRIES; repeatable")
+    hist.add_argument("--slices", choices=("decision", "all", "none"), default=None,
+                      help='which roots get a PRECOMPUTED slice. Never how complete one is -- every slice written is exact and whole. decision (default): the roots that bear on a decision. all: every root, exhaustive and quadratic in output. none: no precomputed slices; lineage.jsonl still answers any of them.')
+    hist.add_argument("--slice-root", action="append", default=None, metavar="ID",
+                      help='precompute the slice rooted at this id whatever --slices says; repeatable')
     hist.add_argument("--config", action="append", default=None, metavar="PATH",
                       help="overrides CONFIGS; repeatable")
     hist.add_argument("--env", type=Path, default=None, metavar="PATH",
@@ -36352,6 +36674,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             entry_ids=tuple(args.entry),
             sink_ids=tuple(args.sink),
             config_paths=tuple(args.config),
+            slice_scope=_slice_scope_of(args),
+            slice_roots=tuple(args.slice_root),
             cache_dir=args.cache,
             strict_gate=not args.no_gate,
             env_root=args.env,
@@ -36451,6 +36775,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
 
     return _trace_command(args)
+
+
+def _slice_scope_of(args: Any) -> SliceScope:
+    """The slice scope this invocation runs under: the flag, else SLICES.
+
+    One function, exactly like `_mode_of`, so a flag and a setting can never
+    disagree about how much of `slices.jsonl` an owner is looking at.
+    """
+    flag = getattr(args, "slices", None)
+    if flag:
+        return SliceScope(str(flag).upper())
+    return Settings.from_mapping({"SLICES": METATRON_SETTINGS.get("SLICES", "DECISION")}).slices
 
 
 def _mode_of(args: Any) -> int:

@@ -100,6 +100,7 @@ from cascade_map.contracts.interfaces import (
     Method,
     Provenance,
     ReachabilityState,
+    SliceScope,
     SourceSpan,
     VersionChange,
     ChangeKind,
@@ -182,6 +183,23 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "SINKS": [],
     "ENTRIES": [],
     "CONFIGS": [],
+
+    # Which roots get a PRECOMPUTED slice in `slices.jsonl`. Never how
+    # complete a slice is -- every slice emitted is exact and whole.
+    #
+    #   "DECISION"  the roots that bear on a decision: your sinks, what they
+    #               read, engineered features, and the root of any finding.
+    #               Bounded by decision inputs, not by how big your code is.
+    #   "ALL"       every root. Exhaustive, correct, and quadratic in OUTPUT:
+    #               measured 211 MB of slices for 1.4 MB of source, 1.6 GB for
+    #               5.6 MB, and gigabytes for a 14.8 MB engine.
+    #   "NONE"      none. `lineage.jsonl` still answers any slice on demand.
+    "SLICES": "DECISION",
+
+    # Roots to precompute WHATEVER the scope, by id. Chasing one feature
+    # should not mean turning on the exhaustive mode to get it.
+    "SLICE_ROOTS": [],
+
     "ENV": ".venv-target",
     "ORDER": [],
     "SCENARIOS": "scenarios.json",
@@ -221,6 +239,8 @@ _KEY_TO_FIELD: dict[str, str] = {
     "SINKS": "sinks",
     "ENTRIES": "entries",
     "CONFIGS": "configs",
+    "SLICES": "slices",
+    "SLICE_ROOTS": "slice_roots",
     "ENV": "env",
     "ORDER": "order",
     "SCENARIOS": "scenarios",
@@ -233,7 +253,9 @@ _KEY_TO_FIELD: dict[str, str] = {
     "WORKERS": "workers",
 }
 
-_LIST_KEYS = frozenset({"SINKS", "ENTRIES", "CONFIGS", "ORDER", "SPORTS", "RUN_ARGS"})
+_LIST_KEYS = frozenset(
+    {"SINKS", "ENTRIES", "CONFIGS", "SLICE_ROOTS", "ORDER", "SPORTS", "RUN_ARGS"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +278,11 @@ class Settings:
     sinks: tuple[str, ...] = ()
     entries: tuple[str, ...] = ()
     configs: tuple[str, ...] = ()
+    #: Which roots get a precomputed slice. A storage decision, never a
+    #: completeness one: no slice is ever truncated to save space.
+    slices: SliceScope = SliceScope.DECISION
+    #: Roots precomputed whatever the scope says.
+    slice_roots: tuple[str, ...] = ()
     env: str = ".venv-target"
     order: tuple[str, ...] = ()
     scenarios: str = "scenarios.json"
@@ -334,6 +361,16 @@ class Settings:
                         f"1 for in-process, N for N child processes -- not {raw!r}."
                     )
                 values["workers"] = int(raw)
+            elif key == "SLICES":
+                try:
+                    values["slices"] = SliceScope(str(raw).strip().upper())
+                except ValueError:
+                    raise SettingsError(
+                        f'SLICES must be one of '
+                        f'{", ".join(member.value for member in SliceScope)} '
+                        f"-- which roots get a PRECOMPUTED slice, never how "
+                        f"complete one is -- not {raw!r}."
+                    ) from None
             elif key in _LIST_KEYS:
                 if isinstance(raw, (str, bytes)) or not isinstance(raw, (list, tuple)):
                     raise SettingsError(
@@ -899,6 +936,8 @@ def _default_analyse(source_root: Path, out_dir: Path, settings: Settings) -> di
         entry_ids=tuple(qualify_id(i, prefix) for i in settings.entries),
         sink_ids=tuple(qualify_id(i, prefix) for i in settings.sinks),
         config_paths=settings.configs,
+        slice_scope=settings.slices,
+        slice_roots=tuple(qualify_id(i, prefix) for i in settings.slice_roots),
         strict_gate=False,
         env_root=env,
         # 0 in the settings means auto, which `Ingestor` spells `None`.
