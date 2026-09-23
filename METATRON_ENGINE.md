@@ -1127,7 +1127,12 @@ the module could not be imported (check `target_root`), the named function does 
 failure). This distinction exists because a crashed scenario otherwise produces a report
 that reads exactly like a run whose analysis was wrong, and you would hunt the wrong bug.
 
-**Slow on a very large engine** — the first analysis is the slow one; the cache is on by default, so the second is far faster. If the first run is slower than you can live with, tell me: the ingestion stage has a known quadratic cost in file length that is fixable.
+**How long should a run take?** Measured on a 15 MB target (54,661 elements, documentation
+records written in full): **3 minutes 24 seconds**, cold cache. Before the optimisation work
+the same run took roughly 50 minutes. Re-running unchanged code is near-instant, because the
+content-hash cache is on by default.
+
+If your run is far slower than that, send me a `doctor` log — that is what it is for.
 
 ---
 
