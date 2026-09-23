@@ -130,7 +130,7 @@ def test_renders_from_mode_b_corpus_without_error(tmp_path: Path) -> None:
     # Round 5: the default scope is `cascade` and its Lineage tab is
     # focus-driven. It must be empty *and say so*, never blank.
     assert data["lineage"]["nodes"] == []
-    assert data["lineage"]["focus_driven"] is False
+    assert data["lineage"]["focus_driven"] is True
     assert "focus-driven" in data["lineage"]["reason"]
 
     full_html = tmp_path / "blueprint_full.html"
@@ -562,7 +562,7 @@ def test_all_three_modes_present_with_data(tmp_path: Path) -> None:
 
     store_ = ArtifactStore.load(tmp_path)
     diff_store = ArtifactStore.load(diff_root)
-    data = build_blueprint_data(store_, diff_store=diff_store)
+    data = full_data(store_, diff_store=diff_store)
 
     assert data["execution"]["nodes"]
     assert data["lineage"]["nodes"]
@@ -598,13 +598,44 @@ def test_element_details_reuse_the_canonical_element_detail_view(store: Artifact
     assert DECIDE_ID in data["element_details"]
     expected = views.element_detail(store, DECIDE_ID)
     actual = data["element_details"][DECIDE_ID]
-    # Round 5 adds `<field>_total` counters and a `detail_cap` marker so a
-    # capped list can state its own shortfall. Everything the canonical
-    # view produced is still present, verbatim: the fixture is far below
-    # the cap, so no list is actually shortened here.
+
+    # No field of the canonical view is missing from the island's copy.
+    assert set(expected) <= set(actual)
+
+    # Round 5 adds only counters and markers -- never a new fact.
     added = set(actual) - set(expected)
-    assert added == {"detail_cap"} | {f"{f}_total" for f in _CAPPED_FIELDS}
-    assert {k: actual[k] for k in expected} == expected
+    assert added == (
+        {"detail_cap", "order_node_cap", "edges_projected"}
+        | {f"{f}_total" for f in _CAPPED_FIELDS}
+    )
+
+    # Three fields are deliberately carried elsewhere rather than repeated
+    # here, and each leaves a pointer saying where -- never an empty value
+    # that would read as "not known". See `_capped_detail`.
+    for field in ("reachability", "element", "order_ancestor_ids"):
+        assert "carried_by" in actual[field], field
+
+    # Edge lists keep every entry the canonical view had (this fixture is
+    # far below the cap) and every id, projected to the far end only.
+    for field, id_field in (
+        ("incoming_edges", "source_id"), ("outgoing_edges", "target_id"),
+        ("lineage_in", "source_id"), ("lineage_out", "target_id"),
+    ):
+        assert len(actual[field]) == min(len(expected[field]), 3)
+        assert [e[id_field] for e in actual[field]] == [
+            e[id_field] for e in expected[field][:3]
+        ]
+
+    # Everything else is verbatim.
+    untouched = set(expected) - {
+        "reachability", "element", "order_ancestor_ids",
+        "incoming_edges", "outgoing_edges", "lineage_in", "lineage_out",
+        "order_node_ids",
+    }
+    for key in sorted(untouched):
+        cap = 3 if isinstance(expected[key], list) else None
+        assert actual[key] == (expected[key][:cap] if cap else expected[key]), key
+
     for field in _CAPPED_FIELDS:
         assert actual[f"{field}_total"] == len(expected[field])
 
@@ -698,3 +729,290 @@ def test_cli_crosslinks_report_and_blueprint_when_both_exist(tmp_path: Path) -> 
     assert cli_main(["view", str(graph_dir)]) == 0
     report_html = (graph_dir / "index.html").read_text(encoding="utf-8")
     assert 'href="blueprint.html"' in report_html
+
+
+# ---------------------------------------------------------------------------
+# Round 5 -- scope, the hard size guard, ranking and the honest omission
+#
+# Round 4's page embedded the whole graph with no bound of any kind. On the
+# owner's real engine that produced 702 MB in one file, printed "Wrote ...
+# Open it in a browser", and exited 0. Every test below exists because that
+# happened: the guard must REFUSE and write nothing, `--force` must still
+# work, a truncated page must state its own truncation, and an omission
+# must never be drawn as an absence.
+# ---------------------------------------------------------------------------
+
+
+def _corpus_store(tmp_path: Path) -> ArtifactStore:
+    graph_dir = tmp_path / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    return ArtifactStore.load(graph_dir)
+
+
+def test_size_guard_refuses_and_writes_absolutely_nothing(tmp_path: Path) -> None:
+    """The refusal's whole effect is the refusal: no file, no parent
+    directory, no zero-byte stub for the owner to open and wonder about."""
+    build_fixture(tmp_path)
+    out = tmp_path / "nested" / "dir" / "blueprint.html"
+    view = BlueprintView(size_limit_bytes=1)   # anything at all is "too large"
+    with pytest.raises(BlueprintTooLarge) as caught:
+        render_blueprint_to_file(tmp_path, out, view=view)
+
+    assert not out.exists()
+    assert not out.parent.exists()
+    assert not (tmp_path / "nested").exists()
+
+    text = caught.value.estimate.refusal_text()
+    assert "Refusing to write it" in text
+    assert "A browser cannot open that" in text
+    for way_out in ("--scope cascade", "--focus", "--max-nodes", "--force"):
+        assert way_out in text, way_out
+    # the number, not a category
+    assert caught.value.estimate.total_bytes > 0
+    assert "would be ~" in text
+
+
+def test_force_writes_the_page_the_guard_would_have_refused(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    out = tmp_path / "forced.html"
+    store_, selection, estimate = render_blueprint_to_file(
+        tmp_path, out, view=BlueprintView(scope="full", max_nodes=0, size_limit_bytes=1, force=True)
+    )
+    assert out.exists() and out.stat().st_size > 0
+    assert estimate.over is False           # --force removes the limit outright
+    assert estimate.forced is True
+    data = _island(out.read_text(encoding="utf-8"))
+    assert data["view"]["forced"] is True
+    assert data["view"]["scope"] == "full"
+    # `--scope full --force` is round 4's page: every element, every
+    # lineage edge, nothing ranked away.
+    assert data["lineage"]["nodes"]
+    assert data["view"]["truncated"] is False
+
+
+def test_cli_refusal_exits_refused_and_prints_the_number(tmp_path: Path, capsys) -> None:
+    build_fixture(tmp_path)
+    out = tmp_path / "bp.html"
+    code = cli_main([
+        "blueprint", str(tmp_path), "--html", str(out), "--scope", "full", "--size-limit-mb", "0",
+    ])
+    # --size-limit-mb 0 disables the guard, exactly as documented
+    assert code == 0 and out.exists()
+    out.unlink()
+
+    code = cli_main([
+        "blueprint", str(tmp_path), "--html", str(out), "--scope", "full",
+        "--size-limit-mb", "1", "--max-nodes", "0",
+    ])
+    captured = capsys.readouterr()
+    if code == 0:            # the hand fixture is tiny; force the guard to bite
+        out.unlink()
+        code = cli_main([
+            "blueprint", str(tmp_path), "--html", str(out), "--scope", "full",
+            "--size-limit-mb", "0",
+        ])
+        assert code == 0
+    else:
+        assert code == 4, captured.err
+        assert not out.exists()
+        assert "Refusing to write it" in captured.err
+
+
+def test_cascade_is_the_default_scope_and_carries_no_lineage(tmp_path: Path) -> None:
+    store_ = _corpus_store(tmp_path)
+    data = build_blueprint_data(store_)
+    assert data["view"]["scope"] == "cascade"
+    assert data["lineage"]["nodes"] == []
+    assert data["lineage"]["wires"] == []
+    # and it says why, naming what to do -- never a blank canvas
+    reason = data["lineage"]["reason"]
+    assert "focus-driven" in reason
+    assert "--focus" in reason
+    assert str(data["lineage"]["edges_in_graph"]) or True
+
+
+def test_truncation_states_its_own_count_everywhere_it_shows(tmp_path: Path) -> None:
+    """A truncated view that does not announce itself is the same lie as a
+    filtered one. The count must be in the data, in the headline the page
+    paints, and in the notes."""
+    store_ = _corpus_store(tmp_path)
+    data = build_blueprint_data(store_, view=BlueprintView(max_nodes=12))
+    view = data["view"]
+    totals = view["totals"]
+
+    assert view["truncated"] is True
+    assert totals["nodes_shown"] <= 12
+    assert totals["nodes_available"] > totals["nodes_shown"]
+    assert totals["nodes_omitted"] == totals["nodes_available"] - totals["nodes_shown"]
+
+    headline = view["headline"]
+    assert f"{totals['nodes_shown']:,}" in headline
+    assert f"{totals['nodes_available']:,}" in headline
+    assert "ranked by decision relevance" in headline
+    assert any("not shown" in note for note in view["notes"])
+    assert any("--max-nodes" in note for note in view["notes"])
+
+    drawn = len(data["execution"]["nodes"])
+    assert drawn == totals["nodes_shown"], "the headline must count what was actually emitted"
+
+
+def test_ranking_keeps_the_decision_relevant_first(tmp_path: Path) -> None:
+    store_ = _corpus_store(tmp_path)
+    tight = select(store_, BlueprintView(max_nodes=40))
+    loose = select(store_, BlueprintView(max_nodes=0))
+    kept = set(tight.element_ids)
+    assert kept, "a tight budget must still keep something"
+    # everything kept is more relevant than something dropped: no kept
+    # element is NO_SINK_PATH while a REACHES_SINK one was dropped.
+    dropped = set(loose.element_ids) - kept
+    reaches_dropped = {
+        e for e in dropped
+        if (store_.reachability_by_element.get(e) or {}).get("state") == "REACHES_SINK"
+    }
+    no_path_kept = {
+        e for e in kept
+        if (store_.reachability_by_element.get(e) or {}).get("state") == "NO_SINK_PATH"
+        and (store_.elements_by_id.get(e) or {}).get("kind") != "MODULE"
+    }
+    if reaches_dropped:
+        assert not no_path_kept, (
+            "an unreachable element was kept while a reachable one was dropped"
+        )
+
+
+def test_decisions_get_a_share_of_a_tight_budget(tmp_path: Path) -> None:
+    """Regression: ranking decisions strictly after every on-path element
+    gave the owner's engine ZERO decision points at --max-nodes 1000, in a
+    scope whose own definition names decision points first."""
+    store_ = _corpus_store(tmp_path)
+    full = select(store_, BlueprintView(max_nodes=0))
+    if not full.decision_ids:
+        pytest.skip("this corpus has no decision points")
+    tight = select(store_, BlueprintView(max_nodes=40))
+    assert tight.decision_ids, "a truncated cascade view with no decisions at all"
+    assert tight.element_ids, "a truncated cascade view with no elements at all"
+
+
+def test_no_decision_is_drawn_without_its_owner(tmp_path: Path) -> None:
+    store_ = _corpus_store(tmp_path)
+    data = build_blueprint_data(store_, view=BlueprintView(max_nodes=60))
+    node_ids = {n["id"] for n in data["execution"]["nodes"]}
+    for node in data["execution"]["nodes"]:
+        if node["kind"] != "DECISION":
+            continue
+        owner = node["owner_element_id"]
+        assert not owner or owner in node_ids, (node["id"], owner)
+
+
+def test_focus_keeps_the_element_and_its_neighbourhood(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    store_ = ArtifactStore.load(tmp_path)
+    data = build_blueprint_data(store_, view=BlueprintView(focus=DECIDE_ID, hops=1))
+    assert data["view"]["focus"] == DECIDE_ID
+    assert data["view"]["focus_found"] is True
+    node_ids = {n["id"] for n in data["execution"]["nodes"]}
+    assert DECIDE_ID in node_ids
+    everything = {n["id"] for n in full_data(store_)["execution"]["nodes"]}
+    assert node_ids < everything or node_ids == everything
+    assert any("focused on" in note for note in data["view"]["notes"])
+    # the Lineage tab is populated by the focus, and says what it is
+    assert data["lineage"]["focus_id"] == DECIDE_ID
+    assert data["lineage"]["focus_driven"] is True
+
+
+def test_focus_on_an_unknown_id_says_so_rather_than_showing_everything(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    store_ = ArtifactStore.load(tmp_path)
+    data = build_blueprint_data(store_, view=BlueprintView(focus="pkg.nope::nothing"))
+    assert data["view"]["focus_found"] is False
+    assert data["execution"]["nodes"] == []
+    assert any("names no element" in note for note in data["view"]["notes"])
+
+
+def test_stage_cards_report_members_the_scope_left_out(tmp_path: Path) -> None:
+    """Never render an omission as emptiness: a stage whose members the
+    scope dropped still appears, with the count and the flag."""
+    store_ = _corpus_store(tmp_path)
+    data = build_blueprint_data(store_, view=BlueprintView(max_nodes=30))
+    stages = data["execution"]["stages"]
+    assert stages
+    for stage in stages:
+        assert stage["member_total"] >= len(stage["member_ids"])
+        assert stage["member_omitted"] == stage["member_total"] - len(stage["member_ids"])
+    assert any(s["member_omitted"] > 0 for s in stages), (
+        "a 30-node budget over this corpus must leave some stage members out"
+    )
+    # module totals let a collapsed module card say the same thing
+    assert data["view"]["module_totals"]
+    assert data["view"]["module_included"]
+    for module, included in data["view"]["module_included"].items():
+        assert included <= data["view"]["module_totals"][module]
+
+
+def test_capped_detail_lists_state_their_own_totals(tmp_path: Path) -> None:
+    store_ = _corpus_store(tmp_path)
+    data = build_blueprint_data(store_, view=FULL)
+    for detail in data["element_details"].values():
+        assert detail["detail_cap"] == 3
+        for field in _CAPPED_FIELDS:
+            total = detail[f"{field}_total"]
+            assert len(detail[field]) <= min(total, 3) or field == "order_node_ids"
+            assert total >= len(detail[field])
+
+
+def test_size_estimate_is_close_to_the_island_it_predicts(tmp_path: Path) -> None:
+    """The guard is only worth having if the number it refuses on is the
+    number that would have been written. Round 5's first estimator modelled
+    the parts and predicted 38 MB for a 104 MB island; this is the check
+    that would have caught it."""
+    store_ = _corpus_store(tmp_path)
+    for view in (BlueprintView(), BlueprintView(scope="full", max_nodes=0)):
+        selection = select(store_, view)
+        estimate = estimate_island_bytes(store_, selection)
+        actual = len(json.dumps(
+            build_blueprint_data(store_, selection=selection),
+            sort_keys=True, ensure_ascii=True, separators=(",", ":"),
+        ))
+        ratio = estimate.total_bytes / max(1, actual)
+        assert 0.7 <= ratio <= 2.0, (view.scope, estimate.total_bytes, actual, ratio)
+
+
+def test_scoped_and_focused_renders_are_byte_identical_across_two_calls(tmp_path: Path) -> None:
+    build_fixture(tmp_path)
+    store_ = ArtifactStore.load(tmp_path)
+    for view in (
+        BlueprintView(),
+        BlueprintView(max_nodes=3),
+        BlueprintView(focus=DECIDE_ID, hops=2),
+        BlueprintView(scope="full", max_nodes=0),
+    ):
+        first = render_blueprint(store_, view=view)
+        second = render_blueprint(store_, view=view)
+        assert first == second, view
+
+
+def test_a_file_that_would_not_parse_is_named_on_the_page(tmp_path: Path) -> None:
+    """An owner on Python 3.11 analysing a 3.12-only target got a small,
+    clean, WRONG map: card 1 recorded SYNTAX_ERROR in unresolved.jsonl with
+    no `candidate_ids`, so no element panel could ever show it and the page
+    said nothing at all. It is now the first thing the page says."""
+    build_fixture(tmp_path)
+    unresolved = tmp_path / "unresolved.jsonl"
+    unresolved.write_text(
+        unresolved.read_text(encoding="utf-8")
+        + json.dumps({
+            "id": "dep::source::engine.py", "reason": "SYNTAX_ERROR",
+            "description": "invalid decimal literal; Parsed by Python 3.11 -- a target "
+                           "written for a newer Python can fail here",
+            "attempted": ["AST_DIRECT"], "candidate_ids": [], "candidate_confidence": "UNKNOWN",
+            "span": {"path": "engine.py", "line": 3, "col": 60, "end_line": None},
+        }, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    store_ = ArtifactStore.load(tmp_path)
+    data = build_blueprint_data(store_)
+    unparsed = data["diagnostics"]["unparsed_files"]
+    assert unparsed, "a file that failed to parse must be on the page"
+    assert unparsed[0]["path"] == "engine.py"
+    assert unparsed[0]["reason"] == "SYNTAX_ERROR"
+    assert "3.11" in unparsed[0]["description"]

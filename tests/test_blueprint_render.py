@@ -46,7 +46,11 @@ from cascade_map.contracts.interfaces import (  # noqa: E402
     VersionChange,
     canonical_jsonl,
 )
-from cascade_map.viewer.blueprint import build_blueprint_data, render_blueprint_to_file  # noqa: E402
+from cascade_map.viewer.blueprint import (  # noqa: E402
+    BlueprintView,
+    build_blueprint_data,
+    render_blueprint_to_file,
+)
 from cascade_map.viewer.loader import ArtifactStore  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +71,13 @@ _MIN_VISIBLE_NODES_ON_CORPUS = 40
 _MIN_FIT_SCALE = 0.2
 
 _SCALE_RE = re.compile(r"matrix\(([-0-9.]+),")
+
+#: Round 5 made `cascade` the default scope, which carries no lineage edges
+#: and only the decision-relevant slice of the graph. Every fixture below
+#: that existed before round 5 renders at `--scope full` so that it still
+#: drives the page shape it was written for; round 5's own bounds get their
+#: own fixtures and their own tests at the end of this file.
+FULL = BlueprintView(scope="full", max_nodes=0)
 
 
 def _fit_scale(page) -> float:
@@ -141,7 +152,7 @@ def corpus_html(tmp_path_factory: pytest.TempPathFactory) -> Path:
     code, summary = analyze(CORPUS, graph_dir, strict_gate=False)
     assert summary["elements"] > 0
     html_path = root / "blueprint.html"
-    render_blueprint_to_file(graph_dir, html_path)
+    render_blueprint_to_file(graph_dir, html_path, view=FULL)
     return html_path
 
 
@@ -150,7 +161,7 @@ def small_html(tmp_path_factory: pytest.TempPathFactory) -> Path:
     root = tmp_path_factory.mktemp("bp_small")
     build_fixture(root)
     html_path = root / "blueprint.html"
-    render_blueprint_to_file(root, html_path)
+    render_blueprint_to_file(root, html_path, view=FULL)
     return html_path
 
 
@@ -179,7 +190,7 @@ def diff_html(tmp_path_factory: pytest.TempPathFactory) -> Path:
     (diff_root / "changes.jsonl").write_text(canonical_jsonl(changes), encoding="utf-8")
     (diff_root / "impacts.jsonl").write_text(canonical_jsonl(impacts), encoding="utf-8")
     html_path = root / "blueprint.html"
-    render_blueprint_to_file(root, html_path, diff_root=diff_root)
+    render_blueprint_to_file(root, html_path, diff_root=diff_root, view=FULL)
     return html_path
 
 
@@ -227,7 +238,7 @@ def corpus_diff_html(tmp_path_factory: pytest.TempPathFactory) -> Path:
     (diff_root / "impacts.jsonl").write_text(canonical_jsonl(impacts), encoding="utf-8")
 
     html_path = root / "blueprint.html"
-    render_blueprint_to_file(graph_dir, html_path, diff_root=diff_root)
+    render_blueprint_to_file(graph_dir, html_path, diff_root=diff_root, view=FULL)
     return html_path
 
 
@@ -881,3 +892,127 @@ def test_clicking_a_backward_flow_pair_frames_those_edges(browser, corpus_html: 
     page.wait_for_timeout(600)
     highlighted = page.eval_on_selector_all(".wire.path-highlight", "els => els.length")
     assert highlighted > 0
+
+
+# ---------------------------------------------------------------------------
+# Round 5 -- the bounded default, driven in the real browser
+#
+# The Python tests prove the island is bounded and labelled. Only the
+# browser can prove the labels are on the screen: that the scope banner is
+# painted, that the lineage tab's "pick an element" is the top element at
+# the canvas centre rather than a blank page, and that a stage card whose
+# members the scope dropped still says so.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def cascade_html(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The real corpus at round 5's DEFAULT: cascade scope, budget 2000."""
+    root = tmp_path_factory.mktemp("bp_cascade")
+    graph_dir = root / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    html_path = root / "blueprint.html"
+    render_blueprint_to_file(graph_dir, html_path)
+    return html_path
+
+
+@pytest.fixture(scope="module")
+def truncated_html(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The real corpus squeezed into 30 nodes, so truncation is certain."""
+    root = tmp_path_factory.mktemp("bp_truncated")
+    graph_dir = root / "graph"
+    analyze(CORPUS, graph_dir, strict_gate=False)
+    html_path = root / "blueprint.html"
+    render_blueprint_to_file(graph_dir, html_path, view=BlueprintView(max_nodes=30))
+    return html_path
+
+
+def test_lineage_empty_state_is_the_top_element_at_canvas_centre(
+    browser, cascade_html: Path
+) -> None:
+    """The worst offender's tab: 402,596 edges on the owner's engine. It is
+    empty by default now, and the emptiness must be a readable instruction
+    sitting under the pointer -- not a blank canvas, which is what a user
+    would report as "the lineage tab is broken"."""
+    loaded = _open(browser, cascade_html)
+    page = loaded.page
+    page.click('.tab-btn[data-tab="lineage"]')
+    page.wait_for_timeout(500)
+
+    state = page.eval_on_selector(
+        "#empty-state",
+        "el => ({hidden: el.hidden, text: el.textContent,"
+        " display: getComputedStyle(el).display, opacity: getComputedStyle(el).opacity})",
+    )
+    assert state["hidden"] is False
+    assert state["display"] == "flex"
+    assert float(state["opacity"]) > 0.9
+    assert "focus" in state["text"].lower()
+    assert "--focus" in state["text"]
+    assert "lineage edges" in state["text"]
+
+    hit = page.evaluate(
+        "() => { var r = document.getElementById('canvas-wrap').getBoundingClientRect();"
+        " var e = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);"
+        " return e ? e.id : null; }"
+    )
+    assert hit == "empty-state"
+    assert page.eval_on_selector_all("#nodes-layer .node", "els => els.length") == 0
+    assert loaded.errors == [] and loaded.console_errors == []
+
+
+def test_scope_banner_is_painted_and_names_what_is_missing(
+    browser, truncated_html: Path
+) -> None:
+    loaded = _open(browser, truncated_html)
+    page = loaded.page
+    banner = page.eval_on_selector(
+        "#scope-banner",
+        "el => ({text: el.textContent, h: el.getBoundingClientRect().height,"
+        " display: getComputedStyle(el).display})",
+    )
+    assert banner["h"] > 8, "the scope banner must actually occupy space on the page"
+    assert banner["display"] != "none"
+    assert "scope cascade" in banner["text"]
+    assert "not shown" in banner["text"]
+    assert "ranked by decision relevance" in banner["text"]
+    assert "--max-nodes" in banner["text"]
+    assert loaded.errors == [] and loaded.console_errors == []
+
+
+def test_a_stage_card_says_what_the_scope_left_out(browser, truncated_html: Path) -> None:
+    """Never render an omission as emptiness. At a 30-node budget most
+    stage members are gone; every card that lost members must say so, in
+    the attention colour, with the flag that brings them back."""
+    loaded = _open(browser, truncated_html)
+    page = loaded.page
+    page.wait_for_timeout(400)
+    notes = page.eval_on_selector_all(
+        ".stage-list-omitted", "els => els.map(e => e.textContent)"
+    )
+    assert notes, "a truncated page painted no omission notice at all"
+    assert any("not included" in n for n in notes)
+    assert any("--scope full" in n or "--max-nodes" in n for n in notes)
+    painted = page.eval_on_selector_all("#nodes-layer .node", "els => els.length")
+    assert painted > 0, "the truncated page must still draw its stage cards"
+    assert loaded.errors == [] and loaded.console_errors == []
+
+
+def test_default_page_is_interactive_and_hit_testable(browser, cascade_html: Path) -> None:
+    """The round-4 failure was a file the browser never survived to parse.
+    This is the positive form of that check, driven on the real page: the
+    default view paints nodes, and pointing at one hits that node."""
+    loaded = _open(browser, cascade_html)
+    page = loaded.page
+    painted = page.eval_on_selector_all("#nodes-layer .node", "els => els.length")
+    assert painted > 0
+    hit = page.evaluate(
+        "() => { var n = document.querySelector('#nodes-layer .node');"
+        " var r = n.getBoundingClientRect();"
+        " var e = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);"
+        " var c = e && e.closest ? e.closest('.node') : null;"
+        " return c ? c.dataset.id : null; }"
+    )
+    assert hit is not None
+    assert _fit_scale(page) >= _MIN_FIT_SCALE
+    assert loaded.errors == [] and loaded.console_errors == []

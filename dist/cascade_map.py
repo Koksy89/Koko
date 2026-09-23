@@ -32930,10 +32930,34 @@ def _safe_json(obj: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _capped_reachability(reach: dict[str, Any]) -> dict[str, Any]:
+    """`element_reachability`, with its representative path capped and counted.
+
+    Card 3's `path_ids` is one representative path to a sink; on a deep
+    cascade it is hundreds of ids long and it rides on every node AND in
+    every detail record. The cap is stated in `path_ids_total`, and the
+    panel says "first N of M" rather than presenting N as the whole path.
+    """
+    reach = dict(reach)
+    path_ids = reach.get("path_ids") or []
+    reach["path_ids_total"] = len(path_ids)
+    if len(path_ids) > PATH_IDS_CAP:
+        reach["path_ids"] = list(path_ids[:PATH_IDS_CAP])
+    reason = reach.get("reason") or ""
+    # Card 3's `reason` spells the same representative path out in prose,
+    # so on a deep cascade it is ~620 bytes of text carried on every node.
+    # Cut with the cut declared, never silently: `reason_total_chars` is
+    # the real length and reachability.jsonl holds the whole sentence.
+    if len(reason) > REASON_CAP:
+        reach["reason"] = reason[:REASON_CAP] + " ..."
+        reach["reason_total_chars"] = len(reason)
+    return reach
+
+
 def _element_node(store: ArtifactStore, element_id: str) -> dict[str, Any]:
     """A node view for one element id, real or unresolved -- never a crash."""
     element = store.elements_by_id.get(element_id)
-    reach = views.element_reachability(store, element_id)
+    reach = _capped_reachability(views.element_reachability(store, element_id))
     finding_count = len(store.findings_by_element.get(element_id, []))
     has_record = element_id in store.records_by_element
     if element is None:
@@ -32959,8 +32983,17 @@ def _decision_node(store: ArtifactStore, decision: dict[str, Any]) -> dict[str, 
     owner = decision.get("element_id", "") or ""
     owner_el = store.elements_by_id.get(owner) or {}
     outcomes = [list(o) for o in decision.get("outcomes") or ()]
+    # The owner element's node carries the whole Reachability record; a
+    # decision diamond needs only the state, for its badge and the
+    # "reaches a decision" filter. Repeating the reason and the path here
+    # cost 0.6 MB of pure duplication on the owner's engine.
+    owner_reach = views.element_reachability(store, owner) if owner else {}
     reach = (
-        views.element_reachability(store, owner)
+        {
+            "state": owner_reach.get("state"), "source": "owner",
+            "reason": "carried by this decision's owning element",
+            "sink_ids": [], "path_ids": [], "confidence": owner_reach.get("confidence"),
+        }
         if owner
         else {
             "state": "UNKNOWN", "source": "no_owner",
@@ -33026,7 +33059,7 @@ def _lineage_node(store: ArtifactStore, id_: str) -> dict[str, Any]:
         "id": id_, "is_element": False, "kind": kind,
         "name": _synthetic_label(id_, kind), "qualname": id_, "module": "",
         "confidence": None, "method": None, "span": None,
-        "reachability": views.element_reachability(store, id_),
+        "reachability": _capped_reachability(views.element_reachability(store, id_)),
         "finding_count": 0, "has_record": False, "synthetic_kind": kind,
     }
 
@@ -33353,6 +33386,24 @@ def _build_stages(
     return stages, stage_of
 
 
+def _scope_stages(stages: list[dict[str, Any]], included: set[str]) -> None:
+    """Restrict every stage card's member list to what this page carries.
+
+    Stage structure and numbering are always derived from the *whole*
+    execution element set, so a scoped or truncated page never renumbers
+    the owner's stages under them. What changes is the membership list,
+    and each card records how many of its own members are missing so that
+    an omission can never be drawn as an empty stage -- round 5's whole
+    point.
+    """
+    for stage in stages:
+        members = stage["member_ids"]
+        kept = [eid for eid in members if eid in included]
+        stage["member_total"] = len(members)
+        stage["member_ids"] = kept
+        stage["member_omitted"] = len(members) - len(kept)
+
+
 #: `Confidence` order, weakest first is highest index -- reused to combine
 #: several wires' confidence into one stage-pair's "weakest link" figure,
 #: the same rule `combine()` in contracts/interfaces.py applies everywhere
@@ -33412,22 +33463,731 @@ def _classify_and_summarize_flow(
     return totals, pairs
 
 
-def _build_execution(store: ArtifactStore) -> dict[str, Any]:
-    element_ids = sorted(
+# ---------------------------------------------------------------------------
+# Round 5 -- scope, the hard size guard, and decision-relevance ranking.
+#
+# Round 4 embedded the whole graph as one unbounded JSON island. On the
+# owner's real engine that produced 702 MB in a single file: every scale
+# mechanism the page has (module auto-collapse, viewport culling) runs
+# AFTER the browser has parsed the island, which it never survives to do.
+# The file reported success -- "Wrote ... Open it in a browser" -- and was
+# unopenable. Nothing below is a tuning constant on that failure; the
+# default view is bounded *by construction*, and anything that would still
+# be too large is refused before a byte is written, with the flags that
+# make it smaller printed next to the number.
+# ---------------------------------------------------------------------------
+
+#: The two scopes. `cascade` (the default) is structure only: modules and
+#: stages as cards, decision points, declared and detected sinks, entry
+#: points and the edges between them. `full` is round 4's everything.
+SCOPE_CASCADE = "cascade"
+SCOPE_FULL = "full"
+SCOPES = (SCOPE_CASCADE, SCOPE_FULL)
+
+#: Default node budget in `cascade` scope. `full` scope defaults to no cap
+#: -- it is the explicit "give me everything" scope, and the size guard,
+#: not a silent cap, is what stands between it and an unopenable file.
+DEFAULT_MAX_NODES = 2000
+
+#: Default radius for `--focus`.
+DEFAULT_HOPS = 2
+
+#: The share of the node budget reserved for decision points. See the
+#: comment in :func:`select`: without a reserved share, a real engine's
+#: on-path elements fill the whole budget and the cascade scope draws none
+#: of the decision points its own definition names first.
+DECISION_BUDGET_SHARE = 0.5
+
+#: Above this estimated data-island size, `render_blueprint_to_file`
+#: refuses and writes nothing. 50 MB is already far past comfortable; it is
+#: the point past which a refusal is certainly right, not a guess at where
+#: the page gets slow.
+SIZE_GUARD_BYTES = 50 * 1024 * 1024
+
+#: How many entries of an unbounded per-element list (lineage edges in and
+#: out, call edges, slice memberships) a detail record carries before it
+#: states its own truncation. On the owner's engine one element's
+#: `lineage_in` alone runs to thousands of full edge records, and every one
+#: of them was being embedded, for every element, on top of the lineage
+#: tab's own copy.
+DETAIL_LIST_CAP = 3
+
+#: Order-tree membership is capped separately and much harder. Card 3's
+#: order tree on the owner's engine holds 137,414 nodes, and an element can
+#: be a member of hundreds of them; each membership then drags its whole
+#: ancestor chain into `order_ancestor_ids`. Measured: at a cap of 40 that
+#: one field alone was 66.7 MB of a 103.7 MB island -- more than everything
+#: else on the page put together.
+ORDER_NODE_CAP = 2
+ORDER_ANCESTOR_CAP = 1
+
+#: `Reachability.path_ids` is card 3's one representative path to a sink.
+#: On a deep cascade that path is hundreds of ids long, and it is carried
+#: on every node AND in every detail record.
+PATH_IDS_CAP = 4
+
+#: How many characters of `Reachability.reason` a node carries.
+REASON_CAP = 160
+
+#: How many records each class is sampled for when estimating island size.
+#: A stride sample, not a head sample -- see :func:`_stride_sample`.
+_SAMPLE_SIZE = 64
+
+
+class BlueprintTooLarge(Exception):
+    """The island would exceed the size guard and `--force` was not given.
+
+    Carries the estimate and the counts behind it so the caller can print
+    the number rather than a category.
+    """
+
+    def __init__(self, estimate: "SizeEstimate") -> None:
+        super().__init__(estimate.refusal_text())
+        self.estimate = estimate
+
+
+def _blueprint__human_bytes(count: int) -> str:
+    """A size a person reads, with the unit the number deserves."""
+    if count < 1024:
+        return f"{count} B"
+    for unit, scale in (("KB", 1024), ("MB", 1024 ** 2), ("GB", 1024 ** 3)):
+        if count < scale * 1024 or unit == "GB":
+            value = count / scale
+            return f"{value:.0f} {unit}" if value >= 10 else f"{value:.1f} {unit}"
+    return f"{count} B"  # pragma: no cover - unreachable, GB is terminal
+
+
+@dataclass(frozen=True)
+class BlueprintView:
+    """What the caller asked to see. Presentation only; no analysis."""
+
+    scope: str = SCOPE_CASCADE
+    max_nodes: int | None = None
+    focus: str = ""
+    hops: int = DEFAULT_HOPS
+    force: bool = False
+    size_limit_bytes: int = SIZE_GUARD_BYTES
+
+    @property
+    def node_budget(self) -> int:
+        """The node cap in force. 0 means uncapped."""
+        if self.max_nodes is not None:
+            return max(0, int(self.max_nodes))
+        return DEFAULT_MAX_NODES if self.scope == SCOPE_CASCADE else 0
+
+
+@dataclass(frozen=True)
+class SizeEstimate:
+    """A predicted island size, and the counts it was predicted from.
+
+    Predicted by sampling: every count below is exact, and each one is
+    multiplied by the mean serialized size of a deterministic sample of
+    that record class from this very graph. No hard-coded bytes-per-record
+    constant, so the estimate cannot drift when a record gains a field.
+    """
+
+    total_bytes: int
+    limit_bytes: int
+    parts: dict[str, int]
+    counts: dict[str, int]
+    scope: str
+    forced: bool
+
+    @property
+    def over(self) -> bool:
+        return self.limit_bytes > 0 and self.total_bytes > self.limit_bytes
+
+    def refusal_text(self) -> str:
+        counts = self.counts
+        shape = ", ".join(
+            f"{counts[key]:,} {label}"
+            for key, label in (
+                ("elements", "elements"),
+                ("call_edges", "call edges"),
+                ("lineage_edges", "lineage edges"),
+                ("decisions", "decisions"),
+            )
+            if counts.get(key)
+        )
+        return (
+            f"blueprint would be ~{_blueprint__human_bytes(self.total_bytes)} ({shape}).\n"
+            "A browser cannot open that. Refusing to write it.\n"
+            "Try:  --scope cascade       structure only: modules, stages, decisions, sinks\n"
+            "      --focus <element-id>  that element and N hops around it\n"
+            "      --max-nodes 2000      the most decision-relevant N\n"
+            "      --force               write it anyway"
+        )
+
+
+@dataclass(frozen=True)
+class Selection:
+    """Exactly which ids each tab will hold, and what was left out.
+
+    Built once, then used *both* by the size estimator and by the graph
+    builders, so the number the guard refuses on and the number the page
+    renders can never come from two different rules.
+    """
+
+    view: BlueprintView
+    element_ids: tuple[str, ...]
+    decision_ids: tuple[str, ...]
+    lineage_ids: tuple[str, ...]
+    detail_ids: tuple[str, ...]
+    lineage_enabled: bool
+    lineage_note: str
+    focus_id: str
+    focus_found: bool
+    totals: dict[str, int]
+    module_totals: dict[str, int]
+    module_included: dict[str, int]
+    notes: tuple[str, ...]
+
+    @property
+    def truncated(self) -> bool:
+        return bool(self.totals.get("nodes_omitted", 0))
+
+    def headline(self) -> str:
+        """The one sentence the page and the terminal both print."""
+        t = self.totals
+        if not self.truncated:
+            return (
+                f"showing all {t['nodes_shown']:,} nodes of the {self.view.scope} scope "
+                f"({t['elements_shown']:,} elements, {t['decisions_shown']:,} decisions)"
+            )
+        return (
+            f"showing {t['nodes_shown']:,} of {t['nodes_available']:,} nodes, "
+            f"ranked by decision relevance; {t['nodes_omitted']:,} not shown "
+            f"({t['elements_shown']:,} of {t['elements_available']:,} elements, "
+            f"{t['decisions_shown']:,} of {t['decisions_available']:,} decisions)"
+        )
+
+
+def _anchor_ids(store: ArtifactStore) -> tuple[frozenset[str], frozenset[str]]:
+    """(sink element ids, entry element ids) -- declared, then detected.
+
+    Read only from artifacts already loaded: `manifest.json`'s declared
+    `sink_ids`/`entry_ids`, the sinks card 3's `Reachability` records
+    already name, decisions card 3 already marked `is_sink`, and the
+    children of card 3's own cascade root. Nothing is detected here.
+    """
+    elements = store.elements_by_id
+    sinks = {i for i in (store.manifest.get("sink_ids") or ()) if i in elements}
+    for record in store.raw["reachability"]:
+        for sink_id in record.get("sink_ids") or ():
+            if sink_id in elements:
+                sinks.add(sink_id)
+    for decision in store.decisions_by_id.values():
+        owner = decision.get("element_id")
+        if decision.get("is_sink") and owner in elements:
+            sinks.add(owner)
+
+    entries = {i for i in (store.manifest.get("entry_ids") or ()) if i in elements}
+    cascade_node = store.order_by_id.get(CASCADE_ROOT_ID) or {}
+    for child in cascade_node.get("children") or ():
+        bare = child[len("@order::"):] if child.startswith("@order::") else child
+        if bare in elements:
+            entries.add(bare)
+    return frozenset(sinks), frozenset(entries)
+
+
+def _execution_neighbourhood(store: ArtifactStore, seed: str, hops: int) -> set[str]:
+    """Ids within *hops* undirected call/ownership hops of *seed*.
+
+    Walks `edges.jsonl` in both directions plus the decision-ownership
+    link, so focusing on a function reaches its callers, its callees and
+    its decision points alike. Deterministic: the frontier is sorted at
+    every level, and the result is a set the caller sorts.
+    """
+    seen = {seed}
+    frontier = [seed]
+    for _ in range(max(0, hops)):
+        nxt: set[str] = set()
+        for node_id in sorted(frontier):
+            for edge in store.edges_out.get(node_id, ()):
+                target = edge.get("target_id")
+                if isinstance(target, str) and target:
+                    nxt.add(target)
+            for edge in store.edges_in.get(node_id, ()):
+                source = edge.get("source_id")
+                if isinstance(source, str) and source:
+                    nxt.add(source)
+            for decision in store.decisions_by_element.get(node_id, ()):
+                if "id" in decision:
+                    nxt.add(decision["id"])
+            decision = store.decisions_by_id.get(node_id)
+            if decision and decision.get("element_id"):
+                nxt.add(decision["element_id"])
+        frontier = sorted(nxt - seen)
+        seen.update(nxt)
+        if not frontier:
+            break
+    return seen
+
+
+def _lineage_neighbourhood(store: ArtifactStore, seed: str, hops: int) -> set[str]:
+    """Ids within *hops* undirected lineage hops of *seed*.
+
+    Uses `lineage_out`/`lineage_in`, the indices the loader already built
+    -- never a second adjacency structure over 400,000 edges.
+    """
+    seen = {seed}
+    frontier = [seed]
+    for _ in range(max(0, hops)):
+        nxt: set[str] = set()
+        for node_id in sorted(frontier):
+            for edge in store.lineage_out.get(node_id, ()):
+                target = edge.get("target_id")
+                if isinstance(target, str) and target:
+                    nxt.add(target)
+            for edge in store.lineage_in.get(node_id, ()):
+                source = edge.get("source_id")
+                if isinstance(source, str) and source:
+                    nxt.add(source)
+        frontier = sorted(nxt - seen)
+        seen.update(nxt)
+        if not frontier:
+            break
+    return seen
+
+
+#: Relevance tiers, most decision-relevant first. The brief's own order:
+#: elements on a path to a sink first, then decisions, then the rest. A
+#: MODULE shares tier 0 with the sinks and entry points because it is the
+#: cascade scope's skeleton -- there is at most one per source file, and a
+#: module card that vanished would take its whole drill-down with it.
+_TIER_ANCHOR = 0
+_TIER_ON_PATH = 1
+_TIER_DECISION_RELEVANT = 2
+_TIER_UNKNOWN = 3
+_TIER_REST = 4
+_TIER_DECISION_REST = 5
+
+
+def _rank_nodes(
+    store: ArtifactStore,
+    element_ids: list[str],
+    decision_ids: list[str],
+    sinks: frozenset[str],
+    entries: frozenset[str],
+) -> list[tuple[tuple[int, int, str], str, bool]]:
+    """Every candidate node as (sort key, id, is_decision), most relevant first.
+
+    The state read for each element is card 3's `Reachability` record, via
+    the loader's index -- the canonical carrier. Nothing is re-derived.
+    """
+    elements = store.elements_by_id
+    ranked: list[tuple[tuple[int, int, str], str, bool]] = []
+    element_tier: dict[str, int] = {}
+    for element_id in element_ids:
+        kind = (elements.get(element_id) or {}).get("kind")
+        state = (store.reachability_by_element.get(element_id) or {}).get("state") or "UNKNOWN"
+        if element_id in sinks or element_id in entries or kind == "MODULE":
+            tier = _TIER_ANCHOR
+        elif state == "REACHES_SINK":
+            tier = _TIER_ON_PATH
+        elif state == "UNKNOWN":
+            tier = _TIER_UNKNOWN
+        else:
+            tier = _TIER_REST
+        element_tier[element_id] = tier
+        sub = 0 if element_id in sinks else 1 if element_id in entries else 2
+        ranked.append(((tier, sub, element_id), element_id, False))
+
+    for decision_id in decision_ids:
+        decision = store.decisions_by_id.get(decision_id) or {}
+        owner = decision.get("element_id") or ""
+        owner_tier = element_tier.get(owner, _TIER_REST)
+        tier = _TIER_DECISION_RELEVANT if owner_tier <= _TIER_ON_PATH else _TIER_DECISION_REST
+        sub = 0 if decision.get("is_sink") else 1
+        ranked.append(((tier, sub, decision_id), decision_id, True))
+
+    ranked.sort(key=lambda item: item[0])
+    return ranked
+
+
+def select(store: ArtifactStore, view: BlueprintView) -> Selection:
+    """Which ids this view holds, and an honest account of what it drops.
+
+    The one place scope, focus and the node budget are applied. Both the
+    size estimator and the graph builders consume its output, so the size
+    the guard refuses on is the size of the page that would be written.
+    """
+    elements = store.elements_by_id
+    all_execution = sorted(
+        eid for eid, element in elements.items() if element.get("kind") in EXECUTION_KINDS
+    )
+    execution_set = set(all_execution)
+    all_decisions = sorted(store.decisions_by_id)
+    sinks, entries = _anchor_ids(store)
+    notes: list[str] = []
+
+    focus_id = view.focus or ""
+    focus_found = bool(focus_id) and (
+        focus_id in elements or focus_id in store.decisions_by_id
+        or bool(store.lineage_out.get(focus_id)) or bool(store.lineage_in.get(focus_id))
+    )
+    if focus_id and not focus_found:
+        notes.append(
+            f"--focus {focus_id} names no element, decision or lineage node in this graph; "
+            "the focused view is empty rather than silently showing everything"
+        )
+
+    # -- which elements and decisions are candidates at all ---------------
+    if focus_id:
+        near = _execution_neighbourhood(store, focus_id, view.hops) if focus_found else set()
+        if focus_found:
+            near.add(focus_id)
+        # A focused page shows the neighbourhood whatever KIND it is made
+        # of -- an owner focusing on the assignment that holds the final
+        # decision must not be handed a blank page because the element is
+        # not a FUNCTION. The scope's kind filter is a default, not a
+        # property of `--focus`.
+        candidate_elements = sorted(near & set(elements))
+        candidate_decisions = sorted(near & set(all_decisions))
+        notes.append(
+            f"focused on {focus_id} within {view.hops} call hop(s): "
+            f"{len(candidate_elements)} element(s) and {len(candidate_decisions)} decision(s). "
+            "Everything outside that neighbourhood is not in this page; raise `--hops N`, "
+            "or drop `--focus` for the whole cascade scope"
+        )
+        if focus_found and len(candidate_elements) <= 1 and not candidate_decisions:
+            notes.append(
+                f"{focus_id} has no call-graph neighbours within {view.hops} hop(s). If it is "
+                "a value rather than a function, its neighbours are lineage edges -- the "
+                "Lineage tab of this same page is focused on it and shows them"
+            )
+    elif view.scope == SCOPE_FULL:
+        candidate_elements = list(all_execution)
+        candidate_decisions = list(all_decisions)
+    else:
+        picked = {eid for eid in all_execution if (elements[eid] or {}).get("kind") == "MODULE"}
+        picked |= (sinks | entries) & execution_set
+        for decision in store.decisions_by_id.values():
+            owner = decision.get("element_id")
+            if owner in execution_set:
+                picked.add(owner)
+        for record in store.raw["reachability"]:
+            for path_id in record.get("path_ids") or ():
+                if path_id in execution_set:
+                    picked.add(path_id)
+        candidate_elements = sorted(picked)
+        candidate_decisions = list(all_decisions)
+        notes.append(
+            "scope `cascade`: modules and stages as cards, decision points, declared and "
+            "detected sinks, entry points, and elements card 3 placed on a path to a sink. "
+            "Assignments, parameters, imports, config keys and lineage edges are NOT in this "
+            "page -- re-run with `--scope full` for those"
+        )
+
+    # -- the budget -------------------------------------------------------
+    # Decision points get a guaranteed share of the budget. Ranking them
+    # strictly after every on-path element looked right and was not: on the
+    # owner's engine 1,642 elements are on a path to a sink, so at
+    # --max-nodes 1000 the page held ZERO decision points -- in a scope
+    # whose definition names decision points first. Whichever side does not
+    # use its share gives it to the other, so nothing is wasted.
+    ranked = _rank_nodes(store, candidate_elements, candidate_decisions, sinks, entries)
+    budget = view.node_budget
+    ranked_elements = [(key, nid) for key, nid, is_d in ranked if not is_d]
+    ranked_decisions = [(key, nid) for key, nid, is_d in ranked if is_d]
+    decision_quota = int(budget * DECISION_BUDGET_SHARE) if budget else len(ranked_decisions)
+    element_quota = (budget - decision_quota) if budget else len(ranked_elements)
+
+    kept_elements: list[str] = []
+    kept_decisions: list[str] = []
+    kept: set[str] = set()
+    for _key, node_id in ranked_elements[:element_quota]:
+        kept_elements.append(node_id)
+        kept.add(node_id)
+    for _key, node_id in ranked_decisions:
+        if len(kept_decisions) >= decision_quota:
+            break
+        owner = (store.decisions_by_id.get(node_id) or {}).get("element_id") or ""
+        # A decision diamond with no owner card on the page is an orphan,
+        # not a fact -- it is skipped, never drawn dangling.
+        if owner and owner not in kept:
+            continue
+        kept_decisions.append(node_id)
+        kept.add(node_id)
+    # Whatever neither side used, in one deterministic pass over both
+    # ranked lists merged by their own keys.
+    if budget and len(kept) < budget:
+        leftovers = sorted(
+            [(key, nid, False) for key, nid in ranked_elements if nid not in kept]
+            + [(key, nid, True) for key, nid in ranked_decisions if nid not in kept]
+        )
+        for _key, node_id, is_decision in leftovers:
+            if len(kept) >= budget:
+                break
+            if is_decision:
+                owner = (store.decisions_by_id.get(node_id) or {}).get("element_id") or ""
+                if owner and owner not in kept:
+                    continue
+                kept_decisions.append(node_id)
+            else:
+                kept_elements.append(node_id)
+            kept.add(node_id)
+
+    nodes_available = len(candidate_elements) + len(candidate_decisions)
+    nodes_shown = len(kept_elements) + len(kept_decisions)
+    if nodes_shown < nodes_available:
+        notes.append(
+            f"showing {nodes_shown:,} of {nodes_available:,} nodes, ranked by decision "
+            f"relevance (sinks and entry points first, then elements on a path to a sink, "
+            f"then decision points, then the rest); {nodes_available - nodes_shown:,} not "
+            "shown. Raise or remove the cap with `--max-nodes N` (`--max-nodes 0` = no cap)"
+        )
+
+    # -- the lineage tab --------------------------------------------------
+    lineage_total = len(store.raw["lineage"])
+    if focus_id and focus_found:
+        lineage_ids = sorted(_lineage_neighbourhood(store, focus_id, view.hops))
+        lineage_enabled = True
+        lineage_note = (
+            f"lineage within {view.hops} hop(s) of {focus_id}: {len(lineage_ids):,} nodes "
+            f"of this graph's {lineage_total:,} lineage edges"
+        )
+    elif focus_id:
+        lineage_ids = []
+        lineage_enabled = True
+        lineage_note = f"--focus {focus_id} matches nothing in this graph"
+    elif view.scope == SCOPE_FULL:
+        lineage_ids = []            # every id; the builder takes the whole file
+        lineage_enabled = True
+        lineage_note = f"scope `full`: all {lineage_total:,} lineage edges"
+    else:
+        lineage_ids = []
+        lineage_enabled = False
+        lineage_note = (
+            f"This graph holds {lineage_total:,} lineage edges. Drawing them all is what "
+            "made this page unopenable, so lineage is focus-driven: pick an element on the "
+            "Execution tab and use its 'Show lineage' link, or re-render with "
+            "`--focus <element-id> [--hops N]`. `--scope full` draws every edge (and will "
+            "be refused unless it fits, or you pass --force)."
+        )
+
+    # -- what gets a detail record ---------------------------------------
+    detail_ids = sorted(
+        {node_id for node_id in kept_elements if node_id in elements}
+        | ({focus_id} if focus_found and focus_id in elements else set())
+        | ({i for i in lineage_ids if i in elements} if lineage_enabled and lineage_ids else set())
+    )
+
+    module_totals: dict[str, int] = {}
+    for element_id in all_execution:
+        module = (elements.get(element_id) or {}).get("module") or ""
+        module_totals[module] = module_totals.get(module, 0) + 1
+    module_included: dict[str, int] = {module: 0 for module in module_totals}
+    for element_id in kept_elements:
+        module = (elements.get(element_id) or {}).get("module") or ""
+        module_included[module] = module_included.get(module, 0) + 1
+
+    totals = {
+        "elements_in_graph": len(elements),
+        "elements_available": len(candidate_elements),
+        "elements_shown": len(kept_elements),
+        "decisions_available": len(candidate_decisions),
+        "decisions_shown": len(kept_decisions),
+        "nodes_available": nodes_available,
+        "nodes_shown": nodes_shown,
+        "nodes_omitted": nodes_available - nodes_shown,
+        "lineage_edges_in_graph": lineage_total,
+        "call_edges_in_graph": len(store.raw["edges"]),
+        "decisions_in_graph": len(all_decisions),
+        "execution_elements_in_graph": len(all_execution),
+        "node_budget": budget,
+    }
+    return Selection(
+        view=view,
+        element_ids=tuple(sorted(kept_elements)),
+        decision_ids=tuple(sorted(kept_decisions)),
+        lineage_ids=tuple(lineage_ids),
+        detail_ids=tuple(detail_ids),
+        lineage_enabled=lineage_enabled,
+        lineage_note=lineage_note,
+        focus_id=focus_id,
+        focus_found=focus_found,
+        totals=totals,
+        module_totals=dict(sorted(module_totals.items())),
+        module_included=dict(sorted(module_included.items())),
+        notes=tuple(notes),
+    )
+
+
+def _json_bytes(obj: Any) -> int:
+    """Serialized size of *obj*, in the island's own encoding."""
+    return len(json.dumps(obj, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
+
+
+def _stride_sample(items: "list[str] | tuple[str, ...]", size: int) -> list[str]:
+    """Up to *size* entries spread evenly across *items*, deterministically.
+
+    A stride, not the first N: on a real engine the first few ids by sort
+    order are not representative of the rest, and taking the head made the
+    round-5 estimator wrong by 2.7x on the owner's own graph. No `random`,
+    no clock, no set iteration -- two runs sample the same entries.
+    """
+    count = len(items)
+    if count == 0 or size <= 0:
+        return []
+    if count <= size:
+        return list(items)
+    step = count / size
+    return [items[min(count - 1, int(index * step))] for index in range(size)]
+
+
+def _mean_bytes(objects: list[Any]) -> float:
+    if not objects:
+        return 0.0
+    return sum(_json_bytes(obj) for obj in objects) / len(objects)
+
+
+def estimate_island_bytes(
+    store: ArtifactStore,
+    selection: Selection,
+    diff_store: ArtifactStore | None = None,
+    rstore: RuntimeStore | None = None,
+) -> SizeEstimate:
+    """How large the data island would be, before any of it is built.
+
+    Every count below is exact. Every unit cost is measured by building a
+    stride sample of the very records the page would carry -- the real
+    :func:`_element_node`, :func:`_decision_node`, :func:`_edge_wire` and
+    :func:`_capped_detail`, not a model of them. Round 5's first estimator
+    modelled the parts instead and missed `order_ancestor_ids` entirely,
+    predicting 38 MB for an island that came out at 104 MB. An estimator
+    that can be wrong in that direction is worse than none: it is the
+    guard's whole job to be right about the number it refuses on.
+    """
+    view = selection.view
+    totals = selection.totals
+
+    # -- execution tab ----------------------------------------------------
+    element_sample = _stride_sample(selection.element_ids, _SAMPLE_SIZE)
+    decision_sample = _stride_sample(selection.decision_ids, _SAMPLE_SIZE)
+    node_cost = _mean_bytes([_element_node(store, i) for i in element_sample]) + 120
+    decision_cost = _mean_bytes(
+        [_decision_node(store, store.decisions_by_id[i]) for i in decision_sample]
+    ) + 120
+    edge_cost = _mean_bytes([_edge_wire(e) for e in store.raw["edges"][:_SAMPLE_SIZE]]) + 4
+
+    kept = set(selection.element_ids) | set(selection.decision_ids)
+    if totals["nodes_omitted"]:
+        execution_edges = sum(
+            1 for edge in store.raw["edges"]
+            if edge.get("source_id") in kept and edge.get("target_id") in kept
+        )
+    else:
+        execution_edges = totals["call_edges_in_graph"]
+    decision_outcomes = sum(
+        1 + len(store.decisions_by_id[i].get("outcomes") or ())
+        for i in selection.decision_ids
+    )
+
+    parts = {
+        "execution_nodes": int(
+            len(selection.element_ids) * node_cost + len(selection.decision_ids) * decision_cost
+        ),
+        "execution_wires": int((execution_edges + decision_outcomes) * edge_cost),
+    }
+
+    # -- lineage tab ------------------------------------------------------
+    lineage_wire_cost = _mean_bytes([
+        {"id": e.get("id"), "kind": e.get("kind"), "source_id": e.get("source_id"),
+         "target_id": e.get("target_id"), "confidence": None, "method": None,
+         "span": e.get("span"), "outcome_label": ""}
+        for e in store.raw["lineage"][:_SAMPLE_SIZE]
+    ]) + 4
+    if not selection.lineage_enabled:
+        parts["lineage"] = 0
+    elif selection.focus_id:
+        focus_ids = list(selection.lineage_ids)
+        focus_edges = sum(len(store.lineage_out.get(i, ())) for i in focus_ids)
+        lineage_node_cost = _mean_bytes(
+            [_lineage_node(store, i) for i in _stride_sample(focus_ids, _SAMPLE_SIZE)]
+        ) + 120
+        parts["lineage"] = int(len(focus_ids) * lineage_node_cost + focus_edges * lineage_wire_cost)
+    else:
+        endpoints: set[str] = set()
+        for edge in store.raw["lineage"]:
+            endpoints.add(edge.get("source_id") or "")
+            endpoints.add(edge.get("target_id") or "")
+        endpoint_list = sorted(endpoints)
+        lineage_node_cost = _mean_bytes(
+            [_lineage_node(store, i) for i in _stride_sample(endpoint_list, _SAMPLE_SIZE)]
+        ) + 120
+        parts["lineage"] = int(
+            len(endpoint_list) * lineage_node_cost
+            + totals["lineage_edges_in_graph"] * lineage_wire_cost
+            + len(store.raw["barriers"]) * (lineage_node_cost + lineage_wire_cost)
+        )
+
+    # -- element details: round 4's real bulk ------------------------------
+    detail_ids = selection.detail_ids
+    detail_cost = _mean_bytes([
+        _capped_detail(store, i, DETAIL_LIST_CAP)
+        for i in _stride_sample(detail_ids, _SAMPLE_SIZE)
+    ]) + 120
+    parts["element_details"] = int(len(detail_ids) * detail_cost)
+
+    # -- diff and runtime -------------------------------------------------
+    if diff_store is not None:
+        parts["diff"] = int(
+            _mean_bytes(diff_store.raw["changes"][:_SAMPLE_SIZE]) * len(diff_store.raw["changes"])
+            + _mean_bytes(diff_store.raw["impacts"][:_SAMPLE_SIZE]) * len(diff_store.raw["impacts"])
+            + len(selection.element_ids) * node_cost
+        )
+    else:
+        parts["diff"] = 0
+    if rstore is not None:
+        events = rstore.raw.get("events", [])
+        narrative = rstore.raw.get("narrative", [])
+        parts["runtime"] = int(
+            _mean_bytes(events[:_SAMPLE_SIZE]) * len(events)
+            + _mean_bytes(narrative[:_SAMPLE_SIZE]) * len(narrative)
+        )
+    else:
+        parts["runtime"] = 0
+
+    total = sum(parts.values()) + 4096
+    counts = {
+        "elements": totals["elements_in_graph"],
+        "call_edges": totals["call_edges_in_graph"],
+        "lineage_edges": totals["lineage_edges_in_graph"],
+        "decisions": totals["decisions_in_graph"],
+    }
+    return SizeEstimate(
+        total_bytes=total,
+        limit_bytes=0 if view.force else view.size_limit_bytes,
+        parts=dict(sorted(parts.items())),
+        counts=counts,
+        scope=view.scope,
+        forced=view.force,
+    )
+
+
+def _build_execution(store: ArtifactStore, selection: Selection) -> dict[str, Any]:
+    all_execution_ids = sorted(
         eid for eid, element in store.elements_by_id.items()
         if element.get("kind") in EXECUTION_KINDS
     )
+    element_ids = list(selection.element_ids)
     element_id_set = set(element_ids)
-    sink_ids = set(store.manifest.get("sink_ids") or ())
+    sink_ids, entry_ids = _anchor_ids(store)
 
     element_nodes = []
     for element_id in element_ids:
         node = _element_node(store, element_id)
         node["is_sink"] = element_id in sink_ids
-        node["order_node_ids"] = sorted(store.order_containing_element.get(element_id, []))
+        node["is_entry"] = element_id in entry_ids
+        # An element can sit in thousands of order nodes on a real engine;
+        # the tail is not silently cut, it states its own length.
+        # Only the count here: the ids themselves are in this element's
+        # detail record, which is the one place the page reads them from.
+        node["order_node_total"] = len(store.order_containing_element.get(element_id, []))
         element_nodes.append(node)
 
-    decision_ids = sorted(store.decisions_by_id)
+    decision_ids = list(selection.decision_ids)
     decision_nodes = [_decision_node(store, store.decisions_by_id[did]) for did in decision_ids]
 
     nodes = element_nodes + decision_nodes
@@ -33478,7 +34238,13 @@ def _build_execution(store: ArtifactStore) -> dict[str, Any]:
                 omitted += 1
 
     sorted_wires = sorted(wires, key=lambda wire: wire["id"] or "")
-    stages, stage_of = _build_stages(store, element_ids)
+    # Stage structure comes from the WHOLE execution element set, then is
+    # restricted to what this page carries -- see :func:`_scope_stages`.
+    # `--focus` can keep elements outside the execution kinds; every kept
+    # node must land in some stage card or stage mode would simply not
+    # draw it, which is an omission with no notice attached.
+    stages, stage_of = _build_stages(store, sorted(set(all_execution_ids) | element_id_set))
+    _scope_stages(stages, element_id_set)
     flow_totals, stage_pairs = _classify_and_summarize_flow(sorted_wires, stage_of)
 
     return {
@@ -33491,6 +34257,7 @@ def _build_execution(store: ArtifactStore) -> dict[str, Any]:
             "an order-tree node this canvas does not resolve to a single element -- "
             "the raw target is still visible in that node's or decision's own detail panel"
         ),
+        "scope_note": selection.headline(),
         "stages": stages,
         "stage_of": stage_of,
         "flow_totals": flow_totals,
@@ -33503,37 +34270,73 @@ def _build_execution(store: ArtifactStore) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _build_lineage(store: ArtifactStore) -> dict[str, Any]:
+def _build_lineage(store: ArtifactStore, selection: Selection) -> dict[str, Any]:
+    """The lineage canvas, focus-driven by default.
+
+    Round 5: this tab was the worst offender -- on the owner's engine it
+    tried to draw 390,000 edges, which is most of the 702 MB the page used
+    to weigh. It now draws nothing at all unless the caller asked for a
+    neighbourhood (`--focus`) or for everything (`--scope full`), and the
+    "nothing" is a readable instruction, not a blank canvas.
+    """
     lineage_edges = store.raw["lineage"]
-    ids: set[str] = set()
-    for edge in lineage_edges:
-        source_id, target_id = edge.get("source_id"), edge.get("target_id")
-        if source_id:
-            ids.add(source_id)
-        if target_id:
-            ids.add(target_id)
-    for element_id, element in store.elements_by_id.items():
-        if element.get("kind") == "FEATURE":
-            ids.add(element_id)
-    barriers = sorted(store.raw["barriers"], key=lambda b: b.get("id") or "")
-    for barrier in barriers:
-        if barrier.get("element_id"):
-            ids.add(barrier["element_id"])
+    if not selection.lineage_enabled:
+        return {
+            "nodes": [], "wires": [], "focus_driven": True, "focus_id": "",
+            "reason": selection.lineage_note,
+            "edges_in_graph": len(lineage_edges),
+        }
+
+    focused = bool(selection.focus_id)
+    ids: set[str] = set(selection.lineage_ids) if focused else set()
+    if not focused:
+        for edge in lineage_edges:
+            source_id, target_id = edge.get("source_id"), edge.get("target_id")
+            if source_id:
+                ids.add(source_id)
+            if target_id:
+                ids.add(target_id)
+        for element_id, element in store.elements_by_id.items():
+            if element.get("kind") == "FEATURE":
+                ids.add(element_id)
+    barriers = [
+        b for b in sorted(store.raw["barriers"], key=lambda b: b.get("id") or "")
+        if not focused or b.get("element_id") in ids
+    ]
+    if not focused:
+        for barrier in barriers:
+            if barrier.get("element_id"):
+                ids.add(barrier["element_id"])
 
     node_ids = sorted(ids)
     nodes_by_id: dict[str, dict[str, Any]] = {
         node_id: _lineage_node(store, node_id) for node_id in node_ids
     }
 
+    # A focused page must never pay for a pass over every lineage edge in
+    # the graph: `lineage_out` is the index the loader already built.
+    if focused:
+        relevant: list[dict[str, Any]] = []
+        seen_edge_ids: set[str] = set()
+        for node_id in node_ids:
+            for edge in store.lineage_out.get(node_id, ()):
+                edge_id = edge.get("id") or ""
+                if edge_id in seen_edge_ids:
+                    continue
+                seen_edge_ids.add(edge_id)
+                relevant.append(edge)
+    else:
+        relevant = lineage_edges
+
     edge_pairs = sorted({
         (edge.get("source_id"), edge.get("target_id"))
-        for edge in lineage_edges
+        for edge in relevant
         if edge.get("source_id") in ids and edge.get("target_id") in ids
     })
     layers = _longest_path_layers(node_ids, edge_pairs, {})
 
     wires: list[dict[str, Any]] = []
-    for edge in lineage_edges:
+    for edge in relevant:
         source_id, target_id = edge.get("source_id"), edge.get("target_id")
         if source_id not in ids or target_id not in ids:
             continue
@@ -33565,7 +34368,14 @@ def _build_lineage(store: ArtifactStore) -> dict[str, Any]:
     for node in nodes:
         node["layer"] = layers.get(node["id"], 0)
 
-    return {"nodes": nodes, "wires": sorted(wires, key=lambda wire: wire["id"] or "")}
+    return {
+        "nodes": nodes,
+        "wires": sorted(wires, key=lambda wire: wire["id"] or ""),
+        "focus_driven": focused,
+        "focus_id": selection.focus_id,
+        "reason": selection.lineage_note,
+        "edges_in_graph": len(lineage_edges),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -33573,7 +34383,9 @@ def _build_lineage(store: ArtifactStore) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _build_diff(store: ArtifactStore, diff_store: ArtifactStore | None) -> dict[str, Any]:
+def _build_diff(
+    store: ArtifactStore, diff_store: ArtifactStore | None, selection: Selection
+) -> dict[str, Any]:
     if diff_store is None:
         return {
             "available": False,
@@ -33594,9 +34406,11 @@ def _build_diff(store: ArtifactStore, diff_store: ArtifactStore | None) -> dict[
         for affected_id in row.get("affected_ids") or ():
             changed_ids.add(affected_id)
 
-    execution_ids = {
-        eid for eid, element in store.elements_by_id.items() if element.get("kind") in EXECUTION_KINDS
-    }
+    # Round 5: the Diff tab draws this page's scoped element set, PLUS every
+    # element the diff actually touches, whatever the scope -- a change that
+    # fell outside the scope would otherwise be a change the owner cannot
+    # see, which is the one thing this tab exists to prevent.
+    execution_ids = set(selection.element_ids)
     resolvable_changed = changed_ids & set(store.elements_by_id)
     ghost_ids = sorted(changed_ids - set(store.elements_by_id))
 
@@ -33719,12 +34533,137 @@ def _build_runtime(store: ArtifactStore, rstore: RuntimeStore | None) -> dict[st
 # ---------------------------------------------------------------------------
 
 
+#: Detail fields that are unbounded on a real engine. Each is capped at
+#: :data:`DETAIL_LIST_CAP` and gains a `<field>_total` sibling, so the panel
+#: can say "4 of 3,182 shown" rather than quietly presenting 4 as all of
+#: them. On the owner's engine these lists alone were most of the 702 MB:
+#: `lineage_in`/`lineage_out` embed a whole lineage edge record per entry,
+#: which is two further copies of lineage.jsonl spread across the details.
+_CAPPED_DETAIL_FIELDS = (
+    "outgoing_edges", "incoming_edges", "unresolved_as_candidate", "order_node_ids",
+    "decision_as_condition", "decision_reads_this", "lineage_out", "lineage_in",
+    "barrier_ids", "slice_ids_as_member", "finding_ids_as_evidence",
+)
+
+#: Detail fields that hold whole EDGE records where the panel only ever
+#: renders the id at the other end. The edge's own provenance is not lost:
+#: it rides on the drawn wire (execution tab) or on the focused lineage
+#: edge, both of which are clickable and show method and confidence. Carrying
+#: it a second time inside every element's detail cost 6.2 MB on the owner's
+#: engine and put nothing new on the screen.
+_EDGE_PROJECTIONS = {
+    "incoming_edges": "source_id",
+    "outgoing_edges": "target_id",
+    "lineage_in": "source_id",
+    "lineage_out": "target_id",
+}
+
+
+def _capped_detail(store: ArtifactStore, element_id: str, cap: int) -> dict[str, Any]:
+    """`views.element_detail`, with its unbounded lists capped and counted.
+
+    No fact is altered: every entry kept is the entry :mod:`.views`
+    produced, in the order it produced it, and every entry dropped is
+    accounted for by an exact total the panel prints. Nothing is silently
+    dropped -- the element's own artifacts remain the whole answer.
+    """
+    detail = views.element_detail(store, element_id)
+    if cap <= 0:
+        return detail
+    detail["reachability"] = _capped_reachability(detail.get("reachability") or {})
+    for field_name in _CAPPED_DETAIL_FIELDS:
+        value = detail.get(field_name)
+        if not isinstance(value, list):
+            continue
+        detail[f"{field_name}_total"] = len(value)
+        if len(value) > cap:
+            detail[field_name] = value[:cap]
+    # Order membership is capped harder than everything else, and its
+    # ancestor chains harder still: measured at 66.7 MB of a 103.7 MB
+    # island on the owner's engine, more than every other field combined.
+    order_all = detail.get("order_node_ids") or []
+    detail["order_node_ids"] = order_all[:ORDER_NODE_CAP]
+    ancestors = detail.get("order_ancestor_ids")
+    if isinstance(ancestors, dict):
+        # The blueprint renders the order node ids themselves, never their
+        # ancestor chains, and each chain repeats its own key. Nothing is
+        # lost: the tabular report shows the chain, and order.jsonl holds
+        # every parent link. The pointer says so rather than leaving a
+        # field that reads as "this element has no ancestors".
+        detail["order_ancestor_ids"] = {
+            "carried_by": "order.jsonl and the tabular report",
+            "nodes": len(ancestors),
+        }
+    detail["order_node_cap"] = ORDER_NODE_CAP
+    detail["detail_cap"] = cap
+    # The same fact stored twice is not information, it is weight. Every id
+    # with a detail record also has a node on a canvas, and that node
+    # already carries the canonical `Reachability` verbatim (see
+    # `_element_node`/`_lineage_node`), which the detail panel is what
+    # actually reads. Measured on the owner's engine: 1.43 MB of pure
+    # duplication. The pointer stays, so a reader of the island can never
+    # mistake "carried elsewhere" for "not known".
+    detail["reachability"] = {"carried_by": "node"}
+    detail["element"] = {"carried_by": "node"}
+    # Edge lists become id lists; the edges themselves stay one click away
+    # on the canvas, with their method and confidence intact.
+    for field_name, id_field in _EDGE_PROJECTIONS.items():
+        value = detail.get(field_name)
+        if not isinstance(value, list):
+            continue
+        detail[field_name] = [
+            {"id": edge.get("id"), "kind": edge.get("kind"), id_field: edge.get(id_field)}
+            for edge in value
+        ]
+    detail["edges_projected"] = True   # the note itself lives once, in DATA.view
+    return detail
+
+
+#: Unresolved reasons that mean "a whole source file is missing from this
+#: map", as opposed to "one call site inside it could not be resolved".
+#: MISSING_TARGET is deliberately NOT here: card 2 emits it per unresolved
+#: call site, tens of thousands of times on a real engine, and it says
+#: nothing about whether the file was read.
+_FILE_LEVEL_UNRESOLVED = ("SYNTAX_ERROR", "DECODE_ERROR", "TOO_LARGE")
+
+
+def _unparsed_files(store: ArtifactStore) -> list[dict[str, Any]]:
+    """Every source file card 1 could not read, from `unresolved.jsonl`.
+
+    Read verbatim: the reason, the path, the line and card 1's own
+    description. Nothing is judged or re-derived here; this is the viewer
+    putting an existing record where it can be seen.
+    """
+    rows: dict[str, dict[str, Any]] = {}
+    for record in store.raw["unresolved"]:
+        reason = record.get("reason")
+        if reason not in _FILE_LEVEL_UNRESOLVED:
+            continue
+        span = record.get("span") or {}
+        path = span.get("path") or ""
+        if not isinstance(path, str) or not path.endswith(".py"):
+            continue
+        key = f"{reason}::{path}::{span.get('line')}"
+        if key in rows:
+            continue
+        rows[key] = {
+            "reason": reason,
+            "path": path,
+            "line": span.get("line"),
+            "description": record.get("description", ""),
+            "id": record.get("id", ""),
+        }
+    return [rows[key] for key in sorted(rows)]
+
+
 def build_blueprint_data(
     store: ArtifactStore,
     rstore: RuntimeStore | None = None,
     diff_store: ArtifactStore | None = None,
     *,
     report_link: str = "",
+    view: BlueprintView | None = None,
+    selection: Selection | None = None,
 ) -> dict[str, Any]:
     """Everything the page needs, as one JSON-serializable, sorted structure.
 
@@ -33732,13 +34671,20 @@ def build_blueprint_data(
     a view already defined in :mod:`.views` -- nothing is derived here that
     is not either a direct field copy or the presentation-only layer number
     computed above.
+
+    *view* / *selection* bound what goes in (round 5). Omitting both keeps
+    the round-4 shape for callers that already knew this graph was small
+    enough -- the default `BlueprintView` is `--scope cascade`, so the
+    bound is on by default everywhere it matters.
     """
     manifest = store.manifest or {}
     confidence_rank = {level.value: index for index, level in enumerate(Confidence)}
+    if selection is None:
+        selection = select(store, view if view is not None else BlueprintView())
 
-    execution = _build_execution(store)
-    lineage = _build_lineage(store)
-    diff = _build_diff(store, diff_store)
+    execution = _build_execution(store, selection)
+    lineage = _build_lineage(store, selection)
+    diff = _build_diff(store, diff_store, selection)
 
     element_ids: set[str] = set()
     for graph in (execution, lineage, diff):
@@ -33746,10 +34692,34 @@ def build_blueprint_data(
             if node.get("is_element"):
                 element_ids.add(node["id"])
     element_details = {
-        element_id: views.element_detail(store, element_id) for element_id in sorted(element_ids)
+        element_id: _capped_detail(store, element_id, DETAIL_LIST_CAP)
+        for element_id in sorted(element_ids)
     }
 
     return {
+        "view": {
+            "scope": selection.view.scope,
+            "max_nodes": selection.view.node_budget,
+            "focus": selection.focus_id,
+            "focus_found": selection.focus_found,
+            "hops": selection.view.hops,
+            "forced": selection.view.force,
+            "truncated": selection.truncated,
+            "headline": selection.headline(),
+            "notes": list(selection.notes),
+            "totals": dict(sorted(selection.totals.items())),
+            "module_totals": selection.module_totals,
+            "module_included": selection.module_included,
+            "detail_cap": DETAIL_LIST_CAP,
+            "order_node_cap": ORDER_NODE_CAP,
+            "order_ancestor_cap": ORDER_ANCESTOR_CAP,
+            "path_ids_cap": PATH_IDS_CAP,
+            "edges_projected_note": (
+                "in the detail panel, caller/callee and lineage lists carry the far "
+                "end's id only. The edge record, with its method and confidence, is on "
+                "the wire itself -- click it -- and in edges.jsonl / lineage.jsonl."
+            ),
+        },
         "schema_version": manifest.get("schema_version", ""),
         "tool_version": manifest.get("tool_version", ""),
         "generator": "cascade-map blueprint",
@@ -33759,6 +34729,15 @@ def build_blueprint_data(
         "legend": LEGEND,
         "available": dict(sorted(store.available.items())),
         "diagnostics": {
+            # A source file the parser could not read at all is the loudest
+            # fact in the whole graph and had nowhere to be seen: card 1
+            # emits it as an `Unresolved` with reason SYNTAX_ERROR /
+            # DECODE_ERROR and no `candidate_ids`, so no element's panel
+            # could ever show it. A map missing a whole file must say so on
+            # the page, not only in unresolved.jsonl -- an owner on Python
+            # 3.11 analysing a 3.12-only target otherwise gets a small,
+            # clean, WRONG map that reads as success.
+            "unparsed_files": _unparsed_files(store),
             "static_errors": [
                 {"file": e.file, "line": e.line_number, "reason": e.reason} for e in store.errors
             ],
@@ -34001,8 +34980,33 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
   box-shadow:0 0 0 2px var(--node-bg), 0 0 6px rgba(90,169,255,.7); }
 .pin-outcome { right:-6px; background:var(--sink); border:2px solid var(--node-bg);
   box-shadow:0 0 0 2px var(--node-bg), 0 0 6px rgba(255,182,72,.7); }
-#empty-state { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  text-align:center; padding:2rem; font-size:1rem; color:var(--text-dim); background:var(--bg); z-index:20; }
+#empty-state { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; text-align:center; padding:2rem; font-size:1rem; color:var(--text-dim);
+  background:var(--bg); z-index:20; }
+/* The empty state's own children are inert to hit-testing, so
+   `document.elementFromPoint` at the canvas centre keeps returning
+   `#empty-state` itself -- the exact property
+   test_blueprint_render.py's D1 guard asserts. They carry no behaviour,
+   so nothing is lost by making them transparent to the pointer. */
+#empty-state > * { pointer-events:none; }
+#empty-state .empty-title { font-size:1.15rem; font-weight:700; color:var(--text); margin-bottom:.6rem;
+  max-width:60rem; }
+#empty-state .empty-body { max-width:52rem; line-height:1.55; }
+#empty-state code { color:var(--accent); background:var(--node-bg); border:1px solid var(--panel-border);
+  border-radius:4px; padding:0 .25rem; }
+/* Round 5: the scope banner. The page must say what it is NOT showing, at
+   all times and without a click -- a truncated view that does not announce
+   itself is the same lie as a filtered one. */
+#scope-banner { padding:.35rem 1rem; background:var(--panel); border-bottom:1px solid var(--panel-border);
+  font-size:.72rem; color:var(--text-dim); z-index:54; display:flex; flex-wrap:wrap;
+  align-items:baseline; gap:.5rem; }
+#scope-banner .scope-tag { font-weight:700; color:var(--accent); text-transform:uppercase;
+  letter-spacing:.04em; }
+#scope-banner.scope-truncated { border-bottom-color:var(--amber); }
+#scope-banner.scope-truncated .scope-headline { color:var(--amber); font-weight:600; }
+#scope-banner details { display:inline; }
+#scope-banner summary { cursor:pointer; color:var(--accent); }
+#scope-banner .scope-note { display:block; margin:.25rem 0 0 .8rem; max-width:80rem; }
 /* D10: every long-id context in this panel uses `overflow-wrap:anywhere`
    with `word-break:normal`, never the legacy `word-break:break-word` --
    `break-word` breaks *anywhere* it needs to, including mid-word, which is
@@ -34053,6 +35057,12 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 .stage-list-item { cursor:pointer; overflow-wrap:anywhere; }
 .stage-list-item:hover { color:var(--accent); }
 .stage-list-more { color:var(--text-dim); font-style:italic; list-style:none; margin-left:-1.5rem; }
+/* Round 5: an omission is drawn in the attention colour, never in the
+   dimmed "and some more of the same" grey -- "not included" and "there are
+   further members" are different facts and must not look alike. */
+.stage-list-omitted { color:var(--amber); list-style:none; margin-left:-1.5rem; font-size:.66rem;
+  line-height:1.3; overflow-wrap:anywhere; word-break:normal; }
+.detail-truncated { color:var(--amber); font-size:.7rem; margin:.15rem 0 .4rem 0; }
 .wire-flow-BACKWARD { stroke:var(--red) !important; stroke-width:2.6px !important; stroke-dasharray:6 4 !important; }
 .wire-flow-BACKWARD.wire-conf-CERTAIN, .wire-flow-BACKWARD.wire-conf-RESOLVED { filter:drop-shadow(0 0 3px rgba(229,72,77,.6)); }
 #flow-readout { position:absolute; right:.6rem; top:.6rem; width:22rem; max-width:calc(100% - 1.2rem);
@@ -34101,7 +35111,12 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 #shortcuts-help { position:absolute; right:.5rem; bottom:.5rem; background:var(--panel);
   border:1px solid var(--panel-border); border-radius:8px; padding:.3rem .6rem; font-size:.62rem;
   color:var(--text-dim); z-index:30; }
-#diagnostics { background:rgba(229,72,77,.12); border-bottom:2px solid var(--red); padding:.5rem 1rem; font-size:.73rem; }
+/* Bounded by construction: a banner that can grow without limit takes the
+   canvas with it. Measured: an unbounded list of unreadable files on the
+   fixture corpus left #canvas-wrap 312px tall and Fit at 0.087. */
+#diagnostics { background:rgba(229,72,77,.12); border-bottom:2px solid var(--red); padding:.5rem 1rem;
+  font-size:.73rem; max-height:5.5rem; overflow:auto; flex:0 0 auto; }
+#diagnostics summary { cursor:pointer; color:var(--accent); }
 #diagnostics ul { margin:.3rem 0 0; padding-left:1.2rem; }
 .lod-hide-labels .node-body, .lod-hide-labels .node-badges { display:none; }
 .lod-hide-badges .node-badges { display:none; }
@@ -34145,6 +35160,7 @@ _BODY = """<div id="app">
 <button type="button" id="btn-clear-filters">Clear filters</button>
 <span id="filter-summary"></span>
 </div>
+<div id="scope-banner"></div>
 <div id="canvas-wrap">
 <div id="viewport">
 <div id="grid-bg"></div>
@@ -34329,6 +35345,15 @@ var state = {
 
 function getGraph(tab) { return DATA[tab] || { nodes: [], wires: [] }; }
 
+//: The single flag string every "not included" note names, so the page can
+//: never suggest a flag that would not actually widen THIS view.
+function widenFlag() {
+  var v = DATA.view || {};
+  if (v.scope !== 'full') return '--scope full';
+  if (v.truncated) return '--max-nodes 0';
+  return '--scope full';
+}
+
 // ---- layout ----
 var layoutCache = {};
 
@@ -34398,8 +35423,21 @@ function computeModuleGrouping(tab, kept, collapsedMods) {
       visible.push(n);
     }
   });
+  var moduleTotals = (DATA.view && DATA.view.module_totals) || {};
+  var moduleIncluded = (DATA.view && DATA.view.module_included) || {};
   var aggList = Object.keys(moduleAgg).sort().map(function (k) {
     var agg = moduleAgg[k];
+    // Round 5: a collapsed module card must distinguish "this module has
+    // 3 members" from "this page carries 3 of this module's 1,712
+    // members". Both numbers come from Python, counted over the unscoped
+    // graph and over the island respectively -- never from `agg.count`,
+    // which the user's own filters also move, so a filtered card can never
+    // blame the scope for what a filter did.
+    if (tab === 'execution') {
+      var total = moduleTotals[k];
+      agg.member_total = (total === undefined) ? agg.count : total;
+      agg.not_included = Math.max(0, agg.member_total - (moduleIncluded[k] || 0));
+    }
     for (var i = 0; i < CHANGE_KIND_PRIORITY.length; i++) {
       if (agg.change_counts[CHANGE_KIND_PRIORITY[i]]) { agg.strongest_change_kind = CHANGE_KIND_PRIORITY[i]; break; }
     }
@@ -34436,11 +35474,19 @@ function computeStageGrouping(kept, keptIds) {
 
   stages.forEach(function (stage, index) {
     var members = stage.member_ids.filter(function (id) { return keptIds[id]; });
-    if (!members.length) return;
-    if (state.collapsedStages[index] !== false) {
+    // Round 5: a stage whose members are all outside this page's SCOPE is
+    // still drawn, and says so. Dropping the card would render an
+    // omission as an absence -- the exact failure this round exists to
+    // fix. `member_omitted` is the scope's doing, computed in Python; a
+    // stage emptied by the user's own filters still disappears, exactly as
+    // before, because the filter panel already says a filter is on.
+    var notIncluded = stage.member_omitted || 0;
+    if (!members.length && !notIncluded) return;
+    if (state.collapsedStages[index] !== false || !members.length) {
       displayNodes.push({
         id: stage.id, kind: 'STAGE', is_stage: true, name: stage.name, rule: stage.rule,
         layer: index, ordered_member_ids: members, count: members.length,
+        member_total: stage.member_total, not_included: notIncluded,
         confidence: stage.confidence, module: '', is_element: false,
         reachability: { state: 'UNKNOWN', source: 'stage',
           reason: 'expand the stage to see per-element reachability', sink_ids: [], path_ids: [] },
@@ -34678,7 +35724,19 @@ function buildNodeEl(n, p, tab) {
     if (n.ordered_member_ids.length > shown.length) {
       list.appendChild(el('li', 'stage-list-more', '+ ' + (n.ordered_member_ids.length - shown.length) + ' more'));
     }
+    if (n.not_included) {
+      // Never an empty list: what is missing is named, with the flag that
+      // brings it back.
+      list.appendChild(el('li', 'stage-list-omitted',
+        '+ ' + n.not_included + ' member' + (n.not_included === 1 ? '' : 's')
+        + ' not included in this page \\u2014 re-run with ' + widenFlag()));
+    }
     wrap.appendChild(list);
+  }
+  if (n.is_module_agg && n.not_included) {
+    wrap.appendChild(el('div', 'stage-list-omitted',
+      n.not_included + ' more element' + (n.not_included === 1 ? '' : 's')
+      + ' in this module are not included in this page \\u2014 re-run with ' + widenFlag()));
   }
 
   var badges = el('div', 'node-badges');
@@ -34761,22 +35819,71 @@ function redrawWires(tab) {
   });
 }
 
+//: An empty canvas must always say WHY it is empty and what to do about
+//: it -- round 5's rule, after the lineage tab's 402,596 edges had to
+//: become opt-in: never render an omission as emptiness.
+function setEmptyState(title, body) {
+  var es = document.getElementById('empty-state');
+  es.innerHTML = '';
+  es.appendChild(el('div', 'empty-title', title));
+  var bodyEl = el('div', 'empty-body');
+  String(body || '').split('`').forEach(function (part, i) {
+    if (part === '') return;
+    bodyEl.appendChild(i % 2 ? el('code', null, part) : document.createTextNode(part));
+  });
+  es.appendChild(bodyEl);
+  es.hidden = false;
+}
+
 function updateEmptyState(tab) {
   var es = document.getElementById('empty-state');
   var g = getGraph(tab);
   if (tab === 'diff' && !DATA.diff.available) {
-    es.hidden = false; es.textContent = DATA.diff.reason; return;
+    setEmptyState('No version diff loaded', DATA.diff.reason); return;
   }
   if (!g.nodes || !g.nodes.length) {
-    es.hidden = false;
-    es.textContent = tab === 'execution'
-      ? 'no MODULE/CLASS/FUNCTION/METHOD elements found -- run `metatron analyze` first'
-      : tab === 'lineage'
-        ? 'no lineage data -- lineage.jsonl is empty or missing'
-        : 'no changes in this diff';
+    if (tab === 'lineage') {
+      var count = (g.edges_in_graph || 0).toLocaleString();
+      setEmptyState(
+        g.focus_driven && g.focus_id
+          ? 'Nothing in lineage within ' + (DATA.view.hops) + ' hop(s) of ' + g.focus_id
+          : 'Lineage is focus-driven \\u2014 pick an element',
+        g.reason || ('no lineage data \\u2014 lineage.jsonl is empty or missing (' + count + ' edges)')
+      );
+      return;
+    }
+    setEmptyState(
+      tab === 'execution' ? 'Nothing to draw on the Execution tab' : 'No changes in this diff',
+      tab === 'execution'
+        ? 'no MODULE/CLASS/FUNCTION/METHOD elements are in this page \\u2014 run `metatron analyze` '
+          + 'first, or widen the view with `--scope full` / `--max-nodes 0`'
+        : 'the loaded diff names no element in this graph'
+    );
     return;
   }
   es.hidden = true;
+}
+
+//: The scope banner: what this page holds, what it does not, and the flag
+//: that changes it. Painted once, from `DATA.view`, and never hidden.
+function renderScopeBanner() {
+  var banner = document.getElementById('scope-banner');
+  var v = DATA.view || {};
+  banner.innerHTML = '';
+  banner.classList.toggle('scope-truncated', !!v.truncated);
+  banner.appendChild(el('span', 'scope-tag', 'scope ' + (v.scope || 'cascade')));
+  if (v.focus) {
+    banner.appendChild(el('span', 'scope-tag', 'focus ' + v.focus + ' (' + v.hops + ' hops)'));
+  }
+  if (v.forced) banner.appendChild(el('span', 'scope-tag', '--force'));
+  banner.appendChild(elWithBreaks('span', 'scope-headline', v.headline || ''));
+  var notes = v.notes || [];
+  if (notes.length) {
+    var det = document.createElement('details');
+    det.appendChild(el('summary', null, 'what is not on this page (' + notes.length + ')'));
+    notes.forEach(function (n) { det.appendChild(elWithBreaks('span', 'scope-note', n)); });
+    banner.appendChild(det);
+  }
 }
 
 function renderTab(tab) {
@@ -35022,9 +36129,15 @@ function idLink(id, tab, labelText) {
   btn.addEventListener('click', function () { switchTab(tab); flyTo(id, tab); });
   return btn;
 }
-function idListRow(label, ids) {
+//: `total`, when given, is the number of entries the artifacts hold before
+//: the detail record's own cap (round 5, DETAIL_LIST_CAP). The row states
+//: the shortfall: "40 of 3,182 shown" is a fact; showing 40 silently is not.
+function idListRow(label, ids, total) {
   var row = el('div', 'detail-row');
-  row.appendChild(el('span', 'detail-label', label));
+  var shown = ids ? ids.length : 0;
+  var labelText = (total !== undefined && total !== null && total > shown)
+    ? label + ' (' + shown + ' of ' + total + ')' : label;
+  row.appendChild(el('span', 'detail-label', labelText));
   var wrap = el('span', 'detail-value');
   var uniq = Array.prototype.slice.call(new Set(ids)).sort();
   if (!uniq.length) { wrap.textContent = '\\u2014'; }
@@ -35070,8 +36183,24 @@ function renderRecordSection(panel, detail) {
   }
   if (detail) {
     panel.appendChild(el('h3', null, 'callers / callees'));
-    panel.appendChild(idListRow('callers', (detail.incoming_edges || []).map(function (e) { return e.source_id; })));
-    panel.appendChild(idListRow('callees', (detail.outgoing_edges || []).map(function (e) { return e.target_id; })));
+    panel.appendChild(idListRow('callers', (detail.incoming_edges || []).map(function (e) { return e.source_id; }), detail.incoming_edges_total));
+    panel.appendChild(idListRow('callees', (detail.outgoing_edges || []).map(function (e) { return e.target_id; }), detail.outgoing_edges_total));
+    if (detail.edges_projected && DATA.view && DATA.view.edges_projected_note) {
+      panel.appendChild(el('p', 'detail-truncated', DATA.view.edges_projected_note));
+    }
+    if (detail.detail_cap) {
+      var capped = [];
+      ['incoming_edges', 'outgoing_edges', 'lineage_in', 'lineage_out', 'order_node_ids',
+       'slice_ids_as_member', 'barrier_ids'].forEach(function (f) {
+        var t = detail[f + '_total'];
+        if (t !== undefined && t > (detail[f] || []).length) capped.push(f + ': ' + (detail[f] || []).length + ' of ' + t);
+      });
+      if (capped.length) {
+        panel.appendChild(el('p', 'detail-truncated',
+          'This panel caps long lists at ' + detail.detail_cap + ' entries \\u2014 ' + capped.join(', ')
+          + '. The artifacts still hold every one; the tabular report and the JSONL files are exhaustive.'));
+      }
+    }
     var featOut = (detail.lineage_out || []).filter(function (e) { return e.target_id && e.target_id.indexOf('@feature:') === 0; }).map(function (e) { return e.target_id; });
     var featIn = (detail.lineage_in || []).filter(function (e) { return e.source_id && e.source_id.indexOf('@feature:') === 0; }).map(function (e) { return e.source_id; });
     if (featOut.length || featIn.length) {
@@ -35164,7 +36293,15 @@ function renderDetailForNode(n, tab) {
     panel.appendChild(fieldRow('grouping rule', n.rule === 'fallback_module'
       ? 'module (this element is not in the cascade order -- see order.jsonl)'
       : 'cascade order (order.jsonl, card 3)'));
-    panel.appendChild(el('h3', null, 'steps (' + n.ordered_member_ids.length + '), in cascade order'));
+    panel.appendChild(el('h3', null, 'steps (' + n.ordered_member_ids.length
+      + (n.member_total && n.member_total !== n.ordered_member_ids.length
+         ? ' of ' + n.member_total : '') + '), in cascade order'));
+    if (n.not_included) {
+      panel.appendChild(el('p', 'detail-truncated',
+        n.not_included + ' of this stage\\u2019s ' + n.member_total
+        + ' members are not in this page. This is an omission by scope, not an '
+        + 'empty stage \\u2014 re-render with ' + widenFlag() + ' to include them.'));
+    }
     var stageMembersUl = el('ol');
     n.ordered_member_ids.forEach(function (m) {
       var li = el('li');
@@ -35193,7 +36330,13 @@ function renderDetailForNode(n, tab) {
       }
       panel.appendChild(el('p', 'missing-note', 'expand the module for the per-element detail below.'));
     }
-    panel.appendChild(el('h3', null, 'members (' + n.count + ')'));
+    panel.appendChild(el('h3', null, 'members (' + n.count
+      + (n.member_total && n.member_total !== n.count ? ' of ' + n.member_total : '') + ')'));
+    if (n.not_included) {
+      panel.appendChild(el('p', 'detail-truncated',
+        n.not_included + ' of this module\\u2019s ' + n.member_total
+        + ' elements are not in this page \\u2014 re-render with ' + widenFlag() + '.'));
+    }
     var mul = el('ul');
     n.members.slice().sort().forEach(function (m) { var li = el('li'); li.appendChild(idLink(m, tab)); mul.appendChild(li); });
     panel.appendChild(mul);
@@ -35571,17 +36714,46 @@ function buildLegend() {
 }
 function showDiagnostics() {
   var diag = DATA.diagnostics;
+  var unparsed = diag.unparsed_files || [];
   var hasAny = (diag.static_errors && diag.static_errors.length) ||
-    (diag.diff_errors && diag.diff_errors.length) || (diag.runtime_errors && diag.runtime_errors.length);
+    (diag.diff_errors && diag.diff_errors.length) || (diag.runtime_errors && diag.runtime_errors.length)
+    || unparsed.length;
   if (!hasAny) return;
   var box = document.getElementById('diagnostics');
   box.hidden = false;
-  box.appendChild(el('strong', null, 'Artifact load errors (nothing was silently dropped):'));
+  if (unparsed.length) {
+    // The loudest fact the graph can carry: a source file that is not in
+    // this map at all. The headline is always visible and names the first
+    // file; the full list folds away so that a corpus with dozens of them
+    // cannot squeeze the canvas to a sliver -- which is exactly what an
+    // unbounded list did here, dropping Fit from 0.36 to 0.087.
+    box.appendChild(elWithBreaks('strong', null,
+      unparsed.length + ' source file' + (unparsed.length === 1 ? ' was' : 's were')
+      + ' NOT read \u2014 this map does not describe '
+      + (unparsed.length === 1 ? 'it' : 'them') + ': ' + unparsed[0].path
+      + (unparsed.length > 1 ? ' and ' + (unparsed.length - 1) + ' more' : '')));
+    var udet = document.createElement('details');
+    udet.appendChild(el('summary', null, 'list every file that was not read'));
+    var uul = el('ul');
+    unparsed.forEach(function (u) {
+      uul.appendChild(elWithBreaks('li', null,
+        u.reason + '  ' + u.path + ':' + (u.line === null || u.line === undefined ? '?' : u.line)
+        + '  \u2014 ' + u.description));
+    });
+    udet.appendChild(uul);
+    box.appendChild(udet);
+  }
+  if (!((diag.static_errors && diag.static_errors.length) ||
+        (diag.diff_errors && diag.diff_errors.length) ||
+        (diag.runtime_errors && diag.runtime_errors.length))) return;
+  var det = document.createElement('details');
+  det.appendChild(el('summary', null, 'Artifact load errors (nothing was silently dropped)'));
+  box.appendChild(det);
   var ul = el('ul');
   (diag.static_errors || []).forEach(function (e) { ul.appendChild(el('li', null, e.file + ':' + e.line + ': ' + e.reason)); });
   (diag.diff_errors || []).forEach(function (e) { ul.appendChild(el('li', null, '[diff] ' + e.file + ':' + e.line + ': ' + e.reason)); });
   (diag.runtime_errors || []).forEach(function (e) { ul.appendChild(el('li', null, '[runtime] ' + e.file + ':' + e.line + ': ' + e.reason)); });
-  box.appendChild(ul);
+  det.appendChild(ul);
 }
 
 // ---- init ----
@@ -35589,6 +36761,7 @@ function init() {
   buildLegend();
   buildFilterUI();
   showDiagnostics();
+  renderScopeBanner();
   renderFlowReadout();
   if (DATA.report_link) {
     var link = document.getElementById('report-link');
@@ -35609,6 +36782,8 @@ def render_blueprint(
     diff_store: ArtifactStore | None = None,
     *,
     report_link: str = "",
+    view: BlueprintView | None = None,
+    selection: Selection | None = None,
 ) -> str:
     """Render the whole offline blueprint page for one loaded artifact root.
 
@@ -35617,7 +36792,10 @@ def render_blueprint(
     characters. The only interpolated value is the JSON data island, and it
     goes through :func:`_safe_json`.
     """
-    data = build_blueprint_data(store, rstore=rstore, diff_store=diff_store, report_link=report_link)
+    data = build_blueprint_data(
+        store, rstore=rstore, diff_store=diff_store, report_link=report_link,
+        view=view, selection=selection,
+    )
     data_json = _safe_json(data)
     parts = [
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>",
@@ -35641,11 +36819,21 @@ def render_blueprint_to_file(
     out_path: str | Path,
     run_id: str | None = None,
     diff_root: str | Path | None = None,
-) -> ArtifactStore:
+    view: BlueprintView | None = None,
+) -> tuple[ArtifactStore, Selection, SizeEstimate]:
     """Load the artifacts at *root* and write the blueprint canvas to *out_path*.
 
-    Returns the loaded :class:`ArtifactStore`, mirroring
-    :func:`cascade_map.viewer.render_to_file`'s return shape.
+    Returns ``(store, selection, estimate)``: the loaded
+    :class:`ArtifactStore` (as round 4 did), plus what this page actually
+    carries and how large the estimator said it would be, so the caller can
+    print the same numbers the page prints.
+
+    **Raises** :class:`BlueprintTooLarge` -- before opening *out_path*, and
+    therefore without writing, truncating or creating anything -- when the
+    estimated data island exceeds ``view.size_limit_bytes`` and
+    ``view.force`` is not set. Round 4 wrote 702 MB and told the owner to
+    open it in a browser; a refusal they can override is honest, and a file
+    that kills their browser is not.
 
     *run_id*, when given, loads ``runtime/<run_id>/*`` for the runtime
     overlay. *diff_root*, when given, loads a second, independent
@@ -35664,13 +36852,24 @@ def render_blueprint_to_file(
     rstore = RuntimeStore.load(root, run_id) if run_id is not None else None
     diff_store = ArtifactStore.load(diff_root) if diff_root is not None else None
 
+    view = view if view is not None else BlueprintView()
+    selection = select(store, view)
+    estimate = estimate_island_bytes(store, selection, diff_store=diff_store, rstore=rstore)
+    if estimate.over:
+        # Nothing below this line has run: no mkdir, no open, no partial
+        # file. The refusal is the whole effect.
+        raise BlueprintTooLarge(estimate)
+
     report_candidate = out_path.parent / "index.html"
     report_link = report_candidate.name if report_candidate.exists() else ""
 
-    html = render_blueprint(store, rstore=rstore, diff_store=diff_store, report_link=report_link)
+    html = render_blueprint(
+        store, rstore=rstore, diff_store=diff_store, report_link=report_link,
+        view=view, selection=selection,
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
-    return store
+    return store, selection, estimate
 
 
 # ==========================================================================
@@ -36550,7 +37749,7 @@ def analyze(
     if slice_scope is SliceScope.ALL and slices:
         say(
             f"  slices.jsonl will be about "
-            f"{_human_bytes(tracer.estimated_slice_bytes(slices))} "
+            f"{_cli__human_bytes(tracer.estimated_slice_bytes(slices))} "
             f"({len(slices):,} slices over {len(precomputed_roots):,} roots). "
             f"`--slices decision` writes only the roots that bear on a "
             f"decision; the rest stay recomputable from lineage.jsonl."
@@ -36592,7 +37791,7 @@ def analyze(
     if large:
         say(
             "  large artifacts: "
-            + ", ".join(f"{name} {_human_bytes(artifact_bytes[name])}" for name in large)
+            + ", ".join(f"{name} {_cli__human_bytes(artifact_bytes[name])}" for name in large)
             + ". Linear in the target and written in full: these are what any "
             "slice is recomputed from, so none of them is ever withheld."
         )
@@ -37206,9 +38405,9 @@ def _slice_size_refusal(
         "--force-slices to write it anyway."
     )
     return (
-        f"  slices would be ~{_human_bytes(estimated)} "
+        f"  slices would be ~{_cli__human_bytes(estimated)} "
         f"({roots:,} roots, {_human_count(members)} member ids), over the "
-        f"{_human_bytes(limit)} limit. Refusing to write it.\n"
+        f"{_cli__human_bytes(limit)} limit. Refusing to write it.\n"
         f"{alternatives}\n"
         f"  Nothing was truncated and nothing is lost: lineage.jsonl is written "
         f"in full and answers any slice exactly, on demand."
@@ -37242,7 +38441,7 @@ def _slice_count_reason(
     return ""
 
 
-def _human_bytes(count: int) -> str:
+def _cli__human_bytes(count: int) -> str:
     """A size an owner can act on. Never rounded up into a smaller unit."""
     for unit, size in (("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)):
         if count >= size:
@@ -37670,6 +38869,29 @@ def _build_parser() -> argparse.ArgumentParser:
                            "without it, the Diff tab states that it has nothing loaded")
     blue.add_argument("--run", default=None, metavar="RUN_ID",
                       help="a run id under graph_dir/runtime/; layers the runtime overlay on")
+    blue.add_argument("--scope", choices=("cascade", "full"), default="cascade",
+                      help="cascade (default): structure only -- modules and stages as "
+                           "cards, decision points, declared and detected sinks, entry "
+                           "points, and the edges between them. full: every element, "
+                           "every call edge and every lineage edge, which on a large "
+                           "engine will be refused unless it fits or you pass --force.")
+    blue.add_argument("--max-nodes", type=int, default=None, metavar="N",
+                      help="keep at most N nodes, the most decision-relevant first "
+                           "(sinks and entry points, then elements on a path to a sink, "
+                           "then decision points, then the rest). The page and the summary "
+                           "both state how many were left out. Default 2000 in cascade "
+                           "scope, no cap in full scope; 0 means no cap.")
+    blue.add_argument("--focus", default="", metavar="ELEMENT_ID",
+                      help="draw only this element and its neighbourhood. This is also "
+                           "the only way to populate the Lineage tab in cascade scope.")
+    blue.add_argument("--hops", type=int, default=2, metavar="N",
+                      help="how many hops --focus reaches (default 2)")
+    blue.add_argument("--force", action="store_true",
+                      help="write the page even when the size guard says a browser "
+                           "cannot open it")
+    blue.add_argument("--size-limit-mb", type=int, default=50, metavar="MB",
+                      help="the size guard's threshold on the estimated data island "
+                           "(default 50). 0 disables the guard, exactly as --force does.")
 
     hist = sub.add_parser(
         "track",
@@ -37944,8 +39166,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not _require_graph_dir(args.graph_dir):
             return EXIT_USAGE
         target = args.html or (args.graph_dir / "blueprint.html")
-        render_blueprint_to_file(args.graph_dir, target, run_id=args.run, diff_root=args.diff)
-        print(f"Wrote {target}\nOpen it in a browser. It needs no network.")
+        view = BlueprintView(
+            scope=args.scope,
+            max_nodes=args.max_nodes,
+            focus=args.focus,
+            hops=args.hops,
+            force=args.force,
+            size_limit_bytes=max(0, args.size_limit_mb) * 1024 * 1024,
+        )
+        try:
+            _store, selection, estimate = render_blueprint_to_file(
+                args.graph_dir, target, run_id=args.run, diff_root=args.diff, view=view,
+            )
+        except BlueprintTooLarge as too_large:
+            # Nothing was written. The owner gets the number and the ways
+            # out, never a file their browser cannot open.
+            print(too_large.estimate.refusal_text(), file=sys.stderr)
+            return EXIT_REFUSED
+        written = target.stat().st_size
+        lines = [
+            f"Wrote {target}  ({_cli__human_bytes(written)}, scope `{selection.view.scope}`)",
+            f"  {selection.headline()}",
+        ]
+        for note in selection.notes:
+            lines.append(f"  - {note}")
+        lines.append("Open it in a browser. It needs no network.")
+        print("\n".join(lines))
         return EXIT_OK
 
     return _trace_command(args)

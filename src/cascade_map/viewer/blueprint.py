@@ -121,10 +121,34 @@ def _safe_json(obj: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _capped_reachability(reach: dict[str, Any]) -> dict[str, Any]:
+    """`element_reachability`, with its representative path capped and counted.
+
+    Card 3's `path_ids` is one representative path to a sink; on a deep
+    cascade it is hundreds of ids long and it rides on every node AND in
+    every detail record. The cap is stated in `path_ids_total`, and the
+    panel says "first N of M" rather than presenting N as the whole path.
+    """
+    reach = dict(reach)
+    path_ids = reach.get("path_ids") or []
+    reach["path_ids_total"] = len(path_ids)
+    if len(path_ids) > PATH_IDS_CAP:
+        reach["path_ids"] = list(path_ids[:PATH_IDS_CAP])
+    reason = reach.get("reason") or ""
+    # Card 3's `reason` spells the same representative path out in prose,
+    # so on a deep cascade it is ~620 bytes of text carried on every node.
+    # Cut with the cut declared, never silently: `reason_total_chars` is
+    # the real length and reachability.jsonl holds the whole sentence.
+    if len(reason) > REASON_CAP:
+        reach["reason"] = reason[:REASON_CAP] + " ..."
+        reach["reason_total_chars"] = len(reason)
+    return reach
+
+
 def _element_node(store: ArtifactStore, element_id: str) -> dict[str, Any]:
     """A node view for one element id, real or unresolved -- never a crash."""
     element = store.elements_by_id.get(element_id)
-    reach = views.element_reachability(store, element_id)
+    reach = _capped_reachability(views.element_reachability(store, element_id))
     finding_count = len(store.findings_by_element.get(element_id, []))
     has_record = element_id in store.records_by_element
     if element is None:
@@ -150,8 +174,17 @@ def _decision_node(store: ArtifactStore, decision: dict[str, Any]) -> dict[str, 
     owner = decision.get("element_id", "") or ""
     owner_el = store.elements_by_id.get(owner) or {}
     outcomes = [list(o) for o in decision.get("outcomes") or ()]
+    # The owner element's node carries the whole Reachability record; a
+    # decision diamond needs only the state, for its badge and the
+    # "reaches a decision" filter. Repeating the reason and the path here
+    # cost 0.6 MB of pure duplication on the owner's engine.
+    owner_reach = views.element_reachability(store, owner) if owner else {}
     reach = (
-        views.element_reachability(store, owner)
+        {
+            "state": owner_reach.get("state"), "source": "owner",
+            "reason": "carried by this decision's owning element",
+            "sink_ids": [], "path_ids": [], "confidence": owner_reach.get("confidence"),
+        }
         if owner
         else {
             "state": "UNKNOWN", "source": "no_owner",
@@ -217,7 +250,7 @@ def _lineage_node(store: ArtifactStore, id_: str) -> dict[str, Any]:
         "id": id_, "is_element": False, "kind": kind,
         "name": _synthetic_label(id_, kind), "qualname": id_, "module": "",
         "confidence": None, "method": None, "span": None,
-        "reachability": views.element_reachability(store, id_),
+        "reachability": _capped_reachability(views.element_reachability(store, id_)),
         "finding_count": 0, "has_record": False, "synthetic_kind": kind,
     }
 
@@ -650,6 +683,12 @@ DEFAULT_MAX_NODES = 2000
 #: Default radius for `--focus`.
 DEFAULT_HOPS = 2
 
+#: The share of the node budget reserved for decision points. See the
+#: comment in :func:`select`: without a reserved share, a real engine's
+#: on-path elements fill the whole budget and the cascade scope draws none
+#: of the decision points its own definition names first.
+DECISION_BUDGET_SHARE = 0.5
+
 #: Above this estimated data-island size, `render_blueprint_to_file`
 #: refuses and writes nothing. 50 MB is already far past comfortable; it is
 #: the point past which a refusal is certainly right, not a guess at where
@@ -657,15 +696,33 @@ DEFAULT_HOPS = 2
 SIZE_GUARD_BYTES = 50 * 1024 * 1024
 
 #: How many entries of an unbounded per-element list (lineage edges in and
-#: out, call edges, order nodes, slice memberships) a detail record carries
-#: before it states its own truncation. On the owner's engine one element's
+#: out, call edges, slice memberships) a detail record carries before it
+#: states its own truncation. On the owner's engine one element's
 #: `lineage_in` alone runs to thousands of full edge records, and every one
 #: of them was being embedded, for every element, on top of the lineage
 #: tab's own copy.
-DETAIL_LIST_CAP = 40
+DETAIL_LIST_CAP = 3
+
+#: Order-tree membership is capped separately and much harder. Card 3's
+#: order tree on the owner's engine holds 137,414 nodes, and an element can
+#: be a member of hundreds of them; each membership then drags its whole
+#: ancestor chain into `order_ancestor_ids`. Measured: at a cap of 40 that
+#: one field alone was 66.7 MB of a 103.7 MB island -- more than everything
+#: else on the page put together.
+ORDER_NODE_CAP = 2
+ORDER_ANCESTOR_CAP = 1
+
+#: `Reachability.path_ids` is card 3's one representative path to a sink.
+#: On a deep cascade that path is hundreds of ids long, and it is carried
+#: on every node AND in every detail record.
+PATH_IDS_CAP = 4
+
+#: How many characters of `Reachability.reason` a node carries.
+REASON_CAP = 160
 
 #: How many records each class is sampled for when estimating island size.
-_SAMPLE_SIZE = 24
+#: A stride sample, not a head sample -- see :func:`_stride_sample`.
+_SAMPLE_SIZE = 64
 
 
 class BlueprintTooLarge(Exception):
@@ -969,12 +1026,27 @@ def select(store: ArtifactStore, view: BlueprintView) -> Selection:
     # -- which elements and decisions are candidates at all ---------------
     if focus_id:
         near = _execution_neighbourhood(store, focus_id, view.hops) if focus_found else set()
-        candidate_elements = sorted(near & execution_set)
+        if focus_found:
+            near.add(focus_id)
+        # A focused page shows the neighbourhood whatever KIND it is made
+        # of -- an owner focusing on the assignment that holds the final
+        # decision must not be handed a blank page because the element is
+        # not a FUNCTION. The scope's kind filter is a default, not a
+        # property of `--focus`.
+        candidate_elements = sorted(near & set(elements))
         candidate_decisions = sorted(near & set(all_decisions))
         notes.append(
-            f"focused on {focus_id} within {view.hops} call hop(s); "
-            "elements outside that neighbourhood are not in this page"
+            f"focused on {focus_id} within {view.hops} call hop(s): "
+            f"{len(candidate_elements)} element(s) and {len(candidate_decisions)} decision(s). "
+            "Everything outside that neighbourhood is not in this page; raise `--hops N`, "
+            "or drop `--focus` for the whole cascade scope"
         )
+        if focus_found and len(candidate_elements) <= 1 and not candidate_decisions:
+            notes.append(
+                f"{focus_id} has no call-graph neighbours within {view.hops} hop(s). If it is "
+                "a value rather than a function, its neighbours are lineage edges -- the "
+                "Lineage tab of this same page is focused on it and shows them"
+            )
     elif view.scope == SCOPE_FULL:
         candidate_elements = list(all_execution)
         candidate_decisions = list(all_decisions)
@@ -999,24 +1071,53 @@ def select(store: ArtifactStore, view: BlueprintView) -> Selection:
         )
 
     # -- the budget -------------------------------------------------------
+    # Decision points get a guaranteed share of the budget. Ranking them
+    # strictly after every on-path element looked right and was not: on the
+    # owner's engine 1,642 elements are on a path to a sink, so at
+    # --max-nodes 1000 the page held ZERO decision points -- in a scope
+    # whose definition names decision points first. Whichever side does not
+    # use its share gives it to the other, so nothing is wasted.
     ranked = _rank_nodes(store, candidate_elements, candidate_decisions, sinks, entries)
     budget = view.node_budget
+    ranked_elements = [(key, nid) for key, nid, is_d in ranked if not is_d]
+    ranked_decisions = [(key, nid) for key, nid, is_d in ranked if is_d]
+    decision_quota = int(budget * DECISION_BUDGET_SHARE) if budget else len(ranked_decisions)
+    element_quota = (budget - decision_quota) if budget else len(ranked_elements)
+
     kept_elements: list[str] = []
     kept_decisions: list[str] = []
     kept: set[str] = set()
-    for _key, node_id, is_decision in ranked:
-        if budget and len(kept) >= budget:
-            break
-        if is_decision:
-            owner = (store.decisions_by_id.get(node_id) or {}).get("element_id") or ""
-            # A decision diamond with no owner card on the page is an
-            # orphan, not a fact -- it is skipped, never drawn dangling.
-            if owner and owner not in kept:
-                continue
-            kept_decisions.append(node_id)
-        else:
-            kept_elements.append(node_id)
+    for _key, node_id in ranked_elements[:element_quota]:
+        kept_elements.append(node_id)
         kept.add(node_id)
+    for _key, node_id in ranked_decisions:
+        if len(kept_decisions) >= decision_quota:
+            break
+        owner = (store.decisions_by_id.get(node_id) or {}).get("element_id") or ""
+        # A decision diamond with no owner card on the page is an orphan,
+        # not a fact -- it is skipped, never drawn dangling.
+        if owner and owner not in kept:
+            continue
+        kept_decisions.append(node_id)
+        kept.add(node_id)
+    # Whatever neither side used, in one deterministic pass over both
+    # ranked lists merged by their own keys.
+    if budget and len(kept) < budget:
+        leftovers = sorted(
+            [(key, nid, False) for key, nid in ranked_elements if nid not in kept]
+            + [(key, nid, True) for key, nid in ranked_decisions if nid not in kept]
+        )
+        for _key, node_id, is_decision in leftovers:
+            if len(kept) >= budget:
+                break
+            if is_decision:
+                owner = (store.decisions_by_id.get(node_id) or {}).get("element_id") or ""
+                if owner and owner not in kept:
+                    continue
+                kept_decisions.append(node_id)
+            else:
+                kept_elements.append(node_id)
+            kept.add(node_id)
 
     nodes_available = len(candidate_elements) + len(candidate_decisions)
     nodes_shown = len(kept_elements) + len(kept_decisions)
@@ -1104,19 +1205,32 @@ def select(store: ArtifactStore, view: BlueprintView) -> Selection:
     )
 
 
-def _mean_record_bytes(records: list[dict[str, Any]], sample: int = _SAMPLE_SIZE) -> float:
-    """Mean serialized size of a deterministic sample of *records*.
+def _json_bytes(obj: Any) -> int:
+    """Serialized size of *obj*, in the island's own encoding."""
+    return len(json.dumps(obj, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
 
-    The sample is the first *sample* entries of the list as it was read off
-    disk, which is already in canonical id order -- no `random`, no clock,
-    no set iteration, so two runs measure the same bytes.
+
+def _stride_sample(items: "list[str] | tuple[str, ...]", size: int) -> list[str]:
+    """Up to *size* entries spread evenly across *items*, deterministically.
+
+    A stride, not the first N: on a real engine the first few ids by sort
+    order are not representative of the rest, and taking the head made the
+    round-5 estimator wrong by 2.7x on the owner's own graph. No `random`,
+    no clock, no set iteration -- two runs sample the same entries.
     """
-    if not records:
+    count = len(items)
+    if count == 0 or size <= 0:
+        return []
+    if count <= size:
+        return list(items)
+    step = count / size
+    return [items[min(count - 1, int(index * step))] for index in range(size)]
+
+
+def _mean_bytes(objects: list[Any]) -> float:
+    if not objects:
         return 0.0
-    chosen = records[:sample]
-    total = sum(len(json.dumps(r, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
-                for r in chosen)
-    return total / len(chosen)
+    return sum(_json_bytes(obj) for obj in objects) / len(objects)
 
 
 def estimate_island_bytes(
@@ -1125,24 +1239,29 @@ def estimate_island_bytes(
     diff_store: ArtifactStore | None = None,
     rstore: RuntimeStore | None = None,
 ) -> SizeEstimate:
-    """How large the data island would be, from exact counts and sampled costs.
+    """How large the data island would be, before any of it is built.
 
-    Called BEFORE anything is built, so a graph that would produce an
-    unopenable page costs one pass over the indices rather than the
-    hundreds of megabytes and minutes it takes to find out by writing it.
+    Every count below is exact. Every unit cost is measured by building a
+    stride sample of the very records the page would carry -- the real
+    :func:`_element_node`, :func:`_decision_node`, :func:`_edge_wire` and
+    :func:`_capped_detail`, not a model of them. Round 5's first estimator
+    modelled the parts instead and missed `order_ancestor_ids` entirely,
+    predicting 38 MB for an island that came out at 104 MB. An estimator
+    that can be wrong in that direction is worse than none: it is the
+    guard's whole job to be right about the number it refuses on.
     """
     view = selection.view
     totals = selection.totals
 
     # -- execution tab ----------------------------------------------------
-    node_cost = _mean_record_bytes(store.raw["elements"]) + 220   # + the node view's own fields
-    decision_cost = _mean_record_bytes(store.raw["decisions"]) + 220
-    edge_cost = _mean_record_bytes(store.raw["edges"]) + 60
-    lineage_cost = _mean_record_bytes(store.raw["lineage"]) + 60
-    record_cost = _mean_record_bytes(store.raw["records"])
+    element_sample = _stride_sample(selection.element_ids, _SAMPLE_SIZE)
+    decision_sample = _stride_sample(selection.decision_ids, _SAMPLE_SIZE)
+    node_cost = _mean_bytes([_element_node(store, i) for i in element_sample]) + 120
+    decision_cost = _mean_bytes(
+        [_decision_node(store, store.decisions_by_id[i]) for i in decision_sample]
+    ) + 120
+    edge_cost = _mean_bytes([_edge_wire(e) for e in store.raw["edges"][:_SAMPLE_SIZE]]) + 4
 
-    element_count = len(selection.element_ids)
-    decision_count = len(selection.decision_ids)
     kept = set(selection.element_ids) | set(selection.decision_ids)
     if totals["nodes_omitted"]:
         execution_edges = sum(
@@ -1151,67 +1270,77 @@ def estimate_island_bytes(
         )
     else:
         execution_edges = totals["call_edges_in_graph"]
+    decision_outcomes = sum(
+        1 + len(store.decisions_by_id[i].get("outcomes") or ())
+        for i in selection.decision_ids
+    )
 
     parts = {
-        "execution_nodes": int(element_count * node_cost + decision_count * decision_cost),
-        "execution_wires": int(execution_edges * edge_cost + decision_count * 2 * edge_cost),
+        "execution_nodes": int(
+            len(selection.element_ids) * node_cost + len(selection.decision_ids) * decision_cost
+        ),
+        "execution_wires": int((execution_edges + decision_outcomes) * edge_cost),
     }
 
     # -- lineage tab ------------------------------------------------------
+    lineage_wire_cost = _mean_bytes([
+        {"id": e.get("id"), "kind": e.get("kind"), "source_id": e.get("source_id"),
+         "target_id": e.get("target_id"), "confidence": None, "method": None,
+         "span": e.get("span"), "outcome_label": ""}
+        for e in store.raw["lineage"][:_SAMPLE_SIZE]
+    ]) + 4
     if not selection.lineage_enabled:
         parts["lineage"] = 0
     elif selection.focus_id:
-        focus_ids = set(selection.lineage_ids)
-        focus_edges = sum(len(store.lineage_out.get(i, ())) for i in sorted(focus_ids))
-        parts["lineage"] = int(len(focus_ids) * node_cost + focus_edges * lineage_cost)
+        focus_ids = list(selection.lineage_ids)
+        focus_edges = sum(len(store.lineage_out.get(i, ())) for i in focus_ids)
+        lineage_node_cost = _mean_bytes(
+            [_lineage_node(store, i) for i in _stride_sample(focus_ids, _SAMPLE_SIZE)]
+        ) + 120
+        parts["lineage"] = int(len(focus_ids) * lineage_node_cost + focus_edges * lineage_wire_cost)
     else:
         endpoints: set[str] = set()
         for edge in store.raw["lineage"]:
             endpoints.add(edge.get("source_id") or "")
             endpoints.add(edge.get("target_id") or "")
+        endpoint_list = sorted(endpoints)
+        lineage_node_cost = _mean_bytes(
+            [_lineage_node(store, i) for i in _stride_sample(endpoint_list, _SAMPLE_SIZE)]
+        ) + 120
         parts["lineage"] = int(
-            len(endpoints) * node_cost + totals["lineage_edges_in_graph"] * lineage_cost
+            len(endpoint_list) * lineage_node_cost
+            + totals["lineage_edges_in_graph"] * lineage_wire_cost
+            + len(store.raw["barriers"]) * (lineage_node_cost + lineage_wire_cost)
         )
 
-    # -- element details: the round-4 bulk --------------------------------
-    # Each detail embeds every lineage edge touching its element, in and
-    # out, as a whole record. Summed over every element that is *also* a
-    # lineage endpoint that is two further copies of lineage.jsonl on top
-    # of the lineage tab's own. The count below is exact; only the unit
-    # cost is sampled.
+    # -- element details: round 4's real bulk ------------------------------
     detail_ids = selection.detail_ids
-    attached = 0
-    call_attached = 0
-    for element_id in detail_ids:
-        attached += min(DETAIL_LIST_CAP, len(store.lineage_out.get(element_id, ())))
-        attached += min(DETAIL_LIST_CAP, len(store.lineage_in.get(element_id, ())))
-        call_attached += min(DETAIL_LIST_CAP, len(store.edges_out.get(element_id, ())))
-        call_attached += min(DETAIL_LIST_CAP, len(store.edges_in.get(element_id, ())))
-    parts["element_details"] = int(
-        len(detail_ids) * (400 + record_cost)
-        + attached * lineage_cost
-        + call_attached * edge_cost
-    )
+    detail_cost = _mean_bytes([
+        _capped_detail(store, i, DETAIL_LIST_CAP)
+        for i in _stride_sample(detail_ids, _SAMPLE_SIZE)
+    ]) + 120
+    parts["element_details"] = int(len(detail_ids) * detail_cost)
 
     # -- diff and runtime -------------------------------------------------
     if diff_store is not None:
         parts["diff"] = int(
-            _mean_record_bytes(diff_store.raw["changes"]) * len(diff_store.raw["changes"])
-            + _mean_record_bytes(diff_store.raw["impacts"]) * len(diff_store.raw["impacts"])
-            + element_count * node_cost
+            _mean_bytes(diff_store.raw["changes"][:_SAMPLE_SIZE]) * len(diff_store.raw["changes"])
+            + _mean_bytes(diff_store.raw["impacts"][:_SAMPLE_SIZE]) * len(diff_store.raw["impacts"])
+            + len(selection.element_ids) * node_cost
         )
     else:
         parts["diff"] = 0
     if rstore is not None:
+        events = rstore.raw.get("events", [])
+        narrative = rstore.raw.get("narrative", [])
         parts["runtime"] = int(
-            _mean_record_bytes(rstore.raw.get("events", [])) * len(rstore.raw.get("events", []))
-            + _mean_record_bytes(rstore.raw.get("narrative", []))
-            * len(rstore.raw.get("narrative", []))
+            _mean_bytes(events[:_SAMPLE_SIZE]) * len(events)
+            + _mean_bytes(narrative[:_SAMPLE_SIZE]) * len(narrative)
         )
     else:
         parts["runtime"] = 0
 
-    total = sum(parts.values())
+    total = sum(parts.values()) + 4096
     counts = {
         "elements": totals["elements_in_graph"],
         "call_edges": totals["call_edges_in_graph"],
@@ -1244,9 +1373,9 @@ def _build_execution(store: ArtifactStore, selection: Selection) -> dict[str, An
         node["is_entry"] = element_id in entry_ids
         # An element can sit in thousands of order nodes on a real engine;
         # the tail is not silently cut, it states its own length.
-        containing = sorted(store.order_containing_element.get(element_id, []))
-        node["order_node_ids"] = containing[:DETAIL_LIST_CAP]
-        node["order_node_total"] = len(containing)
+        # Only the count here: the ids themselves are in this element's
+        # detail record, which is the one place the page reads them from.
+        node["order_node_total"] = len(store.order_containing_element.get(element_id, []))
         element_nodes.append(node)
 
     decision_ids = list(selection.decision_ids)
@@ -1302,7 +1431,10 @@ def _build_execution(store: ArtifactStore, selection: Selection) -> dict[str, An
     sorted_wires = sorted(wires, key=lambda wire: wire["id"] or "")
     # Stage structure comes from the WHOLE execution element set, then is
     # restricted to what this page carries -- see :func:`_scope_stages`.
-    stages, stage_of = _build_stages(store, all_execution_ids)
+    # `--focus` can keep elements outside the execution kinds; every kept
+    # node must land in some stage card or stage mode would simply not
+    # draw it, which is an omission with no notice attached.
+    stages, stage_of = _build_stages(store, sorted(set(all_execution_ids) | element_id_set))
     _scope_stages(stages, element_id_set)
     flow_totals, stage_pairs = _classify_and_summarize_flow(sorted_wires, stage_of)
 
@@ -1594,7 +1726,7 @@ def _build_runtime(store: ArtifactStore, rstore: RuntimeStore | None) -> dict[st
 
 #: Detail fields that are unbounded on a real engine. Each is capped at
 #: :data:`DETAIL_LIST_CAP` and gains a `<field>_total` sibling, so the panel
-#: can say "40 of 3,182 shown" rather than quietly presenting 40 as all of
+#: can say "4 of 3,182 shown" rather than quietly presenting 4 as all of
 #: them. On the owner's engine these lists alone were most of the 702 MB:
 #: `lineage_in`/`lineage_out` embed a whole lineage edge record per entry,
 #: which is two further copies of lineage.jsonl spread across the details.
@@ -1603,6 +1735,19 @@ _CAPPED_DETAIL_FIELDS = (
     "decision_as_condition", "decision_reads_this", "lineage_out", "lineage_in",
     "barrier_ids", "slice_ids_as_member", "finding_ids_as_evidence",
 )
+
+#: Detail fields that hold whole EDGE records where the panel only ever
+#: renders the id at the other end. The edge's own provenance is not lost:
+#: it rides on the drawn wire (execution tab) or on the focused lineage
+#: edge, both of which are clickable and show method and confidence. Carrying
+#: it a second time inside every element's detail cost 6.2 MB on the owner's
+#: engine and put nothing new on the screen.
+_EDGE_PROJECTIONS = {
+    "incoming_edges": "source_id",
+    "outgoing_edges": "target_id",
+    "lineage_in": "source_id",
+    "lineage_out": "target_id",
+}
 
 
 def _capped_detail(store: ArtifactStore, element_id: str, cap: int) -> dict[str, Any]:
@@ -1616,6 +1761,7 @@ def _capped_detail(store: ArtifactStore, element_id: str, cap: int) -> dict[str,
     detail = views.element_detail(store, element_id)
     if cap <= 0:
         return detail
+    detail["reachability"] = _capped_reachability(detail.get("reachability") or {})
     for field_name in _CAPPED_DETAIL_FIELDS:
         value = detail.get(field_name)
         if not isinstance(value, list):
@@ -1623,14 +1769,82 @@ def _capped_detail(store: ArtifactStore, element_id: str, cap: int) -> dict[str,
         detail[f"{field_name}_total"] = len(value)
         if len(value) > cap:
             detail[field_name] = value[:cap]
-    # `order_ancestor_ids` is keyed by the order nodes above; once
-    # `order_node_ids` is capped, its unreachable keys are dead weight.
+    # Order membership is capped harder than everything else, and its
+    # ancestor chains harder still: measured at 66.7 MB of a 103.7 MB
+    # island on the owner's engine, more than every other field combined.
+    order_all = detail.get("order_node_ids") or []
+    detail["order_node_ids"] = order_all[:ORDER_NODE_CAP]
     ancestors = detail.get("order_ancestor_ids")
     if isinstance(ancestors, dict):
-        kept = detail.get("order_node_ids") or []
-        detail["order_ancestor_ids"] = {k: ancestors[k] for k in kept if k in ancestors}
+        # The blueprint renders the order node ids themselves, never their
+        # ancestor chains, and each chain repeats its own key. Nothing is
+        # lost: the tabular report shows the chain, and order.jsonl holds
+        # every parent link. The pointer says so rather than leaving a
+        # field that reads as "this element has no ancestors".
+        detail["order_ancestor_ids"] = {
+            "carried_by": "order.jsonl and the tabular report",
+            "nodes": len(ancestors),
+        }
+    detail["order_node_cap"] = ORDER_NODE_CAP
     detail["detail_cap"] = cap
+    # The same fact stored twice is not information, it is weight. Every id
+    # with a detail record also has a node on a canvas, and that node
+    # already carries the canonical `Reachability` verbatim (see
+    # `_element_node`/`_lineage_node`), which the detail panel is what
+    # actually reads. Measured on the owner's engine: 1.43 MB of pure
+    # duplication. The pointer stays, so a reader of the island can never
+    # mistake "carried elsewhere" for "not known".
+    detail["reachability"] = {"carried_by": "node"}
+    detail["element"] = {"carried_by": "node"}
+    # Edge lists become id lists; the edges themselves stay one click away
+    # on the canvas, with their method and confidence intact.
+    for field_name, id_field in _EDGE_PROJECTIONS.items():
+        value = detail.get(field_name)
+        if not isinstance(value, list):
+            continue
+        detail[field_name] = [
+            {"id": edge.get("id"), "kind": edge.get("kind"), id_field: edge.get(id_field)}
+            for edge in value
+        ]
+    detail["edges_projected"] = True   # the note itself lives once, in DATA.view
     return detail
+
+
+#: Unresolved reasons that mean "a whole source file is missing from this
+#: map", as opposed to "one call site inside it could not be resolved".
+#: MISSING_TARGET is deliberately NOT here: card 2 emits it per unresolved
+#: call site, tens of thousands of times on a real engine, and it says
+#: nothing about whether the file was read.
+_FILE_LEVEL_UNRESOLVED = ("SYNTAX_ERROR", "DECODE_ERROR", "TOO_LARGE")
+
+
+def _unparsed_files(store: ArtifactStore) -> list[dict[str, Any]]:
+    """Every source file card 1 could not read, from `unresolved.jsonl`.
+
+    Read verbatim: the reason, the path, the line and card 1's own
+    description. Nothing is judged or re-derived here; this is the viewer
+    putting an existing record where it can be seen.
+    """
+    rows: dict[str, dict[str, Any]] = {}
+    for record in store.raw["unresolved"]:
+        reason = record.get("reason")
+        if reason not in _FILE_LEVEL_UNRESOLVED:
+            continue
+        span = record.get("span") or {}
+        path = span.get("path") or ""
+        if not isinstance(path, str) or not path.endswith(".py"):
+            continue
+        key = f"{reason}::{path}::{span.get('line')}"
+        if key in rows:
+            continue
+        rows[key] = {
+            "reason": reason,
+            "path": path,
+            "line": span.get("line"),
+            "description": record.get("description", ""),
+            "id": record.get("id", ""),
+        }
+    return [rows[key] for key in sorted(rows)]
 
 
 def build_blueprint_data(
@@ -1688,6 +1902,14 @@ def build_blueprint_data(
             "module_totals": selection.module_totals,
             "module_included": selection.module_included,
             "detail_cap": DETAIL_LIST_CAP,
+            "order_node_cap": ORDER_NODE_CAP,
+            "order_ancestor_cap": ORDER_ANCESTOR_CAP,
+            "path_ids_cap": PATH_IDS_CAP,
+            "edges_projected_note": (
+                "in the detail panel, caller/callee and lineage lists carry the far "
+                "end's id only. The edge record, with its method and confidence, is on "
+                "the wire itself -- click it -- and in edges.jsonl / lineage.jsonl."
+            ),
         },
         "schema_version": manifest.get("schema_version", ""),
         "tool_version": manifest.get("tool_version", ""),
@@ -1698,6 +1920,15 @@ def build_blueprint_data(
         "legend": LEGEND,
         "available": dict(sorted(store.available.items())),
         "diagnostics": {
+            # A source file the parser could not read at all is the loudest
+            # fact in the whole graph and had nowhere to be seen: card 1
+            # emits it as an `Unresolved` with reason SYNTAX_ERROR /
+            # DECODE_ERROR and no `candidate_ids`, so no element's panel
+            # could ever show it. A map missing a whole file must say so on
+            # the page, not only in unresolved.jsonl -- an owner on Python
+            # 3.11 analysing a 3.12-only target otherwise gets a small,
+            # clean, WRONG map that reads as success.
+            "unparsed_files": _unparsed_files(store),
             "static_errors": [
                 {"file": e.file, "line": e.line_number, "reason": e.reason} for e in store.errors
             ],
@@ -1943,6 +2174,12 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 #empty-state { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
   justify-content:center; text-align:center; padding:2rem; font-size:1rem; color:var(--text-dim);
   background:var(--bg); z-index:20; }
+/* The empty state's own children are inert to hit-testing, so
+   `document.elementFromPoint` at the canvas centre keeps returning
+   `#empty-state` itself -- the exact property
+   test_blueprint_render.py's D1 guard asserts. They carry no behaviour,
+   so nothing is lost by making them transparent to the pointer. */
+#empty-state > * { pointer-events:none; }
 #empty-state .empty-title { font-size:1.15rem; font-weight:700; color:var(--text); margin-bottom:.6rem;
   max-width:60rem; }
 #empty-state .empty-body { max-width:52rem; line-height:1.55; }
@@ -2065,7 +2302,12 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
 #shortcuts-help { position:absolute; right:.5rem; bottom:.5rem; background:var(--panel);
   border:1px solid var(--panel-border); border-radius:8px; padding:.3rem .6rem; font-size:.62rem;
   color:var(--text-dim); z-index:30; }
-#diagnostics { background:rgba(229,72,77,.12); border-bottom:2px solid var(--red); padding:.5rem 1rem; font-size:.73rem; }
+/* Bounded by construction: a banner that can grow without limit takes the
+   canvas with it. Measured: an unbounded list of unreadable files on the
+   fixture corpus left #canvas-wrap 312px tall and Fit at 0.087. */
+#diagnostics { background:rgba(229,72,77,.12); border-bottom:2px solid var(--red); padding:.5rem 1rem;
+  font-size:.73rem; max-height:5.5rem; overflow:auto; flex:0 0 auto; }
+#diagnostics summary { cursor:pointer; color:var(--accent); }
 #diagnostics ul { margin:.3rem 0 0; padding-left:1.2rem; }
 .lod-hide-labels .node-body, .lod-hide-labels .node-badges { display:none; }
 .lod-hide-badges .node-badges { display:none; }
@@ -3134,6 +3376,9 @@ function renderRecordSection(panel, detail) {
     panel.appendChild(el('h3', null, 'callers / callees'));
     panel.appendChild(idListRow('callers', (detail.incoming_edges || []).map(function (e) { return e.source_id; }), detail.incoming_edges_total));
     panel.appendChild(idListRow('callees', (detail.outgoing_edges || []).map(function (e) { return e.target_id; }), detail.outgoing_edges_total));
+    if (detail.edges_projected && DATA.view && DATA.view.edges_projected_note) {
+      panel.appendChild(el('p', 'detail-truncated', DATA.view.edges_projected_note));
+    }
     if (detail.detail_cap) {
       var capped = [];
       ['incoming_edges', 'outgoing_edges', 'lineage_in', 'lineage_out', 'order_node_ids',
@@ -3660,17 +3905,46 @@ function buildLegend() {
 }
 function showDiagnostics() {
   var diag = DATA.diagnostics;
+  var unparsed = diag.unparsed_files || [];
   var hasAny = (diag.static_errors && diag.static_errors.length) ||
-    (diag.diff_errors && diag.diff_errors.length) || (diag.runtime_errors && diag.runtime_errors.length);
+    (diag.diff_errors && diag.diff_errors.length) || (diag.runtime_errors && diag.runtime_errors.length)
+    || unparsed.length;
   if (!hasAny) return;
   var box = document.getElementById('diagnostics');
   box.hidden = false;
-  box.appendChild(el('strong', null, 'Artifact load errors (nothing was silently dropped):'));
+  if (unparsed.length) {
+    // The loudest fact the graph can carry: a source file that is not in
+    // this map at all. The headline is always visible and names the first
+    // file; the full list folds away so that a corpus with dozens of them
+    // cannot squeeze the canvas to a sliver -- which is exactly what an
+    // unbounded list did here, dropping Fit from 0.36 to 0.087.
+    box.appendChild(elWithBreaks('strong', null,
+      unparsed.length + ' source file' + (unparsed.length === 1 ? ' was' : 's were')
+      + ' NOT read \u2014 this map does not describe '
+      + (unparsed.length === 1 ? 'it' : 'them') + ': ' + unparsed[0].path
+      + (unparsed.length > 1 ? ' and ' + (unparsed.length - 1) + ' more' : '')));
+    var udet = document.createElement('details');
+    udet.appendChild(el('summary', null, 'list every file that was not read'));
+    var uul = el('ul');
+    unparsed.forEach(function (u) {
+      uul.appendChild(elWithBreaks('li', null,
+        u.reason + '  ' + u.path + ':' + (u.line === null || u.line === undefined ? '?' : u.line)
+        + '  \u2014 ' + u.description));
+    });
+    udet.appendChild(uul);
+    box.appendChild(udet);
+  }
+  if (!((diag.static_errors && diag.static_errors.length) ||
+        (diag.diff_errors && diag.diff_errors.length) ||
+        (diag.runtime_errors && diag.runtime_errors.length))) return;
+  var det = document.createElement('details');
+  det.appendChild(el('summary', null, 'Artifact load errors (nothing was silently dropped)'));
+  box.appendChild(det);
   var ul = el('ul');
   (diag.static_errors || []).forEach(function (e) { ul.appendChild(el('li', null, e.file + ':' + e.line + ': ' + e.reason)); });
   (diag.diff_errors || []).forEach(function (e) { ul.appendChild(el('li', null, '[diff] ' + e.file + ':' + e.line + ': ' + e.reason)); });
   (diag.runtime_errors || []).forEach(function (e) { ul.appendChild(el('li', null, '[runtime] ' + e.file + ':' + e.line + ': ' + e.reason)); });
-  box.appendChild(ul);
+  det.appendChild(ul);
 }
 
 // ---- init ----
