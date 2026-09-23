@@ -19664,9 +19664,13 @@ class TrackResult:
     source_notes: tuple[str, ...] = ()
     disk: dict[str, int] = field(default_factory=dict)
     sport_scopes: tuple[tuple[str, str, str], ...] = ()
-    """(sport, scope, reason) per sport file written. ``scope`` is the exact
-    text the file declares, so a UNION file cannot be read as sport-specific
-    from the terminal either."""
+    """``(sport, scope_kind, summary_reason)`` per sport file written.
+
+    ``scope_kind`` is ``SEPARATED`` or ``UNION``, and ``summary_reason`` is
+    the sport-independent form, so sports that got the same answer group into
+    one printed line instead of seven near-identical paragraphs. The exact
+    per-sport ``scope`` text and full reason are in each sport's JSON, which
+    is where a machine reads them and where nothing is lost."""
 
 
 def track(
@@ -19918,6 +19922,58 @@ def _sport_gap(
 # ---------------------------------------------------------------------------
 
 
+def _scope_lines(scopes: Sequence[tuple[str, str, str]]) -> list[str]:
+    """The per-sport scope declaration, said once per DISTINCT answer.
+
+    Seven sports that could not be separated share one reason, and printing
+    that reason seven times with one word swapped is 500 words of near-
+    identical paragraph before anything useful appears. That is not extra
+    honesty -- it buries the line the owner needs and trains them to skip the
+    block, and a warning nobody reads is not a warning. So identical answers
+    are grouped and the reason is printed once with its sports named.
+
+    Nothing is lost: the full per-sport reason is still written into each
+    sport's JSON, which is where a machine reads it. This is the summary only.
+
+    Grouping is by first appearance in SPORTS order, never by a set, so the
+    same input prints the same lines.
+    """
+
+    if not scopes:
+        return []
+    grouped: dict[tuple[str, str], list[str]] = {}
+    by_kind: dict[str, list[str]] = {}
+    for sport, kind, reason in scopes:
+        grouped.setdefault((kind, reason), []).append(sport)
+        by_kind.setdefault(kind, []).append(sport)
+    total = len(scopes)
+
+    if len(grouped) == 1:
+        kind = scopes[0][1]
+        scope = UNION_SCOPE if kind == "UNION" else "SEPARATED PER SPORT"
+        headline = f"{scope} — all {total} sport(s)"
+    else:
+        # SEPARATED first, UNION last: the caveat is the last thing read.
+        headline = "  ·  ".join(
+            f"{kind}: {', '.join(by_kind[kind])}"
+            for kind in ("SEPARATED", "UNION")
+            if kind in by_kind
+        )
+    lines = [f"  scope       {headline}"]
+    if "UNION" in by_kind:
+        lines.append(
+            "              a UNION file is NOT that sport's map; the data in it "
+            "is the union over every sport."
+        )
+    for index, ((_scope, reason), sports) in enumerate(grouped.items()):
+        label = "  reason      " if index == 0 else "              "
+        prefix = "" if len(grouped) == 1 else f"{', '.join(sports)} — "
+        wrapped = textwrap.wrap(prefix + reason, width=76) or [""]
+        lines.append(label + wrapped[0])
+        lines += ["              " + line for line in wrapped[1:]]
+    return lines
+
+
 def _workspace_lines(result: TrackResult) -> list[str]:
     """What the workspace holds and what it cost.
 
@@ -19942,12 +19998,7 @@ def _workspace_lines(result: TrackResult) -> list[str]:
     ]
     for note in result.source_notes:
         lines.append(f"  source      {note}")
-    if result.sport_scopes:
-        lines.append("  per sport   — a file whose scope is the UNION says so and is "
-                     "NOT this sport's map")
-        for sport, scope, reason in result.sport_scopes:
-            lines.append(f"    {sport}: scope {scope}")
-            lines.append(f"      reason: {reason}")
+    lines += _scope_lines(result.sport_scopes)
     lines.append("")
     return lines
 
@@ -20133,32 +20184,18 @@ def _element_spans(out_dir: Path, prefix: str) -> dict[str, str]:
     return spans
 
 
-def _adjacency(out_dir: Path, prefix: str) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
-    """Forward and backward adjacency over card 2's emitted call edges."""
+def _adjacency(out_dir: Path, prefix: str) -> dict[str, list[str]]:
+    """Forward adjacency over card 2's emitted call edges. Sorted and
+    deduplicated, so a closure over it cannot carry set iteration order into
+    an artifact."""
     forward: dict[str, list[str]] = {}
-    backward: dict[str, list[str]] = {}
     for row in _jsonl_rows(out_dir / "edges.jsonl"):
         source = reroot_id(str(row.get("source_id", "")), prefix)
         target = reroot_id(str(row.get("target_id", "")), prefix)
         if not source or not target:
             continue
         forward.setdefault(source, []).append(target)
-        backward.setdefault(target, []).append(source)
-    return (
-        {k: sorted(set(v)) for k, v in sorted(forward.items())},
-        {k: sorted(set(v)) for k, v in sorted(backward.items())},
-    )
-
-
-def _manifest_sinks(out_dir: Path, prefix: str) -> tuple[str, ...]:
-    path = out_dir / "manifest.json"
-    if not path.is_file():
-        return ()
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return ()
-    return tuple(sorted(reroot_id(str(s), prefix) for s in document.get("sink_ids", [])))
+    return {k: sorted(set(v)) for k, v in sorted(forward.items())}
 
 
 def _sport_view(
@@ -20231,20 +20268,29 @@ def _sport_view(
         )
         return row
 
-    forward, backward = _adjacency(out_dir, prefix)
+    # What is PER SPORT is the SCOPE: which elements lie on this sport's path,
+    # from this sport's own entry points forward over the emitted call edges.
+    # What is NOT per sport is the reachability VERDICT -- card 3 owns that,
+    # including its deliberate bias toward REACHES_SINK on an uncertain edge.
+    # Recomputing it here would be a second answer to a question that already
+    # has one, and the two would disagree the first time they met a shape this
+    # module had not thought about. So the sport decides the SET and card 3
+    # decides the STATE, and neither is guessed at.
+    forward = _adjacency(out_dir, prefix)
     in_sport = set(reachable_from(scope.entry_ids, forward))
-    sinks = _manifest_sinks(out_dir, prefix)
-    can_reach_sink = set(reachable_from(sinks, backward)) if sinks else set()
-    unknown = {e for e in in_sport if states.get(e) == ReachabilityState.UNKNOWN}
-    reaches = sorted((in_sport & can_reach_sink) - unknown)
+    by_state: dict[ReachabilityState, list[str]] = {}
+    for element_id in in_sport:
+        by_state.setdefault(
+            states.get(element_id, ReachabilityState.UNKNOWN), []
+        ).append(element_id)
     row.update(
         {
             "entry_ids": list(scope.entry_ids),
             "finding_ids": sorted(fid for element, fid in findings if element in in_sport),
-            "no_sink_path_ids": sorted(in_sport - can_reach_sink - unknown),
+            "no_sink_path_ids": sorted(by_state.get(ReachabilityState.NO_SINK_PATH, [])),
             "out_of_scope_ids": sorted(set(states) - in_sport),
-            "reaches_sink_ids": reaches,
-            "unknown_ids": sorted(unknown),
+            "reaches_sink_ids": sorted(by_state.get(ReachabilityState.REACHES_SINK, [])),
+            "unknown_ids": sorted(by_state.get(ReachabilityState.UNKNOWN, [])),
         }
     )
     return row
@@ -20376,7 +20422,7 @@ def _file_in_workspace(
         written.append(str(write_runtime_history(
             workspace, sport, scope, tool_version=ledger.tool_version, versions=rows
         )))
-        scopes.append((sport, scope.scope_text, scope.reason))
+        scopes.append((sport, scope.scope_kind, scope.grouped_reason))
 
     files, disk = write_history(
         workspace,
@@ -20970,6 +21016,19 @@ class SportScope:
     sport: str
     separated: bool
     reason: str
+    """The full reason, naming THIS sport and its own counts. Written into
+    this sport's JSON, where a machine reads it and nothing is lost."""
+
+    summary_reason: str = ""
+    """The same answer with the sport's name and its counts taken out, so that
+    seven sports which could not be separated share one string and the
+    terminal can say it ONCE.
+
+    This exists because seven near-identical paragraphs are not seven times
+    the honesty: they bury the line the owner needs and train them to skip the
+    block, and a warning nobody reads is not a warning. Falls back to
+    :attr:`reason`, so a scope built without one still says something true."""
+
     entry_ids: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
     provenance: Provenance = field(
@@ -20983,6 +21042,16 @@ class SportScope:
     @property
     def scope_text(self) -> str:
         return f"{self.sport.upper()} ONLY" if self.separated else UNION_SCOPE
+
+    @property
+    def scope_kind(self) -> str:
+        """``SEPARATED`` or ``UNION``. The grouping key the terminal uses; the
+        per-sport `scope_text` stays in the file."""
+        return "SEPARATED" if self.separated else "UNION"
+
+    @property
+    def grouped_reason(self) -> str:
+        return self.summary_reason or self.reason
 
 
 def resolve_sport_scope(
@@ -21014,6 +21083,10 @@ def resolve_sport_scope(
                 f"the owner declared {len(declared)} entry point(s) naming "
                 f"{sport}; the graph below is constrained to them."
             ),
+            summary_reason=(
+                "the owner declared entry points naming each of these sports; "
+                "each sport's graph is constrained to its own."
+            ),
             entry_ids=declared,
             evidence=declared,
             provenance=Provenance(
@@ -21038,6 +21111,10 @@ def resolve_sport_scope(
                 f"{len(paths)} source file(s) name {sport} and no other sport, so "
                 f"the elements in them are this sport's and the graph below is "
                 f"constrained to them."
+            ),
+            summary_reason=(
+                "source files name exactly one sport, so the elements in them are "
+                "that sport's and each sport's graph is constrained to its own."
             ),
             entry_ids=tuple(owned),
             evidence=tuple(paths[:20]),
@@ -21066,6 +21143,13 @@ def resolve_sport_scope(
             + ". The sport is selected at runtime from a value this tool cannot "
             "follow, so order and reachability below are the UNION over every "
             f"sport. Run mode 2 for {sport} to get its real path."
+        ),
+        summary_reason=(
+            "the sport is selected at runtime from a value this tool cannot "
+            "follow. Searched: "
+            + "; ".join(searched)
+            + ". Order and reachability are the union over every sport. Run mode "
+            "2 for a sport to get its real path."
         ),
         provenance=Provenance(
             method=Method.NAME_HEURISTIC,

@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 
 from cascade_map import cli
-from cascade_map.ledger import Settings, layout_for, track
+from cascade_map.ledger import Settings, layout_for, render_track_report, track
 from cascade_map.workspace import (
     DEFAULT_WORKSPACE,
     UNION_SCOPE,
@@ -468,6 +468,109 @@ def test_the_history_records_the_project_and_every_sport(tmp_path: Path) -> None
     assert document["sports"] == list(Settings().sports)
     assert document["files"]["fingerprints"] == "AmunEV_Engine_V2_fingerprints.jsonl"
     assert document["files"]["comparisons"] == "AmunEV_Engine_V2_comparisons.jsonl"
+
+
+def test_the_scope_block_says_one_shared_answer_once(tmp_path: Path) -> None:
+    """Seven near-identical paragraphs are not seven times the honesty: they
+    bury the line the owner needs and train them to skip the block."""
+    result, _ledger = _run(tmp_path)
+    printed = render_track_report(result)
+    assert f"scope       {UNION_SCOPE} — all 7 sport(s)" in printed
+    assert "a UNION file is NOT that sport's map" in printed
+    # The reason appears ONCE, and never names one sport as if it were the
+    # only one affected.
+    assert " ".join(printed.split()).count("the sport is selected at runtime") == 1
+    for sport in Settings().sports:
+        assert f"Run mode 2 for {sport}" not in printed
+    # But the full per-sport reason is still in that sport's JSON, which is
+    # where a machine reads it and where nothing may be lost.
+    document = json.loads(
+        _space(tmp_path).runtime_history_file("etennis").read_text(encoding="utf-8")
+    )
+    assert "Run mode 2 for etennis to get its real path." in document["reason"]
+
+
+SPORT_SINKS = ("sports.basketball::decide", "sports.etennis::decide")
+
+
+def _sport_tree(tmp_path: Path, label: str, extra: str = "") -> Path:
+    """A version whose sport selection IS statically resolvable: one module
+    per sport, named for it, each with its own decision."""
+    root = tmp_path / "versions" / label
+    (root / "sports").mkdir(parents=True)
+    (root / "shared.py").write_text(
+        "def helper(x):\n    return x\n", encoding="utf-8"
+    )
+    for sport in ("basketball", "etennis"):
+        (root / "sports" / f"{sport}.py").write_text(
+            f"def decide(x):{extra}\n    return x > 1\n\n\n"
+            f"def run_{sport}(x):\n    return decide(x)\n\n\n"
+            f"def unused_{sport}(x):\n    return x\n",
+            encoding="utf-8",
+        )
+    return root
+
+
+def test_sports_with_different_answers_are_grouped_not_repeated(
+    tmp_path: Path,
+) -> None:
+    _sport_tree(tmp_path, "sporty_2026-01-14")
+    _sport_tree(tmp_path, "sporty_2026-02-03", extra="\n    x = x + 0")
+    result, _ledger = track(_settings(SINKS=list(SPORT_SINKS)), root=tmp_path)
+
+    kinds = {sport: kind for sport, kind, _reason in result.sport_scopes}
+    assert kinds["basketball"] == "SEPARATED"
+    assert kinds["etennis"] == "SEPARATED"
+    assert kinds["football"] == "UNION"
+
+    printed = render_track_report(result)
+    assert "scope       SEPARATED: etennis, basketball  ·  UNION:" in printed
+    # Two distinct answers, so exactly two reasons -- not seven.
+    assert printed.count("source files name exactly one sport") == 1
+    flat = " ".join(printed.split())
+    assert flat.count("the sport is selected at runtime") == 1
+    assert flat.count("source files name exactly one sport") == 1
+    assert "etennis, basketball — source files name" in flat
+
+
+def test_a_separated_sport_is_computed_apart_end_to_end(tmp_path: Path) -> None:
+    """Two sports' files differ because they were COMPUTED differently, never
+    because one map was copied twice."""
+    _sport_tree(tmp_path, "sporty_2026-01-14")
+    _sport_tree(tmp_path, "sporty_2026-02-03", extra="\n    x = x + 0")
+    track(_settings(SINKS=list(SPORT_SINKS)), root=tmp_path)
+    space = _space(tmp_path)
+
+    basketball = json.loads(
+        space.runtime_history_file("basketball").read_text(encoding="utf-8")
+    )
+    etennis = json.loads(
+        space.runtime_history_file("etennis").read_text(encoding="utf-8")
+    )
+    football = json.loads(
+        space.runtime_history_file("football").read_text(encoding="utf-8")
+    )
+    assert basketball["scope"] == "BASKETBALL ONLY"
+    assert etennis["scope"] == "ETENNIS ONLY"
+    assert football["scope"] == UNION_SCOPE
+
+    b_row, e_row = basketball["versions"][0], etennis["versions"][0]
+    assert b_row["entry_ids"] and e_row["entry_ids"]
+    assert b_row["entry_ids"] != e_row["entry_ids"]
+    # Each sport's scope holds its own module and nothing of the other's --
+    # which is the difference between separating and filing one map twice.
+    assert b_row["reaches_sink_ids"], "basketball reaches its own decision"
+    assert all("basketball" in i for i in b_row["reaches_sink_ids"])
+    assert all("etennis" in i for i in e_row["reaches_sink_ids"])
+    assert b_row["reaches_sink_ids"] != e_row["reaches_sink_ids"]
+    # The other sport is OUT OF SCOPE here, not absent and not unreachable.
+    assert any("etennis" in i for i in b_row["out_of_scope_ids"])
+    assert any("basketball" in i for i in e_row["out_of_scope_ids"])
+    # The UNION file is neither of them: it holds every element of both.
+    union_row = football["versions"][0]
+    assert set(union_row["reaches_sink_ids"]) >= set(b_row["reaches_sink_ids"])
+    assert set(union_row["reaches_sink_ids"]) >= set(e_row["reaches_sink_ids"])
+    assert union_row["out_of_scope_ids"] == []
 
 
 # ---------------------------------------------------------------------------

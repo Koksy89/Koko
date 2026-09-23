@@ -561,6 +561,19 @@ class SportScope:
     sport: str
     separated: bool
     reason: str
+    """The full reason, naming THIS sport and its own counts. Written into
+    this sport's JSON, where a machine reads it and nothing is lost."""
+
+    summary_reason: str = ""
+    """The same answer with the sport's name and its counts taken out, so that
+    seven sports which could not be separated share one string and the
+    terminal can say it ONCE.
+
+    This exists because seven near-identical paragraphs are not seven times
+    the honesty: they bury the line the owner needs and train them to skip the
+    block, and a warning nobody reads is not a warning. Falls back to
+    :attr:`reason`, so a scope built without one still says something true."""
+
     entry_ids: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
     provenance: Provenance = field(
@@ -574,6 +587,16 @@ class SportScope:
     @property
     def scope_text(self) -> str:
         return f"{self.sport.upper()} ONLY" if self.separated else UNION_SCOPE
+
+    @property
+    def scope_kind(self) -> str:
+        """``SEPARATED`` or ``UNION``. The grouping key the terminal uses; the
+        per-sport `scope_text` stays in the file."""
+        return "SEPARATED" if self.separated else "UNION"
+
+    @property
+    def grouped_reason(self) -> str:
+        return self.summary_reason or self.reason
 
 
 def resolve_sport_scope(
@@ -605,6 +628,10 @@ def resolve_sport_scope(
                 f"the owner declared {len(declared)} entry point(s) naming "
                 f"{sport}; the graph below is constrained to them."
             ),
+            summary_reason=(
+                "the owner declared entry points naming each of these sports; "
+                "each sport's graph is constrained to its own."
+            ),
             entry_ids=declared,
             evidence=declared,
             provenance=Provenance(
@@ -629,6 +656,10 @@ def resolve_sport_scope(
                 f"{len(paths)} source file(s) name {sport} and no other sport, so "
                 f"the elements in them are this sport's and the graph below is "
                 f"constrained to them."
+            ),
+            summary_reason=(
+                "source files name exactly one sport, so the elements in them are "
+                "that sport's and each sport's graph is constrained to its own."
             ),
             entry_ids=tuple(owned),
             evidence=tuple(paths[:20]),
@@ -657,6 +688,13 @@ def resolve_sport_scope(
             + ". The sport is selected at runtime from a value this tool cannot "
             "follow, so order and reachability below are the UNION over every "
             f"sport. Run mode 2 for {sport} to get its real path."
+        ),
+        summary_reason=(
+            "the sport is selected at runtime from a value this tool cannot "
+            "follow. Searched: "
+            + "; ".join(searched)
+            + ". Order and reachability are the union over every sport. Run mode "
+            "2 for a sport to get its real path."
         ),
         provenance=Provenance(
             method=Method.NAME_HEURISTIC,
