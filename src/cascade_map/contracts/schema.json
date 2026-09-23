@@ -2294,6 +2294,6 @@
     }
   },
   "description": "Generated from cascade_map.contracts.interfaces. Do not edit by hand: run python -m cascade_map.contracts._generate_schema.",
-  "schemaVersion": "1.3.0",
+  "schemaVersion": "1.4.0",
   "title": "CASCADE-MAP artifacts"
 }

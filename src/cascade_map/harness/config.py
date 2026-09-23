@@ -30,6 +30,20 @@ class ScenarioSpec:
     module: str
     function: str = ""
     args: tuple[str, ...] = ()
+    argv: tuple[str, ...] = ()
+    """`sys.argv` for the scenario, when the target is driven by command-line
+    flags rather than by a callable -- which most real launchers are.
+
+    Set, it replaces `sys.argv` for the duration of the scenario and is
+    restored afterwards, so a target using `argparse` sees exactly what it
+    would see from a shell. Empty leaves `sys.argv` alone.
+
+    This exists because the first real target could not be driven at all
+    without it: its runner takes `--engine`, `--sports`, `--frames` and
+    `--workers`, and calling a function with string arguments cannot express
+    that. The alternative was asking the owner to write a shim module inside
+    their own tree, which is a change to the code under analysis -- the one
+    thing this tool must never require."""
 
 
 @dataclass(frozen=True)
