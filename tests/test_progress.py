@@ -344,6 +344,20 @@ def test_the_live_ticker_thread_redraws_without_being_asked() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _stable_stdout(text: str) -> str:
+    """Everything a script parses, with the worker report's timings dropped.
+
+    The worker report is wall-clock BY DESIGN -- `cli.py` prints it and never
+    writes it into an artifact for exactly that reason -- so it is the one
+    part of stdout that two identical runs may legitimately differ on. The
+    summary below it is the deterministic part, and it is what these tests
+    compare exactly.
+    """
+    marker = text.find("Wrote ")
+    assert marker >= 0, text
+    return text[marker:]
+
+
 def _artifacts(out: Path) -> dict[str, bytes]:
     return {name: (out / name).read_bytes() for name in DETERMINISTIC}
 
@@ -351,22 +365,29 @@ def _artifacts(out: Path) -> dict[str, bytes]:
 def test_progress_changes_neither_stdout_nor_the_artifacts(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """The whole command, both ways round, through `main`.
+
+    A cache dir each so both runs do the same work, and the summary compared
+    exactly: it is the part a script reads.
+    """
     quiet_out, loud_out = tmp_path / "quiet", tmp_path / "loud"
-    analyze(CORPUS, quiet_out, strict_gate=False)
+    assert cli_main([
+        "analyze", str(CORPUS), "--out", str(quiet_out), "--no-gate",
+        "--cache", str(tmp_path / "cq"), "--quiet",
+    ]) == 0
     quiet = capsys.readouterr()
-    analyze(
-        CORPUS,
-        loud_out,
-        strict_gate=False,
-        progress=make_reporter(
-            ANALYZE_STAGES, force=True, stream=sys.stderr
-        ),
-    )
+    assert cli_main([
+        "analyze", str(CORPUS), "--out", str(loud_out), "--no-gate",
+        "--cache", str(tmp_path / "cl"), "--progress",
+    ]) == 0
     loud = capsys.readouterr()
-    assert loud.out == quiet.out
+    assert _stable_stdout(loud.out) == _stable_stdout(quiet.out).replace(
+        str(quiet_out), str(loud_out)
+    )
     assert _artifacts(loud_out) == _artifacts(quiet_out)
     assert quiet.err == ""
-    assert "started" in loud.err and "finished" in loud.err
+    assert "started " in loud.err and "finished " in loud.err
+    assert "\r" not in loud.err
 
 
 def test_two_consecutive_runs_with_progress_are_byte_identical(tmp_path: Path) -> None:
@@ -491,7 +512,9 @@ def test_a_piped_run_gets_no_carriage_returns_and_stdout_is_unchanged(
     assert loud.returncode == 0, loud.stderr
     assert quiet.returncode == 0, quiet.stderr
     assert "\r" not in loud.stderr
-    assert loud.stdout.replace("loud", "<out>") == quiet.stdout.replace("quiet", "<out>")
+    assert _stable_stdout(loud.stdout).replace("Wrote loud", "Wrote <out>") == (
+        _stable_stdout(quiet.stdout).replace("Wrote quiet", "Wrote <out>")
+    )
     assert quiet.stderr == ""
     assert "started " in loud.stderr and "finished " in loud.stderr
     assert _artifacts(tmp_path / "loud") == _artifacts(tmp_path / "quiet")
@@ -504,7 +527,9 @@ def test_progress_is_on_by_default_and_off_with_no_progress(tmp_path: Path) -> N
                 "--cache", "cache-o"], tmp_path)
     assert "finished " in default.stderr
     assert off.stderr == ""
-    assert default.stdout.replace("/d", "/<o>") == off.stdout.replace("/o", "/<o>")
+    assert _stable_stdout(default.stdout).replace("Wrote d", "Wrote <o>") == (
+        _stable_stdout(off.stdout).replace("Wrote o", "Wrote <o>")
+    )
 
 
 def test_the_progress_flags_exist_on_every_long_command() -> None:

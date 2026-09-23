@@ -2145,6 +2145,8 @@ def _trace_command(args: Any) -> int:
         print(
             f"REFUSED: MODE 2 always builds on a completed static map.\n"
             f"{problem}\n"
+            f"Run mode 1 first:\n"
+            f"    cascade-map analyze <your target> --out {args.graph_dir}\n"
             f"Nothing was executed.",
             file=sys.stderr,
         )
