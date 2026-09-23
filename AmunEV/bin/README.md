@@ -55,6 +55,22 @@ mode 3 / 1.50 elsewhere, **no `band_hi_ceiling`**, `n_is ≥ 100`, `n_oos ≥ 10
 | `production/<sport>/RUNBOOK.md` | what to run, in what order |
 | `Logs/`, `Rejections/`, `DeployKits/`, `mode3_<sport>.parquet` | the run's own records |
 
+## Do I need to delete anything from the folder?
+
+**No. Leave it all where it is.** `go_live.py` is built not to collide:
+
+| file | safe? | why |
+|---|---|---|
+| your **`run_m5.py`** | **yes, and it is never touched** | the runner extracted from the engine is written as `run_m5_<engine-sha8>.py`, so yours is not overwritten. If yours *differs* from the engine's, preflight says so and tells you to diff them — it does not decide for you. |
+| **`run_deploy_az.sh`** or any other script of yours | **yes** | `go_live.py` runs nothing but `run_m5_<sha8>.py`. It never invokes, sources or reads your scripts. If that script deploys to Azure, it is a *later* step — run it after `verify_live.py` passes, not instead of it. |
+| an old **`LazarusEV_Engine_v*.py`** | **yes here, risky elsewhere** | `go_live.py` always passes `--engine`, so a stray engine can never be picked up. But `run_m5.py` on its own globs `LazarusEV_Engine_v*.py` and takes the **last one alphabetically** — so if you or a script ever call `run_m5.py` by hand, a stale engine wins and the numbers you read came from the wrong build. Preflight names any stray it finds. |
+| output from previous runs | **yes** | every artefact is stamped. Anything older than the moment the run started is reported as **STALE**, is never counted as READY, and its deploy commands are never printed. |
+
+**The one that used to be dangerous, and is now fixed:** before this change, a run that
+died before writing its bundle left last week's `production/<sport>/` sitting there — and
+the report read it, called the sport READY, and printed the `psql` line. You would have
+deployed a registry built by an engine you had already replaced. That cannot happen now.
+
 ## Passing flags through
 
 Anything after `--` goes straight to `run_m5.py`:

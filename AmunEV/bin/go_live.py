@@ -139,6 +139,21 @@ def preflight(engine, frames, sports, strict=True):
             else:
                 fails.append(f'no frame for {sp}: expected {fdir}/AB_{sp}.parquet')
 
+    # THE ONE FILE IN THE FOLDER THAT CAN ACTUALLY HIJACK A RUN.
+    # run_m5.py picks its engine by globbing LazarusEV_Engine_v*.py and taking the LAST
+    # one alphabetically. This script always passes --engine so it cannot happen here --
+    # but the moment you or a script runs run_m5.py by hand without it, a stale engine
+    # sitting in the folder is the one that runs, and the log will name it while you read
+    # the numbers as if they came from the engine you meant.
+    strays = sorted(glob.glob(os.path.join(os.path.dirname(engine) or '.',
+                                           'LazarusEV_Engine_v*.py')))
+    strays = [p for p in strays if os.path.abspath(p) != os.path.abspath(engine)]
+    if strays:
+        notes.append(WARN(f'{len(strays)} other engine file(s) match run_m5.py\'s glob: '
+                          + ', '.join(os.path.basename(p) for p in strays)
+                          + '. Harmless here (--engine is always passed) but whichever '
+                            'sorts LAST would win if run_m5.py is ever run by hand'))
+
     try:
         free = shutil.disk_usage(os.getcwd()).free / 1e9
         (notes if free >= 5 else fails).append(
@@ -185,16 +200,38 @@ def _read_owner_rules(src):
     return {}
 
 
-def extract_runner(engine, dest):
-    """Write run_m5.py from the blob inside the engine. Nothing is executed."""
+def extract_runner(engine, home):
+    """Write the runner that ships INSIDE this engine. Nothing is executed.
+
+    NAMED FOR THE ENGINE, NOT `run_m5.py`. The first version of this wrote
+    `<home>/run_m5.py` and silently overwrote whatever was already there. If you
+    keep your own run_m5.py -- with your own flags, paths or edits -- it was gone,
+    with no message and no backup, and the next run used a runner you did not
+    write. The file is now named for the engine's hash, so it can never collide
+    with yours and you can see at a glance which engine it came from.
+
+    Returns (path, note). note is set when an existing run_m5.py differs, so you
+    are told rather than left to find out.
+    """
+    sha8 = sha256(engine)[:8]
+    dest = os.path.join(home, f'run_m5_{sha8}.py')
     for n in ast.parse(open(engine, encoding='utf-8', errors='ignore').read()).body:
         if isinstance(n, ast.Assign) and any(getattr(t, 'id', '') == 'laz_runner___BLOB'
                                              for t in n.targets):
             src = zlib.decompress(base64.b64decode(ast.literal_eval(n.value))).decode('utf-8')
             with open(dest, 'w', encoding='utf-8') as fh:
                 fh.write(src)
-            return dest
-    return None
+            note = ''
+            yours = os.path.join(home, 'run_m5.py')
+            if os.path.exists(yours):
+                same = (open(yours, encoding='utf-8', errors='ignore').read() == src)
+                note = ('your run_m5.py is identical to the one in this engine — '
+                        'nothing to reconcile' if same else
+                        f'your run_m5.py DIFFERS from the one in this engine. Yours was NOT '
+                        f'touched and NOT used; this run used {os.path.basename(dest)}. '
+                        f'diff them if you meant to keep your changes')
+            return dest, note
+    return None, ''
 
 
 # ── THE RUN ─────────────────────────────────────────────────────────────────
@@ -223,31 +260,45 @@ def run(engine, runner, sports, frames, extra, home, log_to):
 
 
 # ── WHAT CAME OUT ───────────────────────────────────────────────────────────
-def index(home, sports):
-    """Find every artefact and say whether the bundle is loadable."""
+def index(home, sports, since):
+    """Find every artefact, and refuse to count anything this run did not write.
+
+    THE FAILURE THIS ENDS. The first version read production/<sport>/MANIFEST.json
+    with no idea how old it was. If a run died before writing its bundle, LAST
+    week's bundle was still sitting there -- and this script read it, called the
+    sport READY, and printed the psql command to deploy it. You would have loaded
+    a registry built by an engine you had already replaced, believing it was the
+    run you just watched.
+
+    So every file is stamped, and anything older than the moment the run started
+    is STALE: never counted, never READY, and the deploy commands are never
+    printed for it.
+    """
     rows, ready = [], {}
     for sp in sports:
         d = os.path.join(home, 'production', sp)
         man = os.path.join(d, 'MANIFEST.json')
-        m = {}
+        m, stale = {}, False
         if os.path.exists(man):
+            stale = os.path.getmtime(man) < since
             try:
                 m = json.load(open(man))
             except Exception:
                 m = {}
-        ready[sp] = dict(dir=d, manifest=m,
-                         ok=bool(m) and m.get('preflight') == 'PASS' and m.get('n_deployable', 0) > 0)
+        ready[sp] = dict(dir=d, manifest=m, stale=stale,
+                         ok=(bool(m) and not stale and m.get('preflight') == 'PASS'
+                             and m.get('n_deployable', 0) > 0))
         for f in sorted(glob.glob(os.path.join(d, '*'))):
             if os.path.isfile(f):
-                rows.append((sp, 'bundle', f))
+                rows.append((sp, 'bundle', f, os.path.getmtime(f) >= since))
     for kind in ('Workbooks', 'Logs', 'Rejections', 'DeployKits', 'Propositions', 'Learning'):
         for f in sorted(glob.glob(os.path.join(home, kind, '*'))):
             if os.path.isfile(f):
-                rows.append(('', kind, f))
+                rows.append(('', kind, f, os.path.getmtime(f) >= since))
     for f in sorted(glob.glob(os.path.join(home, 'mode3_*.parquet'))
                     + glob.glob(os.path.join(home, 'laz_pca_*.json'))
                     + glob.glob(os.path.join(home, 'LAZ_BOOK*'))):
-        rows.append(('', 'run', f))
+        rows.append(('', 'run', f, os.path.getmtime(f) >= since))
     return rows, ready
 
 
@@ -264,6 +315,12 @@ def report(home, sports, rows, ready, secs, rc):
             print(f'\n  {BAD("NO BUNDLE")}  {sp}  — production/{sp}/MANIFEST.json was not written. '
                   f'The workbook may still be there; see the log.')
             continue
+        if r['stale']:
+            print(f'\n  {BAD("STALE")}  {sp.upper()}  — production/{sp}/ is from an EARLIER run '
+                  f'(written {time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(os.path.join(r["dir"], "MANIFEST.json"))))}). '
+                  f'This run wrote no bundle for it. DO NOT DEPLOY IT — it was built by a '
+                  f'different engine. See the log for why the run produced nothing.')
+            continue
         tag = OK('READY') if r['ok'] else WARN('CHECK')
         print(f'\n  {tag}  {sp.upper()}')
         print(f'         {m.get("n_deployable", 0)} live  ·  {m.get("n_withheld", 0)} registered '
@@ -278,14 +335,17 @@ def report(home, sports, rows, ready, secs, rc):
         for f in m.get('preflight_failures', [])[:5]:
             print(BAD(f'         {f.get("rule")} {f.get("name")}: {f.get("production_error")}'))
     print()
-    print(f'  {len(rows)} files written:')
+    fresh = [r for r in rows if r[3]]
+    old = [r for r in rows if not r[3]]
+    print(f'  {len(fresh)} file(s) written by THIS run'
+          + (WARN(f'   ·   {len(old)} older file(s) in the same folders, ignored') if old else ''))
     seen = set()
-    for sp, kind, f in rows:
+    for sp, kind, f, _ in fresh:
         k = f'{sp or "-"}/{kind}'
         if k in seen:
             continue
         seen.add(k)
-        n = sum(1 for a, b, _ in rows if (a or '-') + '/' + b == k)
+        n = sum(1 for a, b, _p, _fr in fresh if (a or '-') + '/' + b == k)
         print(f'    {kind:12} {("("+sp+")") if sp else "":14} {n:>3} file(s)   '
               f'{DIM(os.path.dirname(f))}')
     live = [sp for sp in sports if ready[sp]['ok']]
@@ -361,19 +421,22 @@ def main(argv=None):
         print(OK('  preflight only — nothing was run.'))
         return 0
 
-    runner = extract_runner(engine, os.path.join(home, 'run_m5.py'))
+    runner, note = extract_runner(engine, home)
     if runner is None:
         print(BAD('  could not extract run_m5.py from the engine (laz_runner___BLOB missing)'))
         return 2
-    print(f'    {OK("ok")}   run_m5.py extracted from this engine '
+    print(f'    {OK("ok")}   {os.path.basename(runner)} extracted from this engine '
           + DIM(f'({sum(1 for _ in open(runner))} lines) — runner and engine are the same build'))
+    if note:
+        print(f'    {WARN("note")} {note}')
 
     stamp = time.strftime('%Y%m%d_%H%M%S')
     log_to = os.path.join(home, f'go_live_{stamp}.log')
     print()
     print(f'  RUNNING  mode 3' + DIM(f'   · full output also in {os.path.basename(log_to)}'))
+    since = time.time()
     rc, secs = run(engine, runner, sports, a.frames, passthrough, home, log_to)
-    rows, ready = index(home, sports)
+    rows, ready = index(home, sports, since)
     report(home, sports, rows, ready, secs, rc)
     if rc != 0:
         print(BAD(f'  run_m5.py exited {rc}. The log is {log_to}'))
