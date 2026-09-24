@@ -448,6 +448,41 @@ guessed at.
 The message mentions `docs/design/TARGET_PROFILE.md`, which belongs to the development
 repository — with the single file, use the command-line flags instead.
 
+### The parse cache line
+
+```
+parse cache: 4 asks, 1 parses, 3 reused, peak 14.8 MB of source held
+```
+
+Reading your engine is the single most expensive thing the tool does: on a
+14.6 MB file, one read is **20.8 seconds** and builds 895,811 pieces held in
+about 0.62 GB of memory. Four separate stages need that same reading.
+
+So it is read **once** and shared. That line is the proof. `4 asks, 1 parses`
+means four stages wanted it and only one actually paid for it. If you ever see
+`4 asks, 4 parses`, the sharing is not happening and the run is paying the
+20-second cost four times over — that is worth telling me about.
+
+`peak ... of source held` is how much is being kept in memory to make the
+sharing possible. Raise or lower the allowance with `--parse-cache-mb N`;
+`--parse-cache-mb 0` switches sharing off entirely, which is slower but
+produces **byte-identical** output — useful if you ever want to prove to
+yourself that the cache is not changing your map.
+
+**Why it is safe.** Sharing one copy between stages would be dangerous if any
+stage wrote to it, because every later stage would silently inherit the
+damage. Every stage was audited, and more usefully the safety is *executed*
+rather than promised: a fingerprint is taken of the copy the moment it is
+created — before any stage touches it — and re-checked every time it is handed
+out. Any alteration anywhere stops the run with an error naming the culprit.
+That check ran against real code, 8,348 elements through three stages, with no
+alteration found.
+
+**What it does not fix.** The very first run on an engine it has never seen
+still pays for two reads: one stage runs before the cache can be filled, and
+another runs in a separate process the shared copy cannot reach. Repeat runs
+get the full benefit.
+
 ---
 
 ## 7b. The blueprint canvas

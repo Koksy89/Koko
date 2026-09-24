@@ -19,8 +19,9 @@ that matters.
 
 from __future__ import annotations
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
+from collections import OrderedDict
 from collections import defaultdict
 from collections import defaultdict, deque
 from collections import deque
@@ -5181,6 +5182,328 @@ def inventory(
 
 
 # ==========================================================================
+# parsecache.py
+# ==========================================================================
+
+"""One parse per (path, content hash) per run.
+
+The owner's design is: open, read ONCE, share, consolidate, move on. Five
+stages used to call :func:`ast.parse` on the same target source -- inventory,
+resolution (twice: once to summarise, once to resolve bodies), the CFG stage,
+lineage, and dependencies. On the owner's engine, one 14,804,021-byte module,
+a single ``ast.parse`` is 20.8s and 895,811 nodes. Four redundant parses is
+over a minute of a ~350s run spent re-deriving a tree the process already had.
+
+This module holds the trees that the *in-process* path shares.
+
+WHY IN-PROCESS ONLY
+    A tree cannot cross a process boundary without being pickled and rebuilt,
+    which costs more than re-parsing: the CFG pool measured 37.9s -> 86.2s
+    with 75 MB returned per unit, which is why ``_CFG_POOL_ENABLED`` is False.
+    The same trap is documented on :class:`~.cascade._PreOpened`. So a
+    :class:`ParseCache` is never sent to a pool: a worker would get a *copy*
+    that diverges silently. Stages that genuinely run elsewhere (inventory's
+    file workers, and the dependencies stage when it is overlapped into a
+    second process) keep parsing for themselves, and that is correct.
+
+WHY IT IS BOUNDED
+    The measured cost of holding one tree for that 14.6 MB module is 0.62 GB
+    of RSS -- roughly forty times the source. The old code paid the parse
+    repeatedly precisely so it could ``del tree`` and keep only one alive at a
+    time. Sharing means holding, so the holding is capped: see
+    :data:`DEFAULT_BUDGET_BYTES`. The budget is charged in SOURCE bytes, which
+    is a number that is actually known, rather than in a guess at node count
+    or heap size.
+
+WHY MUTATION IS THE RISK
+    A shared tree is only safe while every consumer treats it as read-only.
+    All five consumers were audited and none of them mutates the AST: no
+    ``NodeTransformer``, no parent pointers, no annotation attached to a node,
+    no in-place edit of a node's field list. Every one of them is an
+    ``ast.walk`` or a ``NodeVisitor`` writing into the tool's own summary
+    objects. :meth:`ParseCache.parse` therefore hands back the SAME object.
+    Because that property is load-bearing and easy to break later,
+    ``strict=True`` fingerprints every tree on the way out and re-checks it on
+    the next hand-out, so a consumer that starts mutating fails loudly here
+    instead of silently corrupting the next stage's input. The test suite runs
+    strict; a run does not, because the fingerprint walks every node.
+"""
+
+
+
+
+__all__ = [
+    "DEFAULT_BUDGET_BYTES",
+    "ParseCache",
+    "ParseCacheStats",
+    "TreeMutatedError",
+    "tree_fingerprint",
+]
+
+#: How many bytes of SOURCE may be held at once, across all cached trees.
+#:
+#: 32 MB. The largest single file this tool will parse is card 1's 16 MB
+#: inventory limit, so the default comfortably holds the biggest file a run
+#: can produce plus as much again of headroom -- on the owner's engine that is
+#: its 14.8 MB module and room to spare.
+#:
+#: Read it as source bytes, not as footprint: the measured expansion on the
+#: owner's engine is ~40x (14.6 MB of source -> 0.62 GB of RSS), so a budget
+#: that is FULL of source at that ratio is on the order of 1.3 GB resident.
+#: Raising it trades memory for parses; `--parse-cache-mb` overrides it, and
+#: `0` disables caching entirely (every ask re-parses, as before this module).
+DEFAULT_BUDGET_BYTES = 32_000_000
+
+
+class TreeMutatedError(RuntimeError):
+    """A cached tree changed between hand-outs.
+
+    Raised only under ``strict=True``. It means some consumer mutated a tree
+    it does not own, which would corrupt the next consumer's input. The fix is
+    never to relax this check: either give that consumer its own copy, or keep
+    its annotation beside the tree rather than on it.
+    """
+
+
+def tree_fingerprint(tree: ast.AST) -> str:
+    """A hash that changes if anything about *tree* changes.
+
+    Covers three kinds of mutation: a rewritten field or a moved node
+    (``ast.dump`` with fields), a changed position (``include_attributes``),
+    and an attribute *attached* to a node, such as a parent pointer, which
+    shows up in the node's ``__dict__`` but in no dump.
+    """
+    digest = hashlib.sha256()
+    for node in ast.walk(tree):
+        digest.update(type(node).__name__.encode())
+        digest.update(",".join(sorted(node.__dict__)).encode())
+        digest.update(b"\x00")
+    digest.update(ast.dump(tree, include_attributes=True).encode())
+    return digest.hexdigest()
+
+
+@dataclass
+class ParseCacheStats:
+    """What the cache did this run. Wall-clock-adjacent and run-shaped, so it
+    is reported and never written into an artifact (constraint 4)."""
+
+    #: Trees actually built by `ast.parse`, including re-parses after eviction.
+    parses: int = 0
+    #: Asks answered from a held tree.
+    hits: int = 0
+    #: Asks that had to parse.
+    misses: int = 0
+    #: Trees dropped to stay inside the budget.
+    evictions: int = 0
+    #: Parses of a key this cache had held and evicted. Non-zero means the
+    #: budget is too small for this target and the run paid for it.
+    thrash_reparses: int = 0
+    #: Files whose source alone exceeds the whole budget. Never cached, so
+    #: every stage re-parses them exactly as it did before.
+    oversize: int = 0
+    #: Asks that raised, answered from a remembered failure rather than by
+    #: parsing a known-broken file four more times.
+    failure_hits: int = 0
+    #: Source bytes currently and ever held.
+    bytes_held: int = 0
+    peak_bytes_held: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "parses": self.parses,
+            "hits": self.hits,
+            "misses": self.misses,
+            "evictions": self.evictions,
+            "thrash_reparses": self.thrash_reparses,
+            "oversize": self.oversize,
+            "failure_hits": self.failure_hits,
+            "peak_bytes_held": self.peak_bytes_held,
+        }
+
+    def render(self) -> str:
+        """One line for the run report."""
+        asks = self.hits + self.misses
+        saved = self.hits
+        line = (
+            f"parse cache: {asks} asks, {self.parses} parses, "
+            f"{saved} reused, peak {self.peak_bytes_held / 1e6:.1f} MB of source held"
+        )
+        if self.evictions:
+            line += (
+                f"; {self.evictions} evictions and {self.thrash_reparses} re-parses "
+                f"-- the cache thrashed, raise --parse-cache-mb"
+            )
+        if self.oversize:
+            line += (
+                f"; {self.oversize} file(s) larger than the whole budget were "
+                f"never cached"
+            )
+        return line
+
+
+@dataclass
+class _Entry:
+    charge: int
+    tree: ast.Module | None = None
+    error: BaseException | None = None
+    fingerprint: str = ""
+    extras: dict[str, object] = field(default_factory=dict)
+
+
+class ParseCache:
+    """Hands out one tree per (path, content hash), newest asks keeping it.
+
+    Not thread-safe, and deliberately so: everything that shares it runs in
+    one process on one thread. The dependencies stage either runs in a second
+    *process* (which gets no cache at all) or inline on this thread after
+    lineage has finished; neither is concurrent with anything.
+    """
+
+    def __init__(
+        self,
+        budget_bytes: int = DEFAULT_BUDGET_BYTES,
+        *,
+        strict: bool = False,
+    ) -> None:
+        #: Source bytes that may be held at once. 0 disables the cache.
+        self.budget_bytes = max(0, int(budget_bytes))
+        #: Fingerprint every tree on hand-out and re-check it on the next ask.
+        self.strict = strict
+        self.stats = ParseCacheStats()
+        self._entries: "OrderedDict[tuple[str, str], _Entry]" = OrderedDict()
+        #: Keys this cache held and dropped, so a later ask for one can be
+        #: counted as thrash rather than as an ordinary first parse.
+        self._evicted: set[tuple[str, str]] = set()
+
+    # -- the one method every stage calls ---------------------------------
+
+    def parse(
+        self, path: str, source: str, content_hash: str | None = None
+    ) -> ast.Module:
+        """The tree for *source*, parsed at most once per (path, hash).
+
+        *path* is only the ``filename=`` every consumer already passed, so the
+        spans and the messages in a ``SyntaxError`` are unchanged. Pass
+        *content_hash* when the caller already has one -- ingestion hashes
+        every file it walks -- otherwise the same ``sha256_text`` used
+        everywhere else in this tool is applied to *source*. A file whose
+        content changed hashes differently and so can never be served a stale
+        tree, even at the same path.
+
+        Raises exactly what ``ast.parse`` raises, so each stage keeps its own
+        mapping from failure to :class:`Unresolved`. A failure is remembered
+        too: a syntactically broken 14 MB file is not worth parsing five times
+        to learn the same thing.
+
+        Never imports, executes, ``exec``s, ``eval``s or unpickles anything.
+        """
+        key = (path, content_hash if content_hash is not None else sha256_text(source))
+        entry = self._entries.get(key)
+        if entry is not None:
+            self._entries.move_to_end(key)
+            if entry.error is not None:
+                self.stats.hits += 1
+                self.stats.failure_hits += 1
+                raise entry.error
+            assert entry.tree is not None
+            self._check(key, entry)
+            self.stats.hits += 1
+            return entry.tree
+
+        self.stats.misses += 1
+        if key in self._evicted:
+            self.stats.thrash_reparses += 1
+        charge = len(source.encode("utf-8", errors="surrogateescape"))
+
+        self.stats.parses += 1
+        try:
+            tree = ast.parse(source, filename=path)
+        except BaseException as exc:  # re-raised below; remembered if cacheable
+            if self._cacheable(charge):
+                self._insert(key, _Entry(charge=charge, error=exc))
+            raise
+
+        if not self._cacheable(charge):
+            return tree
+        new = _Entry(charge=charge, tree=tree)
+        if self.strict:
+            new.fingerprint = tree_fingerprint(tree)
+        self._insert(key, new)
+        return tree
+
+    # -- notes that belong BESIDE a tree, never attached to its nodes ------
+
+    def annotate(self, path: str, content_hash: str, name: str, value: object) -> None:
+        """Store *value* under *name* for a cached tree.
+
+        The escape hatch for a stage that wants to remember something about a
+        tree -- the place a parent map or a per-node marking goes if one is
+        ever needed. It lives here, keyed alongside the tree, precisely so it
+        never becomes an attribute set on a shared node.
+        """
+        entry = self._entries.get((path, content_hash))
+        if entry is not None:
+            entry.extras[name] = value
+
+    def annotation(self, path: str, content_hash: str, name: str) -> object | None:
+        entry = self._entries.get((path, content_hash))
+        return None if entry is None else entry.extras.get(name)
+
+    # -- internals ---------------------------------------------------------
+
+    def _cacheable(self, charge: int) -> bool:
+        if self.budget_bytes <= 0:
+            return False
+        if charge > self.budget_bytes:
+            self.stats.oversize += 1
+            return False
+        return True
+
+    def _insert(self, key: tuple[str, str], entry: _Entry) -> None:
+        self._entries[key] = entry
+        self.stats.bytes_held += entry.charge
+        self._evicted.discard(key)
+        self._evict_to_budget()
+        self.stats.peak_bytes_held = max(
+            self.stats.peak_bytes_held, self.stats.bytes_held
+        )
+
+    def _evict_to_budget(self) -> None:
+        """Drop least-recently-asked-for trees until inside the budget.
+
+        Never drops the entry just inserted: an ask that evicted its own answer
+        would re-parse on the very next ask for the same file, which is the
+        one behaviour worse than not caching. A file too big for the whole
+        budget is refused by :meth:`_cacheable` before it ever gets here.
+        """
+        while self.stats.bytes_held > self.budget_bytes and len(self._entries) > 1:
+            old_key, old = self._entries.popitem(last=False)
+            self.stats.bytes_held -= old.charge
+            if old.error is None:
+                self.stats.evictions += 1
+                self._evicted.add(old_key)
+
+    def _check(self, key: tuple[str, str], entry: _Entry) -> None:
+        if not self.strict or not entry.fingerprint:
+            return
+        assert entry.tree is not None
+        now = tree_fingerprint(entry.tree)
+        if now != entry.fingerprint:
+            raise TreeMutatedError(
+                f"the shared AST for {key[0]} changed between hand-outs: a "
+                f"consumer mutated a tree it does not own. Give that stage its "
+                f"own copy, or keep its annotation beside the tree "
+                f"(ParseCache.annotate) rather than on its nodes."
+            )
+
+    def clear(self) -> None:
+        """Drop every held tree. The stats survive, because what the run did
+        is still true after the memory is handed back."""
+        self._entries.clear()
+        self.stats.bytes_held = 0
+
+
+# ==========================================================================
 # resolve.py
 # ==========================================================================
 
@@ -5986,8 +6309,15 @@ class Resolver:
         include_builtin_calls: bool = False,
         max_traced_targets: int = 4,
         max_candidates: int = 32,
+        parse_cache: ParseCache | None = None,
     ) -> None:
         self.root = Path(root)
+        #: The run's shared trees. Resolution alone asks for every module
+        #: TWICE -- `_summarise` walks it for declarations, `_resolve_module`
+        #: walks it again for call sites -- so even a Resolver built on its
+        #: own, as every test builds one, halves its own parsing. Passed in by
+        #: `cli.analyze` so the CFG and lineage stages get the same trees.
+        self._parse_cache = ParseCache() if parse_cache is None else parse_cache
         self.declared_configs = frozenset(str(p) for p in config_paths)
         self.include_builtin_calls = include_builtin_calls
         self.max_traced_targets = max_traced_targets
@@ -6165,7 +6495,7 @@ class Resolver:
         if source is None:
             return None
         try:
-            return ast.parse(source, filename=summary.path)
+            return self._parse_cache.parse(summary.path, source)
         except SyntaxError as exc:
             self._record_unresolved(
                 owner=summary.element_id,
@@ -10592,9 +10922,13 @@ class _CFGWorker:
         trees: dict[str, ast.Module | None] | None = None,
         index_cache: dict[tuple[str, str], dict[str, ast.AST]] | None = None,
         line_cache: dict[tuple[str, str], dict[int, ast.AST]] | None = None,
+        parse_cache: "ParseCache | None" = None,
     ) -> None:
         self.root = root
         self.elements = {element.id: element for element in elements}
+        #: None in a pool worker, and that is the point: a `ParseCache` holds
+        #: live trees and is never pickled into another process.
+        self.parse_cache = parse_cache
         self.trees = {} if trees is None else trees
         self.parse_failures: dict[str, Unresolved] = {}
         self.index_cache = {} if index_cache is None else index_cache
@@ -10603,7 +10937,7 @@ class _CFGWorker:
     def parse(self, path: str) -> ast.Module | None:
         if path in self.trees:
             return self.trees[path]
-        tree, failure = _parse_source(self.root, path)
+        tree, failure = _parse_source(self.root, path, self.parse_cache)
         self.trees[path] = tree
         if failure is not None:
             self.parse_failures[path] = failure
@@ -10648,8 +10982,18 @@ def _cfg_unit(worker: "_CFGWorker", element_id: str) -> _CFGOutcome:
     return _CFGOutcome(flow=_flow_result(element, node, path))
 
 
-def _parse_source(root: Path, path: str) -> tuple[ast.Module | None, Unresolved | None]:
-    """Read and parse one file. Never imports, executes or unpickles it."""
+def _parse_source(
+    root: Path, path: str, cache: "ParseCache | None" = None
+) -> tuple[ast.Module | None, Unresolved | None]:
+    """Read and parse one file. Never imports, executes or unpickles it.
+
+    With *cache*, the tree is the run's shared one: resolution parsed this
+    file before this stage started, and on the owner's single-module engine
+    that is 20.8s the CFG stage no longer spends. Without one -- which is
+    every CFG *pool* worker, in its own process -- it parses for itself, as
+    it must: a tree cannot cross a process boundary for less than the parse
+    costs (see `_CFG_POOL_ENABLED`).
+    """
     full = root / path
     try:
         text = full.read_text(encoding="utf-8")
@@ -10678,6 +11022,8 @@ def _parse_source(root: Path, path: str) -> tuple[ast.Module | None, Unresolved 
             attempted=(Method.AST_DIRECT,),
         )
     try:
+        if cache is not None:
+            return cache.parse(path, text), None
         return ast.parse(text, filename=path), None
     except SyntaxError as exc:
         return None, Unresolved(
@@ -10708,8 +11054,14 @@ class CascadeAnalyzer:
         unresolved: Sequence[Unresolved] = (),
         workers: int | None = None,
         on_unit: Callable[[int, int], None] | None = None,
+        parse_cache: ParseCache | None = None,
     ) -> None:
         self.root = Path(root)
+        #: The run's shared trees, when `cli.analyze` passes one: resolution
+        #: has already parsed every module this stage will ask for. Built
+        #: privately otherwise, so a `CascadeAnalyzer` constructed alone -- as
+        #: every test constructs one -- behaves exactly as it did.
+        self._parse_cache = ParseCache() if parse_cache is None else parse_cache
         self._declared_sinks: tuple[str, ...] = tuple(sorted(set(sink_ids)))
         self._input_unresolved: tuple[Unresolved, ...] = tuple(unresolved)
         #: How many child processes the CFG stage may use. `0`/`1` keep
@@ -10912,7 +11264,7 @@ class CascadeAnalyzer:
         """
         if path in self._source_cache:
             return self._source_cache[path]
-        tree, failure = _parse_source(self.root, path)
+        tree, failure = _parse_source(self.root, path, self._parse_cache)
         if failure is not None and failure.id not in self._reported_failures:
             self._reported_failures.add(failure.id)
             self._opaque.add(failure.id)
@@ -11920,6 +12272,7 @@ class CascadeAnalyzer:
                     trees=self._source_cache,
                     index_cache=self._body_index_cache,
                     line_cache=self._body_line_index,
+                    parse_cache=self._parse_cache,
                 )
             )
         return _CFGPayload(str(self.root), elements)
@@ -13014,10 +13367,17 @@ class LineageTracer:
         root: str | Path = ".",
         sink_ids: Sequence[str] = (),
         transparent_modules: Iterable[str] = TRANSPARENT_MODULES,
+        parse_cache: ParseCache | None = None,
     ) -> None:
         self.root = Path(root)
         self.sink_ids: tuple[str, ...] = tuple(sorted(set(sink_ids)))
         self.transparent_modules = frozenset(transparent_modules)
+        #: The run's shared trees. Lineage is the LAST static stage to ask for
+        #: them, so on a single-module target every ask is a hit. Set before
+        #: `_reset`, and deliberately not cleared by it: `_reset` drops what
+        #: this tracer derived, and a parsed tree is not that -- it belongs to
+        #: the run.
+        self._parse_cache = ParseCache() if parse_cache is None else parse_cache
         self._reset()
 
     # -- lifecycle ---------------------------------------------------------
@@ -13462,7 +13822,7 @@ class LineageTracer:
                 )
                 continue
             try:
-                tree = ast.parse(text, filename=str(rel_path))
+                tree = self._parse_cache.parse(str(rel_path), text)
             except SyntaxError as exc:
                 self._unresolved(
                     module, rel_path, UnresolvedReason.SYNTAX_ERROR,
@@ -40818,6 +41178,7 @@ def analyze(
     worker_report_sink: Callable[[str], None] | None = None,
     progress: Any = None,
     max_source_bytes: int = MAX_SOURCE_BYTES,
+    parse_cache_bytes: int = DEFAULT_BUDGET_BYTES,
     intents_path: Path | None = None,
     propose_intents_path: Path | None = None,
 ) -> tuple[int, dict[str, Any]]:
@@ -40869,6 +41230,22 @@ def analyze(
     worker_count = resolve_workers(workers)
     pipeline = PipelineReport(requested=worker_count)
 
+    # ONE parse per file per run, shared by every stage that runs in THIS
+    # process. Resolution asks for each module twice, the CFG stage once and
+    # lineage once; before this they were four `ast.parse` calls on the same
+    # bytes, and on the owner's 14.8 MB single-module engine one of those is
+    # 20.8s and 895,811 nodes.
+    #
+    # NOT given to inventory and NOT given to dependencies, and neither is an
+    # oversight. Inventory is the first stage, so it can only ever seed the
+    # cache, never hit it -- and its file units run in a POOL as soon as a
+    # target has more than one file, where a fork would copy every held tree
+    # into every worker. Dependencies travels to its own process inside a
+    # pickled payload; a ParseCache holding live trees must never enter one
+    # (the same trap `cascade._PreOpened` documents). Both parse for
+    # themselves, exactly as they did.
+    parse_cache = ParseCache(parse_cache_bytes)
+
     ingestor = Ingestor(cache_dir=cache_dir, workers=workers)
     elements, unresolved = ingestor.inventory(str(root), on_unit=bar.sub)
     summary["elements"] = len(elements)
@@ -40887,7 +41264,7 @@ def analyze(
     # one 15 MB module, as the owner's is, there is exactly one unit either
     # way.
     resolve_started = time.time()
-    resolver = Resolver(root, config_paths=tuple(config_paths))
+    resolver = Resolver(root, config_paths=tuple(config_paths), parse_cache=parse_cache)
     edges, resolve_unresolved = resolver.resolve(elements)
     unresolved = list(unresolved) + list(resolve_unresolved)
     summary["edges"] = len(edges)
@@ -40913,6 +41290,7 @@ def analyze(
         unresolved=unresolved,
         workers=worker_count,
         on_unit=bar.sub,
+        parse_cache=parse_cache,
     )
     (
         blocks,
@@ -40965,7 +41343,7 @@ def analyze(
     )
 
     lineage_started = time.time()
-    tracer = LineageTracer(root, sink_ids=tuple(sink_ids))
+    tracer = LineageTracer(root, sink_ids=tuple(sink_ids), parse_cache=parse_cache)
     lineage_edges, barriers = tracer.trace_values(elements, edges)
 
     say = worker_report_sink or bar.through
@@ -41379,6 +41757,9 @@ def analyze(
     # never written into an artifact: these are wall-clock timings and
     # constraint 4 says identical input gives identical bytes.
     (worker_report_sink or bar.through)(render_pipeline_report(pipeline))
+    # What the shared trees bought. A run-shaped measurement like the ones
+    # above, so it is printed and never written into an artifact.
+    (worker_report_sink or bar.through)(parse_cache.stats.render())
 
     bar.finish(
         finished_at=finished, elapsed=elapsed_seconds, stage_millis=stage_millis
@@ -42717,6 +43098,15 @@ def _build_parser() -> argparse.ArgumentParser:
                           "requirements skipped, and the skip is recorded against "
                           f"that one file (default {MAX_SOURCE_BYTES // 1_000_000}). "
                           "Every other analysis has its own limits and is unaffected.")
+    run.add_argument("--parse-cache-mb", type=int, default=None, metavar="MB",
+                     help="how much SOURCE the run may hold parsed at once so "
+                          "that resolution, the CFG stage and lineage share one "
+                          "tree per file instead of parsing it four times "
+                          f"(default {DEFAULT_BUDGET_BYTES // 1_000_000}; 0 "
+                          "disables sharing and every stage parses for itself). "
+                          "A tree costs roughly forty times its source in "
+                          "memory, so raising this trades memory for parses; "
+                          "the run reports if the cache thrashed.")
     run.add_argument("--intents", type=Path, default=None, metavar="PATH",
                      help="owner-confirmed intents YAML: what each element is "
                           "MEANT to do. Overrides INTENTS. Every problem in "
@@ -42985,6 +43375,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_source_bytes=(
                 args.max_source_mb * 1_000_000 if args.max_source_mb
                 else MAX_SOURCE_BYTES
+            ),
+            parse_cache_bytes=(
+                args.parse_cache_mb * 1_000_000
+                if args.parse_cache_mb is not None
+                else DEFAULT_BUDGET_BYTES
             ),
         )
         print(_report(summary, args.out, code))

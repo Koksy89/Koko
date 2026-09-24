@@ -612,7 +612,26 @@ def build() -> str:
         rel = path.relative_to(PACKAGE).as_posix()
         bodies.append(f"\n\n# {'=' * 74}\n# {rel}\n# {'=' * 74}\n\n{body.strip()}\n")
 
-    version = (PACKAGE.parents[1] / "VERSION").read_text(encoding="utf-8").strip()
+    # Read from the PACKAGE, not from the VERSION file beside it. Those are
+    # two places and they drifted: VERSION was bumped to 1.1.0 while
+    # `cascade_map.__version__` stayed 1.0.0, so this file and the package it
+    # was generated from reported different versions for identical behaviour.
+    # Taking it from the source that the package itself uses makes that
+    # divergence impossible rather than merely tested for.
+    # `ast` rather than importing: constraint 1 applies to this tool too.
+    init_src = (PACKAGE / "__init__.py").read_text(encoding="utf-8")
+    version = ""
+    for node in ast.walk(ast.parse(init_src)):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "__version__" for t in node.targets
+        ):
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                version = node.value.value
+    if not version:
+        raise SystemExit(
+            "cascade_map/__init__.py has no `__version__ = \"...\"` literal; "
+            "the single file cannot be given a version it cannot find."
+        )
     header = '''"""CASCADE-MAP — a static and runtime map of a Python decision engine.
 
 Single file. Generated from the package by `tools/amalgamate.py`; every line
