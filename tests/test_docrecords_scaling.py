@@ -101,16 +101,40 @@ def _prepare(root: Path, units: int) -> dict[str, object]:
     }
 
 
+#: Samples per size. The work here is tens of milliseconds, which is the same
+#: order as scheduler noise on a shared machine -- one sample of it measures
+#: the box, not the algorithm. Measured spread over 7 runs of the SMALL input:
+#: min 0.025s, median 0.028s, max 0.111s. A single unlucky sample is therefore
+#: 4x the true cost, and the ratio built from it swung between 4.6x and 8.9x
+#: across runs -- failing a 8.0x threshold roughly half the time while the
+#: algorithm itself never changed.
+SAMPLES = 7
+
+
 def _time_card(inputs: dict[str, object]) -> float:
-    started = time.perf_counter()
-    builder = DocumentationBuilder(**inputs)  # type: ignore[arg-type]
-    records = builder.records()
-    offenders = builder.completeness_gate(records)
-    elapsed = time.perf_counter() - started
-    # The gate must pass, or the timing is of a run that would have failed.
-    assert not offenders, f"{len(offenders)} incomplete records"
-    assert len(records) == len(inputs["elements"])  # type: ignore[arg-type]
-    return elapsed
+    """The FASTEST of several runs, not one run.
+
+    Minimum rather than mean or median: every source of noise here (another
+    process taking the core, a GC pause, a cold cache) can only ADD time, so
+    the smallest sample is the one least contaminated by things that are not
+    the algorithm. Averaging keeps the contamination; the minimum discards it.
+
+    This makes the test both quieter AND stricter. A genuine quadratic
+    regression costs 16x and still shows up unmistakably against the 8x
+    threshold, because it is present in every sample including the fastest.
+    Noise is not, so it no longer fires.
+    """
+    best = float("inf")
+    for _ in range(SAMPLES):
+        started = time.perf_counter()
+        builder = DocumentationBuilder(**inputs)  # type: ignore[arg-type]
+        records = builder.records()
+        offenders = builder.completeness_gate(records)
+        best = min(best, time.perf_counter() - started)
+        # The gate must pass, or the timing is of a run that would have failed.
+        assert not offenders, f"{len(offenders)} incomplete records"
+        assert len(records) == len(inputs["elements"])  # type: ignore[arg-type]
+    return best
 
 
 def test_records_and_gate_scale_closer_to_linear_than_quadratic(
@@ -127,7 +151,9 @@ def test_records_and_gate_scale_closer_to_linear_than_quadratic(
     large_seconds = _time_card(large)
 
     # A floor under the denominator: below a few milliseconds the ratio is
-    # measuring the clock, not the algorithm.
+    # measuring the clock, not the algorithm. With `_time_card` taking the
+    # fastest of SAMPLES runs the floor is rarely reached, but it stays as the
+    # backstop for a machine faster than any this was calibrated on.
     ratio = large_seconds / max(small_seconds, 0.02)
     assert ratio < MAX_ACCEPTABLE_RATIO, (
         f"DocumentationBuilder grew {ratio:.1f}x for 4x the input "
