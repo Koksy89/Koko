@@ -26,6 +26,7 @@ import json
 import platform
 import sys
 import time
+from dataclasses import dataclass
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ from cascade_map.contracts.interfaces import (
     SCHEMA_VERSION,
     Confidence,
     DetectedCandidate,
+    ElementKind,
     FindingKind,
     SliceScope,
     canonical_dumps,
@@ -49,6 +51,8 @@ from cascade_map.ingest import inventory
 from cascade_map.ingest.inventory import Ingestor
 from cascade_map.ingest.parallel import render_worker_report
 from cascade_map.parallel import (
+    BackgroundUnit,
+    Payload,
     PipelineReport,
     StageReport,
     canonical_jsonl_many,
@@ -74,6 +78,20 @@ from cascade_map.harness.scenarios import (
     derive_scenario_document,
     harness_warnings,
     select_sports,
+)
+from cascade_map.harness.stubs import (
+    StubDeclarationError,
+    describe_declarations,
+    parse_declarations,
+)
+from cascade_map.alignment import (
+    AlignmentEngine,
+    coverage_json,
+    intents_jsonl,
+    load_registry,
+    propose_intents,
+    registry_text,
+    verdicts_jsonl,
 )
 from cascade_map.ledger import (
     SETTING_DEFAULTS,
@@ -201,6 +219,20 @@ METATRON_SETTINGS = {
     # Explicit ordering, for when the tool cannot establish it from the files.
     # Folder names, oldest first. Empty = work it out and report how.
     "ORDER": [],
+
+    # The owner-confirmed intents file: what each element is MEANT to do, in
+    # checkable terms. The one setting that answers "which of the things I
+    # built are not plugged in?" against YOUR OWN DECLARATION rather than
+    # against a guess from structure or naming.
+    #
+    # Empty means no spec, and every element is reported NO_INTENT -- a state,
+    # not a pass and not a failure. A file that IS named and cannot be read is
+    # never silently ignored: every parse problem lands in unresolved.jsonl
+    # with its line number and its reason, and the run says so.
+    #
+    # Start one with:  metatron analyze <target> --propose-intents intents.yaml
+    # Everything it writes is PROPOSED. You confirm; the tool proposes.
+    "INTENTS": "",
 
     # MODE 2 only.
     "SCENARIOS": "scenarios.json",
@@ -333,6 +365,16 @@ def _rebuild(cls: type, payload: dict[str, Any]) -> Any:
     """
     import dataclasses
     import typing
+    from enum import StrEnum
+
+    def _enum_of(hint: Any) -> type[StrEnum] | None:
+        """The `StrEnum` this field is typed as, through an optional if need be."""
+        if isinstance(hint, type) and issubclass(hint, StrEnum):
+            return hint
+        for arg in typing.get_args(hint):
+            if isinstance(arg, type) and issubclass(arg, StrEnum):
+                return arg
+        return None
 
     hints = typing.get_type_hints(cls)
     kwargs: dict[str, Any] = {}
@@ -343,10 +385,28 @@ def _rebuild(cls: type, payload: dict[str, Any]) -> Any:
         hint = hints[field.name]
         origin = typing.get_origin(hint)
         args = typing.get_args(hint)
+        enum_type = _enum_of(hint)
         if value is None:
             kwargs[field.name] = None
+        elif enum_type is not None:
+            # A `StrEnum` left as a bare string compares equal but is never
+            # `is` the member, and this project's own code asks `edge.kind is
+            # EdgeKind.CALLS`. Read back as a string, every such test is
+            # silently False: card 13 saw a re-read `Reachability.state` of
+            # "REACHES_SINK" fail `is ReachabilityState.REACHES_SINK` and
+            # report a live element as unreachable. A value the enum does not
+            # name is left alone rather than raising -- an artifact from a
+            # newer schema must degrade, not crash.
+            try:
+                kwargs[field.name] = enum_type(value)
+            except ValueError:
+                kwargs[field.name] = value
         elif origin is tuple and args and dataclasses.is_dataclass(args[0]):
             kwargs[field.name] = tuple(_rebuild(args[0], v) for v in value)
+        elif origin is tuple and args and isinstance(args[0], type) and issubclass(args[0], StrEnum):
+            kwargs[field.name] = tuple(
+                _coerce_enum_member(args[0], item) for item in value
+            )
         elif origin is tuple:
             kwargs[field.name] = tuple(value)
         elif dataclasses.is_dataclass(hint) and isinstance(value, dict):
@@ -357,6 +417,13 @@ def _rebuild(cls: type, payload: dict[str, Any]) -> Any:
         else:
             kwargs[field.name] = value
     return cls(**kwargs)
+
+
+def _coerce_enum_member(enum_type: type, value: Any) -> Any:
+    try:
+        return enum_type(value)
+    except ValueError:
+        return value
 
 
 def _read_jsonl(out_dir: Path, name: str, cls: type) -> list[Any]:
@@ -415,6 +482,93 @@ def build_index(graph_dir: Path, target_root: Path) -> Any:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# card 17 as an overlapped whole stage
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _DependencyResults:
+    """Everything card 17 answers, collected in one value.
+
+    A bundle rather than the `Dependencies` object itself: the object is built
+    inside the worker and only its ANSWERS travel, so nothing here depends on
+    a stage's internal state surviving a process boundary.
+    """
+
+    requirements: tuple[Any, ...]
+    installed: tuple[Any, ...]
+    usage: tuple[Any, ...]
+    interpreter_requirements: tuple[Any, ...]
+    findings: tuple[Any, ...]
+    unresolved: tuple[Any, ...]
+    summary: dict[str, Any]
+    doc_dependencies: dict[str, dict[str, Any]]
+
+
+class _DependenciesPayload(Payload):
+    """Card 17's whole input, sent ONCE to the one worker that runs it.
+
+    Under the `fork` start method the child inherits it and nothing is pickled
+    at all; under `spawn` it crosses once, which for one unit of work is also
+    once in total.
+    """
+
+    __slots__ = (
+        "root", "environment_root", "elements", "edges", "reachability",
+        "max_source_bytes",
+    )
+
+    def __init__(
+        self,
+        *,
+        root: str,
+        environment_root: str | None,
+        elements: tuple[Any, ...],
+        edges: tuple[Any, ...],
+        reachability: tuple[Any, ...],
+        max_source_bytes: int,
+    ) -> None:
+        self.root = root
+        self.environment_root = environment_root
+        self.elements = elements
+        self.edges = edges
+        self.reachability = reachability
+        self.max_source_bytes = max_source_bytes
+
+    def open(self) -> "_DependenciesPayload":
+        return self
+
+
+def _dependencies_unit(payload: "_DependenciesPayload", _arg: Any) -> _DependencyResults:
+    """The WHOLE of card 17, run exactly as it runs in one process.
+
+    Nothing inside the stage is split. It reads the target as text and never
+    imports, executes or unpickles any of it -- constraint 1 holds in a worker
+    exactly as it holds here.
+    """
+    dependencies = Dependencies(
+        Path(payload.root),
+        environment_root=(
+            None if payload.environment_root is None else Path(payload.environment_root)
+        ),
+        elements=payload.elements,
+        edges=payload.edges,
+        reachability=payload.reachability,
+        max_source_bytes=payload.max_source_bytes,
+    )
+    return _DependencyResults(
+        requirements=tuple(dependencies.requirements()),
+        installed=tuple(dependencies.installed()),
+        usage=tuple(dependencies.usage()),
+        interpreter_requirements=tuple(dependencies.interpreter_requirements()),
+        findings=tuple(dependencies.findings()),
+        unresolved=tuple(dependencies.unresolved()),
+        summary=dependencies.summary(),
+        doc_dependencies=dependencies.doc_dependencies(),
+    )
+
+
 def analyze(
     root: Path,
     out_dir: Path,
@@ -433,6 +587,8 @@ def analyze(
     worker_report_sink: Callable[[str], None] | None = None,
     progress: Any = None,
     max_source_bytes: int = MAX_SOURCE_BYTES,
+    intents_path: Path | None = None,
+    propose_intents_path: Path | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Run the static pipeline over *root* and write artifacts to *out_dir*.
 
@@ -550,6 +706,33 @@ def analyze(
     # whole, because a half-slice answering "what produces this feature" is a
     # wrong answer wearing the shape of a right one. `lineage.jsonl` is always
     # written in full, so any root not precomputed is still answerable.
+    # Card 17 STARTS HERE, in a second process, and is collected after card 4.
+    #
+    # This is the one kind of parallelism that helps a target which is a
+    # single module. Dependencies reads elements, edges and reachability --
+    # all of which exist by now -- and reads nothing card 4 produces; card 4
+    # reads nothing of card 17's. Two whole stages, neither split, running at
+    # the same time, consolidated in the same fixed order as before, so the
+    # bytes cannot move. On the owner's engine card 17 is 37.4s that card 4's
+    # 238.6s completely hides.
+    dependencies_report = pipeline.add(
+        StageReport(stage="dependencies", overlapped_with="lineage")
+    )
+    dependencies_job = BackgroundUnit(
+        _dependencies_unit,
+        _DependenciesPayload(
+            root=str(root),
+            environment_root=None if env_root is None else str(env_root),
+            elements=tuple(elements),
+            edges=tuple(edges),
+            reachability=tuple(reachability),
+            max_source_bytes=max_source_bytes,
+        ),
+        None,
+        worker_count,
+        dependencies_report,
+    )
+
     lineage_started = time.time()
     tracer = LineageTracer(root, sink_ids=tuple(sink_ids))
     lineage_edges, barriers = tracer.trace_values(elements, edges)
@@ -600,24 +783,22 @@ def analyze(
     )
     _stage("lineage")
 
-    # Card 17 — dependency and version applicability. Declared, installed and
-    # used are gathered separately and joined; with no --env the installed
-    # half is absent and every artifact and the summary say so.
-    dependencies = Dependencies(
-        root,
-        environment_root=env_root,
-        elements=elements,
-        edges=edges,
-        reachability=reachability,
-        max_source_bytes=max_source_bytes,
-    )
-    package_requirements = dependencies.requirements()
-    installed_packages = dependencies.installed()
-    package_usage = dependencies.usage()
-    interpreter_requirements = dependencies.interpreter_requirements()
-    dependency_findings = dependencies.findings()
-    unresolved = list(unresolved) + list(dependencies.unresolved())
-    summary["dependencies"] = dependencies.summary()
+    # Card 17 — collected. Declared, installed and used are gathered
+    # separately and joined; with no --env the installed half is absent and
+    # every artifact and the summary say so.
+    #
+    # Consolidated HERE, at the point the serial pipeline always consolidated
+    # it, and in the same order: `unresolved` is extended after card 4 and
+    # before card 5, exactly as before, so the artifact's contents and their
+    # order are untouched by the stage having run early.
+    deps = dependencies_job.result()
+    package_requirements = deps.requirements
+    installed_packages = deps.installed
+    package_usage = deps.usage
+    interpreter_requirements = deps.interpreter_requirements
+    dependency_findings = deps.findings
+    unresolved = list(unresolved) + list(deps.unresolved)
+    summary["dependencies"] = deps.summary
     _stage("dependencies")
 
     # Card 5 — findings.
@@ -672,6 +853,70 @@ def analyze(
             slices = tuple(sorted(merged.values(), key=lambda one: one.id))
     _stage("findings")
 
+    # Card 13 — the intent registry, and the verdicts the STATIC map supports.
+    #
+    # After card 5 because it needs cards 2, 3 and 4 whole; before anything is
+    # written because a registry issue is an `Unresolved` like any other and
+    # belongs in the same `unresolved.jsonl` as everything else this run could
+    # not resolve.
+    #
+    # An intents file the owner wrote that silently did nothing is the worst
+    # outcome available here, so every problem in it carries its line number
+    # and its reason, none of them is dropped, and the printed report names
+    # the count.
+    registry = load_registry(intents_path, (element.id for element in elements))
+    unresolved = list(unresolved) + list(registry.issues)
+
+    # The universe judged is the REGISTRY'S OWN: the elements the owner wrote
+    # an intent for, plus the ones whose entry was too malformed to load.
+    # Judging every element would emit one NO_INTENT verdict per element --
+    # true, and nothing an owner can act on; on a 116k-line engine it is tens
+    # of thousands of lines saying "you did not write an intent for this".
+    # The narrowing is stated in the manifest and the report, not only here.
+    named = {intent.element_id for intent in registry.intents}
+    named.update(registry.rejected_element_ids)
+    aligner = AlignmentEngine(
+        registry=registry,
+        elements=tuple(element for element in elements if element.id in named),
+        edges=edges,
+        lineage_edges=lineage_edges,
+        reachability=reachability,
+    )
+    static_verdicts = aligner.judge_static(registry.intents)
+    intent_coverage = aligner.coverage()
+    summary["intents"] = _intent_summary(
+        registry, intent_coverage, static_verdicts, intents_path
+    )
+
+    # --propose-intents: a STARTER registry, every entry PROPOSED. Written
+    # even when it would overwrite, because the owner named the path; never
+    # written into the artifact directory, because it is an input they edit,
+    # not an output they read.
+    if propose_intents_path is not None:
+        # Only the kinds an intent can sensibly be ABOUT. A parameter, an
+        # import or an embedded blob gets a proposal of the shape "Named
+        # 'amount', suggesting it amount", and on a 116k-line engine that is
+        # tens of thousands of lines of noise between the owner and the
+        # entries worth confirming. The number left out is printed and stored,
+        # so the narrowing is visible rather than assumed.
+        candidates_for_proposal = [
+            element for element in elements if element.kind in _PROPOSABLE_KINDS
+        ]
+        skipped = len(elements) - len(candidates_for_proposal)
+        proposals = propose_intents(candidates_for_proposal)
+        propose_intents_path.parent.mkdir(parents=True, exist_ok=True)
+        propose_intents_path.write_text(
+            registry_text(proposals), encoding="utf-8", newline="\n"
+        )
+        summary["intents"]["proposed_written"] = {
+            "path": str(propose_intents_path),
+            "entries": len(proposals),
+            "status": "PROPOSED",
+            "elements_skipped": skipped,
+            "kinds_proposed": sorted(str(kind) for kind in _PROPOSABLE_KINDS),
+        }
+    _stage("intents")
+
     # The size guard, BEFORE anything is written and before card 16 links a
     # record to a slice, so a refusal can never leave a record pointing at a
     # slice the artifact does not hold.
@@ -707,7 +952,7 @@ def analyze(
         slices=slices,
         findings=findings,
         decision_sink_ids=tuple(sink_ids),
-        dependencies=dependencies.doc_dependencies(),
+        dependencies=deps.doc_dependencies,
     )
     records_report = pipeline.add(StageReport(stage="records"))
     records = builder.records(
@@ -787,6 +1032,11 @@ def analyze(
             "installed.jsonl": installed_packages,
             "package_usage.jsonl": package_usage,
             "interpreter.jsonl": interpreter_requirements,
+            # Card 13. Always written, even empty: an absent intents.jsonl and
+            # an intents.jsonl holding nothing are different facts, and the
+            # viewer reads this file to show an element's declared purpose.
+            "intents.jsonl": registry.intents,
+            "verdicts.jsonl": static_verdicts,
         },
         worker_count,
         write_report,
@@ -845,6 +1095,24 @@ def analyze(
                 # exhaustive one, so the scope travels with the artifacts
                 # rather than only appearing on a terminal that has scrolled.
                 "slice_scope": slice_disclosure,
+                # Which elements `verdicts.jsonl` covers, and which it does
+                # not. A verdict file that covered only the registry's own
+                # elements while reading as if it covered the target would be
+                # the same mistake the slice scope exists to prevent.
+                "intents": {
+                    "path": str(intents_path) if intents_path is not None else "",
+                    "present": bool(registry.present),
+                    "intents": len(registry.intents),
+                    "issues": len(registry.issues),
+                    "elements_judged": len(static_verdicts),
+                    "note": (
+                        "verdicts.jsonl covers the elements the intents file "
+                        "NAMES, not every element: an element with no intent is "
+                        "NO_INTENT by construction and is not enumerated. "
+                        "Runtime verdicts, which need a run, live in "
+                        "runtime/<run_id>/verdicts.jsonl."
+                    ),
+                },
             }
         )
         + "\n",
@@ -906,6 +1174,7 @@ def trace(
     scenario: str,
     out_root: Path,
     progress: Any = None,
+    intents_path: Path | None = None,
 ) -> tuple[int, str]:
     """Run the target under the harness and write the runtime overlay.
 
@@ -938,6 +1207,7 @@ def trace(
         Element,
         LineageEdge,
         OrderNode,
+        Reachability,
         RunRecord,
     )
     from cascade_map.harness.hashing import compute_graph_hash, compute_target_hashes
@@ -949,6 +1219,42 @@ def trace(
     if scenario not in spec_doc.get("scenarios", {}):
         known = ", ".join(sorted(spec_doc.get("scenarios", {}))) or "none"
         return EXIT_USAGE, f"no scenario named {scenario!r}. Declared: {known}"
+
+    # Client stubs, validated HERE -- in the parent, before a child exists and
+    # long before a line of the target runs. A declaration the harness cannot
+    # read must be a refusal naming the module and the problem, never a child
+    # that dies halfway through a run it should not have started.
+    #
+    # The hard rule is untouched: this validates modules the owner NAMED.
+    # Anything not named here is still undeclared, and an undeclared client is
+    # still a hard stop at the socket layer.
+    try:
+        stub_declarations = parse_declarations(spec_doc.get("client_stubs"))
+    except StubDeclarationError as exc:
+        return EXIT_REFUSED, (
+            f"REFUSED: {exc}\n\n"
+            f"`client_stubs` in {scenario_file} could not be read, so this run "
+            f"cannot say which external systems are stubbed. Nothing was executed."
+        )
+    # A `replay` recording is named RELATIVE TO THE SCENARIOS FILE, which is
+    # where the owner keeps it -- not relative to the target, which would
+    # require putting tool inputs inside the code under analysis. Resolved
+    # here so there is exactly one rule and the child never has to guess.
+    for declaration in stub_declarations:
+        if not declaration.recording:
+            continue
+        resolved = Path(declaration.recording)
+        if not resolved.is_absolute():
+            resolved = (scenario_file.parent / resolved).resolve()
+        if not resolved.is_file():
+            return EXIT_REFUSED, (
+                f"REFUSED: client stub {declaration.module!r} is kind \"replay\" and "
+                f"its recording {declaration.recording!r} does not exist. Tried: "
+                f"{resolved}. A replay with nothing to replay would answer every "
+                f"call with a stop, which is not what you declared. Nothing was "
+                f"executed."
+            )
+        spec_doc["client_stubs"][declaration.module]["recording"] = str(resolved)
 
     # The hash the harness checks the target against is the one the GRAPH was
     # built from, read out of manifest.json. Letting the child recompute it
@@ -1013,10 +1319,40 @@ def trace(
     narrative = Narrator().narrate(result.events, order_nodes, decisions, run)
     bar.complete("narrate")
 
+    # Card 13 — the runtime half of alignment. The same registry `analyze`
+    # loaded, now judged against what was actually observed, keyed by the same
+    # stable IDs. One graph, two evidence sources: this is an overlay, not a
+    # second answer.
+    registry = load_registry(intents_path, (element.id for element in elements))
+    edges = _read_jsonl(graph_dir, "edges.jsonl", Edge)
+    lineage_edges = _read_jsonl(graph_dir, "lineage.jsonl", LineageEdge)
+    reachability = _read_jsonl(graph_dir, "reachability.jsonl", Reachability)
+    named = {intent.element_id for intent in registry.intents}
+    named.update(registry.rejected_element_ids)
+    aligner = AlignmentEngine(
+        registry=registry,
+        elements=[element for element in elements if element.id in named],
+        edges=edges,
+        lineage_edges=lineage_edges,
+        reachability=reachability,
+        run=run,
+    )
+    verdicts = aligner.judge(registry.intents, result.events)
+    intent_coverage = aligner.coverage()
+
     run_dir = out_root / "runtime" / run.run_id
     tracer.emit(result, run_dir)
     _write(run_dir, "run.json", canonical_dumps(run) + "\n")
     _write(run_dir, "narrative.jsonl", canonical_jsonl(narrative))
+    _write(run_dir, "verdicts.jsonl", verdicts_jsonl(verdicts))
+    _write(run_dir, "coverage.json", coverage_json(intent_coverage))
+    if registry.present:
+        # The viewer reads `intents.jsonl` from the ARTIFACT ROOT, so a
+        # `trace` whose --out is not the graph directory still has the intent
+        # text next to the verdicts that judged it. Written only when a spec
+        # was actually loaded: an empty file here would overwrite the one
+        # `analyze` wrote into the same directory.
+        _write(out_root, "intents.jsonl", intents_jsonl(registry.intents))
     bar.complete("write")
 
     failure = run.scenario_failure
@@ -1034,6 +1370,14 @@ def trace(
         f"  blocked        {len(run.blocked):,}   <- side effects the harness stopped",
         "",
     ]
+    lines += _verdict_lines(registry, verdicts, intent_coverage, intents_path, run_dir)
+    if stub_declarations:
+        lines.append(
+            f"DECLARED EXTERNAL CLIENTS — you took responsibility for "
+            f"{len(stub_declarations)} named module(s). Nothing else is exempt:"
+        )
+        lines += [f"  - {item}" for item in describe_declarations(stub_declarations)]
+        lines.append("")
     if failure is not None:
         # Before anything else. A scenario that never ran produces a report
         # that reads exactly like a run whose analysis was wrong, and an owner
@@ -1105,6 +1449,88 @@ def trace(
     return EXIT_OK, "\n".join(lines)
 
 
+def _verdict_lines(
+    registry: Any,
+    verdicts: Sequence[Any],
+    coverage: Any,
+    intents_path: Path | None,
+    run_dir: Path,
+) -> list[str]:
+    """The alignment section of a Mode A run summary.
+
+    `NOT_EXERCISED` gets its own line because it is the one an owner will
+    otherwise read as a pass. It is not: an element no scenario ran is
+    unverified, and the whole point of this card is to say so out loud.
+    """
+    if intents_path is None and not registry.present:
+        return [
+            "ALIGNMENT: no intents file, so nothing was judged. Every element "
+            "is NO_INTENT.",
+            "  --intents PATH (or INTENTS in METATRON_SETTINGS) is what turns "
+            "this run into an answer to",
+            "  \"does this element do what I meant it to do\".",
+            "",
+        ]
+    counts: dict[str, int] = {}
+    for verdict in verdicts:
+        counts[str(verdict.verdict)] = counts.get(str(verdict.verdict), 0) + 1
+    lines = [
+        f"ALIGNMENT against {intents_path or registry.source_path}:",
+        "  "
+        + (
+            ", ".join(f"{count:,} {name}" for name, count in sorted(counts.items()))
+            or "nothing judged"
+        ),
+    ]
+    not_exercised = [item for item in verdicts if str(item.verdict) == "NOT_EXERCISED"]
+    if not_exercised:
+        lines.append(
+            f"  {len(not_exercised):,} element(s) WITH A CONFIRMED INTENT WERE NEVER "
+            f"RUN by this scenario. NOT_EXERCISED is not ALIGNED:"
+        )
+        for item in sorted(not_exercised, key=lambda one: one.element_id)[
+            :_NOT_EXERCISED_SHOWN
+        ]:
+            lines.append(f"    - {item.element_id}")
+        if len(not_exercised) > _NOT_EXERCISED_SHOWN:
+            lines.append(
+                f"    ... and {len(not_exercised) - _NOT_EXERCISED_SHOWN:,} more, all "
+                f"of them in {run_dir / 'verdicts.jsonl'}."
+            )
+    misaligned = [item for item in verdicts if str(item.verdict) == "MISALIGNED"]
+    for item in sorted(misaligned, key=lambda one: one.element_id)[:_MISALIGNED_SHOWN]:
+        lines.append(f"  MISALIGNED  {item.element_id}")
+        lines.append(f"    expected    {item.expectation}")
+        lines.append(f"    observed    {item.observation}")
+    if len(misaligned) > _MISALIGNED_SHOWN:
+        lines.append(
+            f"  ... and {len(misaligned) - _MISALIGNED_SHOWN:,} more MISALIGNED, all "
+            f"of them in {run_dir / 'verdicts.jsonl'}."
+        )
+    lines.append(
+        f"  coverage: {coverage.checks_passed:,} expectation(s) held, "
+        f"{coverage.checks_failed:,} contradicted, "
+        f"{coverage.checks_unverifiable:,} could not be checked "
+        f"(of {coverage.checks_total:,})."
+    )
+    if registry.issues:
+        lines.append(
+            f"  {len(registry.issues):,} PROBLEM(S) IN YOUR INTENTS FILE — each is an "
+            f"intent doing nothing:"
+        )
+        for issue in registry.issues[:_INTENT_ISSUES_SHOWN]:
+            line_no = issue.span.line if issue.span else 0
+            lines.append(f"    {registry.source_path}:{line_no}  {issue.description}")
+    lines.append("")
+    return lines
+
+
+#: Caps on the two verdict kinds the run summary prints in full. Explicit,
+#: never a silent cut: the rest are counted and pointed at verdicts.jsonl.
+_NOT_EXERCISED_SHOWN = 20
+_MISALIGNED_SHOWN = 10
+
+
 #: How many blocked attempts the run summary prints in full. The rest are
 #: counted and pointed at run.json -- an explicit cap, never a silent cut.
 _BLOCKED_SHOWN = 20
@@ -1122,6 +1548,8 @@ from pathlib import Path
 from cascade_map.contracts.interfaces import canonical_dumps
 from cascade_map.harness import Harness, HarnessRefusal, RunConfig, ScenarioSpec
 from cascade_map.harness.hashing import compute_graph_hash, compute_target_hashes
+from cascade_map.harness.stubs import (build_factories, declaration_fingerprint,
+                                       parse_declarations, StubDeclarationError)
 from cascade_map.tracer import StaticIndex, Tracer
 from cascade_map.cli import build_index
 """
@@ -1131,6 +1559,17 @@ from cascade_map.cli import build_index
 _CHILD_SOURCE = _CHILD_PROLOGUE + """
 spec_doc = json.loads({spec!r}) if isinstance({spec!r}, str) else {spec}
 target_root = Path(spec_doc["target_root"]).resolve()
+# Already validated in the parent; parsed again here because the child gets
+# the document, not the parse. A `replay` recording is READ here, so a
+# missing one refuses before the harness takes the process.
+_stub_declarations = parse_declarations(spec_doc.get("client_stubs"))
+try:
+    _stub_factories = build_factories(
+        _stub_declarations, sandbox_root=Path({sandbox}), target_root=target_root
+    )
+except StubDeclarationError as exc:
+    print("refusal:", exc, file=sys.stderr)
+    raise SystemExit(4)
 config = RunConfig(
     target_root=target_root,
     mode_b_out_dir=Path({graph_dir}),
@@ -1143,6 +1582,8 @@ config = RunConfig(
         for name, body in spec_doc["scenarios"].items()
     }},
     declared_process_names=frozenset(spec_doc.get("declared_process_names", ())),
+    client_stubs=_stub_factories,
+    client_declarations=declaration_fingerprint(_stub_declarations),
     env_passthrough=frozenset(spec_doc.get("env_passthrough", ())),
 )
 index = build_index(Path({graph_dir}), target_root)
@@ -1150,7 +1591,7 @@ tracer = Tracer(index, recordings_dir=Path({recordings}))
 graph_hash = {graph_hash}
 try:
     run = Harness(config).start({scenario}, graph_hash, tracer)
-except HarnessRefusal as exc:
+except (HarnessRefusal, StubDeclarationError) as exc:
     print("refusal:", exc, file=sys.stderr)
     raise SystemExit(4)
 Path({record_out}).write_text(canonical_dumps(run) + "\\n", encoding="utf-8")
@@ -1338,7 +1779,14 @@ def preflight(
     sandbox_root = (out_root / "sandbox").resolve()
     declared = sorted(document.get("declared_process_names", ())) if document else []
     passthrough = sorted(document.get("env_passthrough", ())) if document else []
-    stubs = sorted(document.get("client_stubs", ())) if document else []
+    stub_lines: list[str] = []
+    stub_problem = ""
+    if document:
+        try:
+            stub_lines = list(describe_declarations(parse_declarations(document.get("client_stubs"))))
+        except StubDeclarationError as exc:
+            stub_problem = str(exc)
+            checks.append(("client stubs", stub_problem, False))
     lines += [
         "CONTROLS THAT WILL BE ACTIVE:",
         "  network           blocked at the socket layer, including DNS. No allowlist exists.",
@@ -1347,10 +1795,17 @@ def preflight(
         + (", ".join(declared) if declared else "(none declared)"),
         "  environment       passed through: "
         + (", ".join(passthrough) if passthrough else "(nothing, including secrets)"),
-        "  external clients  stubbed or replayed: "
-        + (", ".join(stubs) if stubs else "(none declared; an undeclared client is a hard stop)"),
-        "",
+        "  external clients  "
+        + (
+            "declared, and NOTHING ELSE is exempt:"
+            if stub_lines
+            else "(none declared; an undeclared client is a hard stop)"
+        ),
     ]
+    lines += [f"                      {item}" for item in stub_lines]
+    if stub_problem:
+        lines.append(f"                      NOT READABLE: {stub_problem}")
+    lines.append("")
     if document:
         lines.append("SCENARIOS THAT WOULD RUN:")
         for name in sorted(document.get("scenarios", {})):
@@ -1537,6 +1992,7 @@ def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
         lines.append(f"  {level:<10} {count:>8,}  {100 * count // total:>3}%")
 
     lines += _dependency_lines(summary)
+    lines += _intent_lines(summary)
 
     detected = summary.get("detected") or []
     if detected:
@@ -1555,6 +2011,173 @@ def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
             "The artifacts were still written so you can see what is missing.",
         ]
     return "\n".join(lines)
+
+
+#: The element kinds `--propose-intents` writes an entry for. An intent is a
+#: statement about something that DOES something; a PARAMETER, an IMPORT, an
+#: ASSIGNMENT or a BLOB gets a proposal built from its own name, which is
+#: noise the owner then has to delete by hand.
+_PROPOSABLE_KINDS = frozenset(
+    {
+        ElementKind.MODULE,
+        ElementKind.PACKAGE,
+        ElementKind.CLASS,
+        ElementKind.FUNCTION,
+        ElementKind.METHOD,
+        ElementKind.PROPERTY,
+    }
+)
+
+
+#: `UnresolvedReason` values a registry issue can carry, in the order the
+#: report lists them, with what each one means to the owner reading it.
+_INTENT_ISSUE_LABELS: dict[str, str] = {
+    "SYNTAX_ERROR": "could not be parsed",
+    "MISSING_TARGET": "names an element that does not exist",
+    "AMBIGUOUS": "two intents claim the same element",
+    "ID_COLLISION": "two entries share one intent id",
+    "DECODE_ERROR": "the file is not valid UTF-8",
+    "UNSUPPORTED_SYNTAX": "uses something this parser refuses to guess at",
+}
+
+
+def _intent_summary(
+    registry: Any,
+    coverage: Any,
+    verdicts: Sequence[Any],
+    intents_path: Path | None,
+) -> dict[str, Any]:
+    """What `analyze` says about the owner's intents, as data.
+
+    Every count here is a fact about the owner's own file. `issues` is a list,
+    not a count, because a parse problem the report summarises as "1 issue"
+    is a parse problem the owner cannot fix.
+    """
+    counts: dict[str, int] = {}
+    for verdict in verdicts:
+        counts[str(verdict.verdict)] = counts.get(str(verdict.verdict), 0) + 1
+    return {
+        "path": str(intents_path) if intents_path is not None else "",
+        "present": bool(registry.present),
+        "total": len(registry.intents),
+        "confirmed": coverage.intents_confirmed,
+        "proposed": coverage.intents_proposed,
+        "elements_judged": coverage.elements_judged,
+        "checks_total": coverage.checks_total,
+        "checks_passed": coverage.checks_passed,
+        "checks_failed": coverage.checks_failed,
+        "checks_unverifiable": coverage.checks_unverifiable,
+        "checks_unparseable": coverage.checks_unparseable,
+        "verdicts": dict(sorted(counts.items())),
+        "coverage": coverage.to_dict(),
+        "issues": [
+            {
+                "line": issue.span.line if issue.span else 0,
+                "reason": str(issue.reason),
+                "description": issue.description,
+            }
+            for issue in registry.issues
+        ],
+    }
+
+
+def _intent_lines(summary: dict[str, Any]) -> list[str]:
+    """The intents section of the report.
+
+    Loud on purpose when something is wrong. An intents file the owner wrote
+    and that quietly did nothing is the worst outcome this feature has, so a
+    file that was named but could not be read, an intent that names no
+    element, and an element the owner declared live that nothing reaches all
+    get their own line with the line number that fixes them.
+    """
+    payload = summary.get("intents")
+    if not payload:
+        return []
+    if not payload["path"]:
+        # Nothing was asked for. One line, so the feature is discoverable
+        # rather than invisible -- and no more than one, because most runs
+        # will not use it.
+        lines = [
+            "",
+            "Intents: no spec declared (--intents PATH / INTENTS), so every "
+            "element is NO_INTENT.",
+            "  NO_INTENT is a reported state, not a pass and not a failure. "
+            "Start one with --propose-intents PATH.",
+        ]
+        return lines + _proposed_lines(payload)
+    lines = ["", f"Intents: {payload['path']}"]
+    if not payload["present"]:
+        lines.append(
+            "  THE FILE YOU NAMED WAS NOT READ. Nothing in it was applied to "
+            "this map."
+        )
+    lines.append(
+        f"  {payload['total']:,} intent(s): {payload['confirmed']:,} CONFIRMED, "
+        f"{payload['proposed']:,} PROPOSED (a PROPOSED intent can never ground "
+        f"ALIGNED or MISALIGNED)."
+    )
+    verdicts = payload["verdicts"]
+    if verdicts:
+        lines.append(
+            "  static verdicts: "
+            + ", ".join(f"{count:,} {name}" for name, count in sorted(verdicts.items()))
+        )
+    lines.append(
+        f"  expectations: {payload['checks_passed']:,} held, "
+        f"{payload['checks_failed']:,} contradicted, "
+        f"{payload['checks_unverifiable']:,} unchecked here "
+        f"(of {payload['checks_total']:,}). An unchecked expectation is never "
+        f"reported as met."
+    )
+    if payload["checks_unparseable"]:
+        lines.append(
+            f"  {payload['checks_unparseable']:,} invariant(s) are not in the "
+            f"checkable language and were NOT checked."
+        )
+    issues = payload["issues"]
+    if issues:
+        lines.append(
+            f"  {len(issues):,} PROBLEM(S) IN YOUR INTENTS FILE — each one is an "
+            f"intent that is doing nothing:"
+        )
+        for issue in issues[:_INTENT_ISSUES_SHOWN]:
+            label = _INTENT_ISSUE_LABELS.get(issue["reason"], issue["reason"])
+            lines.append(f"    {payload['path']}:{issue['line']}  {label}")
+            lines.append(f"      {issue['description']}")
+        if len(issues) > _INTENT_ISSUES_SHOWN:
+            lines.append(
+                f"    ... and {len(issues) - _INTENT_ISSUES_SHOWN:,} more, all of "
+                f"them in unresolved.jsonl."
+            )
+    return lines + _proposed_lines(payload)
+
+
+def _proposed_lines(payload: dict[str, Any]) -> list[str]:
+    """What `--propose-intents` wrote, and what it deliberately left out."""
+    written = payload.get("proposed_written")
+    if not written:
+        return []
+    lines = [
+        f"  wrote {written['entries']:,} PROPOSED intent(s) to {written['path']}.",
+        "    None of them is confirmed and none of them can produce an ALIGNED "
+        "or a MISALIGNED verdict.",
+        "    Edit it, set `status: CONFIRMED` on the ones you stand behind, then "
+        f"re-run with --intents {written['path']}.",
+    ]
+    if written.get("elements_skipped"):
+        lines.append(
+            f"    {written['elements_skipped']:,} element(s) got no proposal: only "
+            + ", ".join(written["kinds_proposed"])
+            + " are proposed for. Every element is still in elements.jsonl, and "
+            "you can write an intent for any of them by hand."
+        )
+    return lines
+
+
+#: How many intents-file problems the report prints in full. The rest are
+#: counted and pointed at `unresolved.jsonl` -- an explicit cap, never a
+#: silent cut.
+_INTENT_ISSUES_SHOWN = 10
 
 
 def _slice_lines(summary: dict[str, Any]) -> list[str]:
@@ -1701,6 +2324,7 @@ def _settings_from_args(args: Any) -> Settings:
         "SLICE_ROOTS": flag("slice_root"),
         "FORCE_SLICES": True if flag("force_slices") else None,
         "ENV": str(flag("env")) if flag("env") else None,
+        "INTENTS": str(flag("intents")) if flag("intents") else None,
         "ORDER": flag("order"),
         "SCENARIOS": str(flag("scenarios")) if flag("scenarios") else None,
         "SCENARIO": flag("scenario"),
@@ -1732,7 +2356,11 @@ def _settings_from_args(args: Any) -> Settings:
 
 
 def _track_trace(
-    graph_dir: Path, scenarios: Path, scenario: str, out_root: Path
+    graph_dir: Path,
+    scenarios: Path,
+    scenario: str,
+    out_root: Path,
+    intents_path: Path | None = None,
 ) -> tuple[int, str]:
     """The one seam through which `track` can reach Mode A.
 
@@ -1741,7 +2369,7 @@ def _track_trace(
     tool that runs owner code, and it runs it through `trace`, which is the
     harness's own entry point and refuses when it cannot guarantee isolation.
     """
-    return trace(graph_dir, scenarios, scenario, out_root)
+    return trace(graph_dir, scenarios, scenario, out_root, intents_path=intents_path)
 
 
 # ---------------------------------------------------------------------------
@@ -1883,6 +2511,14 @@ def _build_parser() -> argparse.ArgumentParser:
                           "requirements skipped, and the skip is recorded against "
                           f"that one file (default {MAX_SOURCE_BYTES // 1_000_000}). "
                           "Every other analysis has its own limits and is unaffected.")
+    run.add_argument("--intents", type=Path, default=None, metavar="PATH",
+                     help="owner-confirmed intents YAML: what each element is "
+                          "MEANT to do. Overrides INTENTS. Every problem in "
+                          "the file is reported with its line; none is skipped.")
+    run.add_argument("--propose-intents", type=Path, default=None, metavar="PATH",
+                     help="write a STARTER intents file derived from docstrings "
+                          "and names. Every entry is PROPOSED and binding on "
+                          "nothing until you set status: CONFIRMED.")
     run.add_argument("--no-gate", action="store_true",
                      help="write artifacts even if the completeness gate fails, "
                           "and exit 0. The gate still reports.")
@@ -1987,6 +2623,8 @@ def _build_parser() -> argparse.ArgumentParser:
                       help='precompute the slice rooted at this id whatever --slices says; repeatable')
     hist.add_argument("--config", action="append", default=None, metavar="PATH",
                       help="overrides CONFIGS; repeatable")
+    hist.add_argument("--intents", type=Path, default=None, metavar="PATH",
+                      help="owner-confirmed intents YAML. Overrides INTENTS.")
     hist.add_argument("--env", type=Path, default=None, metavar="PATH",
                       help="overrides ENV")
     hist.add_argument("--order", action="append", default=None, metavar="LABEL",
@@ -2058,6 +2696,10 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="overrides MODE. `--mode 1` REFUSES: mode 1 never "
                             "executes your engine. `--mode 2` runs it, and "
                             "refuses if no completed static map exists.")
+    run_a.add_argument("--intents", type=Path, default=None, metavar="PATH",
+                       help="owner-confirmed intents YAML. Overrides INTENTS. "
+                            "Verdicts for this run land in "
+                            "runtime/<run_id>/verdicts.jsonl.")
     run_a.add_argument("--preflight", action="store_true",
                        help="say whether this run could start, and what would be "
                             "active, WITHOUT executing anything")
@@ -2097,9 +2739,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not args.root.is_dir():
             print(f"not a directory: {args.root}", file=sys.stderr)
             return EXIT_USAGE
+        # A named intents file that does not exist is a USAGE error, decided
+        # before any analysis runs. Discovering it in the report, after a
+        # twenty-minute run, is how an owner ends up with a map they believe
+        # their intents were applied to.
+        if args.intents is not None and not args.intents.is_file():
+            print(
+                f"no intents file at {args.intents}. --intents names the "
+                f"owner-confirmed intents YAML; `--propose-intents {args.intents}` "
+                f"writes a starter one. Nothing was analysed.",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+        intents_path = args.intents
+        if intents_path is None and METATRON_SETTINGS.get("INTENTS"):
+            candidate = Path(str(METATRON_SETTINGS["INTENTS"]))
+            # A settings path that does not exist is still LOADED, not
+            # ignored: `load_registry` turns it into a MISSING_TARGET issue
+            # with the path, which is what makes the report say so.
+            intents_path = candidate
         code, summary = analyze(
             args.root,
             args.out,
+            intents_path=intents_path,
+            propose_intents_path=args.propose_intents,
             progress=make_reporter(
                 ANALYZE_STAGES, quiet=args.quiet, force=args.progress
             ),
@@ -2478,6 +3141,15 @@ def _trace_command(args: Any) -> int:
     # explicit `--mode 1` is different: that is the owner saying "not this
     # time" out loud, and mode 1's whole definition is that it never executes
     # anything, so it refuses rather than running anyway.
+    intents_path = Path(settings.intents) if settings.intents else None
+    if intents_path is not None and not intents_path.is_file():
+        print(
+            f"no intents file at {intents_path}. --intents (or INTENTS) names the "
+            f"owner-confirmed intents YAML. Nothing was executed.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
     if getattr(args, "mode", None) == 1:
         print(
             "REFUSED: MODE 1 never executes your engine, and `trace` is the only "
@@ -2521,7 +3193,9 @@ def _trace_command(args: Any) -> int:
         if not args.scenarios.is_file():
             print(f"no scenarios file at {args.scenarios}", file=sys.stderr)
             return EXIT_USAGE
-        return _timed_trace(args, args.scenarios, args.scenario)
+        return _timed_trace(
+            args, args.scenarios, args.scenario, intents_path=intents_path
+        )
 
     sports = settings.selected_sports()
     if args.preflight:
@@ -2574,12 +3248,22 @@ def _trace_command(args: Any) -> int:
     )
     worst = EXIT_OK
     for sport in chosen:
-        worst = max(worst, _timed_trace(args, derived_path, sport, banner=sport))
+        worst = max(
+            worst,
+            _timed_trace(
+                args, derived_path, sport, banner=sport, intents_path=intents_path
+            ),
+        )
     return worst
 
 
 def _timed_trace(
-    args: Any, scenario_file: Path, scenario: str, *, banner: str = ""
+    args: Any,
+    scenario_file: Path,
+    scenario: str,
+    *,
+    banner: str = "",
+    intents_path: Path | None = None,
 ) -> int:
     """One traced scenario, with its progress line and its timing footer.
 
@@ -2593,7 +3277,12 @@ def _timed_trace(
     bar.start(started)
     try:
         code, message = trace(
-            args.graph_dir, scenario_file, scenario, args.out, progress=bar
+            args.graph_dir,
+            scenario_file,
+            scenario,
+            args.out,
+            progress=bar,
+            intents_path=intents_path,
         )
     finally:
         finished = time.time()

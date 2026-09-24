@@ -127,7 +127,10 @@ def test_tty_line_redraws_in_place_and_names_stage_position_and_estimate() -> No
     assert "\r" in text
     last = text.split("\r")[-1]
     assert "lineage" in last
-    assert "4/8" in last
+    assert f"4/{len(ANALYZE_STAGES)}" in last, (
+        "the denominator is the real stage count, never a number written down "
+        "here: a stage added to the pipeline must not need this test edited"
+    )
     assert "elapsed" in last and "left" in last
     assert "~" in last
     # 46+69+58+30 = 203s in, and the bar must be somewhere sensible, never

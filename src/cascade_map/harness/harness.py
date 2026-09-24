@@ -182,18 +182,25 @@ class Harness:
         controls["external_clients"] = True
 
         # 5. Execute, inside the sandbox, with everything above in force.
-        record = self._execute(
-            run_id,
-            target_hashes,
-            graph_hash,
-            scenario,
-            spec,
-            ctx,
-            controls,
-            filtered_env,
-            sandbox_dir,
-            observer,
-        )
+        try:
+            record = self._execute(
+                run_id,
+                target_hashes,
+                graph_hash,
+                scenario,
+                spec,
+                ctx,
+                controls,
+                filtered_env,
+                sandbox_dir,
+                observer,
+            )
+        except HarnessRefusal as exc:
+            # A guarantee failed once the run was already under way -- today
+            # that is a declared client stub that could not be built. It is a
+            # refusal, not a failed run, and it takes the same shape as every
+            # other refusal so that a caller has one thing to read.
+            return refuse(str(exc))
         self._write_run_record(record)
         return record
 
@@ -236,9 +243,21 @@ class Harness:
             # never gets to ask for), not just a workaround for the audit
             # hook's interaction with importlib.
             sys.dont_write_bytecode = True
-            for name, factory in self.config.client_stubs.items():
+            for name, factory in sorted(self.config.client_stubs.items()):
                 installed_modules[name] = sys.modules.get(name)
-                sys.modules[name] = factory()
+                try:
+                    sys.modules[name] = factory()
+                except Exception as exc:  # noqa: BLE001
+                    # A stub that could not be built must never fall through to
+                    # the REAL module: that would run the scenario against a
+                    # live broker with the owner believing it was stubbed. The
+                    # outer handler in this method swallows setup failures by
+                    # design, so this is raised as a refusal, which it re-raises.
+                    raise HarnessRefusal(
+                        f"the declared client stub for {name!r} could not be built: "
+                        f"{type(exc).__name__}: {exc}. Refusing rather than letting the "
+                        f"scenario reach the real {name!r}. Nothing further was executed."
+                    ) from exc
             with activate(ctx):
                 # Started only once the sandbox window is open, stopped
                 # before it closes -- an observer started outside this
@@ -492,6 +511,7 @@ class Harness:
             self.config.declared_process_names,
             frozenset(self.config.client_stubs),
             self.config.env_passthrough,
+            self.config.client_declarations,
         )
 
     def _write_run_record(self, record: RunRecord) -> Path:

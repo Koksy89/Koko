@@ -296,8 +296,27 @@ def build_fixture(root: Path, *, include_reachability: bool = True) -> None:
         ),
     ]
 
+    # Card 13's STATIC verdicts. A PROPOSED intent can never ground
+    # ALIGNED/MISALIGNED, so the only verdict this fixture can carry is
+    # UNVERIFIABLE -- which is exactly the point being fixed in place.
+    static_verdicts = [
+        AlignmentVerdict(
+            id="@verdict:no-run:" + DECIDE_ID,
+            element_id=DECIDE_ID,
+            intent_id="intent:decide",
+            verdict=Verdict.UNVERIFIABLE,
+            expectation="Decide the final outcome from the computed score.",
+            observation="intent intent:decide is PROPOSED, not owner-confirmed.",
+            evidence_ids=(),
+            provenance=Provenance(
+                method=Method.STRUCTURAL_MATCH, confidence=Confidence.UNKNOWN
+            ),
+        ),
+    ]
+
     files = {
         "elements.jsonl": canonical_jsonl(elements),
+        "verdicts.jsonl": canonical_jsonl(static_verdicts),
         "unresolved.jsonl": canonical_jsonl(unresolved),
         "edges.jsonl": canonical_jsonl(edges),
         "cfg_blocks.jsonl": canonical_jsonl([]),

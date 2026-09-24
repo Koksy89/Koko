@@ -543,6 +543,12 @@ def element_detail(store: ArtifactStore, element_id: str) -> dict[str, Any]:
         "intent_ids": sorted(
             i["id"] for i in store.intents_by_element.get(element_id, []) if "id" in i
         ),
+        # The intents themselves, not only their ids. A verdict next to an
+        # id the reader has to go and look up is a verdict they will not
+        # read: "MISALIGNED" means nothing without the sentence it was
+        # judged against.
+        "intents": intents_view(store, element_id=element_id),
+        "static_verdicts": static_verdicts_view(store, element_id=element_id),
     }
 
 
@@ -806,6 +812,72 @@ def verdicts_view(rstore: RuntimeStore, *, element_id: str | None = None) -> lis
                 "evidence_ids": list(v.get("evidence_ids") or ()),
                 "run_id": prov.get("run_id") or rstore.run_id,
                 "event_ids": list(prov.get("event_ids") or ()),
+            }
+        )
+    out.sort(key=lambda r: r["id"] or "")
+    return out
+
+
+def intents_view(store: ArtifactStore, *, element_id: str | None = None) -> list[dict[str, Any]]:
+    """`Intent` records verbatim, with their status.
+
+    `status` is never collapsed or defaulted here. A PROPOSED intent that
+    rendered like a CONFIRMED one would attribute a statement this tool
+    derived to the owner, which is the one thing card 13 exists to prevent.
+    """
+    intents = (
+        store.intents_by_element.get(element_id, [])
+        if element_id is not None
+        else store.raw.get("intents", [])
+    )
+    out = []
+    for i in intents:
+        prov = i.get("provenance") or {}
+        out.append(
+            {
+                "id": i.get("id"),
+                "element_id": i.get("element_id"),
+                "status": i.get("status"),
+                "statement": i.get("statement"),
+                "invariants": list(i.get("invariants") or ()),
+                "expected_reads": list(i.get("expected_reads") or ()),
+                "expected_writes": list(i.get("expected_writes") or ()),
+                "method": prov.get("method"),
+                "note": prov.get("note", ""),
+            }
+        )
+    out.sort(key=lambda r: r["id"] or "")
+    return out
+
+
+def static_verdicts_view(
+    store: ArtifactStore, *, element_id: str | None = None
+) -> list[dict[str, Any]]:
+    """Card 13's verdicts from the STATIC evidence, verbatim.
+
+    Kept separate from `verdicts_view`, which reads one run's overlay. Both
+    judge the same intents; they do not judge them with the same evidence,
+    and merging them would lose which is which.
+    """
+    verdicts = (
+        store.static_verdicts_by_element.get(element_id, [])
+        if element_id is not None
+        else store.raw.get("static_verdicts", [])
+    )
+    out = []
+    for v in verdicts:
+        prov = v.get("provenance") or {}
+        out.append(
+            {
+                "id": v.get("id"),
+                "element_id": v.get("element_id"),
+                "intent_id": v.get("intent_id"),
+                "verdict": v.get("verdict"),
+                "expectation": v.get("expectation"),
+                "observation": v.get("observation"),
+                "evidence_ids": list(v.get("evidence_ids") or ()),
+                "method": prov.get("method"),
+                "confidence": prov.get("confidence"),
             }
         )
     out.sort(key=lambda r: r["id"] or "")

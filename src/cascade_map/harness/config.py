@@ -89,4 +89,11 @@ class RunConfig:
     scenarios: dict[str, ScenarioSpec] = field(default_factory=dict)
     declared_process_names: frozenset[str] = frozenset()
     client_stubs: dict[str, Callable[[], ModuleType]] = field(default_factory=dict)
+    #: Canonical text of the owner's ``client_stubs`` declarations, folded into
+    #: the run ID. The factories above are opaque callables, so without this two
+    #: runs that stub the same module two different ways -- blocked here,
+    #: replayed there -- would share a run ID and their outputs would be
+    #: compared as if they were the same run. Empty when nothing is declared,
+    #: which keeps every run ID that predates stub kinds unchanged.
+    client_declarations: str = ""
     env_passthrough: frozenset[str] = frozenset()

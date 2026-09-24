@@ -1,0 +1,6 @@
+{
+  "_note": "An owner-supplied replay recording. One list of return values per attribute path, returned in call order. A call past the end of a list is a hard stop, not a wrap-around and not a None.",
+  "calls": {
+    "get_price": [101, 102]
+  }
+}

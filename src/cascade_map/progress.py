@@ -76,6 +76,11 @@ ANALYZE_STAGES: tuple[Stage, ...] = (
     Stage("lineage", 80.0),
     Stage("dependencies", 4.0),
     Stage("findings", 9.0),
+    #: Card 13. Loading a hand-written intents file and checking it against
+    #: cards 2-4 is a few thousand comparisons at most, so this is the
+    #: cheapest stage here -- and it only does anything at all when the owner
+    #: named an intents file.
+    Stage("intents", 1.0),
     Stage("records", 7.0),
     Stage("write", 68.0),
 )

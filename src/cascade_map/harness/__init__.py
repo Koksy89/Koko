@@ -19,7 +19,17 @@ from .config import RunConfig, ScenarioSpec
 from .errors import BlockedOperation, HarnessRefusal
 from .harness import Harness
 from .hashing import compute_graph_hash, compute_run_id, compute_target_hashes
-from .sandbox import SandboxContext, activate, within_sandbox
+from .sandbox import SandboxContext, activate, record_blocked, within_sandbox
+from .stubs import (
+    BLOCKED_KIND,
+    STUB_KINDS,
+    ClientStubDeclaration,
+    StubDeclarationError,
+    build_factories,
+    declaration_fingerprint,
+    describe_declarations,
+    parse_declarations,
+)
 from .scenarios import (
     ScenarioDerivationError,
     derive_scenario_document,
@@ -37,7 +47,16 @@ __all__ = [
     "HarnessRefusal",
     "SandboxContext",
     "activate",
+    "record_blocked",
     "within_sandbox",
+    "BLOCKED_KIND",
+    "STUB_KINDS",
+    "ClientStubDeclaration",
+    "StubDeclarationError",
+    "build_factories",
+    "declaration_fingerprint",
+    "describe_declarations",
+    "parse_declarations",
     "compute_graph_hash",
     "compute_run_id",
     "compute_target_hashes",

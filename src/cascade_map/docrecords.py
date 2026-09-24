@@ -236,6 +236,23 @@ _CHUNKS_PER_WORKER = 8
 #: Measured on the fixture corpus, where 491 elements came back at 0.20x.
 _MIN_CHUNKS_PER_WORKER = 4
 
+#: WHETHER THE RECORDS STAGE USES THE POOL AT ALL. `False`, measured:
+#:
+#:   owner's engine, 10,165 elements
+#:       1 worker   records stage 0.79s
+#:       4 workers  records stage 1.38s   (0.3s of work, 0.8s in the pool)
+#:
+#: This stage is embarrassingly parallel and the pool below is correct -- the
+#: byte-identity test drives it at 1, 2, 4 and 8 workers. It loses anyway,
+#: because card 16 already made the build itself nearly free (117x, measured)
+#: while the RESULT is 25 MB of documentation records that must cross back out
+#: of the worker. When the work is 0.3s and the answer is 25 MB, no worker
+#: count helps.
+#:
+#: The honest consequence: records is 0.2% of a 393s run on the owner's
+#: engine. There is nothing here for workers to win.
+_RECORDS_POOL_ENABLED = False
+
 _NO_LINEAGE_REASON = "no lineage data supplied to the documentation builder"
 _NO_RETURN_REASON = (
     "signature has no -> annotation and none could be inferred"
@@ -549,7 +566,15 @@ class DocumentationBuilder:
         """
         ordered = sorted(self._elements, key=lambda e: e.id)
         stage = report if report is not None else StageReport(stage="records")
-        count = resolve_workers(workers)
+        asked = resolve_workers(workers)
+        count = asked if _RECORDS_POOL_ENABLED else 1
+        if not _RECORDS_POOL_ENABLED and asked > 1:
+            stage.not_parallelised_reason = (
+                "measured slower in a pool: the build is 0.3s of work and the "
+                "answer is 25 MB of records that must cross back out of the "
+                "worker (0.79s in one process, 1.38s over four). See "
+                "_RECORDS_POOL_ENABLED"
+            )
         total = len(ordered)
         chunks = _chunk_bounds(total, count)
 
@@ -565,7 +590,7 @@ class DocumentationBuilder:
             [(f"{index:08d}", bounds) for index, bounds in enumerate(chunks)],
             count,
             stage,
-            payload=_RecordsPayload(self),
+            payload=_RecordsPayload(self, ordered),
             on_unit=tick if on_progress is not None else None,
             # A few hundred records cost less to build than a pool costs to
             # start. Below this many chunks per worker the stage stays
@@ -884,9 +909,11 @@ class _RecordsWorker:
 
     __slots__ = ("builder", "ordered")
 
-    def __init__(self, builder: "DocumentationBuilder") -> None:
+    def __init__(
+        self, builder: "DocumentationBuilder", ordered: Sequence[Element]
+    ) -> None:
         self.builder = builder
-        self.ordered = sorted(builder._elements, key=lambda e: e.id)
+        self.ordered = ordered
 
 
 class _RecordsPayload(Payload):
@@ -898,13 +925,18 @@ class _RecordsPayload(Payload):
     method it is not even pickled: the child inherits it.
     """
 
-    __slots__ = ("builder",)
+    __slots__ = ("builder", "ordered")
 
-    def __init__(self, builder: "DocumentationBuilder") -> None:
+    def __init__(
+        self, builder: "DocumentationBuilder", ordered: Sequence[Element]
+    ) -> None:
         self.builder = builder
+        # Sorted ONCE, by the caller, and carried rather than re-derived: a
+        # sort per worker on a 400,000-element target is a cost for nothing.
+        self.ordered = tuple(ordered)
 
     def open(self) -> "_RecordsWorker":
-        return _RecordsWorker(self.builder)
+        return _RecordsWorker(self.builder, self.ordered)
 
 
 def _records_unit(

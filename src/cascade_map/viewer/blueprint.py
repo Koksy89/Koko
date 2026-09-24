@@ -312,19 +312,51 @@ def _capped_reachability(reach: dict[str, Any]) -> dict[str, Any]:
     return reach
 
 
+#: How a node's single alignment badge is chosen when an element carries
+#: more than one verdict. Worst first: a contradiction must never be hidden
+#: behind an agreement, and NOT_EXERCISED must never be hidden behind
+#: anything -- it is the one an owner is most likely to misread as a pass.
+_VERDICT_RANK = (
+    "MISALIGNED",
+    "NOT_EXERCISED",
+    "UNVERIFIABLE",
+    "ALIGNED",
+    "NO_INTENT",
+)
+
+
+def _static_verdict_badge(store: ArtifactStore, element_id: str) -> str | None:
+    """The one verdict a node shows, or ``None`` when nothing judged it."""
+    seen = {
+        str(v.get("verdict"))
+        for v in store.static_verdicts_by_element.get(element_id, [])
+        if v.get("verdict")
+    }
+    for name in _VERDICT_RANK:
+        if name in seen:
+            return name
+    return next(iter(sorted(seen)), None)
+
+
 def _element_node(store: ArtifactStore, element_id: str) -> dict[str, Any]:
     """A node view for one element id, real or unresolved -- never a crash."""
     element = store.elements_by_id.get(element_id)
     reach = _capped_reachability(views.element_reachability(store, element_id))
     finding_count = len(store.findings_by_element.get(element_id, []))
     has_record = element_id in store.records_by_element
+    # Card 13. `None` means "no intent names this element", which the panel
+    # renders as nothing at all -- it is not NO_INTENT wearing a badge, and
+    # it is certainly not a pass.
+    verdict = _static_verdict_badge(store, element_id)
+    intent_count = len(store.intents_by_element.get(element_id, []))
     if element is None:
         return {
             "id": element_id, "is_element": False, "kind": "UNKNOWN",
             "name": element_id, "qualname": element_id, "module": "",
             "confidence": None, "method": None, "span": None,
             "reachability": reach, "finding_count": finding_count,
-            "has_record": has_record,
+            "has_record": has_record, "static_verdict": verdict,
+            "intent_count": intent_count,
         }
     summary = views.element_summary(element)
     return {
@@ -333,6 +365,7 @@ def _element_node(store: ArtifactStore, element_id: str) -> dict[str, Any]:
         "module": summary["module"] or "", "confidence": summary["confidence"],
         "method": summary["method"], "span": summary["span"],
         "reachability": reach, "finding_count": finding_count, "has_record": has_record,
+        "static_verdict": verdict, "intent_count": intent_count,
     }
 
 
@@ -2226,6 +2259,17 @@ def build_blueprint_data(
         "lineage": lineage,
         "diff": diff,
         "runtime": _build_runtime(store, rstore),
+        # Card 13. Every intent on the page by id, so a verdict -- static or
+        # runtime -- can show the SENTENCE it was judged against without the
+        # reader going to look it up. Only the intents that name an element on
+        # this page: the file is the whole answer and is always written.
+        "intents_by_id": {
+            intent_id: store.intents_by_id[intent_id]
+            for element_id in sorted(element_ids)
+            for intent in store.intents_by_element.get(element_id, [])
+            for intent_id in (intent.get("id"),)
+            if intent_id in store.intents_by_id
+        },
         "element_details": element_details,
     }
 
@@ -2514,9 +2558,20 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
   color:var(--accent); font-size:.62rem; padding:0 .3rem; border-radius:3px; margin:.2rem 0; }
 .runtime-evidence { border-left:3px solid var(--accent); padding:.2rem .4rem; margin:.25rem 0; font-size:.7rem; }
 .contradiction-row { border-left-color:var(--red); }
+.verdict-head { font-weight:700; letter-spacing:0.03em; }
+.verdict-intent { color:var(--text-dim); margin:2px 0 4px; }
+.verdict-warn { color:var(--amber); margin-top:4px; }
+.intent-row { border-left:3px solid var(--accent); padding:4px 8px; margin:6px 0;
+              background:var(--node-bg-2); }
+.intent-row.intent-PROPOSED { border-left-color:var(--amber); border-left-style:dashed; }
+.intent-status { font-weight:700; font-size:0.85em; letter-spacing:0.03em; }
+.intent-invariant { color:var(--text-dim); font-family:ui-monospace,monospace;
+                    font-size:0.9em; }
 .verdict-ALIGNED { border-left-color:var(--green); }
 .verdict-MISALIGNED { border-left-color:var(--red); }
-.verdict-NOT_EXERCISED { border-left-color:var(--accent); border-left-style:dashed; }
+.verdict-NOT_EXERCISED { border-left-color:var(--amber); border-left-style:dashed; }
+.verdict-UNVERIFIABLE { border-left-color:var(--text-dim); }
+.verdict-NO_INTENT { border-left-color:var(--panel-border); }
 .action-btn { margin:.4rem 0; background:var(--accent); color:#fff; border:none; border-radius:6px;
   padding:.3rem .6rem; cursor:pointer; font-size:.73rem; }
 .condition-source { background:var(--node-bg); padding:.4rem; border-radius:4px; white-space:pre-wrap;
@@ -3700,6 +3755,59 @@ function renderRecordSection(panel, detail) {
   }
 }
 
+// Card 13. The intent an element was judged against, and the verdicts on it.
+// The statement sits NEXT TO the verdict, because "MISALIGNED" on its own is
+// a word, not an answer -- the owner has to see the sentence it contradicts.
+function intentById(intentId) {
+  var index = DATA.intents_by_id || {};
+  return index[intentId] || null;
+}
+
+function appendVerdict(panel, v, source) {
+  var box = el('div', 'runtime-evidence verdict-' + cssSafe(v.verdict));
+  box.appendChild(el('div', 'verdict-head', v.verdict + '  (' + source + ')'));
+  var intent = intentById(v.intent_id);
+  if (intent) {
+    box.appendChild(el('div', 'verdict-intent',
+      'intent (' + intent.status + '): ' + intent.statement));
+  } else if (v.intent_id) {
+    box.appendChild(el('div', 'verdict-intent', 'intent: ' + v.intent_id));
+  }
+  if (v.expectation) box.appendChild(el('div', null, 'expected: ' + v.expectation));
+  if (v.observation) box.appendChild(el('div', null, 'observed: ' + v.observation));
+  if (v.verdict === 'NOT_EXERCISED') {
+    box.appendChild(el('div', 'verdict-warn',
+      'NOT_EXERCISED is not ALIGNED. No scenario in this run entered this '
+      + 'element, so its intent is unverified.'));
+  }
+  panel.appendChild(box);
+}
+
+function renderIntentSection(panel, detail, elementId) {
+  var intents = (detail && detail.intents) || [];
+  var verdicts = (detail && detail.static_verdicts) || [];
+  if (!intents.length && !verdicts.length) return;
+  panel.appendChild(el('h3', null, 'intent'));
+  intents.forEach(function (i) {
+    var box = el('div', 'intent-row intent-' + cssSafe(i.status));
+    box.appendChild(el('div', 'intent-status', i.status + (i.status === 'PROPOSED'
+      ? '  -- derived by this tool, NOT owner-confirmed, and binding on nothing'
+      : '  -- owner-confirmed')));
+    box.appendChild(elWithBreaks('div', null, i.statement || '(no statement)'));
+    (i.invariants || []).forEach(function (text) {
+      box.appendChild(el('div', 'intent-invariant', 'invariant: ' + text));
+    });
+    (i.expected_reads || []).forEach(function (text) {
+      box.appendChild(el('div', 'intent-invariant', 'expected read: ' + text));
+    });
+    (i.expected_writes || []).forEach(function (text) {
+      box.appendChild(el('div', 'intent-invariant', 'expected write: ' + text));
+    });
+    panel.appendChild(box);
+  });
+  verdicts.forEach(function (v) { appendVerdict(panel, v, 'static evidence'); });
+}
+
 function renderRuntimeSection(panel, elementId) {
   var rt = DATA.runtime;
   panel.appendChild(el('h3', null, 'runtime'));
@@ -3730,7 +3838,7 @@ function renderRuntimeSection(panel, elementId) {
     panel.appendChild(box);
   });
   ((rt.verdicts_by_element && rt.verdicts_by_element[elementId]) || []).forEach(function (v) {
-    panel.appendChild(el('div', 'runtime-evidence verdict-' + cssSafe(v.verdict), 'verdict: ' + v.verdict + ' -- ' + v.observation));
+    appendVerdict(panel, v, 'observed in run ' + (v.run_id || rt.run_id));
   });
   ((rt.contradictions_by_element && rt.contradictions_by_element[elementId]) || []).forEach(function (c) {
     var box = el('div', 'runtime-evidence contradiction-row');
@@ -3849,6 +3957,7 @@ function renderDetailForNode(n, tab) {
   }
   if (n.is_element) {
     renderRecordSection(panel, DATA.element_details[n.id]);
+    renderIntentSection(panel, DATA.element_details[n.id], n.id);
     renderRuntimeSection(panel, n.id);
   }
 }

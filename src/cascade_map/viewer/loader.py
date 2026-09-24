@@ -40,6 +40,13 @@ ARTIFACT_FILES: dict[str, str] = {
     "impacts": "impacts.jsonl",
     "records": "records.jsonl",
     "intents": "intents.jsonl",
+    # Card 13's STATIC verdicts -- what the map can say about an intent with
+    # nothing executed. The runtime verdicts for one run live under
+    # runtime/<run_id>/ and are loaded by `RuntimeStore`; these two are
+    # different evidence about the same intents and are never merged into one
+    # list, because "the call graph says so" and "the run showed it" are not
+    # the same claim.
+    "static_verdicts": "verdicts.jsonl",
 }
 
 
@@ -163,6 +170,8 @@ class ArtifactStore:
     impacts_by_change: dict[str, dict[str, Any]] = field(default_factory=dict)
     records_by_element: dict[str, dict[str, Any]] = field(default_factory=dict)
     intents_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    intents_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    static_verdicts_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, root: str | Path) -> "ArtifactStore":
@@ -264,6 +273,10 @@ class ArtifactStore:
         }
 
         self.intents_by_element = _multi_index(self.raw["intents"], "element_id")
+        self.intents_by_id = {i["id"]: i for i in self.raw["intents"] if "id" in i}
+        self.static_verdicts_by_element = _multi_index(
+            self.raw["static_verdicts"], "element_id"
+        )
 
     # -- convenience ----------------------------------------------------
 
@@ -278,7 +291,8 @@ class ArtifactStore:
         ids.update(self.decisions_by_id)
         ids.update(self.impacts_by_change)
         for name in ("unresolved", "cfg_blocks", "cfg_edges", "reachability", "lineage",
-                      "barriers", "slices", "findings", "changes", "records", "intents"):
+                      "barriers", "slices", "findings", "changes", "records", "intents",
+                      "static_verdicts"):
             for record in self.raw.get(name, ()):
                 rid = record.get("id")
                 if isinstance(rid, str):

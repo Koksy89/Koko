@@ -843,8 +843,8 @@ def test_mode_two_traces_each_new_version_once_through_the_trace_seam(
     (tmp_path / "scenarios.json").write_text("{}", encoding="utf-8")
     calls: list[tuple] = []
 
-    def trace(graph_dir, scenarios, scenario, out_root):
-        calls.append((Path(graph_dir).name, Path(scenarios).name, scenario))
+    def trace(graph_dir, scenarios, scenario, out_root, intents_path=None):
+        calls.append((Path(graph_dir).name, Path(scenarios).name, scenario, intents_path))
         return 0, "ok"
 
     settings = _settings(tmp_path, MODE=2, SCENARIOS="scenarios.json")
@@ -852,6 +852,7 @@ def test_mode_two_traces_each_new_version_once_through_the_trace_seam(
     assert len(calls) == 2
     assert {c[1] for c in calls} == {"scenarios.json"}
     assert {c[2] for c in calls} == {"baseline"}
+    assert {c[3] for c in calls} == {None}, "no INTENTS was set, so none was passed"
     assert {c[0] for c in calls} == {r.id for r in ledger.versions}
     assert len(result.trace_notes) == 2
 

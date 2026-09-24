@@ -25,6 +25,7 @@ from collections import defaultdict
 from collections import defaultdict, deque
 from collections import deque
 from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from collections.abc import Callable, Sequence
 from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
@@ -54,9 +55,9 @@ from typing import Any, Iterable, Sequence
 from typing import Any, Mapping
 from typing import Any, Sequence
 from typing import Callable
+from typing import Callable, Iterable, Mapping, Sequence
 from typing import Callable, Mapping
 from typing import Callable, Sequence, TextIO
-from typing import Iterable, Mapping, Sequence
 from typing import Iterable, Pattern, Sequence
 from typing import Iterable, Sequence
 from typing import Iterator
@@ -214,6 +215,20 @@ METATRON_SETTINGS = {
     # Explicit ordering, for when the tool cannot establish it from the files.
     # Folder names, oldest first. Empty = work it out and report how.
     "ORDER": [],
+
+    # The owner-confirmed intents file: what each element is MEANT to do, in
+    # checkable terms. The one setting that answers "which of the things I
+    # built are not plugged in?" against YOUR OWN DECLARATION rather than
+    # against a guess from structure or naming.
+    #
+    # Empty means no spec, and every element is reported NO_INTENT -- a state,
+    # not a pass and not a failure. A file that IS named and cannot be read is
+    # never silently ignored: every parse problem lands in unresolved.jsonl
+    # with its line number and its reason, and the run says so.
+    #
+    # Start one with:  metatron analyze <target> --propose-intents intents.yaml
+    # Everything it writes is PROPOSED. You confirm; the tool proposes.
+    "INTENTS": "",
 
     # MODE 2 only.
     "SCENARIOS": "scenarios.json",
@@ -2040,6 +2055,11 @@ ANALYZE_STAGES: tuple[Stage, ...] = (
     Stage("lineage", 80.0),
     Stage("dependencies", 4.0),
     Stage("findings", 9.0),
+    #: Card 13. Loading a hand-written intents file and checking it against
+    #: cards 2-4 is a few thousand comparisons at most, so this is the
+    #: cheapest stage here -- and it only does anything at all when the owner
+    #: named an intents file.
+    Stage("intents", 1.0),
     Stage("records", 7.0),
     Stage("write", 68.0),
 )
@@ -2487,6 +2507,817 @@ def _isatty(stream: TextIO) -> bool:
         return bool(stream.isatty())
     except Exception:  # pragma: no cover
         return False
+
+
+# ==========================================================================
+# parallel.py
+# ==========================================================================
+
+"""The work-stealing coordinator every parallelisable stage shares.
+
+One place, used by every stage that can take it. The shape is the owner's:
+a task manager hands whole units out of a shared queue, an idle worker
+immediately takes the next one rather than waiting on a fixed batch it was
+assigned up front, and the results come back to the manager which
+consolidates them **sequentially and deterministically**.
+
+Four rules this module exists to enforce
+----------------------------------------
+
+**1. A task is a WHOLE UNIT.** A whole element, a whole function, a whole
+module. Never a fragment: half a function is not parseable and the facts
+derived from it would be *wrong*, not merely worse.
+
+**2. Consolidation is sequential.** :func:`run_stage` returns a plain
+``{key: value}`` mapping and the caller re-derives its own order from the
+keys. Nothing about which worker finished first is allowed to reach an
+artifact. Where a stage mints sequential ids, it must mint them in the
+consolidation step, never in a worker -- a counter that advances in worker
+completion order is a determinism bug that only shows up under load.
+
+**3. Large shared state travels ONCE PER WORKER, never per task.** The
+owner's engine is one 15 MB file: sending its source, or its element index,
+with every one of ten thousand tasks would cost more than the parallelism
+saves. :class:`Payload` is built once inside each worker (``initializer``)
+and every task in that worker reads it. Under the ``fork`` start method it
+is not even pickled -- the child inherits it.
+
+**4. Every number is measured on this run.** :class:`StageReport` reports
+what the workers actually bought, per stage. Where a stage does not pay, it
+says so with the number and the reason, and the recommendation is one
+worker. A worker count printed as a benefit without evidence is worse than
+none.
+
+What is NOT parallelisable, and is not faked
+--------------------------------------------
+
+    resolve      per module against a shared index      parallel
+    cascade      one control-flow graph per function    parallel
+    lineage      per module dataflow, then merge        parallel
+    records      per element                            parallel
+    write        one artifact per file                  parallel
+    order        topological closure over the graph     SEQUENTIAL
+    reachability closure over the reversed graph        SEQUENTIAL
+
+The last two are closures over the whole graph: every node's answer depends
+on every other node's. They stay in one process and :class:`PipelineReport`
+prints their cost rather than hiding it, because a wrong graph is infinitely
+worse than a slow one.
+"""
+
+
+
+
+__all__ = [
+    "GAIN_FLOOR",
+    "MAX_WORKERS",
+    "Payload",
+    "BackgroundUnit",
+    "PipelineReport",
+    "StageReport",
+    "UnitResult",
+    "canonical_jsonl_many",
+    "chunk_bounds",
+    "cpu_budget",
+    "render_pipeline_report",
+    "render_stage_line",
+    "resolve_workers",
+    "run_stage",
+]
+
+#: Below this, the workers are not earning their overhead and the report says
+#: so in words rather than printing a count that implies a benefit.
+GAIN_FLOOR = 1.2
+
+#: Asking for more processes than this has never paid on any shape measured;
+#: beyond the core count they contend rather than help.
+MAX_WORKERS = 32
+
+#: How many times a stage tells the progress bar it is alive. A bar exists so
+#: a long stage does not look hung, not to count anything, and calling it once
+#: per unit costs a lock and a redraw per unit -- on a 400,000-element target
+#: that is more work than the units.
+PROGRESS_STEPS = 200
+
+
+def cpu_budget() -> int:
+    """Usable cores. ``sched_getaffinity`` rather than ``cpu_count`` because a
+    container pinned to 2 of 64 cores reports 64, and spawning 63 workers on 2
+    cores is slower than staying in-process."""
+    try:
+        return len(os.sched_getaffinity(0))  # type: ignore[attr-defined]
+    except (AttributeError, OSError):  # pragma: no cover - non-Linux
+        return os.cpu_count() or 1
+
+
+def resolve_workers(requested: int | None) -> int:
+    """``None`` = auto: the machine's usable cores minus one, so an ``analyze``
+    does not take the whole box, capped at :data:`MAX_WORKERS`.
+
+    ``0`` and ``1`` both mean in-process. In-process must always remain
+    reachable: it is how anything here is debugged, and a traceback out of a
+    child process is a worse one.
+    """
+    if requested is None:
+        return max(1, min(cpu_budget() - 1, MAX_WORKERS))
+    if requested < 0:
+        raise ValueError(f"--workers must be >= 0, got {requested}")
+    if requested <= 1:
+        return 1
+    return min(requested, MAX_WORKERS)
+
+
+# ---------------------------------------------------------------------------
+# the report -- measured, never asserted
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class UnitResult:
+    """One unit's outcome plus the CPU seconds it cost inside its worker."""
+
+    key: str
+    value: Any
+    seconds: float
+
+
+@dataclass
+class StageReport:
+    """What the workers bought **in one stage, on this run**.
+
+    Never written into an analysis artifact: these are wall-clock timings and
+    constraint 4 says identical input gives identical bytes.
+    """
+
+    stage: str = ""
+    requested: int = 1
+    started: int = 1
+    unit_count: int = 0
+
+    #: Wall clock of the parallel section alone.
+    wall_seconds: float = 0.0
+    #: Sum of the per-unit CPU seconds -- what one process would have spent.
+    serial_seconds: float = 0.0
+    #: Wall clock of the WHOLE stage, parallel section included. Set by the
+    #: caller. The gain an owner feels is the one over the whole stage; the
+    #: serial remainder does not shrink with more workers.
+    total_seconds: float = 0.0
+    #: The part of the stage that is sequential by nature and can never be
+    #: spread: a topological closure, a merge, a sort.
+    sequential_by_nature: bool = False
+
+    #: Why this stage was not handed to the pool at all. Set when the units
+    #: exist but are NOT INDEPENDENT -- a walk that carries state from one
+    #: unit into the next has no unit boundary to cut on, and cutting anyway
+    #: would give a different graph, not a faster one. Stated, never hidden:
+    #: a stage silently left serial reads as a stage that had nothing to gain.
+    not_parallelised_reason: str = ""
+
+    #: The stage this one ran alongside. Set when a WHOLE stage was started in
+    #: a second process because it reads none of the other's output -- the one
+    #: kind of parallelism that still helps a target which is a single module.
+    overlapped_with: str = ""
+
+    largest_unit_key: str = ""
+    largest_unit_seconds: float = 0.0
+    skipped_reason: str = ""
+    unit_seconds: dict[str, float] = field(default_factory=dict, repr=False)
+
+    @property
+    def serial_control_seconds(self) -> float:
+        """What this same stage would have cost in one process: the CPU the
+        units actually consumed, plus the serial remainder no worker count can
+        remove. Computed from data already held rather than by running the
+        whole thing twice, and checked against a genuine ``--workers 1`` run in
+        the tests."""
+        total = self.total_seconds or self.wall_seconds
+        non_parallel = max(0.0, total - self.wall_seconds)
+        return self.serial_seconds + non_parallel
+
+    @property
+    def gain(self) -> float:
+        total = self.total_seconds or self.wall_seconds
+        if total <= 0.0:
+            return 1.0
+        return self.serial_control_seconds / total
+
+    @property
+    def largest_unit_share(self) -> float:
+        if self.serial_seconds <= 0.0:
+            return 0.0
+        return self.largest_unit_seconds / self.serial_seconds
+
+    @property
+    def helped(self) -> bool:
+        return self.started > 1 and self.gain >= GAIN_FLOOR
+
+    def explain_no_gain(self) -> str:
+        """Why the workers did not help. Always a measured reason."""
+        if self.sequential_by_nature:
+            return (
+                "sequential by nature: a closure over the whole graph, where "
+                "every node's answer depends on every other node's"
+            )
+        if self.not_parallelised_reason:
+            return self.not_parallelised_reason
+        if self.unit_count == 0:
+            return self.skipped_reason or "nothing to do -- no units of work"
+        # A stage that declined the pool said exactly why when it declined;
+        # the generic guesses below are for a pool that ran and did not pay.
+        if self.skipped_reason:
+            return self.skipped_reason
+        if self.unit_count == 1:
+            return (
+                "1 unit holds 100% of the work; a unit is never split, because "
+                "half of one is not analysable"
+            )
+        share = self.largest_unit_share
+        if share >= 0.5:
+            return (
+                f"1 unit ({self.largest_unit_key}) holds {share * 100:.0f}% of "
+                "the work; a unit is never split"
+            )
+        if self.started <= 1:
+            return "running in-process; no child workers were started"
+        if self.unit_count < self.started:
+            return (
+                f"{self.unit_count} unit(s) for {self.started} worker(s); "
+                f"{self.started - self.unit_count} idled"
+            )
+        return (
+            "per-unit work is small enough that sending the unit out and its "
+            "result back cost about as much as they save"
+        )
+
+    def recommendation(self) -> str:
+        if self.not_parallelised_reason:
+            return "one worker; the units here are not independent of each other"
+        if self.sequential_by_nature:
+            return "one worker; parallelising this would give a wrong graph, not a fast one"
+        if self.helped:
+            return f"--workers {self.started} earns its overhead on this stage"
+        if self.unit_count <= 1 or self.largest_unit_share >= 0.5:
+            return "use 1 worker for this stage on this target"
+        return "use 1 worker for this stage; the gain does not cover the overhead"
+
+
+def render_stage_line(report: StageReport) -> str:
+    """One aligned line per stage, in the shape the owner asked for::
+
+        resolve    3.40x over 8 workers    (78.2s of work in 23.0s, 412 units)
+        order      sequential by nature    (2.1s)
+    """
+    name = f"  {report.stage:<13}"
+    total = report.total_seconds or report.wall_seconds
+    if report.overlapped_with and report.started > 0 and not report.skipped_reason:
+        return (
+            f"{name}{'overlapped':<24}"
+            f"({report.serial_seconds:.1f}s of work, {total:.1f}s of it waited "
+            f"for; ran alongside {report.overlapped_with})"
+        )
+    if report.sequential_by_nature:
+        return f"{name}{'sequential by nature':<24}({total:.1f}s)"
+    if report.not_parallelised_reason:
+        units = f", {report.unit_count:,} unit(s)" if report.unit_count else ""
+        return (
+            f"{name}{'1.00x, not parallelised':<24}({total:.1f}s{units}) "
+            f"-- {report.not_parallelised_reason}"
+        )
+    if report.unit_count == 0:
+        reason = report.skipped_reason or "no units of work"
+        return f"{name}{'n/a':<24}({reason})"
+    if report.started <= 1:
+        return (
+            f"{name}{'1.00x over 1 worker':<24}"
+            f"({total:.1f}s, {report.unit_count:,} unit(s)) "
+            f"-- {report.explain_no_gain()}"
+        )
+    body = (
+        f"{report.gain:.2f}x over {report.started} workers".ljust(24)
+        + f"({report.serial_control_seconds:.1f}s of work in {total:.1f}s, "
+        f"{report.unit_count:,} unit(s))"
+    )
+    if not report.helped:
+        body += f" -- {report.explain_no_gain()}"
+    return name + body
+
+
+@dataclass
+class PipelineReport:
+    """Every parallelised stage, measured per stage, plus the sequential ones.
+
+    The owner has been told twice that a worker count printed as a benefit
+    without evidence is worse than none. Every line here is a measurement of
+    the run that just happened.
+    """
+
+    requested: int = 1
+    stages: list[StageReport] = field(default_factory=list)
+
+    def add(self, report: StageReport) -> StageReport:
+        self.stages.append(report)
+        return report
+
+    def stage(self, name: str) -> StageReport | None:
+        for report in self.stages:
+            if report.stage == name:
+                return report
+        return None
+
+    @staticmethod
+    def _spread(stage: StageReport) -> bool:
+        """Whether a worker count can touch this stage at all."""
+        if stage.overlapped_with and not stage.skipped_reason:
+            return True
+        return not stage.sequential_by_nature and not stage.not_parallelised_reason
+
+    @property
+    def parallel_seconds(self) -> float:
+        return sum(
+            (s.total_seconds or s.wall_seconds)
+            for s in self.stages
+            if self._spread(s)
+        )
+
+    @property
+    def sequential_seconds(self) -> float:
+        return sum(
+            (s.total_seconds or s.wall_seconds)
+            for s in self.stages
+            if not self._spread(s)
+        )
+
+    @property
+    def measured_seconds(self) -> float:
+        return self.parallel_seconds + self.sequential_seconds
+
+    @property
+    def sequential_share(self) -> float:
+        total = self.measured_seconds
+        return 0.0 if total <= 0.0 else self.sequential_seconds / total
+
+
+def render_pipeline_report(report: PipelineReport) -> str:
+    """The worker-effectiveness report, one block covering every stage."""
+    if not report.stages:
+        return ""
+    lines = [f"worker effectiveness, measured on this run ({report.requested} requested)"]
+    lines.extend(render_stage_line(stage) for stage in report.stages)
+    total = report.measured_seconds
+    if total > 0.0:
+        lines.append(
+            f"  {'sequential':<13}{report.sequential_seconds:.1f}s of "
+            f"{total:.1f}s measured ({report.sequential_share * 100:.0f}%) no "
+            "worker count removes -- see the reason on each line above"
+        )
+    unpaid = [
+        s.stage
+        for s in report.stages
+        if not s.sequential_by_nature
+        and not s.not_parallelised_reason
+        and not s.overlapped_with
+        and s.started > 1
+        and not s.helped
+    ]
+    if unpaid:
+        lines.append(
+            "  "
+            + f"{'note':<13}"
+            + f"{', '.join(unpaid)} did not pay for the workers on this target; "
+            "the line above each says why"
+        )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# execution
+# ---------------------------------------------------------------------------
+
+
+class Payload:
+    """Base for the large state a stage's workers share.
+
+    Built ONCE per worker. The instance that travels to a worker must hold
+    only what is cheap to send -- a root path, a list of file paths, the
+    already-parsed inputs a stage genuinely needs -- and :meth:`open` does the
+    expensive part (reading, parsing, indexing) inside the worker.
+
+    Subclasses must be picklable, which means module-level classes holding
+    plain data: a closure is not picklable and neither is an open file.
+    """
+
+    def open(self) -> Any:
+        """Return the object every task in this worker will be handed."""
+        return self
+
+
+#: Set by :func:`_init_worker` inside each child, read by every task that child
+#: runs. A module-level global rather than an argument because the whole point
+#: is that it crosses the process boundary once and not once per task.
+_OPENED: Any = None
+
+
+def _init_worker(payload: Payload | None) -> None:
+    global _OPENED
+    _OPENED = None if payload is None else payload.open()
+
+
+class _Task:
+    """A picklable bound work function.
+
+    ``ProcessPoolExecutor`` pickles the callable, and a closure is not
+    picklable, so the stage's function travels as a module-level class
+    instance instead.
+    """
+
+    __slots__ = ("fn",)
+
+    def __init__(self, fn: Callable[[Any, Any], Any]) -> None:
+        self.fn = fn
+
+    def __call__(self, job: tuple[str, Any]) -> UnitResult:
+        key, arg = job
+        # `process_time`, i.e. CPU seconds, NOT wall clock. Under a pool with
+        # more workers than cores every unit's *wall* time inflates because the
+        # units compete for the same cores; summing inflated wall times and
+        # dividing by the section's wall clock produces a gain that RISES as
+        # the machine gets slower. The work here is CPU-bound, so CPU seconds
+        # are what a single process would have spent.
+        start = time.process_time()
+        value = self.fn(_OPENED, arg)
+        return UnitResult(key=key, value=value, seconds=time.process_time() - start)
+
+
+def _throttle(
+    on_unit: Callable[[int, int], None] | None, total: int
+) -> Callable[[int, int], None] | None:
+    """At most :data:`PROGRESS_STEPS` calls over the whole stage."""
+    if on_unit is None or total <= PROGRESS_STEPS:
+        return on_unit
+    every = max(1, total // PROGRESS_STEPS)
+
+    def throttled(done: int, of: int) -> None:
+        if done % every == 0 or done == of:
+            on_unit(done, of)
+
+    return throttled
+
+
+def run_stage(
+    fn: Callable[[Any, Any], Any],
+    jobs: Sequence[tuple[str, Any]],
+    workers: int,
+    report: StageReport,
+    *,
+    payload: Payload | None = None,
+    on_unit: Callable[[int, int], None] | None = None,
+    min_units_per_worker: int = 1,
+) -> dict[str, Any]:
+    """Run every ``(key, arg)`` job through ``fn(opened_payload, arg)``.
+
+    Returns ``{key: value}``. **The caller must re-derive its own order from
+    the keys.** Nothing about the returned mapping's construction order is
+    allowed to reach an artifact.
+
+    Falls back to in-process, recording why, whenever a pool cannot help or
+    cannot start. A failed pool must never become a failed analysis: the work
+    is still done, just serially, and the report says so.
+    """
+    report.requested = workers
+    report.unit_count = len(jobs)
+    report.unit_seconds.clear()
+    on_unit = _throttle(on_unit, len(jobs))
+
+    if not jobs:
+        report.started = 1
+        if not report.skipped_reason:
+            report.skipped_reason = "no units of work"
+        return {}
+
+    too_few = len(jobs) < workers * min_units_per_worker
+    if workers <= 1 or len(jobs) == 1 or too_few:
+        if workers > 1 and len(jobs) == 1:
+            report.skipped_reason = (
+                "1 unit of work: a pool was not started because one worker "
+                "would do all of it and the rest would idle"
+            )
+        elif workers > 1 and too_few:
+            report.skipped_reason = (
+                f"{len(jobs)} unit(s) is too few for {workers} worker(s) to pay "
+                "for their own startup; ran in-process"
+            )
+        return _run_in_process(fn, jobs, report, payload=payload, on_unit=on_unit)
+
+    effective = min(workers, len(jobs))
+    started_at = time.perf_counter()
+    try:
+        with ProcessPoolExecutor(
+            max_workers=effective,
+            initializer=_init_worker,
+            initargs=(payload,),
+        ) as pool:
+            results: list[UnitResult] = []
+            # `chunksize=1` is what makes this work-STEALING rather than a
+            # fixed batch: every unit goes into one shared queue and an idle
+            # worker takes the next one the instant it finishes, so one slow
+            # unit cannot leave seven workers idle. Iterated rather than
+            # `list(...)` so progress is reported as results arrive; `map`
+            # still yields in SUBMISSION order, so only when we hear about a
+            # result changes, never the order of anything emitted.
+            for done, item in enumerate(pool.map(_Task(fn), jobs, chunksize=1), start=1):
+                results.append(item)
+                if on_unit is not None:
+                    on_unit(done, len(jobs))
+    except Exception as exc:  # pragma: no cover - platform dependent
+        report.skipped_reason = (
+            f"pool unavailable ({type(exc).__name__}); ran in-process"
+        )
+        report.wall_seconds = 0.0
+        report.unit_seconds.clear()
+        return _run_in_process(fn, jobs, report, payload=payload, on_unit=on_unit)
+
+    report.started = effective
+    out: dict[str, Any] = {}
+    for result in results:
+        out[result.key] = result.value
+        report.unit_seconds[result.key] = result.seconds
+    report.wall_seconds = time.perf_counter() - started_at
+    report.serial_seconds = sum(report.unit_seconds.values())
+    _record_largest(report)
+    return out
+
+
+def _run_in_process(
+    fn: Callable[[Any, Any], Any],
+    jobs: Sequence[tuple[str, Any]],
+    report: StageReport,
+    *,
+    payload: Payload | None,
+    on_unit: Callable[[int, int], None] | None,
+) -> dict[str, Any]:
+    """The path everything is debugged on. Must always stay reachable."""
+    global _OPENED
+    previous = _OPENED
+    _OPENED = None if payload is None else payload.open()
+    report.started = 1
+    started_at = time.perf_counter()
+    task = _Task(fn)
+    out: dict[str, Any] = {}
+    try:
+        for done, job in enumerate(jobs, start=1):
+            result = task(job)
+            out[result.key] = result.value
+            report.unit_seconds[result.key] = result.seconds
+            if on_unit is not None:
+                on_unit(done, len(jobs))
+    finally:
+        _OPENED = previous
+    report.wall_seconds = time.perf_counter() - started_at
+    report.serial_seconds = sum(report.unit_seconds.values())
+    _record_largest(report)
+    return out
+
+
+def _record_largest(report: StageReport) -> None:
+    if not report.unit_seconds:
+        return
+    # Sorted by (-seconds, key) so ties break on the name, never on dict
+    # insertion order -- the report is printed, and an owner comparing two runs
+    # must not see a different unit named for the same timings.
+    key = sorted(report.unit_seconds.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+    report.largest_unit_key = key
+    report.largest_unit_seconds = report.unit_seconds[key]
+
+
+# ---------------------------------------------------------------------------
+# chunking -- whole units, many more chunks than workers
+# ---------------------------------------------------------------------------
+
+
+def chunk_bounds(total: int, per_chunk: int) -> list[tuple[int, int]]:
+    """Contiguous half-open ranges over an already-ordered sequence.
+
+    Many more chunks than workers, deliberately: that is what lets the shared
+    queue *steal*. One chunk per worker is a fixed batch, and a fixed batch is
+    what leaves seven workers idle behind one slow unit.
+    """
+    if total <= 0:
+        return []
+    step = max(1, per_chunk)
+    return [(start, min(total, start + step)) for start in range(0, total, step)]
+
+
+# ---------------------------------------------------------------------------
+# the write stage -- one artifact's records, in whole-record chunks
+# ---------------------------------------------------------------------------
+
+#: Records per chunk when serialising artifacts. Small enough that 390,000
+#: lineage edges become ~80 stealable units; large enough that the round trip
+#: is a rounding error against the work in the chunk.
+JSONL_CHUNK_RECORDS = 5_000
+
+#: Total records below which the write stage stays in one process. Measured,
+#: not guessed: the fixture corpus writes ~1,600 records across 18 artifacts
+#: and a four-worker pool came back at 0.78x -- slower than doing it here. A
+#: pool that loses is worse than no pool, so it is not started.
+JSONL_MIN_RECORDS_FOR_POOL = 20_000
+
+
+class _JsonlPayload(Payload):
+    """Every artifact's records, sent ONCE per worker.
+
+    Under the ``fork`` start method the child inherits them and nothing is
+    pickled at all; under ``spawn`` they cross once per worker rather than
+    once per chunk, which on a 437 MB artifact set is the difference between
+    a win and a loss.
+    """
+
+    __slots__ = ("groups", "sort_key")
+
+    def __init__(self, groups: Mapping[str, Sequence[Any]], sort_key: str) -> None:
+        self.groups = {name: tuple(records) for name, records in groups.items()}
+        self.sort_key = sort_key
+
+    def open(self) -> "_JsonlPayload":
+        return self
+
+
+def _jsonl_unit(
+    payload: "_JsonlPayload", arg: tuple[str, int, int]
+) -> list[tuple[Any, str]]:
+    """Serialise one contiguous run of WHOLE records.
+
+    A record is never split across chunks: half a JSON object is not a record,
+    and an artifact holding one would be wrong rather than merely untidy.
+
+    Returns ``(sort key, row)`` pairs. The sort key is read back out of the
+    rendered row exactly as `canonical_jsonl` reads it, so the ordering cannot
+    drift from the contract's serialiser by taking a shortcut through the
+    record object.
+    """
+    name, start, stop = arg
+    sort_key = payload.sort_key
+    out: list[tuple[Any, str]] = []
+    for record in payload.groups[name][start:stop]:
+        row = canonical_dumps(record)
+        out.append((json.loads(row).get(sort_key, ""), row))
+    return out
+
+
+def canonical_jsonl_many(
+    groups: Mapping[str, Sequence[Any]],
+    workers: int,
+    report: StageReport,
+    *,
+    sort_key: str = "id",
+    on_unit: Callable[[int, int], None] | None = None,
+) -> dict[str, str]:
+    """`{name: canonical_jsonl(records)}` for several artifacts at once.
+
+    **Byte-identical to calling `canonical_jsonl` on each group**, and
+    `test_parallel_jsonl_is_byte_identical_at_every_worker_count` is what
+    keeps it that way. The rendering is per record and parallel; the ORDERING
+    is a single global sort in this process, over ``(sort key, row)`` -- the
+    very tuple `canonical_jsonl` sorts by -- so which worker rendered which
+    row cannot reach a byte of the output.
+
+    One pool for the whole write stage rather than one per artifact: the
+    artifacts differ in size by three orders of magnitude, and a pool per
+    artifact would start eight processes to serialise an empty file.
+    """
+    names = sorted(groups)
+    total_records = sum(len(groups[name]) for name in names)
+    if total_records < JSONL_MIN_RECORDS_FOR_POOL:
+        workers = 1
+        report.skipped_reason = (
+            f"{total_records:,} record(s) is below the {JSONL_MIN_RECORDS_FOR_POOL:,} "
+            "at which a pool starts paying for itself here; ran in-process"
+        )
+    jobs: list[tuple[str, tuple[str, int, int]]] = []
+    chunk_counts: dict[str, int] = {}
+    for name in names:
+        bounds = chunk_bounds(len(groups[name]), JSONL_CHUNK_RECORDS)
+        chunk_counts[name] = len(bounds)
+        for index, (start, stop) in enumerate(bounds):
+            jobs.append((f"{name}#{index:08d}", (name, start, stop)))
+
+    results = run_stage(
+        _jsonl_unit,
+        jobs,
+        workers,
+        report,
+        payload=_JsonlPayload(groups, sort_key),
+        on_unit=on_unit,
+        # A handful of chunks is not worth eight processes; the report says so
+        # with the number rather than printing a worker count that bought
+        # nothing.
+        min_units_per_worker=2,
+    )
+
+    out: dict[str, str] = {}
+    for name in names:
+        pairs: list[tuple[Any, str]] = []
+        for index in range(chunk_counts[name]):
+            # `pop`, not `get`: the parent holds every artifact's rows at once
+            # and a 437 MB artifact set is not something to keep two copies of.
+            pairs.extend(results.pop(f"{name}#{index:08d}", ()))
+        pairs.sort()
+        out[name] = "".join(f"{row}\n" for _, row in pairs)
+        del pairs
+    return out
+
+
+# ---------------------------------------------------------------------------
+# stage-level overlap -- two whole stages that do not read each other
+# ---------------------------------------------------------------------------
+
+
+class BackgroundUnit:
+    """One WHOLE stage, started now and collected later.
+
+    The other kind of parallelism in this pipeline, and the only kind that
+    helps a target which is a single module: two stages that read the same
+    inputs, and neither of which reads the other's output, can run at the same
+    time. Nothing inside either stage is split -- each runs exactly as it does
+    in one process, so its facts cannot differ -- and the consolidation stays
+    the caller's, in its own fixed order.
+
+    Falls back to running the work inline, and says so, whenever a pool cannot
+    start. A failed pool must never become a failed analysis.
+    """
+
+    __slots__ = ("_report", "_pool", "_future", "_fn", "_payload", "_arg", "_started_at")
+
+    def __init__(
+        self,
+        fn: Callable[[Any, Any], Any],
+        payload: Payload | None,
+        arg: Any,
+        workers: int,
+        report: StageReport,
+    ) -> None:
+        self._report = report
+        self._fn = fn
+        self._payload = payload
+        self._arg = arg
+        self._pool: ProcessPoolExecutor | None = None
+        self._future: Any = None
+        self._started_at = time.perf_counter()
+        report.requested = workers
+        report.unit_count = 1
+        report.started = 1
+        if workers <= 1:
+            report.overlapped_with = ""
+            report.skipped_reason = (
+                "in-process: one worker was asked for, so there is no second "
+                "process to overlap with"
+            )
+            return
+        try:
+            self._pool = ProcessPoolExecutor(
+                max_workers=1, initializer=_init_worker, initargs=(payload,)
+            )
+            self._future = self._pool.submit(_Task(fn), ("unit", arg))
+        except Exception as exc:  # pragma: no cover - platform dependent
+            self._pool = None
+            self._future = None
+            report.overlapped_with = ""
+            report.skipped_reason = (
+                f"pool unavailable ({type(exc).__name__}); ran inline"
+            )
+
+    def result(self) -> Any:
+        """Collect. Blocks until the stage has finished, which it usually has
+        already: it was started alongside a longer one."""
+        if self._future is None:
+            started = time.perf_counter()
+            global _OPENED
+            previous = _OPENED
+            _OPENED = None if self._payload is None else self._payload.open()
+            try:
+                unit = _Task(self._fn)(("unit", self._arg))
+            finally:
+                _OPENED = previous
+            self._record(unit, time.perf_counter() - started)
+            return unit.value
+        waited_from = time.perf_counter()
+        try:
+            unit = self._future.result()
+        finally:
+            if self._pool is not None:
+                self._pool.shutdown(wait=True)
+                self._pool = None
+        self._record(unit, time.perf_counter() - waited_from)
+        return unit.value
+
+    def _record(self, unit: UnitResult, waited: float) -> None:
+        self._report.wall_seconds = time.perf_counter() - self._started_at
+        self._report.serial_seconds = unit.seconds
+        # What the stage cost the RUN: only the part the caller had to wait
+        # for after it stopped having other work to do.
+        self._report.total_seconds = waited
+        self._report.unit_seconds[unit.key] = unit.seconds
+        _record_largest(self._report)
 
 
 # ==========================================================================
@@ -3772,49 +4603,21 @@ behind a worker count.
 
 
 
-#: Below this, the workers are not earning their overhead and the report
-#: says so in words rather than printing a count that implies a benefit.
-GAIN_FLOOR = 1.2
+# One coordinator, one worker policy, one pool -- `cascade_map.parallel`. This
+# module keeps only what is specific to INGESTION: its own wording for the
+# report, because ingestion's unit is a file and the other stages' units are
+# not, and the `fn(payload)` call shape its callers already use.
 
-#: Asking for more processes than this has never paid on any shape measured;
-#: beyond the core count they contend rather than help.
-MAX_WORKERS = 32
-
-
-def cpu_budget() -> int:
-    """Usable cores. `sched_getaffinity` rather than `cpu_count` because a
-    container pinned to 2 of 64 cores reports 64, and spawning 63 workers on
-    2 cores is slower than staying in-process."""
-    try:
-        return len(os.sched_getaffinity(0))  # type: ignore[attr-defined]
-    except (AttributeError, OSError):  # pragma: no cover - non-Linux
-        return os.cpu_count() or 1
-
-
-def resolve_workers(requested: int | None) -> int:
-    """`None` = auto: the machine's usable cores minus one, so an `analyze`
-    does not take the whole box, capped at `MAX_WORKERS`.
-
-    `0` and `1` both mean in-process. In-process must always remain
-    reachable: it is how anything here is debugged, and a traceback from a
-    child process is a worse one.
-    """
-    if requested is None:
-        return max(1, min(cpu_budget() - 1, MAX_WORKERS))
-    if requested < 0:
-        raise ValueError(f"--workers must be >= 0, got {requested}")
-    if requested <= 1:
-        return 1
-    return min(requested, MAX_WORKERS)
-
-
-@dataclass(frozen=True)
-class UnitResult:
-    """One unit's outcome plus the CPU seconds it cost inside its worker."""
-
-    key: str
-    value: Any
-    seconds: float
+__all__ = [
+    "GAIN_FLOOR",
+    "MAX_WORKERS",
+    "UnitResult",
+    "WorkerReport",
+    "cpu_budget",
+    "render_worker_report",
+    "resolve_workers",
+    "run_units",
+]
 
 
 @dataclass
@@ -3944,40 +4747,20 @@ def render_worker_report(report: WorkerReport) -> str:
 
 
 # ---------------------------------------------------------------------------
-# execution
+# execution -- the shared coordinator, in ingestion's call shape
 # ---------------------------------------------------------------------------
 
 
-def _timed(fn: Callable[[Any], Any], job: tuple[str, Any]) -> UnitResult:
-    """Times the unit with `process_time`, i.e. CPU seconds, NOT wall clock.
-
-    This matters and is not a detail. Under a pool with more workers than
-    cores, every unit's *wall* time inflates because the units are competing
-    for the same cores. Summing inflated wall times and dividing by the
-    section's wall clock produces a gain that RISES as the machine gets more
-    oversubscribed and slower -- it reported 5.06x for a run that was
-    measurably slower than the 3.02x one. The work here is CPU-bound, so CPU
-    seconds are what a single process would have spent, and they do not move
-    when the box is contended.
-    """
-    key, payload = job
-    start = time.process_time()
-    value = fn(payload)
-    return UnitResult(key=key, value=value, seconds=time.process_time() - start)
-
-
-class _Call:
-    """A picklable `functools.partial`. `ProcessPoolExecutor` pickles the
-    callable, and a closure is not picklable, so the bound function travels
-    as a module-level class instance instead."""
+class _IngestCall:
+    """A picklable ``fn(opened, arg)`` that ignores the shared payload."""
 
     __slots__ = ("fn",)
 
     def __init__(self, fn: Callable[[Any], Any]) -> None:
         self.fn = fn
 
-    def __call__(self, job: tuple[str, Any]) -> UnitResult:
-        return _timed(self.fn, job)
+    def __call__(self, _opened: Any, payload: Any) -> Any:
+        return self.fn(payload)
 
 
 def run_units(
@@ -3993,77 +4776,27 @@ def run_units(
     The caller must re-derive its own order from the keys; nothing about the
     returned mapping's construction order is allowed to reach the output.
 
-    Falls back to in-process, recording why, whenever a pool cannot help or
-    cannot start. A failed pool must never become a failed analysis: the work
-    is still done, just serially, and the report says so.
+    Delegates to :func:`cascade_map.parallel.run_stage`, which is the one
+    work-stealing pool in the project. The unit here is a whole file.
     """
-    report.requested = workers
-    report.unit_count = len(jobs)
-
-    if not jobs:
-        report.started = 1
+    stage = StageReport(stage="inventory")
+    out = run_stage(
+        _IngestCall(fn), jobs, workers, stage, payload=None, on_unit=on_unit
+    )
+    report.requested = stage.requested
+    report.started = stage.started
+    report.unit_count = stage.unit_count
+    report.wall_seconds = stage.wall_seconds
+    report.serial_seconds = stage.serial_seconds
+    report.largest_unit_key = stage.largest_unit_key
+    report.largest_unit_seconds = stage.largest_unit_seconds
+    report.unit_seconds.clear()
+    report.unit_seconds.update(stage.unit_seconds)
+    if stage.skipped_reason:
+        report.skipped_reason = stage.skipped_reason
+    elif not jobs:
         report.skipped_reason = "no files needed parsing"
-        return {}
-
-    if workers <= 1 or len(jobs) == 1:
-        if workers > 1 and len(jobs) == 1:
-            report.skipped_reason = (
-                "1 unit of work: a pool was not started because one worker "
-                "would do all of it and the rest would idle"
-            )
-        report.started = 1
-        started_at = time.perf_counter()
-        out: dict[str, Any] = {}
-        for done, job in enumerate(jobs, start=1):
-            r = _timed(fn, job)
-            out[r.key] = r.value
-            report.unit_seconds[r.key] = r.seconds
-            if on_unit is not None:
-                on_unit(done, len(jobs))
-        report.wall_seconds = time.perf_counter() - started_at
-        report.serial_seconds = sum(report.unit_seconds.values())
-        _record_largest(report)
-        return out
-
-    effective = min(workers, len(jobs))
-    started_at = time.perf_counter()
-    try:
-        with ProcessPoolExecutor(max_workers=effective) as pool:
-            # Iterated rather than `list(...)` so progress can be reported as
-            # results arrive. `pool.map` still yields in SUBMISSION order, so
-            # nothing about ordering changes -- only when we hear about it.
-            results = []
-            for done, item in enumerate(pool.map(_Call(fn), jobs, chunksize=1), start=1):
-                results.append(item)
-                if on_unit is not None:
-                    on_unit(done, len(jobs))
-    except Exception as exc:  # pragma: no cover - platform dependent
-        report.started = 1
-        report.skipped_reason = f"pool unavailable ({type(exc).__name__}); ran in-process"
-        report.wall_seconds = 0.0
-        report.unit_seconds.clear()
-        return run_units(fn, jobs, 1, report, on_unit=on_unit)
-
-    report.started = effective
-    out = {}
-    for r in results:
-        out[r.key] = r.value
-        report.unit_seconds[r.key] = r.seconds
-    report.wall_seconds = time.perf_counter() - started_at
-    report.serial_seconds = sum(report.unit_seconds.values())
-    _record_largest(report)
     return out
-
-
-def _record_largest(report: WorkerReport) -> None:
-    if not report.unit_seconds:
-        return
-    # Sorted by (-seconds, key) so ties break on the name, never on dict
-    # insertion order -- the report is printed and an owner comparing two
-    # runs must not see a different file named for the same timings.
-    key = sorted(report.unit_seconds.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
-    report.largest_unit_key = key
-    report.largest_unit_seconds = report.unit_seconds[key]
 
 
 # ==========================================================================
@@ -5299,6 +6032,15 @@ class Resolver:
         self._stats["edges"] = len(edges)
         self._stats["unresolved"] = len(unresolved)
         return edges, unresolved
+
+    def module_count(self) -> int:
+        """How many modules the last :meth:`resolve` walked.
+
+        The unit of work this stage would be split on, if its units were
+        independent. Reported so a target that is one module says so with a
+        number instead of looking like a stage that had nothing to gain.
+        """
+        return len(self._modules)
 
     def statistics(self) -> dict[str, int]:
         """Counts, all integers. Includes the edges deliberately not emitted,
@@ -8569,6 +9311,42 @@ _BUILTIN_NAMES: frozenset[str] = frozenset(dir(builtins)) | frozenset(
     {"self", "cls", "__name__", "__file__", "__doc__", "None", "True", "False"}
 )
 
+#: A pool costs roughly a tenth of a second to start and a CFG costs
+#: microseconds, so a handful of elements never repays it. Below this many
+#: units PER WORKER the stage stays in-process and the report says why.
+_CFG_MIN_UNITS_PER_WORKER = 64
+
+#: WHETHER THE CFG STAGE USES THE POOL AT ALL. `False`, and the reason is a
+#: measurement rather than an opinion.
+#:
+#: A CFG is a per-element unit and it parallelises correctly -- the pool below
+#: is real, and `test_every_artifact_is_byte_identical_at_one_two_four_and_
+#: eight_workers` proves its output is identical at 1, 2, 4 and 8 workers. It
+#: is off because it is SLOWER, on both target shapes measured:
+#:
+#:   owner's engine, 14.6 MB in ONE module, 1,992 CFG units
+#:       1 worker   cascade stage 37.9s
+#:       4 workers  cascade stage 86.2s   (CFG section 30s -> 57s)
+#:   this tool's own source, 22 modules, 1,563 CFG units
+#:       1 worker   CFG section 3.1s
+#:       2 workers  3.9s     4 workers 3.6s     8 workers 4.3s
+#:
+#: Two costs, and the second is structural. (1) Every worker must parse the
+#: files it touches, and `ast.parse` of the owner's 14.6 MB module is 22.05s
+#: measured -- four workers pay it four times. (2) The stage RETURNS far more
+#: than it consumes: 1,992 elements produce 33 MB of blocks and 42 MB of
+#: edges, roughly two million small objects that must be pickled out of the
+#: worker and unpickled back in. The ratio of output to input is a property of
+#: what a CFG *is*, not of this target, which is why the loss shows up on the
+#: multi-module measurement too, where the parse is cheap.
+#:
+#: Left reachable rather than deleted: the correctness is proven and a target
+#: whose per-element bodies are far heavier than their graphs would win. It is
+#: not switched on by a flag an owner could set without a measurement -- the
+#: tests set it, and the report says plainly that this stage runs in one
+#: process and why.
+_CFG_POOL_ENABLED = False
+
 _IMPURE_BUILTINS: frozenset[str] = frozenset(
     {"print", "open", "setattr", "delattr", "exec", "eval", "input", "__import__"}
 )
@@ -8797,6 +9575,74 @@ def _has_main_guard(module: ast.Module) -> bool:
 # ---------------------------------------------------------------------------
 # The per-element flow builder
 # ---------------------------------------------------------------------------
+
+
+def _index_bodies(tree: ast.Module, module: str) -> dict[str, ast.AST]:
+    """Map element ID -> defining AST node, using the contract's ID rule.
+
+    Module level so the CFG workers use the very same walk the analyser does.
+    Two copies of an ID rule is two answers to the same question.
+    """
+    index: dict[str, ast.AST] = {make_id(module): tree}
+    counts: dict[str, int] = {}
+
+    def walk(body: Iterable[ast.stmt], prefix: str) -> None:
+        for stmt in body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                qualname = f"{prefix}{stmt.name}"
+                counts[qualname] = counts.get(qualname, 0) + 1
+                index[make_id(module, qualname, counts[qualname])] = stmt
+                walk(stmt.body, f"{qualname}.")
+                continue
+            for name, value in ast.iter_fields(stmt):
+                if name in {"body", "orelse", "finalbody"} and isinstance(value, list):
+                    walk([s for s in value if isinstance(s, ast.stmt)], prefix)
+                elif name in {"handlers", "cases"} and isinstance(value, list):
+                    for sub in value:
+                        walk(list(getattr(sub, "body", [])), prefix)
+
+    walk(tree.body, "")
+    return index
+
+
+def _body_index(
+    cache: dict[tuple[str, str], dict[str, ast.AST]],
+    path: str,
+    module: str,
+    tree: ast.Module,
+) -> dict[str, ast.AST]:
+    key = (path, module)
+    index = cache.get(key)
+    if index is None:
+        index = _index_bodies(tree, module)
+        cache[key] = index
+    return index
+
+
+def _locate(
+    index_cache: dict[tuple[str, str], dict[str, ast.AST]],
+    line_cache: dict[tuple[str, str], dict[int, ast.AST]],
+    element: Element,
+    tree: ast.Module,
+) -> ast.AST | None:
+    key = (element.span.path, element.module)
+    index = _body_index(index_cache, element.span.path, element.module, tree)
+    node = index.get(element.id)
+    if node is not None:
+        return node
+    # Card 1's qualname convention may differ (``<locals>`` and friends). Fall
+    # back to the span, which is unambiguous within one file. The line index
+    # keeps the *first* node at each line, which is what the equivalent scan
+    # over `index.values()` in AST order would have found.
+    by_line = line_cache.get(key)
+    if by_line is None:
+        by_line = {}
+        for candidate in index.values():
+            line = int(getattr(candidate, "lineno", -1))
+            if line not in by_line:
+                by_line[line] = candidate
+        line_cache[key] = by_line
+    return by_line.get(element.span.line)
 
 
 class _FlowBuilder:
@@ -9566,6 +10412,283 @@ class _FlowBuilder:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# The CFG unit of work -- one whole element, built in one worker
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _FlowResult:
+    """Everything the later stages need from one element's CFG build.
+
+    A whole element is the unit, never a fragment: half a function is not
+    parseable and its facts would be wrong rather than merely worse.
+
+    This carries no AST node, deliberately. A :class:`_FlowBuilder` holds the
+    subtree it walked, and shipping a 123,000-line module's AST back from a
+    worker would cost far more than the build it parallelises. The two things
+    later stages read off that node -- the ``if``/``elif`` chain numbering and
+    the local half of the side-effect verdict -- are computed here, in the
+    worker, and travel as the small facts they are.
+    """
+
+    element_id: str
+    path: str
+    blocks: tuple[CFGBlock, ...]
+    edges: tuple[CFGEdge, ...]
+    unresolved: tuple[Unresolved, ...]
+    branches: tuple[_BranchShape, ...]
+    models: tuple[_ModelShape, ...]
+    deferred: tuple[_Shape, ...]
+    shape: _SeqShape
+    entry_id: str
+    exit_id: str
+    cascade_chain: dict[str, tuple[int, int]]
+    side_effect_events: tuple[str, ...]
+    """The side-effect walk, replayed rather than re-walked. Each entry is
+    either ``""`` -- a node that settles the verdict on its own, at which
+    point the sequence stops -- or the name of a plain-`Name` callee whose own
+    verdict the *parent* must look up, because that lookup crosses elements
+    and a worker sees only one. Replaying this gives the identical answer to
+    walking the AST in the parent, and `test_side_effect_replay_matches_the_
+    ast_walk` is what keeps the two honest."""
+
+
+def _side_effect_events(node: ast.AST) -> tuple[str, ...]:
+    """The side-effect walk of one body, recorded rather than decided.
+
+    Mirrors :meth:`CascadeAnalyzer._may_have_side_effects` exactly, except
+    that a cross-element lookup is *recorded* instead of followed: a worker
+    holds one element and cannot answer for another. The sequence stops at the
+    first event that settles the verdict locally, which is where the original
+    loop breaks.
+    """
+    events: list[str] = []
+    for child in ast.walk(node):
+        if isinstance(child, (ast.Global, ast.Nonlocal, ast.Yield, ast.YieldFrom)):
+            events.append("")
+        elif isinstance(child, (ast.Attribute, ast.Subscript)) and isinstance(
+            child.ctx, (ast.Store, ast.Del)
+        ):
+            events.append("")
+        elif isinstance(child, ast.Call):
+            if isinstance(child.func, ast.Attribute):
+                events.append("")  # a method may mutate its receiver
+            elif isinstance(child.func, ast.Name):
+                name = child.func.id
+                if name in _IMPURE_BUILTINS:
+                    events.append("")
+                elif name not in _BUILTIN_NAMES:
+                    events.append(name)
+                else:
+                    continue
+            else:
+                events.append("")
+        else:
+            continue
+        if events[-1] == "":
+            break
+    return tuple(events)
+
+
+def _cascade_chain_of(
+    node: ast.AST, path: str, branches: Sequence[_BranchShape]
+) -> dict[str, tuple[int, int]]:
+    """Number the steps of each ``if``/``elif`` chain, for the record."""
+    out: dict[str, tuple[int, int]] = {}
+    for parent in ast.walk(node):
+        if not isinstance(parent, ast.If):
+            continue
+        chain: list[ast.If] = [parent]
+        current = parent
+        while len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
+            current = current.orelse[0]
+            chain.append(current)
+        if len(chain) < 2:
+            continue
+        spans = {(_span_of(path, c).line, _span_of(path, c).col) for c in chain}
+        ordered = sorted(spans)
+        for shape in branches:
+            key = (shape.span.line, shape.span.col)
+            if key in spans and shape.block_id not in out:
+                out[shape.block_id] = (ordered.index(key) + 1, len(ordered))
+    return out
+
+
+def _flow_result(element: Element, node: ast.AST, path: str) -> _FlowResult:
+    """Build one element's CFG and reduce it to what travels."""
+    builder = _FlowBuilder(element, node, path)
+    builder.build()
+    return _FlowResult(
+        element_id=element.id,
+        path=path,
+        blocks=tuple(builder.blocks),
+        edges=tuple(builder.edges),
+        unresolved=tuple(builder.unresolved),
+        branches=tuple(builder.branches),
+        models=tuple(builder.models),
+        deferred=tuple(builder.deferred),
+        shape=builder.shape,
+        entry_id=builder.entry_id,
+        exit_id=builder.exit_id,
+        cascade_chain=_cascade_chain_of(node, path, builder.branches),
+        side_effect_events=_side_effect_events(node),
+    )
+
+
+class _CFGPayload(Payload):
+    """The state every CFG task in one worker shares, sent ONCE per worker.
+
+    The elements travel here rather than with each task, and each source file
+    is read and parsed once inside the worker rather than once per element.
+    On a single-module target that is the difference between one parse and
+    ten thousand.
+    """
+
+    def __init__(self, root: str, elements: Sequence[Element]) -> None:
+        self.root = root
+        self.elements = tuple(elements)
+
+    def open(self) -> "_CFGWorker":
+        return _CFGWorker(Path(self.root), self.elements)
+
+
+class _PreOpened(Payload):
+    """A payload that is already open, for the IN-PROCESS path only.
+
+    It exists so that running in one process shares that process's parse
+    caches instead of building a second set beside them. `ast.parse` of the
+    owner's 14.6 MB module is 22.05s measured, and parsing it twice in one run
+    -- once to build the CFGs and once to answer the questions asked per FILE,
+    the `__main__` guard and the discarded call sites -- was a measured 22s
+    regression that this removes.
+
+    Never handed to a pool: it holds live caches, and a second process would
+    get a copy of them that diverged silently.
+    """
+
+    __slots__ = ("worker",)
+
+    def __init__(self, worker: "_CFGWorker") -> None:
+        self.worker = worker
+
+    def open(self) -> "_CFGWorker":
+        return self.worker
+
+
+class _CFGWorker:
+    """One worker's view: parse on demand, cache per file, build per element.
+
+    The caches are passed in rather than created here so the in-process path
+    can hand it the analyser's own, and the two never parse one file twice
+    between them.
+    """
+
+    def __init__(
+        self,
+        root: Path,
+        elements: Sequence[Element],
+        *,
+        trees: dict[str, ast.Module | None] | None = None,
+        index_cache: dict[tuple[str, str], dict[str, ast.AST]] | None = None,
+        line_cache: dict[tuple[str, str], dict[int, ast.AST]] | None = None,
+    ) -> None:
+        self.root = root
+        self.elements = {element.id: element for element in elements}
+        self.trees = {} if trees is None else trees
+        self.parse_failures: dict[str, Unresolved] = {}
+        self.index_cache = {} if index_cache is None else index_cache
+        self.line_cache = {} if line_cache is None else line_cache
+
+    def parse(self, path: str) -> ast.Module | None:
+        if path in self.trees:
+            return self.trees[path]
+        tree, failure = _parse_source(self.root, path)
+        self.trees[path] = tree
+        if failure is not None:
+            self.parse_failures[path] = failure
+        return tree
+
+
+@dataclass(frozen=True)
+class _CFGOutcome:
+    """One task's whole answer: the flow, or why there is none."""
+
+    flow: _FlowResult | None = None
+    not_located: Unresolved | None = None
+    parse_failure: Unresolved | None = None
+
+
+def _cfg_unit(worker: "_CFGWorker", element_id: str) -> _CFGOutcome:
+    """One whole element's control-flow graph. The unit of work."""
+    element = worker.elements[element_id]
+    path = element.span.path
+    seen_failure = path in worker.parse_failures
+    tree = worker.parse(path)
+    if tree is None:
+        # Reported once per PATH, not once per element in it: the record's id
+        # is derived from the path, so the consolidation step de-duplicates by
+        # id and the artifact holds exactly one. Sending it with the first
+        # element that hit it keeps the worker stateless about who reports.
+        failure = None if seen_failure else worker.parse_failures.get(path)
+        return _CFGOutcome(parse_failure=failure)
+    node = _locate(worker.index_cache, worker.line_cache, element, tree)
+    if node is None:
+        return _CFGOutcome(
+            not_located=Unresolved(
+                id=make_id(element.id, "@cfg_not_located"),
+                reason=UnresolvedReason.MISSING_TARGET,
+                span=element.span,
+                description=(
+                    "no AST node matches this element's id or span; no CFG built"
+                ),
+                attempted=(Method.AST_DIRECT,),
+            )
+        )
+    return _CFGOutcome(flow=_flow_result(element, node, path))
+
+
+def _parse_source(root: Path, path: str) -> tuple[ast.Module | None, Unresolved | None]:
+    """Read and parse one file. Never imports, executes or unpickles it."""
+    full = root / path
+    try:
+        text = full.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None, Unresolved(
+            id=make_id("@cascade", f"missing:{path}"),
+            reason=UnresolvedReason.MISSING_TARGET,
+            span=SourceSpan(path=path, line=1),
+            description=f"source file not found under {root}; no CFG built for it",
+            attempted=(Method.AST_DIRECT,),
+        )
+    except UnicodeDecodeError as exc:
+        return None, Unresolved(
+            id=make_id("@cascade", f"decode:{path}"),
+            reason=UnresolvedReason.DECODE_ERROR,
+            span=SourceSpan(path=path, line=1),
+            description=f"not UTF-8 ({exc.reason}); no CFG built for it",
+            attempted=(Method.AST_DIRECT,),
+        )
+    except OSError as exc:
+        return None, Unresolved(
+            id=make_id("@cascade", f"unreadable:{path}"),
+            reason=UnresolvedReason.MISSING_TARGET,
+            span=SourceSpan(path=path, line=1),
+            description=f"unreadable: {exc.__class__.__name__}",
+            attempted=(Method.AST_DIRECT,),
+        )
+    try:
+        return ast.parse(text, filename=path), None
+    except SyntaxError as exc:
+        return None, Unresolved(
+            id=make_id("@cascade", f"syntax:{path}"),
+            reason=UnresolvedReason.SYNTAX_ERROR,
+            span=SourceSpan(path=path, line=int(exc.lineno or 1)),
+            description=f"cannot parse: {exc.msg}; no CFG built for it",
+            attempted=(Method.AST_DIRECT,),
+        )
+
+
 class CascadeAnalyzer:
     """Card 3's implementation of :class:`~.contracts.interfaces.CascadeCard`.
 
@@ -9583,10 +10706,24 @@ class CascadeAnalyzer:
         *,
         sink_ids: Sequence[str] = (),
         unresolved: Sequence[Unresolved] = (),
+        workers: int | None = None,
+        on_unit: Callable[[int, int], None] | None = None,
     ) -> None:
         self.root = Path(root)
         self._declared_sinks: tuple[str, ...] = tuple(sorted(set(sink_ids)))
         self._input_unresolved: tuple[Unresolved, ...] = tuple(unresolved)
+        #: How many child processes the CFG stage may use. `0`/`1` keep
+        #: everything in this process, which is how any of it is debugged.
+        self.workers = resolve_workers(workers)
+        self._on_unit = on_unit
+        #: The CFG stage's measured worker effectiveness. A timing, so it never
+        #: reaches an artifact -- constraint 4.
+        self.cfg_report = StageReport(stage="cascade")
+        #: The two closures that are sequential by nature, timed and named
+        #: rather than faked.
+        self.order_report = StageReport(
+            stage="order", sequential_by_nature=True, started=1
+        )
         self._reset()
 
     def _reset(self) -> None:
@@ -9601,8 +10738,12 @@ class CascadeAnalyzer:
         self._reachability: list[Reachability] = []
         self._entry_candidates: list[DetectedCandidate] = []
         self._sink_candidates: list[DetectedCandidate] = []
-        self._builders: dict[str, _FlowBuilder] = {}
+        self._builders: dict[str, _FlowResult] = {}
         self._source_cache: dict[str, ast.Module | None] = {}
+        #: ids of parse failures already emitted, whether by a worker or
+        #: by this process. Constraint 3 wants the failure reported; it
+        #: does not want it reported once per reader.
+        self._reported_failures: set[str] = set()
         # (path, module) -> element id -> defining AST node. Built once per
         # file rather than once per element: on a single-module target the
         # index is the whole tree and rebuilding it per element is quadratic
@@ -9669,9 +10810,18 @@ class CascadeAnalyzer:
         self._build_cfgs()
         self._entry_ids = self._resolve_entries(entry_ids)
         self._sink_ids = self._resolve_sinks()
+        # SEQUENTIAL BY NATURE, and timed so its share is a measurement rather
+        # than a claim. Ordering is a topological closure over the whole graph
+        # and reachability is a closure over the reversed one: every node's
+        # answer depends on every other node's, so there is no unit to hand
+        # out. Faking parallelism here would buy a wrong graph, which is
+        # infinitely worse than a slow one.
+        closure_started = time.perf_counter()
         self._build_order()
         self._build_decisions()
         self._build_reachability()
+        self.order_report.wall_seconds = time.perf_counter() - closure_started
+        self.order_report.total_seconds = self.order_report.wall_seconds
 
         self._blocks.sort(key=lambda b: b.id)
         self._cfg_edges.sort(key=lambda e: e.id)
@@ -9751,43 +10901,22 @@ class CascadeAnalyzer:
     # -- CFG ----------------------------------------------------------------
 
     def _parse(self, path: str) -> ast.Module | None:
+        """The parent's own copy of the tree, for the questions that are asked
+        per FILE rather than per element -- the ``__main__`` guard, the
+        discarded call sites.
+
+        The CFG workers parse independently, in their own processes; a failure
+        either of them already reported is not reported twice, because the
+        record's id is derived from the path and constraint 3 asks for the
+        failure once, not once per reader.
+        """
         if path in self._source_cache:
             return self._source_cache[path]
-        tree: ast.Module | None = None
-        full = self.root / path
-        try:
-            text = full.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            self._record_unresolved(
-                make_id("@cascade", f"missing:{path}"),
-                UnresolvedReason.MISSING_TARGET,
-                SourceSpan(path=path, line=1),
-                f"source file not found under {self.root}; no CFG built for it",
-            )
-        except UnicodeDecodeError as exc:
-            self._record_unresolved(
-                make_id("@cascade", f"decode:{path}"),
-                UnresolvedReason.DECODE_ERROR,
-                SourceSpan(path=path, line=1),
-                f"not UTF-8 ({exc.reason}); no CFG built for it",
-            )
-        except OSError as exc:
-            self._record_unresolved(
-                make_id("@cascade", f"unreadable:{path}"),
-                UnresolvedReason.MISSING_TARGET,
-                SourceSpan(path=path, line=1),
-                f"unreadable: {exc.__class__.__name__}",
-            )
-        else:
-            try:
-                tree = ast.parse(text, filename=path)
-            except SyntaxError as exc:
-                self._record_unresolved(
-                    make_id("@cascade", f"syntax:{path}"),
-                    UnresolvedReason.SYNTAX_ERROR,
-                    SourceSpan(path=path, line=int(exc.lineno or 1)),
-                    f"cannot parse: {exc.msg}; no CFG built for it",
-                )
+        tree, failure = _parse_source(self.root, path)
+        if failure is not None and failure.id not in self._reported_failures:
+            self._reported_failures.add(failure.id)
+            self._opaque.add(failure.id)
+            self._unresolved.append(failure)
         self._source_cache[path] = tree
         return tree
 
@@ -9817,82 +10946,86 @@ class CascadeAnalyzer:
 
     def _index_bodies(self, tree: ast.Module, module: str) -> dict[str, ast.AST]:
         """Map element ID -> defining AST node, using the contract's ID rule."""
-        index: dict[str, ast.AST] = {make_id(module): tree}
-        counts: dict[str, int] = {}
-
-        def walk(body: Iterable[ast.stmt], prefix: str) -> None:
-            for stmt in body:
-                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    qualname = f"{prefix}{stmt.name}"
-                    counts[qualname] = counts.get(qualname, 0) + 1
-                    index[make_id(module, qualname, counts[qualname])] = stmt
-                    walk(stmt.body, f"{qualname}.")
-                    continue
-                for name, value in ast.iter_fields(stmt):
-                    if name in {"body", "orelse", "finalbody"} and isinstance(value, list):
-                        walk([s for s in value if isinstance(s, ast.stmt)], prefix)
-                    elif name in {"handlers", "cases"} and isinstance(value, list):
-                        for sub in value:
-                            walk(list(getattr(sub, "body", [])), prefix)
-
-        walk(tree.body, "")
-        return index
+        return _index_bodies(tree, module)
 
     def _body_index(self, element: Element, tree: ast.Module) -> dict[str, ast.AST]:
-        key = (element.span.path, element.module)
-        index = self._body_index_cache.get(key)
-        if index is None:
-            index = self._index_bodies(tree, element.module)
-            self._body_index_cache[key] = index
-        return index
+        return _body_index(
+            self._body_index_cache, element.span.path, element.module, tree
+        )
 
     def _locate(self, element: Element, tree: ast.Module) -> ast.AST | None:
-        key = (element.span.path, element.module)
-        index = self._body_index(element, tree)
-        node = index.get(element.id)
-        if node is not None:
-            return node
-        # Card 1's qualname convention may differ (``<locals>`` and friends).
-        # Fall back to the span, which is unambiguous within one file. The
-        # line index keeps the *first* node at each line, which is what the
-        # equivalent scan over `index.values()` in AST order would have found.
-        by_line = self._body_line_index.get(key)
-        if by_line is None:
-            by_line = {}
-            for candidate in index.values():
-                line = int(getattr(candidate, "lineno", -1))
-                if line not in by_line:
-                    by_line[line] = candidate
-            self._body_line_index[key] = by_line
-        return by_line.get(element.span.line)
+        return _locate(
+            self._body_index_cache, self._body_line_index, element, tree
+        )
 
     def _build_cfgs(self) -> None:
-        for element in sorted(self._elements.values(), key=lambda e: e.id):
-            if element.kind not in CFG_ELEMENT_KINDS:
+        """One CFG per element, over the work-stealing pool.
+
+        Every unit is a WHOLE element. The pool hands them out of one shared
+        queue, so a 4,000-line method does not leave the other workers idle
+        the way a fixed batch would.
+
+        **Consolidation is sequential and in id order**, below, not in the
+        order the workers finished: `_blocks`, `_cfg_edges` and `_unresolved`
+        are appended to in `sorted(...)` order exactly as the serial loop did,
+        and every id inside a unit is minted from that unit's element id, never
+        from a counter shared across units.
+        """
+        ordered = [
+            element.id
+            for element in sorted(self._elements.values(), key=lambda e: e.id)
+            if element.kind in CFG_ELEMENT_KINDS
+        ]
+        jobs = [(element_id, element_id) for element_id in ordered]
+        workers = self.workers if _CFG_POOL_ENABLED else 1
+        if not _CFG_POOL_ENABLED and self.workers > 1:
+            self.cfg_report.not_parallelised_reason = (
+                "measured slower in a pool on every target shape tried: a CFG "
+                "returns far more than it consumes (33 MB of blocks and 42 MB "
+                "of edges from 1,992 elements on the owner's engine), and each "
+                "worker must re-parse the files it touches (ast.parse of a "
+                "14.6 MB module is 22.0s). See _CFG_POOL_ENABLED"
+            )
+        results: dict[str, _CFGOutcome] = run_stage(
+            _cfg_unit,
+            jobs,
+            workers,
+            self.cfg_report,
+            payload=self._cfg_payload(workers),
+            on_unit=self._on_unit,
+            # Below this a pool costs more to start than the CFGs cost to
+            # build. Measured, not guessed: `test_small_targets_stay_in_process`.
+            min_units_per_worker=_CFG_MIN_UNITS_PER_WORKER,
+        )
+        for element_id in ordered:
+            outcome = results.get(element_id)
+            if outcome is None:  # pragma: no cover - a unit that vanished
                 continue
-            tree = self._parse(element.span.path)
-            if tree is None:
+            if outcome.parse_failure is not None:
+                # De-duplicated by id, which is derived from the path: several
+                # elements in one unreadable file report the same failure and
+                # the artifact must hold it once.
+                if outcome.parse_failure.id not in self._reported_failures:
+                    self._reported_failures.add(outcome.parse_failure.id)
+                    self._opaque.add(outcome.parse_failure.id)
+                    self._unresolved.append(outcome.parse_failure)
                 continue
-            node = self._locate(element, tree)
-            if node is None:
-                self._record_unresolved(
-                    make_id(element.id, "@cfg_not_located"),
-                    UnresolvedReason.MISSING_TARGET,
-                    element.span,
-                    "no AST node matches this element's id or span; no CFG built",
-                )
+            if outcome.not_located is not None:
+                self._opaque.add(outcome.not_located.id)
+                self._unresolved.append(outcome.not_located)
                 continue
-            builder = _FlowBuilder(element, node, element.span.path)
-            builder.build()
-            self._builders[element.id] = builder
-            self._blocks.extend(builder.blocks)
-            self._cfg_edges.extend(builder.edges)
-            self._unresolved.extend(builder.unresolved)
+            flow = outcome.flow
+            if flow is None:  # pragma: no cover - a parse failure already seen
+                continue
+            self._builders[element_id] = flow
+            self._blocks.extend(flow.blocks)
+            self._cfg_edges.extend(flow.edges)
+            self._unresolved.extend(flow.unresolved)
             # A deferred lambda body hides a control path; `break` outside a
             # loop does not. Only the former blinds reachability.
             self._opaque.update(
                 record.id
-                for record in builder.unresolved
+                for record in flow.unresolved
                 if record.reason is UnresolvedReason.AMBIGUOUS
             )
 
@@ -9933,7 +11066,7 @@ class CascadeAnalyzer:
             evidence: tuple[str, ...] = ()
             confidence = Confidence.HEURISTIC
             if element.kind is ElementKind.MODULE:
-                tree = self._source_cache.get(element.span.path)
+                tree = self._parse(element.span.path)
                 if tree is not None and _has_main_guard(tree):
                     evidence = (
                         f'{element.span.path} has an `if __name__ == "__main__"` guard',
@@ -9941,7 +11074,7 @@ class CascadeAnalyzer:
                     confidence = Confidence.PROBABLE
             elif element.kind is ElementKind.FUNCTION and element.name in _ENTRY_NAME_HINTS:
                 stem = Path(element.span.path).stem
-                tree = self._source_cache.get(element.span.path)
+                tree = self._parse(element.span.path)
                 guarded = tree is not None and _has_main_guard(tree)
                 if guarded:
                     evidence = (
@@ -10775,27 +11908,29 @@ class CascadeAnalyzer:
                     )
                 )
 
-    def _cascade_chain(self, builder: _FlowBuilder) -> dict[str, tuple[int, int]]:
-        """Number the steps of each ``if``/``elif`` chain, for the record."""
-        out: dict[str, tuple[int, int]] = {}
-        node = builder.node
-        for parent in ast.walk(node):
-            if not isinstance(parent, ast.If):
-                continue
-            chain: list[ast.If] = [parent]
-            current = parent
-            while len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
-                current = current.orelse[0]
-                chain.append(current)
-            if len(chain) < 2:
-                continue
-            spans = {(_span_of(builder.path, c).line, _span_of(builder.path, c).col) for c in chain}
-            ordered = sorted(spans)
-            for shape in builder.branches:
-                key = (shape.span.line, shape.span.col)
-                if key in spans and shape.block_id not in out:
-                    out[shape.block_id] = (ordered.index(key) + 1, len(ordered))
-        return out
+    def _cfg_payload(self, workers: int) -> Payload:
+        """In one process, share this analyser's parse caches; in a pool, send
+        only what is cheap and let each worker build its own."""
+        elements = tuple(self._elements.values())
+        if workers <= 1:
+            return _PreOpened(
+                _CFGWorker(
+                    self.root,
+                    elements,
+                    trees=self._source_cache,
+                    index_cache=self._body_index_cache,
+                    line_cache=self._body_line_index,
+                )
+            )
+        return _CFGPayload(str(self.root), elements)
+
+    def _cascade_chain(self, builder: _FlowResult) -> dict[str, tuple[int, int]]:
+        """Number the steps of each ``if``/``elif`` chain, for the record.
+
+        Computed in the worker that built the CFG, from the same AST node, so
+        the answer is identical and the node never has to travel.
+        """
+        return builder.cascade_chain
 
     def _condition_calls(
         self, element_id: str, positions: Sequence[tuple[int, int]], span: SourceSpan
@@ -10932,28 +12067,19 @@ class CascadeAnalyzer:
         builder = self._builders.get(element_id)
         if builder is None:
             return True
+        # The walk itself happened in the worker that built this element's CFG;
+        # what is replayed here is the sequence it recorded, because the only
+        # step a worker cannot take is the one that crosses into another
+        # element. `""` is a node that settled the verdict on its own.
         verdict = False
-        for node in ast.walk(builder.node):
-            if isinstance(node, (ast.Global, ast.Nonlocal, ast.Yield, ast.YieldFrom)):
+        for event in builder.side_effect_events:
+            if event == "":
                 verdict = True
-            elif isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(
-                node.ctx, (ast.Store, ast.Del)
-            ):
-                verdict = True
-            elif isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Attribute):
-                    verdict = True  # a method may mutate its receiver
-                elif isinstance(node.func, ast.Name):
-                    name = node.func.id
-                    if name in _IMPURE_BUILTINS:
-                        verdict = True
-                    elif name not in _BUILTIN_NAMES:
-                        target = self._lookup_name(self._elements.get(element_id), name)
-                        verdict = not target or self._may_have_side_effects(
-                            target, (*stack, element_id)
-                        )
-                else:
-                    verdict = True
+                break
+            target = self._lookup_name(self._elements.get(element_id), event)
+            verdict = not target or self._may_have_side_effects(
+                target, (*stack, element_id)
+            )
             if verdict:
                 break
         self._side_effect_cache[element_id] = verdict
@@ -11948,6 +13074,15 @@ class LineageTracer:
         self._link_container_keys()
         self._freeze()
         return self.lineage_edges, self.barriers
+
+    def module_count(self) -> int:
+        """How many modules the last :meth:`trace_values` walked.
+
+        The unit this stage would be split on, if its walks did not write
+        state that later walks read. Reported so the owner sees the number
+        rather than a claim.
+        """
+        return len(self._modules)
 
     def _freeze(self) -> None:
         self.lineage_edges = tuple(
@@ -18852,6 +19987,13 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "FORCE_SLICES": False,
 
     "ENV": ".venv-target",
+
+    # The owner-confirmed intents file. Empty means no spec: every element is
+    # NO_INTENT, which is a reported state and neither a pass nor a failure.
+    # A named file that cannot be read is reported line by line, never
+    # silently ignored.
+    "INTENTS": "",
+
     "ORDER": [],
     "SCENARIOS": "scenarios.json",
     "SCENARIO": "baseline",
@@ -18894,6 +20036,7 @@ _KEY_TO_FIELD: dict[str, str] = {
     "SLICE_ROOTS": "slice_roots",
     "FORCE_SLICES": "force_slices",
     "ENV": "env",
+    "INTENTS": "intents",
     "ORDER": "order",
     "SCENARIOS": "scenarios",
     "SCENARIO": "scenario",
@@ -18940,6 +20083,9 @@ class Settings:
     #: obstruction.
     force_slices: bool = False
     env: str = ".venv-target"
+    #: Path to the owner-confirmed intents YAML, relative to the run root.
+    #: Empty means no spec, which is a reported state and not an error.
+    intents: str = ""
     order: tuple[str, ...] = ()
     scenarios: str = "scenarios.json"
     scenario: str = "baseline"
@@ -19581,7 +20727,10 @@ class _FingerprintedSnapshot(GraphSnapshot):
 # ---------------------------------------------------------------------------
 
 AnalyseFn = Callable[[Path, Path, Settings], dict[str, Any]]
-TraceFn = Callable[[Path, Path, str, Path], tuple[int, str]]
+#: `(graph_dir, scenarios_file, scenario, out_root, intents_path)`. The last is
+#: optional and the owner's own file, so a caller that does not use intents
+#: passes `None` and nothing changes.
+TraceFn = Callable[..., tuple[int, str]]
 
 
 def _default_analyse(
@@ -19599,9 +20748,14 @@ def _default_analyse(
 
     env = Path(settings.env) if settings.env else None
     prefix = source_root.name
+    # The intents file is the OWNER'S, so it is resolved relative to where
+    # they ran `track` -- not into each version's own tree, where it would
+    # have to be copied per version and would then drift between them.
+    intents_path = Path(settings.intents) if settings.intents else None
     code, summary = analyze(
         source_root,
         out_dir,
+        intents_path=intents_path,
         entry_ids=tuple(qualify_id(i, prefix) for i in settings.entries),
         sink_ids=tuple(qualify_id(i, prefix) for i in settings.sinks),
         config_paths=settings.configs,
@@ -20668,6 +21822,7 @@ def _run_mode_a(
     """
     if settings.mode != 2 or not new_ids:
         return ()
+    intents_path = Path(settings.intents) if settings.intents else None
     if trace is None:
         return (
             "MODE 2 was set but no harness was wired into this Ledger, so nothing "
@@ -20681,7 +21836,9 @@ def _run_mode_a(
         for version_id in sorted(new_ids):
             record = ledger.record(version_id)
             out_dir = ledger.resolve(record.artifact_dir)
-            code, message = trace(out_dir, scenarios, settings.scenario, out_dir)
+            code, message = trace(
+                out_dir, scenarios, settings.scenario, out_dir, intents_path
+            )
             label = record.label
             head = message.splitlines()[0] if message else ""
             notes.append(f"{label}: trace exit {code} -- {head}")
@@ -20717,7 +21874,7 @@ def _run_mode_a(
             newline="\n",
         )
         for sport in sports:
-            code, message = trace(out_dir, derived, sport, out_dir)
+            code, message = trace(out_dir, derived, sport, out_dir, intents_path)
             head = message.splitlines()[0] if message else ""
             notes.append(f"{record.label} [{sport}]: trace exit {code} -- {head}")
     return tuple(notes)
@@ -23009,6 +24166,34 @@ _KIND_STRINGS: dict[ElementKind, _KindStrings] = {
     kind: _KindStrings(kind) for kind in ElementKind
 }
 
+#: Below this a chunk is not worth sending: the record build is microseconds
+#: and the round trip is not.
+_MIN_RECORDS_PER_CHUNK = 64
+
+#: Chunks per worker. Above one, so an idle worker has something left to steal.
+_CHUNKS_PER_WORKER = 8
+
+#: Fewer chunks than this per worker and the pool costs more than it saves.
+#: Measured on the fixture corpus, where 491 elements came back at 0.20x.
+_MIN_CHUNKS_PER_WORKER = 4
+
+#: WHETHER THE RECORDS STAGE USES THE POOL AT ALL. `False`, measured:
+#:
+#:   owner's engine, 10,165 elements
+#:       1 worker   records stage 0.79s
+#:       4 workers  records stage 1.38s   (0.3s of work, 0.8s in the pool)
+#:
+#: This stage is embarrassingly parallel and the pool below is correct -- the
+#: byte-identity test drives it at 1, 2, 4 and 8 workers. It loses anyway,
+#: because card 16 already made the build itself nearly free (117x, measured)
+#: while the RESULT is 25 MB of documentation records that must cross back out
+#: of the worker. When the work is 0.3s and the answer is 25 MB, no worker
+#: count helps.
+#:
+#: The honest consequence: records is 0.2% of a 393s run on the owner's
+#: engine. There is nothing here for workers to win.
+_RECORDS_POOL_ENABLED = False
+
 _NO_LINEAGE_REASON = "no lineage data supplied to the documentation builder"
 _NO_RETURN_REASON = (
     "signature has no -> annotation and none could be inferred"
@@ -23300,22 +24485,64 @@ class DocumentationBuilder:
     # -- assembly -----------------------------------------------------
 
     def records(
-        self, *, on_progress: Callable[[int, int], None] | None = None
+        self,
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
+        workers: int | None = None,
+        report: StageReport | None = None,
     ) -> Sequence[DocRecord]:
-        """`on_progress(done, total)` is called at most `_PROGRESS_STEPS` times
+        """One record per element, built over the work-stealing pool.
+
+        A record is embarrassingly parallel: it depends on this builder's
+        indexes and on nothing any other record produces. The unit is a whole
+        element, the builder crosses to each worker ONCE (never once per
+        element -- it holds the whole graph), and the consolidation below puts
+        the results back in element-id order, which is the order the serial
+        loop produced and is independent of which worker finished first.
+
+        `on_progress(done, total)` is called at most `_PROGRESS_STEPS` times
         over the whole build, not once per element: the callback exists so a
         long stage looks alive, and firing it per element on a 400,000-element
-        target would cost more than the reporting is worth."""
+        target would cost more than the reporting is worth.
+        """
         ordered = sorted(self._elements, key=lambda e: e.id)
-        if on_progress is None:
-            return tuple(self._build_record(el) for el in ordered)
+        stage = report if report is not None else StageReport(stage="records")
+        asked = resolve_workers(workers)
+        count = asked if _RECORDS_POOL_ENABLED else 1
+        if not _RECORDS_POOL_ENABLED and asked > 1:
+            stage.not_parallelised_reason = (
+                "measured slower in a pool: the build is 0.3s of work and the "
+                "answer is 25 MB of records that must cross back out of the "
+                "worker (0.79s in one process, 1.38s over four). See "
+                "_RECORDS_POOL_ENABLED"
+            )
         total = len(ordered)
-        every = max(1, total // _PROGRESS_STEPS)
+        chunks = _chunk_bounds(total, count)
+
+        def tick(done: int, of: int) -> None:
+            # Chunks, not elements: a chunk coming back is the only moment the
+            # pool has news, and the callback exists so a long stage looks
+            # alive rather than to count anything.
+            assert on_progress is not None
+            on_progress(min(total, round(total * done / max(1, of))), total)
+
+        results: dict[str, list[DocRecord]] = run_stage(
+            _records_unit,
+            [(f"{index:08d}", bounds) for index, bounds in enumerate(chunks)],
+            count,
+            stage,
+            payload=_RecordsPayload(self, ordered),
+            on_unit=tick if on_progress is not None else None,
+            # A few hundred records cost less to build than a pool costs to
+            # start. Below this many chunks per worker the stage stays
+            # in-process and the report says why, with the number.
+            min_units_per_worker=_MIN_CHUNKS_PER_WORKER,
+        )
+        # SEQUENTIAL CONSOLIDATION, by chunk index, which is element-id order.
+        # Nothing here depends on which worker finished first.
         built: list[DocRecord] = []
-        for done, element in enumerate(ordered, start=1):
-            built.append(self._build_record(element))
-            if done % every == 0 or done == total:
-                on_progress(done, total)
+        for index in range(len(chunks)):
+            built.extend(results.get(f"{index:08d}", ()))
         return tuple(built)
 
     def _build_record(self, element: Element) -> DocRecord:
@@ -23590,6 +24817,82 @@ class DocumentationBuilder:
         return tuple(enriched)
 
 
+# ---------------------------------------------------------------------------
+# The records unit of work -- whole elements, never a fragment of one
+# ---------------------------------------------------------------------------
+
+
+def _chunk_bounds(total: int, workers: int) -> list[tuple[int, int]]:
+    """Contiguous half-open ranges over an already-sorted element list.
+
+    Many more chunks than workers, deliberately: that is what keeps the shared
+    queue able to *steal*. With one chunk per worker a single slow chunk
+    leaves the rest idle, which is the fixed-batch failure this pool exists to
+    avoid. Bounded below so a chunk is never so small that sending it costs
+    more than building it.
+    """
+    if total <= 0:
+        return []
+    if workers <= 1:
+        return [(0, total)]
+    target = max(_MIN_RECORDS_PER_CHUNK, -(-total // (workers * _CHUNKS_PER_WORKER)))
+    bounds: list[tuple[int, int]] = []
+    start = 0
+    while start < total:
+        stop = min(total, start + target)
+        bounds.append((start, stop))
+        start = stop
+    return bounds
+
+
+class _RecordsWorker:
+    """One worker's view: the builder plus the element order, sorted once."""
+
+    __slots__ = ("builder", "ordered")
+
+    def __init__(
+        self, builder: "DocumentationBuilder", ordered: Sequence[Element]
+    ) -> None:
+        self.builder = builder
+        self.ordered = ordered
+
+
+class _RecordsPayload(Payload):
+    """The whole builder, sent ONCE per worker.
+
+    It holds the entire graph -- elements, edges, order, decisions, lineage,
+    slices, findings -- so sending it with every task would cost orders of
+    magnitude more than the records cost to build. Under the ``fork`` start
+    method it is not even pickled: the child inherits it.
+    """
+
+    __slots__ = ("builder", "ordered")
+
+    def __init__(
+        self, builder: "DocumentationBuilder", ordered: Sequence[Element]
+    ) -> None:
+        self.builder = builder
+        # Sorted ONCE, by the caller, and carried rather than re-derived: a
+        # sort per worker on a 400,000-element target is a cost for nothing.
+        self.ordered = tuple(ordered)
+
+    def open(self) -> "_RecordsWorker":
+        return _RecordsWorker(self.builder, self.ordered)
+
+
+def _records_unit(
+    worker: "_RecordsWorker", bounds: tuple[int, int]
+) -> list[DocRecord]:
+    """Whole records for one contiguous range of the sorted element list.
+
+    Whole elements: a record is never split, because half a record would fail
+    the completeness gate and a record that fails the gate is a failed run.
+    """
+    start, stop = bounds
+    build = worker.builder._build_record
+    return [build(element) for element in worker.ordered[start:stop]]
+
+
 # ==========================================================================
 # enrichment.py
 # ==========================================================================
@@ -23844,16 +25147,24 @@ def config_fingerprint(
     declared_process_names: frozenset[str],
     client_names: frozenset[str],
     env_passthrough: frozenset[str],
+    client_declarations: str = "",
 ) -> str:
     """A deterministic summary of the parts of a run config that affect what
-    a run is allowed to do, for folding into the run ID."""
-    payload = canonical_dumps(
-        {
-            "declared_process_names": sorted(declared_process_names),
-            "client_names": sorted(client_names),
-            "env_passthrough": sorted(env_passthrough),
-        }
-    )
+    a run is allowed to do, for folding into the run ID.
+
+    ``client_declarations`` is the canonical text of the owner's stub
+    declarations. It is folded in only when it is non-empty, so a run with no
+    declared stub keeps exactly the run ID it had before stub kinds existed --
+    the alternative was silently renaming every recorded run on disk.
+    """
+    body = {
+        "declared_process_names": sorted(declared_process_names),
+        "client_names": sorted(client_names),
+        "env_passthrough": sorted(env_passthrough),
+    }
+    if client_declarations:
+        body["client_declarations"] = client_declarations
+    payload = canonical_dumps(body)
     return hashlib.sha256(payload.encode("ascii")).hexdigest()
 
 
@@ -23960,6 +25271,13 @@ class RunConfig:
     scenarios: dict[str, ScenarioSpec] = field(default_factory=dict)
     declared_process_names: frozenset[str] = frozenset()
     client_stubs: dict[str, Callable[[], ModuleType]] = field(default_factory=dict)
+    #: Canonical text of the owner's ``client_stubs`` declarations, folded into
+    #: the run ID. The factories above are opaque callables, so without this two
+    #: runs that stub the same module two different ways -- blocked here,
+    #: replayed there -- would share a run ID and their outputs would be
+    #: compared as if they were the same run. Empty when nothing is declared,
+    #: which keeps every run ID that predates stub kinds unchanged.
+    client_declarations: str = ""
     env_passthrough: frozenset[str] = frozenset()
 
 
@@ -24416,6 +25734,22 @@ def _dispatch(event: str, args: tuple[object, ...]) -> None:
     ctx.handle_event(event, args)
 
 
+def record_blocked(kind: str, detail: str) -> BlockedAttempt | None:
+    """Record a refusal made OUTSIDE the audit hook, on the active context.
+
+    A declared client stub stops a call at the client boundary rather than at
+    the socket, so there is no audit event to hang it on -- but it is the same
+    kind of finding and belongs in the same list. Returns ``None`` when no run
+    is active, which the caller must treat as "not recorded", never as
+    "allowed": the stop itself is the caller's own raise, not this function's
+    return value.
+    """
+    ctx = _active_ctx
+    if ctx is None:
+        return None
+    return ctx._record_blocked(kind, detail)
+
+
 def install_hook() -> None:
     """Install the process-wide audit hook, once. Idempotent and permanent:
     Python does not offer a way to remove an audit hook, by design."""
@@ -24452,6 +25786,523 @@ def activate(ctx: SandboxContext) -> Iterator[SandboxContext]:
         for t in threading.enumerate():
             if t is not current and not t.daemon and t.is_alive():
                 t.join(timeout=5.0)
+
+
+# ==========================================================================
+# harness/stubs.py
+# ==========================================================================
+
+"""Declared external clients: what the harness puts in front of a broker.
+
+``RunConfig.client_stubs`` has always accepted a mapping of module name to a
+factory returning a module. Nothing could reach it: a scenarios file is JSON
+and JSON cannot hold a Python callable, so through the CLI every external
+client was simply *undeclared*, and an undeclared client is a hard stop. Safe,
+and it meant a Mode 2 run of an engine that talks to a broker or a database
+stopped at the first call.
+
+This module is the missing half: a **declaration** the owner writes in the
+scenarios file, and a factory built from it.
+
+    "client_stubs": {
+      "broker_api":  {"kind": "blocked"},
+      "market_db":   {"kind": "record", "returns": {"*": null, "ping": true}},
+      "price_feed":  {"kind": "replay", "recording": "feeds/prices.json"}
+    }
+
+The hard rule is unchanged and is the reason this is narrow:
+
+* An **undeclared** client is still a hard stop. Nothing here is a blanket
+  exemption; every stub names exactly one module, and a module not named here
+  reaches the real socket and file layer, where it is blocked like anything
+  else.
+* Declaring a stub is the owner taking responsibility for **one named
+  module**. It is recorded in the run record, folded into the run ID, and
+  printed by `preflight` before the run starts.
+* Nothing is ever returned by accident. ``record`` refuses to invent a return
+  value the owner did not declare, and ``replay`` refuses a call it has no
+  recording for. Both refusals are recorded as ``BlockedAttempt``s and abort
+  the scenario -- a stub that quietly answered ``None`` is a wrong answer
+  wearing the shape of a right one, and the whole point of this tool is not
+  to produce those.
+
+Nothing in this module imports, executes or evaluates target code. It builds
+module objects out of the owner's JSON and nothing else.
+"""
+
+
+
+
+__all__ = [
+    "STUB_KINDS",
+    "BLOCKED_KIND",
+    "StubDeclarationError",
+    "ClientStubDeclaration",
+    "parse_declarations",
+    "declaration_fingerprint",
+    "build_factories",
+    "stub_module",
+    "describe_declarations",
+]
+
+
+#: The kinds an owner may declare. Anything else is an error naming this list:
+#: a misspelled "replay" that silently blocked would be the same defect class
+#: as a misspelled setting key.
+STUB_KINDS: tuple[str, ...] = ("blocked", "record", "replay")
+
+BLOCKED_KIND = "client_stub"
+"""``BlockedAttempt.kind`` for everything this module stops. Distinct from
+``network`` and ``process``: this is a client the owner declared, stopped at
+the client boundary rather than at the socket."""
+
+#: The catch-all key in a ``record`` stub's ``returns`` map.
+ANY = "*"
+
+#: Same normalisation card 12 applies to captured values, duplicated here
+#: rather than imported because the harness layer sits *below* the tracer and
+#: must not depend on it. See `tracer/capture.py::stable_text` for why both
+#: shapes are normalised: an address is not information, and it is different
+#: on every run, which would break constraint 4 outright.
+_stubs__ADDRESS = re.compile(r"(?<= at )(?:0x[0-9a-fA-F]+|[0-9]{6,})")
+
+#: How much of one argument's repr is recorded. A cap, never a silent cut: the
+#: recorded value says `...(truncated)` when it bites.
+_REPR_LIMIT = 200
+
+
+class StubDeclarationError(ValueError):
+    """A client stub declaration the harness will not guess at.
+
+    Raised in the PARENT process, before anything is executed, so a
+    mistyped declaration is a refusal naming the module and the problem --
+    never a child that crashes halfway through a run it should not have
+    started.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class ClientStubDeclaration:
+    """One owner declaration, validated."""
+
+    module: str
+    kind: str
+    returns: tuple[tuple[str, Any], ...] = ()
+    recording: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        body: dict[str, Any] = {"kind": self.kind}
+        if self.returns:
+            body["returns"] = {key: value for key, value in self.returns}
+        if self.recording:
+            body["recording"] = self.recording
+        return body
+
+
+def parse_declarations(raw: Any) -> tuple[ClientStubDeclaration, ...]:
+    """Validate the ``client_stubs`` block of a scenarios document.
+
+    Every problem is raised, never repaired. The one thing this must not do is
+    fall back to "blocked" on a declaration it cannot read: the owner would
+    read the preflight line saying their client is declared and get a run that
+    stopped at the first call for a reason nothing named.
+    """
+    if raw in (None, {}):
+        return ()
+    if not isinstance(raw, Mapping):
+        raise StubDeclarationError(
+            f"client_stubs must be a mapping of module name -> declaration, not "
+            f"{type(raw).__name__}."
+        )
+    declarations: list[ClientStubDeclaration] = []
+    for module in sorted(raw):
+        body = raw[module]
+        if not isinstance(module, str) or not module:
+            raise StubDeclarationError(
+                f"client_stubs key {module!r} is not a module name. The key is the name "
+                f"the target imports, for example \"broker_api\"."
+            )
+        if isinstance(body, str):
+            # A bare string is the obvious thing to write, so it is accepted
+            # as the kind and nothing else -- never as a path.
+            body = {"kind": body}
+        if not isinstance(body, Mapping):
+            raise StubDeclarationError(
+                f"client stub {module!r} must be declared as a mapping with a \"kind\", "
+                f"not {type(body).__name__}."
+            )
+        unknown = sorted(set(body) - {"kind", "returns", "recording"})
+        if unknown:
+            raise StubDeclarationError(
+                f"client stub {module!r} has unknown key(s) {', '.join(unknown)}. "
+                f"Valid keys: kind, returns, recording."
+            )
+        kind = body.get("kind")
+        if kind not in STUB_KINDS:
+            raise StubDeclarationError(
+                f"client stub {module!r} declares kind {kind!r}. Valid kinds: "
+                f"{', '.join(STUB_KINDS)} -- \"blocked\" stops every call and records it, "
+                f"\"record\" captures every call and returns a declared default, "
+                f"\"replay\" returns values from a recording you supply."
+            )
+        returns_raw = body.get("returns")
+        recording = body.get("recording", "")
+        if kind == "record":
+            if not isinstance(returns_raw, Mapping) or not returns_raw:
+                raise StubDeclarationError(
+                    f"client stub {module!r} is kind \"record\" and needs a non-empty "
+                    f"\"returns\" mapping: what each call should hand back. Use "
+                    f"{{\"{ANY}\": null}} to say every call returns None -- saying it is "
+                    f"the point, because a stub that invents a return value you did not "
+                    f"declare is a wrong answer wearing the shape of a right one."
+                )
+            for key, value in returns_raw.items():
+                if not isinstance(key, str):
+                    raise StubDeclarationError(
+                        f"client stub {module!r}: every key in \"returns\" is an attribute "
+                        f"path such as \"fetch_rows\" or \"Client.connect\", or "
+                        f"\"{ANY}\"; got {key!r}."
+                    )
+                _check_jsonable(module, key, value)
+        elif returns_raw is not None:
+            raise StubDeclarationError(
+                f"client stub {module!r} is kind {kind!r}, which does not take "
+                f"\"returns\". Only \"record\" does."
+            )
+        if kind == "replay":
+            if not isinstance(recording, str) or not recording:
+                raise StubDeclarationError(
+                    f"client stub {module!r} is kind \"replay\" and needs a "
+                    f"\"recording\" path: the file holding the values to return."
+                )
+        elif recording:
+            raise StubDeclarationError(
+                f"client stub {module!r} is kind {kind!r}, which does not take "
+                f"\"recording\". Only \"replay\" does."
+            )
+        declarations.append(
+            ClientStubDeclaration(
+                module=module,
+                kind=str(kind),
+                returns=tuple(sorted((str(k), v) for k, v in (returns_raw or {}).items())),
+                recording=str(recording or ""),
+            )
+        )
+    return tuple(declarations)
+
+
+def _check_jsonable(module: str, key: str, value: Any) -> None:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _check_jsonable(module, key, item)
+        return
+    if isinstance(value, Mapping):
+        for item in value.values():
+            _check_jsonable(module, key, item)
+        return
+    raise StubDeclarationError(
+        f"client stub {module!r}: the value for {key!r} must be JSON data "
+        f"(null, a number, a string, a list or an object), not "
+        f"{type(value).__name__}. A scenarios file cannot hold a Python object, "
+        f"and a stub that constructed one would be running code nobody declared."
+    )
+
+
+def declaration_fingerprint(declarations: Sequence[ClientStubDeclaration]) -> str:
+    """Canonical text of the declarations, for folding into the run ID.
+
+    Two runs that stub the same module two different ways are two different
+    runs and must not share a run ID -- the replay guarantee compares output
+    keyed by that ID.
+    """
+    if not declarations:
+        return ""
+    return canonical_dumps(
+        {item.module: item.to_dict() for item in sorted(declarations, key=lambda d: d.module)}
+    )
+
+
+def describe_declarations(declarations: Sequence[ClientStubDeclaration]) -> tuple[str, ...]:
+    """One line per declared client, for `preflight` and the run summary."""
+    lines: list[str] = []
+    for item in sorted(declarations, key=lambda d: d.module):
+        if item.kind == "blocked":
+            detail = "every call is stopped and recorded"
+        elif item.kind == "record":
+            paths = ", ".join(key for key, _ in item.returns)
+            detail = f"every call captured; declared returns for {paths}"
+        else:
+            detail = f"returns replayed from {item.recording}"
+        lines.append(f"{item.module} [{item.kind}] -- {detail}")
+    return tuple(lines)
+
+
+# ---------------------------------------------------------------------------
+# The stub modules themselves
+# ---------------------------------------------------------------------------
+
+
+def _stable_repr(value: Any) -> str:
+    try:
+        text = repr(value)
+    except Exception as error:  # noqa: BLE001 - a target's __repr__ may raise
+        return f"<unreprable {type(value).__name__}: {type(error).__name__}>"
+    text = _stubs__ADDRESS.sub("0x...", text)
+    if len(text) > _REPR_LIMIT:
+        return text[:_REPR_LIMIT] + "...(truncated)"
+    return text
+
+
+def _stop(module: str, path: str, reason: str) -> None:
+    """Record the attempt on the active sandbox and abort the operation.
+
+    Recorded *before* raising, so a caller that catches ``BlockedOperation``
+    loses nothing from the run record -- the same contract the audit hook
+    keeps.
+    """
+    detail = f"{module}.{path}: {reason}"
+    record_blocked(BLOCKED_KIND, detail)
+    raise BlockedOperation(f"declared client stub stopped this call -- {detail}")
+
+
+class _Call:
+    """One attribute path on a stubbed module.
+
+    Attribute access builds a longer path and never stops the run: a target
+    doing ``from broker import Client`` then ``Client().submit(...)`` must get
+    as far as the *call*, which is the thing worth recording. Only a call is
+    answered, recorded or stopped.
+    """
+
+    __slots__ = ("_state", "_path")
+
+    def __init__(self, state: "_State", path: str) -> None:
+        self._state = state
+        self._path = path
+
+    def __getattr__(self, name: str) -> "_Call":
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        return _Call(self._state, f"{self._path}.{name}" if self._path else name)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self._state.call(self._path, args, kwargs)
+
+    def __repr__(self) -> str:
+        return f"<client stub {self._state.module}.{self._path} [{self._state.kind}]>"
+
+
+class _State:
+    """What one stubbed module knows and does. Deliberately tiny."""
+
+    def __init__(
+        self,
+        declaration: ClientStubDeclaration,
+        *,
+        sandbox_root: Path,
+        target_root: Path,
+    ) -> None:
+        self.module = declaration.module
+        self.kind = declaration.kind
+        self.returns: dict[str, Any] = {key: value for key, value in declaration.returns}
+        self.calls: list[dict[str, Any]] = []
+        self._counts: dict[str, int] = {}
+        self._sandbox_root = sandbox_root
+        self._replay: dict[str, list[Any]] = {}
+        self._recording_path = ""
+        if declaration.kind == "replay":
+            self._recording_path = declaration.recording
+            self._replay = _load_recording(
+                declaration.module, declaration.recording, target_root
+            )
+
+    # -- the one entry point ----------------------------------------------
+
+    def call(self, path: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+        index = self._counts.get(path, 0)
+        self._counts[path] = index + 1
+        if self.kind == "blocked":
+            self._append(path, index, args, kwargs, "blocked")
+            _stop(
+                self.module,
+                path,
+                'declared kind "blocked": this client is stopped at the client boundary, '
+                "by your own declaration",
+            )
+        if self.kind == "record":
+            if path in self.returns:
+                value = self.returns[path]
+            elif ANY in self.returns:
+                value = self.returns[ANY]
+            else:
+                self._append(path, index, args, kwargs, "no declared return")
+                self._flush()
+                _stop(
+                    self.module,
+                    path,
+                    f'declared kind "record" but "returns" declares nothing for '
+                    f"{path!r} and has no {ANY!r} entry. Add one and re-run; this "
+                    f"stub will not invent a return value",
+                )
+            self._append(path, index, args, kwargs, "recorded")
+            self._flush()
+            return value
+        values = self._replay.get(path)
+        if values is None:
+            self._append(path, index, args, kwargs, "not in recording")
+            _stop(
+                self.module,
+                path,
+                f'declared kind "replay" and the recording {self._recording_path!r} '
+                f"has no entry for {path!r}. Known: "
+                f"{', '.join(sorted(self._replay)) or '(none)'}",
+            )
+        if index >= len(values):
+            self._append(path, index, args, kwargs, "recording exhausted")
+            _stop(
+                self.module,
+                path,
+                f'declared kind "replay" and the recording holds {len(values)} value(s) '
+                f"for {path!r}; this is call number {index + 1}. A replay never loops "
+                f"and never invents a value",
+            )
+        self._append(path, index, args, kwargs, "replayed")
+        return values[index]
+
+    # -- bookkeeping -------------------------------------------------------
+
+    def _append(
+        self,
+        path: str,
+        index: int,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        outcome: str,
+    ) -> None:
+        self.calls.append(
+            {
+                "module": self.module,
+                "path": path,
+                "call_index": index,
+                "args": [_stable_repr(value) for value in args],
+                "kwargs": {key: _stable_repr(kwargs[key]) for key in sorted(kwargs)},
+                "outcome": outcome,
+            }
+        )
+
+    def _flush(self) -> None:
+        """Write the call log inside the sandbox, which the harness owns.
+
+        Rewritten whole each time rather than appended to, so a scenario that
+        is aborted mid-call still leaves a complete, parseable file.
+        """
+        directory = self._sandbox_root / "client_calls"
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / f"{self.module}.jsonl").write_text(
+                "".join(canonical_dumps(row) + "\n" for row in self.calls),
+                encoding="utf-8",
+                newline="\n",
+            )
+        except OSError:
+            # The in-memory log is what the run record is built from, so a
+            # failed write costs the convenience file and nothing else. It is
+            # not silent: the run summary prints the call count either way.
+            pass
+
+
+def _load_recording(module: str, recording: str, target_root: Path) -> dict[str, list[Any]]:
+    path = Path(recording)
+    if not path.is_absolute():
+        path = target_root / path
+    if not path.is_file():
+        raise StubDeclarationError(
+            f"client stub {module!r} is kind \"replay\" and its recording "
+            f"{recording!r} does not exist. Tried: {path}. Refusing rather than "
+            f"running the scenario against a client with nothing to say."
+        )
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise StubDeclarationError(
+            f"client stub {module!r}: cannot read the replay recording {path}: {error}"
+        ) from error
+    calls = document.get("calls") if isinstance(document, Mapping) else None
+    if not isinstance(calls, Mapping) or not calls:
+        raise StubDeclarationError(
+            f"client stub {module!r}: the replay recording {path} must be "
+            f'{{"calls": {{"<attribute path>": [value, ...]}}}} with at least one entry.'
+        )
+    loaded: dict[str, list[Any]] = {}
+    for key, values in calls.items():
+        if not isinstance(key, str) or not isinstance(values, list):
+            raise StubDeclarationError(
+                f"client stub {module!r}: every entry under \"calls\" in {path} maps an "
+                f"attribute path to a LIST of return values, one per call in order; "
+                f"got {key!r} -> {type(values).__name__}."
+            )
+        loaded[key] = list(values)
+    return loaded
+
+
+class _StubModule(ModuleType):
+    """A module whose every attribute is a stubbed call path."""
+
+    def __init__(self, state: _State) -> None:
+        super().__init__(state.module, _module_doc(state))
+        object.__setattr__(self, "_cascade_map_state", state)
+        self.__cascade_map_stub_kind__ = state.kind
+        self.__cascade_map_stub_module__ = state.module
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        state: _State = object.__getattribute__(self, "_cascade_map_state")
+        return _Call(state, name)
+
+
+def _module_doc(state: _State) -> str:
+    return (
+        f"CASCADE-MAP client stub for {state.module!r}, declared kind "
+        f"{state.kind!r}. Not the real module: every call is answered, recorded "
+        f"or stopped by the harness, and none of them leaves this process."
+    )
+
+
+def stub_module(
+    declaration: ClientStubDeclaration,
+    *,
+    sandbox_root: Path,
+    target_root: Path,
+) -> ModuleType:
+    """One stub module, ready to be installed into ``sys.modules``."""
+    return _StubModule(
+        _State(declaration, sandbox_root=sandbox_root, target_root=target_root)
+    )
+
+
+def build_factories(
+    declarations: Sequence[ClientStubDeclaration],
+    *,
+    sandbox_root: Path,
+    target_root: Path,
+) -> dict[str, Callable[[], ModuleType]]:
+    """``RunConfig.client_stubs``, built from validated declarations.
+
+    A ``replay`` recording is read HERE, while the declarations are being
+    turned into factories and before the harness has taken the process, so a
+    missing or malformed recording is a refusal rather than a stop halfway
+    through a run.
+    """
+    modules = {
+        item.module: stub_module(
+            item, sandbox_root=sandbox_root, target_root=target_root
+        )
+        for item in declarations
+    }
+    return {name: (lambda module=module: module) for name, module in sorted(modules.items())}
 
 
 # ==========================================================================
@@ -24624,18 +26475,25 @@ class Harness:
         controls["external_clients"] = True
 
         # 5. Execute, inside the sandbox, with everything above in force.
-        record = self._execute(
-            run_id,
-            target_hashes,
-            graph_hash,
-            scenario,
-            spec,
-            ctx,
-            controls,
-            filtered_env,
-            sandbox_dir,
-            observer,
-        )
+        try:
+            record = self._execute(
+                run_id,
+                target_hashes,
+                graph_hash,
+                scenario,
+                spec,
+                ctx,
+                controls,
+                filtered_env,
+                sandbox_dir,
+                observer,
+            )
+        except HarnessRefusal as exc:
+            # A guarantee failed once the run was already under way -- today
+            # that is a declared client stub that could not be built. It is a
+            # refusal, not a failed run, and it takes the same shape as every
+            # other refusal so that a caller has one thing to read.
+            return refuse(str(exc))
         self._write_run_record(record)
         return record
 
@@ -24678,9 +26536,21 @@ class Harness:
             # never gets to ask for), not just a workaround for the audit
             # hook's interaction with importlib.
             sys.dont_write_bytecode = True
-            for name, factory in self.config.client_stubs.items():
+            for name, factory in sorted(self.config.client_stubs.items()):
                 installed_modules[name] = sys.modules.get(name)
-                sys.modules[name] = factory()
+                try:
+                    sys.modules[name] = factory()
+                except Exception as exc:  # noqa: BLE001
+                    # A stub that could not be built must never fall through to
+                    # the REAL module: that would run the scenario against a
+                    # live broker with the owner believing it was stubbed. The
+                    # outer handler in this method swallows setup failures by
+                    # design, so this is raised as a refusal, which it re-raises.
+                    raise HarnessRefusal(
+                        f"the declared client stub for {name!r} could not be built: "
+                        f"{type(exc).__name__}: {exc}. Refusing rather than letting the "
+                        f"scenario reach the real {name!r}. Nothing further was executed."
+                    ) from exc
             with activate(ctx):
                 # Started only once the sandbox window is open, stopped
                 # before it closes -- an observer started outside this
@@ -24934,6 +26804,7 @@ class Harness:
             self.config.declared_process_names,
             frozenset(self.config.client_stubs),
             self.config.env_passthrough,
+            self.config.client_declarations,
         )
 
     def _write_run_record(self, record: RunRecord) -> Path:
@@ -25412,7 +27283,7 @@ __all__ = [
     "MISSING",
 ]
 
-_ADDRESS = re.compile(r"(?<= at )(?:0x[0-9a-fA-F]+|[0-9]{6,})")
+_capture__ADDRESS = re.compile(r"(?<= at )(?:0x[0-9a-fA-F]+|[0-9]{6,})")
 _HEX_PLACEHOLDER = "0x..."
 _DECIMAL_PLACEHOLDER = "..."
 ADDRESS_NOTE = (
@@ -25447,7 +27318,7 @@ def stable_text(text: str) -> str:
     capture's ``reason`` says so, which is what keeps an over-normalisation
     visible rather than silent.
     """
-    return _ADDRESS.sub(
+    return _capture__ADDRESS.sub(
         lambda match: _HEX_PLACEHOLDER
         if match.group().startswith("0x")
         else _DECIMAL_PLACEHOLDER,
@@ -28119,6 +29990,9 @@ __all__ = [
     "CheckResult",
     "parse_check",
     "Coverage",
+    "PROPOSED_HEADER",
+    "PROPOSED_STATEMENT_LIMIT",
+    "registry_text",
     "AlignmentEngine",
     "AlignmentModel",
     "AnthropicAlignmentModel",
@@ -28127,6 +30001,7 @@ __all__ = [
     "load_prompt",
     "intents_jsonl",
     "verdicts_jsonl",
+    "coverage_json",
     "issues_jsonl",
 ]
 
@@ -28843,6 +30718,91 @@ def propose_intents(elements: Sequence[Element]) -> tuple[Intent, ...]:
     return tuple(sorted(proposals, key=lambda intent: intent.id))
 
 
+#: The longest statement a proposed entry carries. A docstring's first line can
+#: be a paragraph; a starter registry the owner cannot read is a starter
+#: registry they will not confirm.
+PROPOSED_STATEMENT_LIMIT = 200
+
+
+def _yaml_scalar(text: str) -> str:
+    """One double-quoted scalar this module's own parser reads back exactly.
+
+    The parser deliberately performs no escape processing (see its header), so
+    the emitter must not produce anything needing it: whitespace is collapsed
+    and a double quote inside the text becomes a single one. Lossy on purpose
+    and only ever applied to PROPOSED text the owner is being asked to rewrite
+    -- owner-confirmed statements are never round-tripped through here.
+    """
+    flat = " ".join(str(text).split()).replace('"', "'")
+    if len(flat) > PROPOSED_STATEMENT_LIMIT:
+        flat = flat[: PROPOSED_STATEMENT_LIMIT - 3].rstrip() + "..."
+    return '"' + flat + '"'
+
+
+PROPOSED_HEADER = """\
+# PROPOSED intents -- NOT owner-confirmed, and binding on nothing.
+#
+# Every entry below was derived by CASCADE-MAP from a docstring or a name. A
+# PROPOSED intent can never produce an ALIGNED or a MISALIGNED verdict: it is
+# reported UNVERIFIABLE until you change its `status` to CONFIRMED, which is
+# you taking responsibility for the statement.
+#
+# What to do with this file:
+#   1. Delete every entry you do not care about. A shorter registry you mean
+#      is worth more than a long one you skimmed.
+#   2. Rewrite each `statement` you keep so it says what the element is MEANT
+#      to do, not what its docstring happens to say.
+#   3. Add `invariants:` that can be checked. The language is:
+#        returns.type == int            arg.NAME.value >= 0
+#        values.KEY.status == FULL      calls <element id>
+#        not calls <element id>         runs before <element id>
+#        runs after <element id>        reaches decision
+#        does not reach decision
+#      `reaches decision` is the one that answers "did I build this and never
+#      plug it in": it is checked against the static call graph, so `analyze`
+#      settles it without running anything.
+#   4. Set `status: CONFIRMED` on the ones you stand behind.
+#   5. Run `metatron analyze <target> --intents <this file>`.
+#
+# Anything this tool cannot parse in here is reported with its line number and
+# is never skipped.
+version: 1
+intents:
+"""
+
+
+def registry_text(intents: Sequence[Intent]) -> str:
+    """A starter intents document, ready for the owner to edit and confirm.
+
+    Every entry is written with the status it actually carries. Nothing is
+    promoted on the way out: a PROPOSED intent that reached a file marked
+    CONFIRMED would be this card lying about who said it.
+    """
+    lines = [PROPOSED_HEADER]
+    for intent in sorted(intents, key=lambda item: (item.element_id, item.id)):
+        lines.append(f"  - element_id: {_yaml_scalar(intent.element_id)}")
+        lines.append(f"    status: {intent.status.value}")
+        lines.append(f"    statement: {_yaml_scalar(intent.statement)}")
+        if intent.invariants:
+            lines.append("    invariants:")
+            lines += [f"      - {_yaml_scalar(text)}" for text in intent.invariants]
+        else:
+            lines.append("    # invariants: []   <- add checkable expectations here")
+        if intent.expected_reads:
+            lines.append("    expected_reads:")
+            lines += [f"      - {_yaml_scalar(text)}" for text in intent.expected_reads]
+        if intent.expected_writes:
+            lines.append("    expected_writes:")
+            lines += [f"      - {_yaml_scalar(text)}" for text in intent.expected_writes]
+    if len(lines) == 1:
+        lines.append(
+            "  # No element carried a docstring or a usable name, so nothing was "
+            "proposed."
+        )
+        lines.append("  []")
+    return "\n".join(lines) + "\n"
+
+
 def _proposed_statement(element: Element) -> tuple[str, str]:
     docstring = (element.docstring or "").strip()
     if docstring:
@@ -28876,6 +30836,14 @@ class CheckKind(StrEnum):
     NOT_CALLS = "NOT_CALLS"
     RUNS_BEFORE = "RUNS_BEFORE"
     RUNS_AFTER = "RUNS_AFTER"
+    REACHES_DECISION = "REACHES_DECISION"
+    """The owner declares this element live: something reaches a decision sink
+    from it. Checked against card 3's `Reachability`, which is static evidence,
+    so this is the one expectation kind a Mode 1 run can settle on its own."""
+
+    NOT_REACHES_DECISION = "NOT_REACHES_DECISION"
+    """The owner declares this element deliberately off the decision path."""
+
     WRITES = "WRITES"
     READS = "READS"
     UNPARSEABLE = "UNPARSEABLE"
@@ -28924,6 +30892,13 @@ _CALLS = re.compile(r"^calls\s+(?P<target>\S+)$")
 _NOT_CALLS = re.compile(r"^(?:not\s+calls|does\s+not\s+call)\s+(?P<target>\S+)$")
 _RUNS_BEFORE = re.compile(r"^runs\s+before\s+(?P<target>\S+)$")
 _RUNS_AFTER = re.compile(r"^runs\s+after\s+(?P<target>\S+)$")
+#: "this element is plugged in" / "this element is deliberately not plugged in",
+#: in the owner's own words. `reaches decision` is the invariant that turns
+#: "I declared this strategy live" into something the static map can contradict.
+_REACHES = re.compile(r"^reaches\s+(?:the\s+)?(?:decision|sink)$")
+_NOT_REACHES = re.compile(
+    r"^(?:not\s+reaches|does\s+not\s+reach)\s+(?:the\s+)?(?:decision|sink)$"
+)
 _LHS = re.compile(
     r"^(?:returns|return|arg\.(?P<arg>[A-Za-z_][A-Za-z0-9_]*)|values\.(?P<key>[^.]+))"
     r"\.(?P<attr>type|value|status)$"
@@ -28938,6 +30913,13 @@ def parse_check(text: str) -> Check:
     stripped = text.strip()
     if not stripped:
         return Check(kind=CheckKind.UNPARSEABLE, text=text, reason="empty invariant")
+
+    for pattern, kind in (
+        (_NOT_REACHES, CheckKind.NOT_REACHES_DECISION),
+        (_REACHES, CheckKind.REACHES_DECISION),
+    ):
+        if pattern.match(stripped):
+            return Check(kind=kind, text=stripped, subject="")
 
     for pattern, kind in (
         (_NOT_CALLS, CheckKind.NOT_CALLS),
@@ -28957,7 +30939,8 @@ def parse_check(text: str) -> Check:
             reason=(
                 "not in the checkable expectation language "
                 "(<returns|arg.NAME|values.KEY>.<type|value|status> <op> <literal>, "
-                "'calls X', 'not calls X', 'runs before X', 'runs after X')"
+                "'calls X', 'not calls X', 'runs before X', 'runs after X', "
+                "'reaches decision', 'does not reach decision')"
             ),
         )
     lhs_match = _LHS.match(match.group("lhs"))
@@ -29182,6 +31165,7 @@ class AlignmentEngine:
         elements: Sequence[Element] = (),
         edges: Sequence[Edge] = (),
         lineage_edges: Sequence[LineageEdge] = (),
+        reachability: Sequence[Reachability] = (),
         run: RunRecord | None = None,
         model: AlignmentModel | None = None,
         prompt_path: str | os.PathLike[str] | None = None,
@@ -29190,6 +31174,12 @@ class AlignmentEngine:
         self._elements = tuple(elements)
         self._edges = tuple(edges)
         self._lineage = tuple(lineage_edges)
+        # Card 3's answer to "does this element drive the final decision". Read,
+        # never derived: deriving a second one here is the exact duplication
+        # `Reachability` was added to the contract to end.
+        self._reachability: dict[str, Reachability] = {}
+        for record in sorted(reachability, key=lambda item: item.id):
+            self._reachability.setdefault(record.element_id, record)
         self._run = run
         self._model = model
         self._prompt_path = prompt_path
@@ -29216,6 +31206,39 @@ class AlignmentEngine:
 
     def judge(
         self, intents: Sequence[Intent], events: Sequence[TraceEvent]
+    ) -> Sequence[AlignmentVerdict]:
+        return self._judge(intents, events, static=False)
+
+    def judge_static(self, intents: Sequence[Intent]) -> Sequence[AlignmentVerdict]:
+        """Verdicts from the STATIC evidence alone -- no run, nothing executed.
+
+        This is what `analyze` can honestly say about an intent before any
+        scenario has been run, and it exists because the owner's question --
+        "which of the things I built are not plugged in?" -- is answerable
+        against their own declaration without executing anything.
+
+        The only expectations settled here are the ones whose evidence is
+        static: ``reaches decision`` against card 3's :class:`Reachability`,
+        ``calls X`` against card 2's edges, and ``expected_reads`` /
+        ``expected_writes`` against card 4's lineage. Every expectation about
+        a *value*, a capture status or an order of execution is
+        ``UNVERIFIABLE`` here and says so, naming ``trace`` as the thing that
+        settles it -- a static run must never report an unchecked expectation
+        as met.
+
+        ``NOT_EXERCISED`` is deliberately NOT produced here. Nothing ran, so
+        "no scenario ran this element" would be true of every element in the
+        target and would say nothing; it is the runtime path's answer, where
+        it means something.
+        """
+        return self._judge(intents, (), static=True)
+
+    def _judge(
+        self,
+        intents: Sequence[Intent],
+        events: Sequence[TraceEvent],
+        *,
+        static: bool,
     ) -> Sequence[AlignmentVerdict]:
         run_ids = sorted({event.run_id for event in events if event.run_id})
         blocker = self._blocking_reason(run_ids)
@@ -29247,12 +31270,20 @@ class AlignmentEngine:
                 events_by_element=events_by_element,
                 run_id=run_id,
                 blocker=blocker,
+                static=static,
             )
             verdicts.append(judged.verdict)
             results.extend(judged.results)
             with_expectations += 1 if judged.had_expectations else 0
             checked += 1 if judged.was_checked else 0
 
+        if static:
+            notes.append(
+                "static judgement: nothing was executed, so only expectations whose "
+                "evidence is the static graph were settled. Every value, capture-status "
+                "and execution-order expectation is UNVERIFIABLE until `metatron trace` "
+                "runs the scenario."
+            )
         if blocker:
             notes.append(blocker)
         if self._registry is not None and not self._registry.present:
@@ -29264,6 +31295,11 @@ class AlignmentEngine:
             notes.append("no static call graph supplied: call expectations degrade to UNVERIFIABLE")
         if not self._lineage:
             notes.append("no lineage edges supplied: read/write expectations degrade to UNVERIFIABLE")
+        if not self._reachability:
+            notes.append(
+                "no reachability records supplied: 'reaches decision' expectations degrade "
+                "to UNVERIFIABLE"
+            )
         if self._model is not None:
             notes.append(
                 f"model escalation active ({MODEL_ID}): proposals only, attached to UNVERIFIABLE "
@@ -29318,6 +31354,7 @@ class AlignmentEngine:
         events_by_element: Mapping[str, tuple[TraceEvent, ...]],
         run_id: str,
         blocker: str,
+        static: bool = False,
     ) -> _Judged:
         own_events = events_by_element.get(element_id, ())
         evidence = tuple(event.event_id for event in own_events)
@@ -29420,7 +31457,7 @@ class AlignmentEngine:
         if intent.status is not IntentStatus.CONFIRMED:
             suffix = (
                 ""
-                if own_events
+                if own_events or static
                 else f"; the element was also not exercised in run {run_id or '<none>'}"
             )
             return _Judged(
@@ -29444,7 +31481,73 @@ class AlignmentEngine:
                 was_checked=False,
             )
 
+        if static:
+            results = self._evaluate(intent, (), events, events_by_element, static=True)
+            if not results:
+                return _Judged(
+                    verdict=self._verdict(
+                        element_id=element_id,
+                        intent_id=intent.id,
+                        verdict=Verdict.UNVERIFIABLE,
+                        expectation=intent.statement,
+                        observation=(
+                            f"the intent states {intent.statement!r} but declares no invariant, "
+                            f"expected read or expected write, so the static map has nothing to "
+                            f"check it against. Prose is not a check."
+                        ),
+                        evidence_ids=(),
+                        method=Method.STRUCTURAL_MATCH,
+                        confidence=Confidence.UNKNOWN,
+                        run_id="",
+                        note="no checkable expectation; static judgement",
+                    ),
+                    results=(),
+                    had_expectations=False,
+                    was_checked=False,
+                )
+            return _Judged(
+                verdict=self._aggregate(
+                    intent, element_id, results, "", method=Method.STRUCTURAL_MATCH
+                ),
+                results=results,
+                had_expectations=True,
+                was_checked=True,
+            )
+
         if not own_events:
+            # A contradiction outranks "it did not run". An element the owner
+            # declared live, that no call path reaches, is MISALIGNED whether
+            # or not this scenario entered it -- and NOT_EXERCISED there would
+            # hide a fact the static map already holds. Only expectations the
+            # static evidence can settle are considered; a value expectation
+            # still needs a run and still leaves this NOT_EXERCISED.
+            static_results = self._evaluate(intent, (), events, events_by_element, static=True)
+            contradicted = [
+                result for result in static_results if result.status is CheckStatus.FAIL
+            ]
+            if contradicted:
+                first = contradicted[0]
+                return _Judged(
+                    verdict=self._verdict(
+                        element_id=element_id,
+                        intent_id=intent.id,
+                        verdict=Verdict.MISALIGNED,
+                        expectation=first.expectation,
+                        observation=(
+                            f"{first.observation}. No event in run {run_id or '<none>'} names "
+                            f"this element either, so nothing this scenario did could settle "
+                            f"the rest of the intent."
+                        ),
+                        evidence_ids=_merge_evidence(contradicted),
+                        method=Method.STRUCTURAL_MATCH,
+                        confidence=combine(*[r.confidence for r in contradicted]),
+                        run_id=run_id,
+                        note="static contradiction; the element was also not exercised",
+                    ),
+                    results=static_results,
+                    had_expectations=True,
+                    was_checked=True,
+                )
             return _Judged(
                 verdict=self._verdict(
                     element_id=element_id,
@@ -29484,18 +31587,194 @@ class AlignmentEngine:
         own_events: Sequence[TraceEvent],
         events: Sequence[TraceEvent],
         events_by_element: Mapping[str, tuple[TraceEvent, ...]],
+        *,
+        static: bool = False,
     ) -> tuple[CheckResult, ...]:
         results: list[CheckResult] = []
         for text in intent.invariants:
             check = parse_check(text)
-            results.append(
-                self._evaluate_check(check, intent, own_events, events, events_by_element)
-            )
+            if static:
+                results.append(self._evaluate_check_static(check, intent))
+            else:
+                results.append(
+                    self._evaluate_check(check, intent, own_events, events, events_by_element)
+                )
         for feature in intent.expected_writes:
-            results.append(self._evaluate_flow(intent, feature, own_events, events, write=True))
+            if static:
+                results.append(self._evaluate_flow_static(intent, feature, write=True))
+            else:
+                results.append(self._evaluate_flow(intent, feature, own_events, events, write=True))
         for feature in intent.expected_reads:
-            results.append(self._evaluate_flow(intent, feature, own_events, events, write=False))
+            if static:
+                results.append(self._evaluate_flow_static(intent, feature, write=False))
+            else:
+                results.append(
+                    self._evaluate_flow(intent, feature, own_events, events, write=False)
+                )
         return tuple(results)
+
+    # -- the static half ---------------------------------------------------
+    #
+    # Everything below decides an expectation from cards 2-4 alone. Nothing
+    # here reads an event, and nothing here executes anything.
+
+    def _evaluate_check_static(self, check: Check, intent: Intent) -> CheckResult:
+        expectation = f"invariant {check.text!r}"
+        if check.kind is CheckKind.UNPARSEABLE:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    f"the invariant could not be parsed ({check.reason}); it was not checked, and "
+                    f"an unchecked expectation is never reported as met"
+                ),
+            )
+        if check.kind in (CheckKind.REACHES_DECISION, CheckKind.NOT_REACHES_DECISION):
+            return self._evaluate_reach(check, intent)
+        if check.kind in (CheckKind.CALLS, CheckKind.NOT_CALLS):
+            return self._evaluate_calls_static(check, intent)
+        return CheckResult(
+            status=CheckStatus.UNVERIFIABLE,
+            expectation=expectation,
+            observation=(
+                f"this expectation is about what happens when the code RUNS, and nothing was "
+                f"executed: the static map cannot settle it. `metatron trace` is what settles "
+                f"it; until then it is unchecked, which is not the same as met"
+            ),
+        )
+
+    def _evaluate_reach(self, check: Check, intent: Intent) -> CheckResult:
+        """`reaches decision` against card 3's Reachability. Static evidence.
+
+        An ``UNKNOWN`` reachability is never a contradiction. Card 3 biases
+        toward REACHES_SINK precisely because a false "unreachable" sends an
+        owner to delete live code, and this card must not undo that bias by
+        reading "I could not tell" as "it does not".
+        """
+        expectation = f"invariant {check.text!r}"
+        wants_reach = check.kind is CheckKind.REACHES_DECISION
+        record = self._reachability.get(intent.element_id)
+        if record is None:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    "no reachability record names this element, so whether anything reaches a "
+                    "decision from it was never measured; run `metatron analyze` with your "
+                    "decision sink declared (--sink) and it will be"
+                ),
+            )
+        if record.state is ReachabilityState.UNKNOWN:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    "reachability for this element is UNKNOWN ("
+                    + (record.reason or "no reason recorded")
+                    + "); 'I could not tell' is never read as 'it does not', and a decision "
+                    "sink may not be declared at all"
+                ),
+                evidence_ids=(record.id,),
+            )
+        reaches = record.state is ReachabilityState.REACHES_SINK
+        if reaches == wants_reach:
+            detail = (
+                f"reachability record {record.id} says {record.state.value}"
+                + (f" via {' -> '.join(record.path_ids)}" if reaches and record.path_ids else "")
+            )
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expectation=expectation,
+                observation=detail,
+                evidence_ids=(record.id,),
+                confidence=record.provenance.confidence,
+            )
+        if wants_reach:
+            observation = (
+                f"the owner declares this element live, and reachability record {record.id} says "
+                f"NO_SINK_PATH: no call path in the static graph reaches a declared decision sink "
+                f"({', '.join(record.sink_ids) or 'none declared'}) from it. This is 'built but "
+                f"never plugged in' measured against the owner's own declaration, not guessed "
+                f"from a name"
+            )
+        else:
+            observation = (
+                f"the owner declares this element off the decision path, and reachability record "
+                f"{record.id} says REACHES_SINK"
+                + (f" via {' -> '.join(record.path_ids)}" if record.path_ids else "")
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expectation=expectation,
+            observation=observation,
+            evidence_ids=(record.id,),
+            confidence=record.provenance.confidence,
+        )
+
+    def _evaluate_calls_static(self, check: Check, intent: Intent) -> CheckResult:
+        expectation = f"invariant {check.text!r}"
+        edge = self._find_call_edge(intent.element_id, check.subject)
+        wants_call = check.kind is CheckKind.CALLS
+        if not self._edges:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    f"no static call graph was supplied, so whether this element calls "
+                    f"{check.subject} was never measured"
+                ),
+            )
+        if edge is not None:
+            return CheckResult(
+                status=CheckStatus.PASS if wants_call else CheckStatus.FAIL,
+                expectation=expectation,
+                observation=(
+                    f"the static call graph has a CALLS edge to {check.subject} ({edge.id}, "
+                    f"{edge.provenance.method.value})"
+                ),
+                evidence_ids=(edge.id,),
+                confidence=edge.provenance.confidence,
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL if wants_call else CheckStatus.PASS,
+            expectation=expectation,
+            observation=(
+                f"the static call graph has no CALLS edge from this element to {check.subject}. "
+                f"Only dynamic dispatch could still make this true, and only a run settles that"
+            ),
+            confidence=Confidence.PROBABLE,
+        )
+
+    def _evaluate_flow_static(self, intent: Intent, feature: str, *, write: bool) -> CheckResult:
+        word = "writes" if write else "reads"
+        expectation = f"expected_{'writes' if write else 'reads'} names {feature!r}"
+        if not self._lineage:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    f"no lineage was supplied, so whether this element {word} {feature} was "
+                    f"never measured"
+                ),
+            )
+        edge = self._find_lineage_edge(intent.element_id, feature, write=write)
+        if edge is not None:
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expectation=expectation,
+                observation=f"lineage edge {edge.id} says this element {word} {feature}",
+                evidence_ids=(edge.id,),
+                confidence=edge.provenance.confidence,
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expectation=expectation,
+            observation=(
+                f"no lineage edge shows this element {word} {feature}; the owner declares it "
+                f"does"
+            ),
+            confidence=Confidence.PROBABLE,
+        )
 
     def _evaluate_check(
         self,
@@ -29515,6 +31794,11 @@ class AlignmentEngine:
                     f"an unchecked expectation is never reported as met"
                 ),
             )
+        if check.kind in (CheckKind.REACHES_DECISION, CheckKind.NOT_REACHES_DECISION):
+            # Static evidence inside a runtime verdict. A trace cannot observe
+            # "nothing reaches this": one run is one path, and card 3 already
+            # holds the answer over the whole graph.
+            return self._evaluate_reach(check, intent)
         if check.kind in (CheckKind.CALLS, CheckKind.NOT_CALLS):
             return self._evaluate_calls(check, intent, own_events, events_by_element)
         if check.kind in (CheckKind.RUNS_BEFORE, CheckKind.RUNS_AFTER):
@@ -29786,7 +32070,13 @@ class AlignmentEngine:
         element_id: str,
         results: Sequence[CheckResult],
         run_id: str,
+        *,
+        method: Method = Method.RUNTIME_OBSERVED,
     ) -> AlignmentVerdict:
+        # `event_ids` is a RUNTIME field. A static verdict's evidence is edge
+        # and reachability IDs, and filing those under `event_ids` would label
+        # static structure as something a run observed.
+        runtime = method is Method.RUNTIME_OBSERVED
         failures = [result for result in results if result.status is CheckStatus.FAIL]
         unverifiable = [result for result in results if result.status is CheckStatus.UNVERIFIABLE]
         passes = [result for result in results if result.status is CheckStatus.PASS]
@@ -29801,11 +32091,11 @@ class AlignmentEngine:
                 expectation=first.expectation,
                 observation=first.observation,
                 evidence_ids=_merge_evidence(failures),
-                method=Method.RUNTIME_OBSERVED,
+                method=method,
                 confidence=combine(*[result.confidence for result in failures]),
                 run_id=run_id,
                 note=note,
-                event_ids=_merge_evidence(failures),
+                event_ids=_merge_evidence(failures) if runtime else (),
             )
         if unverifiable:
             first = unverifiable[0]
@@ -29820,11 +32110,11 @@ class AlignmentEngine:
                     f"intent is not ALIGNED while any expectation is unchecked."
                 ),
                 evidence_ids=_merge_evidence(results),
-                method=Method.RUNTIME_OBSERVED,
+                method=method,
                 confidence=Confidence.UNKNOWN,
                 run_id=run_id,
                 note=note,
-                event_ids=_merge_evidence(results),
+                event_ids=_merge_evidence(results) if runtime else (),
             )
         return self._verdict(
             element_id=element_id,
@@ -29833,11 +32123,11 @@ class AlignmentEngine:
             expectation="; ".join(result.expectation for result in passes),
             observation="; ".join(result.observation for result in passes),
             evidence_ids=_merge_evidence(passes),
-            method=Method.RUNTIME_OBSERVED,
+            method=method,
             confidence=combine(*[result.confidence for result in passes]),
             run_id=run_id,
             note=note,
-            event_ids=_merge_evidence(passes),
+            event_ids=_merge_evidence(passes) if runtime else (),
         )
 
     def _unverifiable_prose(
@@ -29998,6 +32288,7 @@ class AlignmentEngine:
                 "static_edges": len(self._edges),
                 "lineage_edges": len(self._lineage),
                 "static_elements": len(self._elements),
+                "reachability_records": len(self._reachability),
                 "model_proposals": model_proposals,
             },
             registry_issues=len(self._registry.issues) if self._registry else 0,
@@ -30187,6 +32478,13 @@ def intents_jsonl(intents: Sequence[Intent]) -> str:
 def verdicts_jsonl(verdicts: Sequence[AlignmentVerdict]) -> str:
     """``runtime/<run_id>/verdicts.jsonl``."""
     return canonical_jsonl(verdicts, "id")
+
+
+def coverage_json(coverage: Coverage) -> str:
+    """``coverage.json`` -- how much of the intent set was checkable, and against
+    what. Integers only, canonical, byte-identical across runs."""
+
+    return canonical_dumps(coverage.to_dict()) + "\n"
 
 
 def issues_jsonl(issues: Sequence[Unresolved]) -> str:
@@ -30824,6 +33122,13 @@ ARTIFACT_FILES: dict[str, str] = {
     "impacts": "impacts.jsonl",
     "records": "records.jsonl",
     "intents": "intents.jsonl",
+    # Card 13's STATIC verdicts -- what the map can say about an intent with
+    # nothing executed. The runtime verdicts for one run live under
+    # runtime/<run_id>/ and are loaded by `RuntimeStore`; these two are
+    # different evidence about the same intents and are never merged into one
+    # list, because "the call graph says so" and "the run showed it" are not
+    # the same claim.
+    "static_verdicts": "verdicts.jsonl",
 }
 
 
@@ -30947,6 +33252,8 @@ class ArtifactStore:
     impacts_by_change: dict[str, dict[str, Any]] = field(default_factory=dict)
     records_by_element: dict[str, dict[str, Any]] = field(default_factory=dict)
     intents_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    intents_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    static_verdicts_by_element: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, root: str | Path) -> "ArtifactStore":
@@ -31048,6 +33355,10 @@ class ArtifactStore:
         }
 
         self.intents_by_element = _multi_index(self.raw["intents"], "element_id")
+        self.intents_by_id = {i["id"]: i for i in self.raw["intents"] if "id" in i}
+        self.static_verdicts_by_element = _multi_index(
+            self.raw["static_verdicts"], "element_id"
+        )
 
     # -- convenience ----------------------------------------------------
 
@@ -31062,7 +33373,8 @@ class ArtifactStore:
         ids.update(self.decisions_by_id)
         ids.update(self.impacts_by_change)
         for name in ("unresolved", "cfg_blocks", "cfg_edges", "reachability", "lineage",
-                      "barriers", "slices", "findings", "changes", "records", "intents"):
+                      "barriers", "slices", "findings", "changes", "records", "intents",
+                      "static_verdicts"):
             for record in self.raw.get(name, ()):
                 rid = record.get("id")
                 if isinstance(rid, str):
@@ -31762,6 +34074,12 @@ def element_detail(store: ArtifactStore, element_id: str) -> dict[str, Any]:
         "intent_ids": sorted(
             i["id"] for i in store.intents_by_element.get(element_id, []) if "id" in i
         ),
+        # The intents themselves, not only their ids. A verdict next to an
+        # id the reader has to go and look up is a verdict they will not
+        # read: "MISALIGNED" means nothing without the sentence it was
+        # judged against.
+        "intents": intents_view(store, element_id=element_id),
+        "static_verdicts": static_verdicts_view(store, element_id=element_id),
     }
 
 
@@ -32025,6 +34343,72 @@ def verdicts_view(rstore: RuntimeStore, *, element_id: str | None = None) -> lis
                 "evidence_ids": list(v.get("evidence_ids") or ()),
                 "run_id": prov.get("run_id") or rstore.run_id,
                 "event_ids": list(prov.get("event_ids") or ()),
+            }
+        )
+    out.sort(key=lambda r: r["id"] or "")
+    return out
+
+
+def intents_view(store: ArtifactStore, *, element_id: str | None = None) -> list[dict[str, Any]]:
+    """`Intent` records verbatim, with their status.
+
+    `status` is never collapsed or defaulted here. A PROPOSED intent that
+    rendered like a CONFIRMED one would attribute a statement this tool
+    derived to the owner, which is the one thing card 13 exists to prevent.
+    """
+    intents = (
+        store.intents_by_element.get(element_id, [])
+        if element_id is not None
+        else store.raw.get("intents", [])
+    )
+    out = []
+    for i in intents:
+        prov = i.get("provenance") or {}
+        out.append(
+            {
+                "id": i.get("id"),
+                "element_id": i.get("element_id"),
+                "status": i.get("status"),
+                "statement": i.get("statement"),
+                "invariants": list(i.get("invariants") or ()),
+                "expected_reads": list(i.get("expected_reads") or ()),
+                "expected_writes": list(i.get("expected_writes") or ()),
+                "method": prov.get("method"),
+                "note": prov.get("note", ""),
+            }
+        )
+    out.sort(key=lambda r: r["id"] or "")
+    return out
+
+
+def static_verdicts_view(
+    store: ArtifactStore, *, element_id: str | None = None
+) -> list[dict[str, Any]]:
+    """Card 13's verdicts from the STATIC evidence, verbatim.
+
+    Kept separate from `verdicts_view`, which reads one run's overlay. Both
+    judge the same intents; they do not judge them with the same evidence,
+    and merging them would lose which is which.
+    """
+    verdicts = (
+        store.static_verdicts_by_element.get(element_id, [])
+        if element_id is not None
+        else store.raw.get("static_verdicts", [])
+    )
+    out = []
+    for v in verdicts:
+        prov = v.get("provenance") or {}
+        out.append(
+            {
+                "id": v.get("id"),
+                "element_id": v.get("element_id"),
+                "intent_id": v.get("intent_id"),
+                "verdict": v.get("verdict"),
+                "expectation": v.get("expectation"),
+                "observation": v.get("observation"),
+                "evidence_ids": list(v.get("evidence_ids") or ()),
+                "method": prov.get("method"),
+                "confidence": prov.get("confidence"),
             }
         )
     out.sort(key=lambda r: r["id"] or "")
@@ -32460,9 +34844,54 @@ def _render_element_detail(store: ArtifactStore, element_id: str) -> str:
         f"changes (before): {_refs(store, d['change_ids_before'])}<br>"
         f"changes (after): {_refs(store, d['change_ids_after'])}<br>"
         f"intents: {_refs(store, d['intent_ids'])}</p>"
+        f"{_render_intents(store, d)}"
         f"{_render_doc_record(store, d['doc_record'])}"
     )
     return f"<div class='element-detail'>{header}{body}</div>"
+
+
+def _render_intents(store: ArtifactStore, detail: dict[str, Any]) -> str:
+    """The element's declared purpose and the verdicts on it, side by side.
+
+    A verdict shown without the statement it was judged against is a label
+    the reader cannot check, and card 13's whole rule is that every verdict
+    is checkable by a human.
+    """
+    intents = detail.get("intents") or []
+    verdicts = detail.get("static_verdicts") or []
+    if not intents and not verdicts:
+        return ""
+    parts = ["<h4>intent</h4>"]
+    for intent in intents:
+        status = escape(str(intent.get("status") or ""))
+        note = (
+            "owner-confirmed"
+            if status == "CONFIRMED"
+            else "derived by this tool, NOT owner-confirmed and binding on nothing"
+        )
+        parts.append(
+            f"<p class='intent-{status}'><strong>{status}</strong> &mdash; {note}<br>"
+            f"{escape(str(intent.get('statement') or ''))}"
+        )
+        for label, key in (
+            ("invariant", "invariants"),
+            ("expected read", "expected_reads"),
+            ("expected write", "expected_writes"),
+        ):
+            for text in intent.get(key) or ():
+                parts.append(f"<br><code>{label}: {escape(str(text))}</code>")
+        parts.append("</p>")
+    for verdict in verdicts:
+        parts.append(
+            "<p>"
+            + _verdict_badge(verdict.get("verdict"))
+            + " <em>from static evidence</em><br>"
+            + f"expected: {escape(str(verdict.get('expectation') or ''))}<br>"
+            + f"observed: {escape(str(verdict.get('observation') or ''))}<br>"
+            + f"evidence: {_refs(store, verdict.get('evidence_ids') or ())}"
+            + "</p>"
+        )
+    return "".join(parts)
 
 
 def _render_span(span: dict[str, Any] | None) -> str:
@@ -33150,19 +35579,51 @@ def _capped_reachability(reach: dict[str, Any]) -> dict[str, Any]:
     return reach
 
 
+#: How a node's single alignment badge is chosen when an element carries
+#: more than one verdict. Worst first: a contradiction must never be hidden
+#: behind an agreement, and NOT_EXERCISED must never be hidden behind
+#: anything -- it is the one an owner is most likely to misread as a pass.
+_VERDICT_RANK = (
+    "MISALIGNED",
+    "NOT_EXERCISED",
+    "UNVERIFIABLE",
+    "ALIGNED",
+    "NO_INTENT",
+)
+
+
+def _static_verdict_badge(store: ArtifactStore, element_id: str) -> str | None:
+    """The one verdict a node shows, or ``None`` when nothing judged it."""
+    seen = {
+        str(v.get("verdict"))
+        for v in store.static_verdicts_by_element.get(element_id, [])
+        if v.get("verdict")
+    }
+    for name in _VERDICT_RANK:
+        if name in seen:
+            return name
+    return next(iter(sorted(seen)), None)
+
+
 def _element_node(store: ArtifactStore, element_id: str) -> dict[str, Any]:
     """A node view for one element id, real or unresolved -- never a crash."""
     element = store.elements_by_id.get(element_id)
     reach = _capped_reachability(views.element_reachability(store, element_id))
     finding_count = len(store.findings_by_element.get(element_id, []))
     has_record = element_id in store.records_by_element
+    # Card 13. `None` means "no intent names this element", which the panel
+    # renders as nothing at all -- it is not NO_INTENT wearing a badge, and
+    # it is certainly not a pass.
+    verdict = _static_verdict_badge(store, element_id)
+    intent_count = len(store.intents_by_element.get(element_id, []))
     if element is None:
         return {
             "id": element_id, "is_element": False, "kind": "UNKNOWN",
             "name": element_id, "qualname": element_id, "module": "",
             "confidence": None, "method": None, "span": None,
             "reachability": reach, "finding_count": finding_count,
-            "has_record": has_record,
+            "has_record": has_record, "static_verdict": verdict,
+            "intent_count": intent_count,
         }
     summary = views.element_summary(element)
     return {
@@ -33171,6 +35632,7 @@ def _element_node(store: ArtifactStore, element_id: str) -> dict[str, Any]:
         "module": summary["module"] or "", "confidence": summary["confidence"],
         "method": summary["method"], "span": summary["span"],
         "reachability": reach, "finding_count": finding_count, "has_record": has_record,
+        "static_verdict": verdict, "intent_count": intent_count,
     }
 
 
@@ -35064,6 +37526,17 @@ def build_blueprint_data(
         "lineage": lineage,
         "diff": diff,
         "runtime": _build_runtime(store, rstore),
+        # Card 13. Every intent on the page by id, so a verdict -- static or
+        # runtime -- can show the SENTENCE it was judged against without the
+        # reader going to look it up. Only the intents that name an element on
+        # this page: the file is the whole answer and is always written.
+        "intents_by_id": {
+            intent_id: store.intents_by_id[intent_id]
+            for element_id in sorted(element_ids)
+            for intent in store.intents_by_element.get(element_id, [])
+            for intent_id in (intent.get("id"),)
+            if intent_id in store.intents_by_id
+        },
         "element_details": element_details,
     }
 
@@ -35352,9 +37825,20 @@ header#topbar h1 { font-size:.95rem; margin:0; white-space:nowrap; }
   color:var(--accent); font-size:.62rem; padding:0 .3rem; border-radius:3px; margin:.2rem 0; }
 .runtime-evidence { border-left:3px solid var(--accent); padding:.2rem .4rem; margin:.25rem 0; font-size:.7rem; }
 .contradiction-row { border-left-color:var(--red); }
+.verdict-head { font-weight:700; letter-spacing:0.03em; }
+.verdict-intent { color:var(--text-dim); margin:2px 0 4px; }
+.verdict-warn { color:var(--amber); margin-top:4px; }
+.intent-row { border-left:3px solid var(--accent); padding:4px 8px; margin:6px 0;
+              background:var(--node-bg-2); }
+.intent-row.intent-PROPOSED { border-left-color:var(--amber); border-left-style:dashed; }
+.intent-status { font-weight:700; font-size:0.85em; letter-spacing:0.03em; }
+.intent-invariant { color:var(--text-dim); font-family:ui-monospace,monospace;
+                    font-size:0.9em; }
 .verdict-ALIGNED { border-left-color:var(--green); }
 .verdict-MISALIGNED { border-left-color:var(--red); }
-.verdict-NOT_EXERCISED { border-left-color:var(--accent); border-left-style:dashed; }
+.verdict-NOT_EXERCISED { border-left-color:var(--amber); border-left-style:dashed; }
+.verdict-UNVERIFIABLE { border-left-color:var(--text-dim); }
+.verdict-NO_INTENT { border-left-color:var(--panel-border); }
 .action-btn { margin:.4rem 0; background:var(--accent); color:#fff; border:none; border-radius:6px;
   padding:.3rem .6rem; cursor:pointer; font-size:.73rem; }
 .condition-source { background:var(--node-bg); padding:.4rem; border-radius:4px; white-space:pre-wrap;
@@ -36538,6 +39022,59 @@ function renderRecordSection(panel, detail) {
   }
 }
 
+// Card 13. The intent an element was judged against, and the verdicts on it.
+// The statement sits NEXT TO the verdict, because "MISALIGNED" on its own is
+// a word, not an answer -- the owner has to see the sentence it contradicts.
+function intentById(intentId) {
+  var index = DATA.intents_by_id || {};
+  return index[intentId] || null;
+}
+
+function appendVerdict(panel, v, source) {
+  var box = el('div', 'runtime-evidence verdict-' + cssSafe(v.verdict));
+  box.appendChild(el('div', 'verdict-head', v.verdict + '  (' + source + ')'));
+  var intent = intentById(v.intent_id);
+  if (intent) {
+    box.appendChild(el('div', 'verdict-intent',
+      'intent (' + intent.status + '): ' + intent.statement));
+  } else if (v.intent_id) {
+    box.appendChild(el('div', 'verdict-intent', 'intent: ' + v.intent_id));
+  }
+  if (v.expectation) box.appendChild(el('div', null, 'expected: ' + v.expectation));
+  if (v.observation) box.appendChild(el('div', null, 'observed: ' + v.observation));
+  if (v.verdict === 'NOT_EXERCISED') {
+    box.appendChild(el('div', 'verdict-warn',
+      'NOT_EXERCISED is not ALIGNED. No scenario in this run entered this '
+      + 'element, so its intent is unverified.'));
+  }
+  panel.appendChild(box);
+}
+
+function renderIntentSection(panel, detail, elementId) {
+  var intents = (detail && detail.intents) || [];
+  var verdicts = (detail && detail.static_verdicts) || [];
+  if (!intents.length && !verdicts.length) return;
+  panel.appendChild(el('h3', null, 'intent'));
+  intents.forEach(function (i) {
+    var box = el('div', 'intent-row intent-' + cssSafe(i.status));
+    box.appendChild(el('div', 'intent-status', i.status + (i.status === 'PROPOSED'
+      ? '  -- derived by this tool, NOT owner-confirmed, and binding on nothing'
+      : '  -- owner-confirmed')));
+    box.appendChild(elWithBreaks('div', null, i.statement || '(no statement)'));
+    (i.invariants || []).forEach(function (text) {
+      box.appendChild(el('div', 'intent-invariant', 'invariant: ' + text));
+    });
+    (i.expected_reads || []).forEach(function (text) {
+      box.appendChild(el('div', 'intent-invariant', 'expected read: ' + text));
+    });
+    (i.expected_writes || []).forEach(function (text) {
+      box.appendChild(el('div', 'intent-invariant', 'expected write: ' + text));
+    });
+    panel.appendChild(box);
+  });
+  verdicts.forEach(function (v) { appendVerdict(panel, v, 'static evidence'); });
+}
+
 function renderRuntimeSection(panel, elementId) {
   var rt = DATA.runtime;
   panel.appendChild(el('h3', null, 'runtime'));
@@ -36568,7 +39105,7 @@ function renderRuntimeSection(panel, elementId) {
     panel.appendChild(box);
   });
   ((rt.verdicts_by_element && rt.verdicts_by_element[elementId]) || []).forEach(function (v) {
-    panel.appendChild(el('div', 'runtime-evidence verdict-' + cssSafe(v.verdict), 'verdict: ' + v.verdict + ' -- ' + v.observation));
+    appendVerdict(panel, v, 'observed in run ' + (v.run_id || rt.run_id));
   });
   ((rt.contradictions_by_element && rt.contradictions_by_element[elementId]) || []).forEach(function (c) {
     var box = el('div', 'runtime-evidence contradiction-row');
@@ -36687,6 +39224,7 @@ function renderDetailForNode(n, tab) {
   }
   if (n.is_element) {
     renderRecordSection(panel, DATA.element_details[n.id]);
+    renderIntentSection(panel, DATA.element_details[n.id], n.id);
     renderRuntimeSection(panel, n.id);
   }
 }
@@ -37575,6 +40113,8 @@ __all__ = [
     "observed_order_view",
     "runtime_overview_view",
     "unmapped_events_view",
+    "intents_view",
+    "static_verdicts_view",
     "verdicts_view",
     "DECISION_SIGNALS",
     "render_site",
@@ -38066,6 +40606,16 @@ def _rebuild(cls: type, payload: dict[str, Any]) -> Any:
     """
     import dataclasses
     import typing
+    from enum import StrEnum
+
+    def _enum_of(hint: Any) -> type[StrEnum] | None:
+        """The `StrEnum` this field is typed as, through an optional if need be."""
+        if isinstance(hint, type) and issubclass(hint, StrEnum):
+            return hint
+        for arg in typing.get_args(hint):
+            if isinstance(arg, type) and issubclass(arg, StrEnum):
+                return arg
+        return None
 
     hints = typing.get_type_hints(cls)
     kwargs: dict[str, Any] = {}
@@ -38076,10 +40626,28 @@ def _rebuild(cls: type, payload: dict[str, Any]) -> Any:
         hint = hints[field.name]
         origin = typing.get_origin(hint)
         args = typing.get_args(hint)
+        enum_type = _enum_of(hint)
         if value is None:
             kwargs[field.name] = None
+        elif enum_type is not None:
+            # A `StrEnum` left as a bare string compares equal but is never
+            # `is` the member, and this project's own code asks `edge.kind is
+            # EdgeKind.CALLS`. Read back as a string, every such test is
+            # silently False: card 13 saw a re-read `Reachability.state` of
+            # "REACHES_SINK" fail `is ReachabilityState.REACHES_SINK` and
+            # report a live element as unreachable. A value the enum does not
+            # name is left alone rather than raising -- an artifact from a
+            # newer schema must degrade, not crash.
+            try:
+                kwargs[field.name] = enum_type(value)
+            except ValueError:
+                kwargs[field.name] = value
         elif origin is tuple and args and dataclasses.is_dataclass(args[0]):
             kwargs[field.name] = tuple(_rebuild(args[0], v) for v in value)
+        elif origin is tuple and args and isinstance(args[0], type) and issubclass(args[0], StrEnum):
+            kwargs[field.name] = tuple(
+                _coerce_enum_member(args[0], item) for item in value
+            )
         elif origin is tuple:
             kwargs[field.name] = tuple(value)
         elif dataclasses.is_dataclass(hint) and isinstance(value, dict):
@@ -38090,6 +40658,13 @@ def _rebuild(cls: type, payload: dict[str, Any]) -> Any:
         else:
             kwargs[field.name] = value
     return cls(**kwargs)
+
+
+def _coerce_enum_member(enum_type: type, value: Any) -> Any:
+    try:
+        return enum_type(value)
+    except ValueError:
+        return value
 
 
 def _cli__read_jsonl(out_dir: Path, name: str, cls: type) -> list[Any]:
@@ -38138,6 +40713,93 @@ def build_index(graph_dir: Path, target_root: Path) -> Any:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# card 17 as an overlapped whole stage
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _DependencyResults:
+    """Everything card 17 answers, collected in one value.
+
+    A bundle rather than the `Dependencies` object itself: the object is built
+    inside the worker and only its ANSWERS travel, so nothing here depends on
+    a stage's internal state surviving a process boundary.
+    """
+
+    requirements: tuple[Any, ...]
+    installed: tuple[Any, ...]
+    usage: tuple[Any, ...]
+    interpreter_requirements: tuple[Any, ...]
+    findings: tuple[Any, ...]
+    unresolved: tuple[Any, ...]
+    summary: dict[str, Any]
+    doc_dependencies: dict[str, dict[str, Any]]
+
+
+class _DependenciesPayload(Payload):
+    """Card 17's whole input, sent ONCE to the one worker that runs it.
+
+    Under the `fork` start method the child inherits it and nothing is pickled
+    at all; under `spawn` it crosses once, which for one unit of work is also
+    once in total.
+    """
+
+    __slots__ = (
+        "root", "environment_root", "elements", "edges", "reachability",
+        "max_source_bytes",
+    )
+
+    def __init__(
+        self,
+        *,
+        root: str,
+        environment_root: str | None,
+        elements: tuple[Any, ...],
+        edges: tuple[Any, ...],
+        reachability: tuple[Any, ...],
+        max_source_bytes: int,
+    ) -> None:
+        self.root = root
+        self.environment_root = environment_root
+        self.elements = elements
+        self.edges = edges
+        self.reachability = reachability
+        self.max_source_bytes = max_source_bytes
+
+    def open(self) -> "_DependenciesPayload":
+        return self
+
+
+def _dependencies_unit(payload: "_DependenciesPayload", _arg: Any) -> _DependencyResults:
+    """The WHOLE of card 17, run exactly as it runs in one process.
+
+    Nothing inside the stage is split. It reads the target as text and never
+    imports, executes or unpickles any of it -- constraint 1 holds in a worker
+    exactly as it holds here.
+    """
+    dependencies = Dependencies(
+        Path(payload.root),
+        environment_root=(
+            None if payload.environment_root is None else Path(payload.environment_root)
+        ),
+        elements=payload.elements,
+        edges=payload.edges,
+        reachability=payload.reachability,
+        max_source_bytes=payload.max_source_bytes,
+    )
+    return _DependencyResults(
+        requirements=tuple(dependencies.requirements()),
+        installed=tuple(dependencies.installed()),
+        usage=tuple(dependencies.usage()),
+        interpreter_requirements=tuple(dependencies.interpreter_requirements()),
+        findings=tuple(dependencies.findings()),
+        unresolved=tuple(dependencies.unresolved()),
+        summary=dependencies.summary(),
+        doc_dependencies=dependencies.doc_dependencies(),
+    )
+
+
 def analyze(
     root: Path,
     out_dir: Path,
@@ -38156,6 +40818,8 @@ def analyze(
     worker_report_sink: Callable[[str], None] | None = None,
     progress: Any = None,
     max_source_bytes: int = MAX_SOURCE_BYTES,
+    intents_path: Path | None = None,
+    propose_intents_path: Path | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Run the static pipeline over *root* and write artifacts to *out_dir*.
 
@@ -38199,6 +40863,12 @@ def analyze(
     # can be read back. That report is PRINTED and never written into an
     # artifact: it is wall-clock, and constraint 4 says identical input gives
     # identical bytes.
+    # Every stage that can take workers reports what they actually bought, per
+    # stage, measured on this run. `worker_count` is resolved once so every
+    # stage asks for the same thing and the report can name one number.
+    worker_count = resolve_workers(workers)
+    pipeline = PipelineReport(requested=worker_count)
+
     ingestor = Ingestor(cache_dir=cache_dir, workers=workers)
     elements, unresolved = ingestor.inventory(str(root), on_unit=bar.sub)
     summary["elements"] = len(elements)
@@ -38206,14 +40876,44 @@ def analyze(
     (worker_report_sink or bar.through)(render_worker_report(ingestor.worker_report))
 
     # Card 2 — resolution.
+    #
+    # NOT handed to the pool, and the report says so with the number rather
+    # than leaving it looking like a stage with nothing to gain. Resolution's
+    # unit is a whole MODULE -- a `_CallResolver` carries a scope chain down
+    # one module's tree and binds names as it goes, so there is no boundary
+    # inside a module to cut on, and cutting anyway would resolve names
+    # against a scope that does not exist. Across modules the walks share
+    # caches that one module's pass fills for the next. On a target that is
+    # one 15 MB module, as the owner's is, there is exactly one unit either
+    # way.
+    resolve_started = time.time()
     resolver = Resolver(root, config_paths=tuple(config_paths))
     edges, resolve_unresolved = resolver.resolve(elements)
     unresolved = list(unresolved) + list(resolve_unresolved)
     summary["edges"] = len(edges)
+    pipeline.add(
+        StageReport(
+            stage="resolve",
+            requested=worker_count,
+            unit_count=resolver.module_count(),
+            total_seconds=time.time() - resolve_started,
+            not_parallelised_reason=(
+                "one unit is one module, and a module's name resolution "
+                "carries a scope chain and caches that the next module's "
+                "pass reads; the units are not independent"
+            ),
+        )
+    )
     _stage("resolve")
 
     # Card 3 — CFG, ordering, decisions, reachability, detected candidates.
-    analyzer = CascadeAnalyzer(root, sink_ids=tuple(sink_ids), unresolved=unresolved)
+    analyzer = CascadeAnalyzer(
+        root,
+        sink_ids=tuple(sink_ids),
+        unresolved=unresolved,
+        workers=worker_count,
+        on_unit=bar.sub,
+    )
     (
         blocks,
         cfg_edges,
@@ -38225,6 +40925,9 @@ def analyze(
     ) = analyzer.order(elements, edges, tuple(entry_ids))
     unresolved = list(unresolved) + list(cascade_unresolved)
     summary["decisions"] = len(decisions)
+    analyzer.cfg_report.total_seconds = analyzer.cfg_report.wall_seconds
+    pipeline.add(analyzer.cfg_report)
+    pipeline.add(analyzer.order_report)
     _stage("cascade")
 
     # Card 4 — lineage and slices.
@@ -38234,6 +40937,34 @@ def analyze(
     # whole, because a half-slice answering "what produces this feature" is a
     # wrong answer wearing the shape of a right one. `lineage.jsonl` is always
     # written in full, so any root not precomputed is still answerable.
+    # Card 17 STARTS HERE, in a second process, and is collected after card 4.
+    #
+    # This is the one kind of parallelism that helps a target which is a
+    # single module. Dependencies reads elements, edges and reachability --
+    # all of which exist by now -- and reads nothing card 4 produces; card 4
+    # reads nothing of card 17's. Two whole stages, neither split, running at
+    # the same time, consolidated in the same fixed order as before, so the
+    # bytes cannot move. On the owner's engine card 17 is 37.4s that card 4's
+    # 238.6s completely hides.
+    dependencies_report = pipeline.add(
+        StageReport(stage="dependencies", overlapped_with="lineage")
+    )
+    dependencies_job = BackgroundUnit(
+        _dependencies_unit,
+        _DependenciesPayload(
+            root=str(root),
+            environment_root=None if env_root is None else str(env_root),
+            elements=tuple(elements),
+            edges=tuple(edges),
+            reachability=tuple(reachability),
+            max_source_bytes=max_source_bytes,
+        ),
+        None,
+        worker_count,
+        dependencies_report,
+    )
+
+    lineage_started = time.time()
     tracer = LineageTracer(root, sink_ids=tuple(sink_ids))
     lineage_edges, barriers = tracer.trace_values(elements, edges)
 
@@ -38260,26 +40991,45 @@ def analyze(
     )
     summary["lineage_edges"] = len(lineage_edges)
     summary["barriers"] = len(barriers)
+    # NOT handed to the pool either, for a harder reason than resolution's: a
+    # reaching-definition walk is a fold over the module, and its walkers
+    # write shared state -- aliases, container keys, declared features,
+    # established definitions -- that a LATER module's walk reads. Splitting
+    # the modules across processes would give each worker a different half of
+    # that state and a different set of lineage edges. A wrong graph is
+    # infinitely worse than a slow one, so this stays in one process and the
+    # cost is printed rather than disguised.
+    pipeline.add(
+        StageReport(
+            stage="lineage",
+            requested=worker_count,
+            unit_count=tracer.module_count(),
+            total_seconds=time.time() - lineage_started,
+            not_parallelised_reason=(
+                "one unit is one module, and a module's dataflow walk writes "
+                "alias, container-key and feature state that later modules' "
+                "walks read; the units are not independent"
+            ),
+        )
+    )
     _stage("lineage")
 
-    # Card 17 — dependency and version applicability. Declared, installed and
-    # used are gathered separately and joined; with no --env the installed
-    # half is absent and every artifact and the summary say so.
-    dependencies = Dependencies(
-        root,
-        environment_root=env_root,
-        elements=elements,
-        edges=edges,
-        reachability=reachability,
-        max_source_bytes=max_source_bytes,
-    )
-    package_requirements = dependencies.requirements()
-    installed_packages = dependencies.installed()
-    package_usage = dependencies.usage()
-    interpreter_requirements = dependencies.interpreter_requirements()
-    dependency_findings = dependencies.findings()
-    unresolved = list(unresolved) + list(dependencies.unresolved())
-    summary["dependencies"] = dependencies.summary()
+    # Card 17 — collected. Declared, installed and used are gathered
+    # separately and joined; with no --env the installed half is absent and
+    # every artifact and the summary say so.
+    #
+    # Consolidated HERE, at the point the serial pipeline always consolidated
+    # it, and in the same order: `unresolved` is extended after card 4 and
+    # before card 5, exactly as before, so the artifact's contents and their
+    # order are untouched by the stage having run early.
+    deps = dependencies_job.result()
+    package_requirements = deps.requirements
+    installed_packages = deps.installed
+    package_usage = deps.usage
+    interpreter_requirements = deps.interpreter_requirements
+    dependency_findings = deps.findings
+    unresolved = list(unresolved) + list(deps.unresolved)
+    summary["dependencies"] = deps.summary
     _stage("dependencies")
 
     # Card 5 — findings.
@@ -38334,6 +41084,70 @@ def analyze(
             slices = tuple(sorted(merged.values(), key=lambda one: one.id))
     _stage("findings")
 
+    # Card 13 — the intent registry, and the verdicts the STATIC map supports.
+    #
+    # After card 5 because it needs cards 2, 3 and 4 whole; before anything is
+    # written because a registry issue is an `Unresolved` like any other and
+    # belongs in the same `unresolved.jsonl` as everything else this run could
+    # not resolve.
+    #
+    # An intents file the owner wrote that silently did nothing is the worst
+    # outcome available here, so every problem in it carries its line number
+    # and its reason, none of them is dropped, and the printed report names
+    # the count.
+    registry = load_registry(intents_path, (element.id for element in elements))
+    unresolved = list(unresolved) + list(registry.issues)
+
+    # The universe judged is the REGISTRY'S OWN: the elements the owner wrote
+    # an intent for, plus the ones whose entry was too malformed to load.
+    # Judging every element would emit one NO_INTENT verdict per element --
+    # true, and nothing an owner can act on; on a 116k-line engine it is tens
+    # of thousands of lines saying "you did not write an intent for this".
+    # The narrowing is stated in the manifest and the report, not only here.
+    named = {intent.element_id for intent in registry.intents}
+    named.update(registry.rejected_element_ids)
+    aligner = AlignmentEngine(
+        registry=registry,
+        elements=tuple(element for element in elements if element.id in named),
+        edges=edges,
+        lineage_edges=lineage_edges,
+        reachability=reachability,
+    )
+    static_verdicts = aligner.judge_static(registry.intents)
+    intent_coverage = aligner.coverage()
+    summary["intents"] = _intent_summary(
+        registry, intent_coverage, static_verdicts, intents_path
+    )
+
+    # --propose-intents: a STARTER registry, every entry PROPOSED. Written
+    # even when it would overwrite, because the owner named the path; never
+    # written into the artifact directory, because it is an input they edit,
+    # not an output they read.
+    if propose_intents_path is not None:
+        # Only the kinds an intent can sensibly be ABOUT. A parameter, an
+        # import or an embedded blob gets a proposal of the shape "Named
+        # 'amount', suggesting it amount", and on a 116k-line engine that is
+        # tens of thousands of lines of noise between the owner and the
+        # entries worth confirming. The number left out is printed and stored,
+        # so the narrowing is visible rather than assumed.
+        candidates_for_proposal = [
+            element for element in elements if element.kind in _PROPOSABLE_KINDS
+        ]
+        skipped = len(elements) - len(candidates_for_proposal)
+        proposals = propose_intents(candidates_for_proposal)
+        propose_intents_path.parent.mkdir(parents=True, exist_ok=True)
+        propose_intents_path.write_text(
+            registry_text(proposals), encoding="utf-8", newline="\n"
+        )
+        summary["intents"]["proposed_written"] = {
+            "path": str(propose_intents_path),
+            "entries": len(proposals),
+            "status": "PROPOSED",
+            "elements_skipped": skipped,
+            "kinds_proposed": sorted(str(kind) for kind in _PROPOSABLE_KINDS),
+        }
+    _stage("intents")
+
     # The size guard, BEFORE anything is written and before card 16 links a
     # record to a slice, so a refusal can never leave a record pointing at a
     # slice the artifact does not hold.
@@ -38369,9 +41183,13 @@ def analyze(
         slices=slices,
         findings=findings,
         decision_sink_ids=tuple(sink_ids),
-        dependencies=dependencies.doc_dependencies(),
+        dependencies=deps.doc_dependencies,
     )
-    records = builder.records(on_progress=bar.sub)
+    records_report = pipeline.add(StageReport(stage="records"))
+    records = builder.records(
+        on_progress=bar.sub, workers=worker_count, report=records_report
+    )
+    records_report.total_seconds = records_report.wall_seconds
     offenders = builder.completeness_gate(records)
     summary["incomplete_records"] = len(offenders)
     _stage("records")
@@ -38418,28 +41236,48 @@ def analyze(
             f"decision; the rest stay recomputable from lineage.jsonl."
         )
 
-    for name, payload in (
-        ("elements.jsonl", canonical_jsonl(elements)),
-        ("edges.jsonl", canonical_jsonl(edges)),
-        ("unresolved.jsonl", canonical_jsonl(unresolved)),
-        ("cfg_blocks.jsonl", canonical_jsonl(blocks)),
-        ("cfg_edges.jsonl", canonical_jsonl(cfg_edges)),
-        ("order.jsonl", canonical_jsonl(order_nodes)),
-        ("decisions.jsonl", canonical_jsonl(decisions)),
-        ("reachability.jsonl", canonical_jsonl(reachability)),
-        ("candidates.jsonl", canonical_jsonl(candidates)),
-        ("lineage.jsonl", canonical_jsonl(lineage_edges)),
-        ("barriers.jsonl", canonical_jsonl(barriers)),
-        ("slices.jsonl", canonical_jsonl(slices)),
-        ("findings.jsonl", canonical_jsonl(findings)),
-        ("records.jsonl", canonical_jsonl(records)),
-        ("requirements.jsonl", canonical_jsonl(package_requirements)),
-        ("installed.jsonl", canonical_jsonl(installed_packages)),
-        ("package_usage.jsonl", canonical_jsonl(package_usage)),
-        ("interpreter.jsonl", canonical_jsonl(interpreter_requirements)),
-    ):
+    # Serialisation is the largest stage on a large target -- 437 MB of JSON
+    # on the owner's engine -- and it is per RECORD, so it parallelises. The
+    # unit is a whole record; the global sort that fixes the order stays in
+    # this process, so the bytes cannot depend on which worker rendered what.
+    # `canonical_jsonl_many` is byte-identical to `canonical_jsonl` per group
+    # and there is a test that fails if it ever stops being.
+    write_report = pipeline.add(StageReport(stage="write"))
+    payloads = canonical_jsonl_many(
+        {
+            "elements.jsonl": elements,
+            "edges.jsonl": edges,
+            "unresolved.jsonl": unresolved,
+            "cfg_blocks.jsonl": blocks,
+            "cfg_edges.jsonl": cfg_edges,
+            "order.jsonl": order_nodes,
+            "decisions.jsonl": decisions,
+            "reachability.jsonl": reachability,
+            "candidates.jsonl": candidates,
+            "lineage.jsonl": lineage_edges,
+            "barriers.jsonl": barriers,
+            "slices.jsonl": slices,
+            "findings.jsonl": findings,
+            "records.jsonl": records,
+            "requirements.jsonl": package_requirements,
+            "installed.jsonl": installed_packages,
+            "package_usage.jsonl": package_usage,
+            "interpreter.jsonl": interpreter_requirements,
+            # Card 13. Always written, even empty: an absent intents.jsonl and
+            # an intents.jsonl holding nothing are different facts, and the
+            # viewer reads this file to show an element's declared purpose.
+            "intents.jsonl": registry.intents,
+            "verdicts.jsonl": static_verdicts,
+        },
+        worker_count,
+        write_report,
+        on_unit=bar.sub,
+    )
+    for name in sorted(payloads):
+        payload = payloads.pop(name)
         artifacts[name] = _write(out_dir, name, payload)
         artifact_bytes[name] = len(payload.encode("utf-8"))
+        del payload
 
     # Only `slices.jsonl` is REFUSED on size, because it is the only artifact
     # quadratic in OUTPUT. The rest are linear in the target -- one record per
@@ -38460,6 +41298,7 @@ def analyze(
         )
     summary["artifact_bytes"] = dict(sorted(artifact_bytes.items()))
 
+    write_report.total_seconds = write_report.wall_seconds
     _stage("write")
     summary["unresolved"] = len(unresolved)
     summary["stage_millis"] = stage_millis
@@ -38487,6 +41326,24 @@ def analyze(
                 # exhaustive one, so the scope travels with the artifacts
                 # rather than only appearing on a terminal that has scrolled.
                 "slice_scope": slice_disclosure,
+                # Which elements `verdicts.jsonl` covers, and which it does
+                # not. A verdict file that covered only the registry's own
+                # elements while reading as if it covered the target would be
+                # the same mistake the slice scope exists to prevent.
+                "intents": {
+                    "path": str(intents_path) if intents_path is not None else "",
+                    "present": bool(registry.present),
+                    "intents": len(registry.intents),
+                    "issues": len(registry.issues),
+                    "elements_judged": len(static_verdicts),
+                    "note": (
+                        "verdicts.jsonl covers the elements the intents file "
+                        "NAMES, not every element: an element with no intent is "
+                        "NO_INTENT by construction and is not enumerated. "
+                        "Runtime verdicts, which need a run, live in "
+                        "runtime/<run_id>/verdicts.jsonl."
+                    ),
+                },
             }
         )
         + "\n",
@@ -38518,6 +41375,11 @@ def analyze(
         newline="\n",
     )
 
+    # What the workers bought, per stage, measured on this run. Printed and
+    # never written into an artifact: these are wall-clock timings and
+    # constraint 4 says identical input gives identical bytes.
+    (worker_report_sink or bar.through)(render_pipeline_report(pipeline))
+
     bar.finish(
         finished_at=finished, elapsed=elapsed_seconds, stage_millis=stage_millis
     )
@@ -38543,6 +41405,7 @@ def trace(
     scenario: str,
     out_root: Path,
     progress: Any = None,
+    intents_path: Path | None = None,
 ) -> tuple[int, str]:
     """Run the target under the harness and write the runtime overlay.
 
@@ -38573,6 +41436,42 @@ def trace(
     if scenario not in spec_doc.get("scenarios", {}):
         known = ", ".join(sorted(spec_doc.get("scenarios", {}))) or "none"
         return EXIT_USAGE, f"no scenario named {scenario!r}. Declared: {known}"
+
+    # Client stubs, validated HERE -- in the parent, before a child exists and
+    # long before a line of the target runs. A declaration the harness cannot
+    # read must be a refusal naming the module and the problem, never a child
+    # that dies halfway through a run it should not have started.
+    #
+    # The hard rule is untouched: this validates modules the owner NAMED.
+    # Anything not named here is still undeclared, and an undeclared client is
+    # still a hard stop at the socket layer.
+    try:
+        stub_declarations = parse_declarations(spec_doc.get("client_stubs"))
+    except StubDeclarationError as exc:
+        return EXIT_REFUSED, (
+            f"REFUSED: {exc}\n\n"
+            f"`client_stubs` in {scenario_file} could not be read, so this run "
+            f"cannot say which external systems are stubbed. Nothing was executed."
+        )
+    # A `replay` recording is named RELATIVE TO THE SCENARIOS FILE, which is
+    # where the owner keeps it -- not relative to the target, which would
+    # require putting tool inputs inside the code under analysis. Resolved
+    # here so there is exactly one rule and the child never has to guess.
+    for declaration in stub_declarations:
+        if not declaration.recording:
+            continue
+        resolved = Path(declaration.recording)
+        if not resolved.is_absolute():
+            resolved = (scenario_file.parent / resolved).resolve()
+        if not resolved.is_file():
+            return EXIT_REFUSED, (
+                f"REFUSED: client stub {declaration.module!r} is kind \"replay\" and "
+                f"its recording {declaration.recording!r} does not exist. Tried: "
+                f"{resolved}. A replay with nothing to replay would answer every "
+                f"call with a stop, which is not what you declared. Nothing was "
+                f"executed."
+            )
+        spec_doc["client_stubs"][declaration.module]["recording"] = str(resolved)
 
     # The hash the harness checks the target against is the one the GRAPH was
     # built from, read out of manifest.json. Letting the child recompute it
@@ -38637,10 +41536,40 @@ def trace(
     narrative = Narrator().narrate(result.events, order_nodes, decisions, run)
     bar.complete("narrate")
 
+    # Card 13 — the runtime half of alignment. The same registry `analyze`
+    # loaded, now judged against what was actually observed, keyed by the same
+    # stable IDs. One graph, two evidence sources: this is an overlay, not a
+    # second answer.
+    registry = load_registry(intents_path, (element.id for element in elements))
+    edges = _cli__read_jsonl(graph_dir, "edges.jsonl", Edge)
+    lineage_edges = _cli__read_jsonl(graph_dir, "lineage.jsonl", LineageEdge)
+    reachability = _cli__read_jsonl(graph_dir, "reachability.jsonl", Reachability)
+    named = {intent.element_id for intent in registry.intents}
+    named.update(registry.rejected_element_ids)
+    aligner = AlignmentEngine(
+        registry=registry,
+        elements=[element for element in elements if element.id in named],
+        edges=edges,
+        lineage_edges=lineage_edges,
+        reachability=reachability,
+        run=run,
+    )
+    verdicts = aligner.judge(registry.intents, result.events)
+    intent_coverage = aligner.coverage()
+
     run_dir = out_root / "runtime" / run.run_id
     tracer.emit(result, run_dir)
     _write(run_dir, "run.json", canonical_dumps(run) + "\n")
     _write(run_dir, "narrative.jsonl", canonical_jsonl(narrative))
+    _write(run_dir, "verdicts.jsonl", verdicts_jsonl(verdicts))
+    _write(run_dir, "coverage.json", coverage_json(intent_coverage))
+    if registry.present:
+        # The viewer reads `intents.jsonl` from the ARTIFACT ROOT, so a
+        # `trace` whose --out is not the graph directory still has the intent
+        # text next to the verdicts that judged it. Written only when a spec
+        # was actually loaded: an empty file here would overwrite the one
+        # `analyze` wrote into the same directory.
+        _write(out_root, "intents.jsonl", intents_jsonl(registry.intents))
     bar.complete("write")
 
     failure = run.scenario_failure
@@ -38658,6 +41587,14 @@ def trace(
         f"  blocked        {len(run.blocked):,}   <- side effects the harness stopped",
         "",
     ]
+    lines += _verdict_lines(registry, verdicts, intent_coverage, intents_path, run_dir)
+    if stub_declarations:
+        lines.append(
+            f"DECLARED EXTERNAL CLIENTS — you took responsibility for "
+            f"{len(stub_declarations)} named module(s). Nothing else is exempt:"
+        )
+        lines += [f"  - {item}" for item in describe_declarations(stub_declarations)]
+        lines.append("")
     if failure is not None:
         # Before anything else. A scenario that never ran produces a report
         # that reads exactly like a run whose analysis was wrong, and an owner
@@ -38729,6 +41666,88 @@ def trace(
     return EXIT_OK, "\n".join(lines)
 
 
+def _verdict_lines(
+    registry: Any,
+    verdicts: Sequence[Any],
+    coverage: Any,
+    intents_path: Path | None,
+    run_dir: Path,
+) -> list[str]:
+    """The alignment section of a Mode A run summary.
+
+    `NOT_EXERCISED` gets its own line because it is the one an owner will
+    otherwise read as a pass. It is not: an element no scenario ran is
+    unverified, and the whole point of this card is to say so out loud.
+    """
+    if intents_path is None and not registry.present:
+        return [
+            "ALIGNMENT: no intents file, so nothing was judged. Every element "
+            "is NO_INTENT.",
+            "  --intents PATH (or INTENTS in METATRON_SETTINGS) is what turns "
+            "this run into an answer to",
+            "  \"does this element do what I meant it to do\".",
+            "",
+        ]
+    counts: dict[str, int] = {}
+    for verdict in verdicts:
+        counts[str(verdict.verdict)] = counts.get(str(verdict.verdict), 0) + 1
+    lines = [
+        f"ALIGNMENT against {intents_path or registry.source_path}:",
+        "  "
+        + (
+            ", ".join(f"{count:,} {name}" for name, count in sorted(counts.items()))
+            or "nothing judged"
+        ),
+    ]
+    not_exercised = [item for item in verdicts if str(item.verdict) == "NOT_EXERCISED"]
+    if not_exercised:
+        lines.append(
+            f"  {len(not_exercised):,} element(s) WITH A CONFIRMED INTENT WERE NEVER "
+            f"RUN by this scenario. NOT_EXERCISED is not ALIGNED:"
+        )
+        for item in sorted(not_exercised, key=lambda one: one.element_id)[
+            :_NOT_EXERCISED_SHOWN
+        ]:
+            lines.append(f"    - {item.element_id}")
+        if len(not_exercised) > _NOT_EXERCISED_SHOWN:
+            lines.append(
+                f"    ... and {len(not_exercised) - _NOT_EXERCISED_SHOWN:,} more, all "
+                f"of them in {run_dir / 'verdicts.jsonl'}."
+            )
+    misaligned = [item for item in verdicts if str(item.verdict) == "MISALIGNED"]
+    for item in sorted(misaligned, key=lambda one: one.element_id)[:_MISALIGNED_SHOWN]:
+        lines.append(f"  MISALIGNED  {item.element_id}")
+        lines.append(f"    expected    {item.expectation}")
+        lines.append(f"    observed    {item.observation}")
+    if len(misaligned) > _MISALIGNED_SHOWN:
+        lines.append(
+            f"  ... and {len(misaligned) - _MISALIGNED_SHOWN:,} more MISALIGNED, all "
+            f"of them in {run_dir / 'verdicts.jsonl'}."
+        )
+    lines.append(
+        f"  coverage: {coverage.checks_passed:,} expectation(s) held, "
+        f"{coverage.checks_failed:,} contradicted, "
+        f"{coverage.checks_unverifiable:,} could not be checked "
+        f"(of {coverage.checks_total:,})."
+    )
+    if registry.issues:
+        lines.append(
+            f"  {len(registry.issues):,} PROBLEM(S) IN YOUR INTENTS FILE — each is an "
+            f"intent doing nothing:"
+        )
+        for issue in registry.issues[:_INTENT_ISSUES_SHOWN]:
+            line_no = issue.span.line if issue.span else 0
+            lines.append(f"    {registry.source_path}:{line_no}  {issue.description}")
+    lines.append("")
+    return lines
+
+
+#: Caps on the two verdict kinds the run summary prints in full. Explicit,
+#: never a silent cut: the rest are counted and pointed at verdicts.jsonl.
+_NOT_EXERCISED_SHOWN = 20
+_MISALIGNED_SHOWN = 10
+
+
 #: How many blocked attempts the run summary prints in full. The rest are
 #: counted and pointed at run.json -- an explicit cap, never a silent cut.
 _BLOCKED_SHOWN = 20
@@ -38739,13 +41758,24 @@ _BLOCKED_SHOWN = 20
 #: the single-file build has no `cascade_map` package for the child to import —
 #: only the one file, which it loads by path. Anything that needs the two
 #: shapes to differ belongs here and nowhere else.
-_CHILD_PROLOGUE = '\nimport importlib.util, json, sys\nfrom pathlib import Path\n\n_spec = importlib.util.spec_from_file_location("_cascade_map_single", {self_file})\n_mod = importlib.util.module_from_spec(_spec)\nsys.modules["_cascade_map_single"] = _mod\n_spec.loader.exec_module(_mod)\n\ncanonical_dumps = _mod.canonical_dumps\nHarness = _mod.Harness\nHarnessRefusal = _mod.HarnessRefusal\nRunConfig = _mod.RunConfig\nScenarioSpec = _mod.ScenarioSpec\ncompute_graph_hash = _mod.compute_graph_hash\ncompute_target_hashes = _mod.compute_target_hashes\nStaticIndex = _mod.StaticIndex\nTracer = _mod.Tracer\nbuild_index = _mod.build_index\n'
+_CHILD_PROLOGUE = '\nimport importlib.util, json, sys\nfrom pathlib import Path\n\n_spec = importlib.util.spec_from_file_location("_cascade_map_single", {self_file})\n_mod = importlib.util.module_from_spec(_spec)\nsys.modules["_cascade_map_single"] = _mod\n_spec.loader.exec_module(_mod)\n\ncanonical_dumps = _mod.canonical_dumps\nHarness = _mod.Harness\nHarnessRefusal = _mod.HarnessRefusal\nRunConfig = _mod.RunConfig\nScenarioSpec = _mod.ScenarioSpec\ncompute_graph_hash = _mod.compute_graph_hash\ncompute_target_hashes = _mod.compute_target_hashes\nStaticIndex = _mod.StaticIndex\nTracer = _mod.Tracer\nbuild_index = _mod.build_index\nStubDeclarationError = _mod.StubDeclarationError\nbuild_factories = _mod.build_factories\ndeclaration_fingerprint = _mod.declaration_fingerprint\nparse_declarations = _mod.parse_declarations\n'
 
 #: Runs in a child interpreter. Writes its record inside the sandbox, which is
 #: the only place it is allowed to write once the harness has taken the process.
 _CHILD_SOURCE = _CHILD_PROLOGUE + """
 spec_doc = json.loads({spec!r}) if isinstance({spec!r}, str) else {spec}
 target_root = Path(spec_doc["target_root"]).resolve()
+# Already validated in the parent; parsed again here because the child gets
+# the document, not the parse. A `replay` recording is READ here, so a
+# missing one refuses before the harness takes the process.
+_stub_declarations = parse_declarations(spec_doc.get("client_stubs"))
+try:
+    _stub_factories = build_factories(
+        _stub_declarations, sandbox_root=Path({sandbox}), target_root=target_root
+    )
+except StubDeclarationError as exc:
+    print("refusal:", exc, file=sys.stderr)
+    raise SystemExit(4)
 config = RunConfig(
     target_root=target_root,
     mode_b_out_dir=Path({graph_dir}),
@@ -38758,6 +41788,8 @@ config = RunConfig(
         for name, body in spec_doc["scenarios"].items()
     }},
     declared_process_names=frozenset(spec_doc.get("declared_process_names", ())),
+    client_stubs=_stub_factories,
+    client_declarations=declaration_fingerprint(_stub_declarations),
     env_passthrough=frozenset(spec_doc.get("env_passthrough", ())),
 )
 index = build_index(Path({graph_dir}), target_root)
@@ -38765,7 +41797,7 @@ tracer = Tracer(index, recordings_dir=Path({recordings}))
 graph_hash = {graph_hash}
 try:
     run = Harness(config).start({scenario}, graph_hash, tracer)
-except HarnessRefusal as exc:
+except (HarnessRefusal, StubDeclarationError) as exc:
     print("refusal:", exc, file=sys.stderr)
     raise SystemExit(4)
 Path({record_out}).write_text(canonical_dumps(run) + "\\n", encoding="utf-8")
@@ -38953,7 +41985,14 @@ def preflight(
     sandbox_root = (out_root / "sandbox").resolve()
     declared = sorted(document.get("declared_process_names", ())) if document else []
     passthrough = sorted(document.get("env_passthrough", ())) if document else []
-    stubs = sorted(document.get("client_stubs", ())) if document else []
+    stub_lines: list[str] = []
+    stub_problem = ""
+    if document:
+        try:
+            stub_lines = list(describe_declarations(parse_declarations(document.get("client_stubs"))))
+        except StubDeclarationError as exc:
+            stub_problem = str(exc)
+            checks.append(("client stubs", stub_problem, False))
     lines += [
         "CONTROLS THAT WILL BE ACTIVE:",
         "  network           blocked at the socket layer, including DNS. No allowlist exists.",
@@ -38962,10 +42001,17 @@ def preflight(
         + (", ".join(declared) if declared else "(none declared)"),
         "  environment       passed through: "
         + (", ".join(passthrough) if passthrough else "(nothing, including secrets)"),
-        "  external clients  stubbed or replayed: "
-        + (", ".join(stubs) if stubs else "(none declared; an undeclared client is a hard stop)"),
-        "",
+        "  external clients  "
+        + (
+            "declared, and NOTHING ELSE is exempt:"
+            if stub_lines
+            else "(none declared; an undeclared client is a hard stop)"
+        ),
     ]
+    lines += [f"                      {item}" for item in stub_lines]
+    if stub_problem:
+        lines.append(f"                      NOT READABLE: {stub_problem}")
+    lines.append("")
     if document:
         lines.append("SCENARIOS THAT WOULD RUN:")
         for name in sorted(document.get("scenarios", {})):
@@ -39152,6 +42198,7 @@ def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
         lines.append(f"  {level:<10} {count:>8,}  {100 * count // total:>3}%")
 
     lines += _dependency_lines(summary)
+    lines += _intent_lines(summary)
 
     detected = summary.get("detected") or []
     if detected:
@@ -39170,6 +42217,173 @@ def _report(summary: dict[str, Any], out_dir: Path, exit_code: int) -> str:
             "The artifacts were still written so you can see what is missing.",
         ]
     return "\n".join(lines)
+
+
+#: The element kinds `--propose-intents` writes an entry for. An intent is a
+#: statement about something that DOES something; a PARAMETER, an IMPORT, an
+#: ASSIGNMENT or a BLOB gets a proposal built from its own name, which is
+#: noise the owner then has to delete by hand.
+_PROPOSABLE_KINDS = frozenset(
+    {
+        ElementKind.MODULE,
+        ElementKind.PACKAGE,
+        ElementKind.CLASS,
+        ElementKind.FUNCTION,
+        ElementKind.METHOD,
+        ElementKind.PROPERTY,
+    }
+)
+
+
+#: `UnresolvedReason` values a registry issue can carry, in the order the
+#: report lists them, with what each one means to the owner reading it.
+_INTENT_ISSUE_LABELS: dict[str, str] = {
+    "SYNTAX_ERROR": "could not be parsed",
+    "MISSING_TARGET": "names an element that does not exist",
+    "AMBIGUOUS": "two intents claim the same element",
+    "ID_COLLISION": "two entries share one intent id",
+    "DECODE_ERROR": "the file is not valid UTF-8",
+    "UNSUPPORTED_SYNTAX": "uses something this parser refuses to guess at",
+}
+
+
+def _intent_summary(
+    registry: Any,
+    coverage: Any,
+    verdicts: Sequence[Any],
+    intents_path: Path | None,
+) -> dict[str, Any]:
+    """What `analyze` says about the owner's intents, as data.
+
+    Every count here is a fact about the owner's own file. `issues` is a list,
+    not a count, because a parse problem the report summarises as "1 issue"
+    is a parse problem the owner cannot fix.
+    """
+    counts: dict[str, int] = {}
+    for verdict in verdicts:
+        counts[str(verdict.verdict)] = counts.get(str(verdict.verdict), 0) + 1
+    return {
+        "path": str(intents_path) if intents_path is not None else "",
+        "present": bool(registry.present),
+        "total": len(registry.intents),
+        "confirmed": coverage.intents_confirmed,
+        "proposed": coverage.intents_proposed,
+        "elements_judged": coverage.elements_judged,
+        "checks_total": coverage.checks_total,
+        "checks_passed": coverage.checks_passed,
+        "checks_failed": coverage.checks_failed,
+        "checks_unverifiable": coverage.checks_unverifiable,
+        "checks_unparseable": coverage.checks_unparseable,
+        "verdicts": dict(sorted(counts.items())),
+        "coverage": coverage.to_dict(),
+        "issues": [
+            {
+                "line": issue.span.line if issue.span else 0,
+                "reason": str(issue.reason),
+                "description": issue.description,
+            }
+            for issue in registry.issues
+        ],
+    }
+
+
+def _intent_lines(summary: dict[str, Any]) -> list[str]:
+    """The intents section of the report.
+
+    Loud on purpose when something is wrong. An intents file the owner wrote
+    and that quietly did nothing is the worst outcome this feature has, so a
+    file that was named but could not be read, an intent that names no
+    element, and an element the owner declared live that nothing reaches all
+    get their own line with the line number that fixes them.
+    """
+    payload = summary.get("intents")
+    if not payload:
+        return []
+    if not payload["path"]:
+        # Nothing was asked for. One line, so the feature is discoverable
+        # rather than invisible -- and no more than one, because most runs
+        # will not use it.
+        lines = [
+            "",
+            "Intents: no spec declared (--intents PATH / INTENTS), so every "
+            "element is NO_INTENT.",
+            "  NO_INTENT is a reported state, not a pass and not a failure. "
+            "Start one with --propose-intents PATH.",
+        ]
+        return lines + _proposed_lines(payload)
+    lines = ["", f"Intents: {payload['path']}"]
+    if not payload["present"]:
+        lines.append(
+            "  THE FILE YOU NAMED WAS NOT READ. Nothing in it was applied to "
+            "this map."
+        )
+    lines.append(
+        f"  {payload['total']:,} intent(s): {payload['confirmed']:,} CONFIRMED, "
+        f"{payload['proposed']:,} PROPOSED (a PROPOSED intent can never ground "
+        f"ALIGNED or MISALIGNED)."
+    )
+    verdicts = payload["verdicts"]
+    if verdicts:
+        lines.append(
+            "  static verdicts: "
+            + ", ".join(f"{count:,} {name}" for name, count in sorted(verdicts.items()))
+        )
+    lines.append(
+        f"  expectations: {payload['checks_passed']:,} held, "
+        f"{payload['checks_failed']:,} contradicted, "
+        f"{payload['checks_unverifiable']:,} unchecked here "
+        f"(of {payload['checks_total']:,}). An unchecked expectation is never "
+        f"reported as met."
+    )
+    if payload["checks_unparseable"]:
+        lines.append(
+            f"  {payload['checks_unparseable']:,} invariant(s) are not in the "
+            f"checkable language and were NOT checked."
+        )
+    issues = payload["issues"]
+    if issues:
+        lines.append(
+            f"  {len(issues):,} PROBLEM(S) IN YOUR INTENTS FILE — each one is an "
+            f"intent that is doing nothing:"
+        )
+        for issue in issues[:_INTENT_ISSUES_SHOWN]:
+            label = _INTENT_ISSUE_LABELS.get(issue["reason"], issue["reason"])
+            lines.append(f"    {payload['path']}:{issue['line']}  {label}")
+            lines.append(f"      {issue['description']}")
+        if len(issues) > _INTENT_ISSUES_SHOWN:
+            lines.append(
+                f"    ... and {len(issues) - _INTENT_ISSUES_SHOWN:,} more, all of "
+                f"them in unresolved.jsonl."
+            )
+    return lines + _proposed_lines(payload)
+
+
+def _proposed_lines(payload: dict[str, Any]) -> list[str]:
+    """What `--propose-intents` wrote, and what it deliberately left out."""
+    written = payload.get("proposed_written")
+    if not written:
+        return []
+    lines = [
+        f"  wrote {written['entries']:,} PROPOSED intent(s) to {written['path']}.",
+        "    None of them is confirmed and none of them can produce an ALIGNED "
+        "or a MISALIGNED verdict.",
+        "    Edit it, set `status: CONFIRMED` on the ones you stand behind, then "
+        f"re-run with --intents {written['path']}.",
+    ]
+    if written.get("elements_skipped"):
+        lines.append(
+            f"    {written['elements_skipped']:,} element(s) got no proposal: only "
+            + ", ".join(written["kinds_proposed"])
+            + " are proposed for. Every element is still in elements.jsonl, and "
+            "you can write an intent for any of them by hand."
+        )
+    return lines
+
+
+#: How many intents-file problems the report prints in full. The rest are
+#: counted and pointed at `unresolved.jsonl` -- an explicit cap, never a
+#: silent cut.
+_INTENT_ISSUES_SHOWN = 10
 
 
 def _slice_lines(summary: dict[str, Any]) -> list[str]:
@@ -39316,6 +42530,7 @@ def _settings_from_args(args: Any) -> Settings:
         "SLICE_ROOTS": flag("slice_root"),
         "FORCE_SLICES": True if flag("force_slices") else None,
         "ENV": str(flag("env")) if flag("env") else None,
+        "INTENTS": str(flag("intents")) if flag("intents") else None,
         "ORDER": flag("order"),
         "SCENARIOS": str(flag("scenarios")) if flag("scenarios") else None,
         "SCENARIO": flag("scenario"),
@@ -39347,7 +42562,11 @@ def _settings_from_args(args: Any) -> Settings:
 
 
 def _track_trace(
-    graph_dir: Path, scenarios: Path, scenario: str, out_root: Path
+    graph_dir: Path,
+    scenarios: Path,
+    scenario: str,
+    out_root: Path,
+    intents_path: Path | None = None,
 ) -> tuple[int, str]:
     """The one seam through which `track` can reach Mode A.
 
@@ -39356,7 +42575,7 @@ def _track_trace(
     tool that runs owner code, and it runs it through `trace`, which is the
     harness's own entry point and refuses when it cannot guarantee isolation.
     """
-    return trace(graph_dir, scenarios, scenario, out_root)
+    return trace(graph_dir, scenarios, scenario, out_root, intents_path=intents_path)
 
 
 # ---------------------------------------------------------------------------
@@ -39498,6 +42717,14 @@ def _build_parser() -> argparse.ArgumentParser:
                           "requirements skipped, and the skip is recorded against "
                           f"that one file (default {MAX_SOURCE_BYTES // 1_000_000}). "
                           "Every other analysis has its own limits and is unaffected.")
+    run.add_argument("--intents", type=Path, default=None, metavar="PATH",
+                     help="owner-confirmed intents YAML: what each element is "
+                          "MEANT to do. Overrides INTENTS. Every problem in "
+                          "the file is reported with its line; none is skipped.")
+    run.add_argument("--propose-intents", type=Path, default=None, metavar="PATH",
+                     help="write a STARTER intents file derived from docstrings "
+                          "and names. Every entry is PROPOSED and binding on "
+                          "nothing until you set status: CONFIRMED.")
     run.add_argument("--no-gate", action="store_true",
                      help="write artifacts even if the completeness gate fails, "
                           "and exit 0. The gate still reports.")
@@ -39602,6 +42829,8 @@ def _build_parser() -> argparse.ArgumentParser:
                       help='precompute the slice rooted at this id whatever --slices says; repeatable')
     hist.add_argument("--config", action="append", default=None, metavar="PATH",
                       help="overrides CONFIGS; repeatable")
+    hist.add_argument("--intents", type=Path, default=None, metavar="PATH",
+                      help="owner-confirmed intents YAML. Overrides INTENTS.")
     hist.add_argument("--env", type=Path, default=None, metavar="PATH",
                       help="overrides ENV")
     hist.add_argument("--order", action="append", default=None, metavar="LABEL",
@@ -39673,6 +42902,10 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="overrides MODE. `--mode 1` REFUSES: mode 1 never "
                             "executes your engine. `--mode 2` runs it, and "
                             "refuses if no completed static map exists.")
+    run_a.add_argument("--intents", type=Path, default=None, metavar="PATH",
+                       help="owner-confirmed intents YAML. Overrides INTENTS. "
+                            "Verdicts for this run land in "
+                            "runtime/<run_id>/verdicts.jsonl.")
     run_a.add_argument("--preflight", action="store_true",
                        help="say whether this run could start, and what would be "
                             "active, WITHOUT executing anything")
@@ -39712,9 +42945,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not args.root.is_dir():
             print(f"not a directory: {args.root}", file=sys.stderr)
             return EXIT_USAGE
+        # A named intents file that does not exist is a USAGE error, decided
+        # before any analysis runs. Discovering it in the report, after a
+        # twenty-minute run, is how an owner ends up with a map they believe
+        # their intents were applied to.
+        if args.intents is not None and not args.intents.is_file():
+            print(
+                f"no intents file at {args.intents}. --intents names the "
+                f"owner-confirmed intents YAML; `--propose-intents {args.intents}` "
+                f"writes a starter one. Nothing was analysed.",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+        intents_path = args.intents
+        if intents_path is None and METATRON_SETTINGS.get("INTENTS"):
+            candidate = Path(str(METATRON_SETTINGS["INTENTS"]))
+            # A settings path that does not exist is still LOADED, not
+            # ignored: `load_registry` turns it into a MISSING_TARGET issue
+            # with the path, which is what makes the report say so.
+            intents_path = candidate
         code, summary = analyze(
             args.root,
             args.out,
+            intents_path=intents_path,
+            propose_intents_path=args.propose_intents,
             progress=make_reporter(
                 ANALYZE_STAGES, quiet=args.quiet, force=args.progress
             ),
@@ -40073,6 +43327,15 @@ def _trace_command(args: Any) -> int:
     # explicit `--mode 1` is different: that is the owner saying "not this
     # time" out loud, and mode 1's whole definition is that it never executes
     # anything, so it refuses rather than running anyway.
+    intents_path = Path(settings.intents) if settings.intents else None
+    if intents_path is not None and not intents_path.is_file():
+        print(
+            f"no intents file at {intents_path}. --intents (or INTENTS) names the "
+            f"owner-confirmed intents YAML. Nothing was executed.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
     if getattr(args, "mode", None) == 1:
         print(
             "REFUSED: MODE 1 never executes your engine, and `trace` is the only "
@@ -40116,7 +43379,9 @@ def _trace_command(args: Any) -> int:
         if not args.scenarios.is_file():
             print(f"no scenarios file at {args.scenarios}", file=sys.stderr)
             return EXIT_USAGE
-        return _timed_trace(args, args.scenarios, args.scenario)
+        return _timed_trace(
+            args, args.scenarios, args.scenario, intents_path=intents_path
+        )
 
     sports = settings.selected_sports()
     if args.preflight:
@@ -40169,12 +43434,22 @@ def _trace_command(args: Any) -> int:
     )
     worst = EXIT_OK
     for sport in chosen:
-        worst = max(worst, _timed_trace(args, derived_path, sport, banner=sport))
+        worst = max(
+            worst,
+            _timed_trace(
+                args, derived_path, sport, banner=sport, intents_path=intents_path
+            ),
+        )
     return worst
 
 
 def _timed_trace(
-    args: Any, scenario_file: Path, scenario: str, *, banner: str = ""
+    args: Any,
+    scenario_file: Path,
+    scenario: str,
+    *,
+    banner: str = "",
+    intents_path: Path | None = None,
 ) -> int:
     """One traced scenario, with its progress line and its timing footer.
 
@@ -40188,7 +43463,12 @@ def _timed_trace(
     bar.start(started)
     try:
         code, message = trace(
-            args.graph_dir, scenario_file, scenario, args.out, progress=bar
+            args.graph_dir,
+            scenario_file,
+            scenario,
+            args.out,
+            progress=bar,
+            intents_path=intents_path,
         )
     finally:
         finished = time.time()

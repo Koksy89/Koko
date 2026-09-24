@@ -37,6 +37,8 @@ from .views import (
     observed_order_view,
     runtime_overview_view,
     unmapped_events_view,
+    intents_view,
+    static_verdicts_view,
     verdicts_view,
 )
 
@@ -65,6 +67,8 @@ __all__ = [
     "observed_order_view",
     "runtime_overview_view",
     "unmapped_events_view",
+    "intents_view",
+    "static_verdicts_view",
     "verdicts_view",
     "DECISION_SIGNALS",
     "render_site",

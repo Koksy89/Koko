@@ -66,6 +66,7 @@ __all__ = [
     "GAIN_FLOOR",
     "MAX_WORKERS",
     "Payload",
+    "BackgroundUnit",
     "PipelineReport",
     "StageReport",
     "UnitResult",
@@ -85,6 +86,12 @@ GAIN_FLOOR = 1.2
 #: Asking for more processes than this has never paid on any shape measured;
 #: beyond the core count they contend rather than help.
 MAX_WORKERS = 32
+
+#: How many times a stage tells the progress bar it is alive. A bar exists so
+#: a long stage does not look hung, not to count anything, and calling it once
+#: per unit costs a lock and a redraw per unit -- on a 400,000-element target
+#: that is more work than the units.
+PROGRESS_STEPS = 200
 
 
 def cpu_budget() -> int:
@@ -159,6 +166,11 @@ class StageReport:
     #: would give a different graph, not a faster one. Stated, never hidden:
     #: a stage silently left serial reads as a stage that had nothing to gain.
     not_parallelised_reason: str = ""
+
+    #: The stage this one ran alongside. Set when a WHOLE stage was started in
+    #: a second process because it reads none of the other's output -- the one
+    #: kind of parallelism that still helps a target which is a single module.
+    overlapped_with: str = ""
 
     largest_unit_key: str = ""
     largest_unit_seconds: float = 0.0
@@ -249,8 +261,14 @@ def render_stage_line(report: StageReport) -> str:
         resolve    3.40x over 8 workers    (78.2s of work in 23.0s, 412 units)
         order      sequential by nature    (2.1s)
     """
-    name = f"  {report.stage:<12}"
+    name = f"  {report.stage:<13}"
     total = report.total_seconds or report.wall_seconds
+    if report.overlapped_with and report.started > 0 and not report.skipped_reason:
+        return (
+            f"{name}{'overlapped':<24}"
+            f"({report.serial_seconds:.1f}s of work, {total:.1f}s of it waited "
+            f"for; ran alongside {report.overlapped_with})"
+        )
     if report.sequential_by_nature:
         return f"{name}{'sequential by nature':<24}({total:.1f}s)"
     if report.not_parallelised_reason:
@@ -303,6 +321,8 @@ class PipelineReport:
     @staticmethod
     def _spread(stage: StageReport) -> bool:
         """Whether a worker count can touch this stage at all."""
+        if stage.overlapped_with and not stage.skipped_reason:
+            return True
         return not stage.sequential_by_nature and not stage.not_parallelised_reason
 
     @property
@@ -340,7 +360,7 @@ def render_pipeline_report(report: PipelineReport) -> str:
     total = report.measured_seconds
     if total > 0.0:
         lines.append(
-            f"  {'sequential':<12}{report.sequential_seconds:.1f}s of "
+            f"  {'sequential':<13}{report.sequential_seconds:.1f}s of "
             f"{total:.1f}s measured ({report.sequential_share * 100:.0f}%) no "
             "worker count removes -- see the reason on each line above"
         )
@@ -349,13 +369,14 @@ def render_pipeline_report(report: PipelineReport) -> str:
         for s in report.stages
         if not s.sequential_by_nature
         and not s.not_parallelised_reason
+        and not s.overlapped_with
         and s.started > 1
         and not s.helped
     ]
     if unpaid:
         lines.append(
             "  "
-            + f"{'note':<12}"
+            + f"{'note':<13}"
             + f"{', '.join(unpaid)} did not pay for the workers on this target; "
             "the line above each says why"
         )
@@ -421,6 +442,21 @@ class _Task:
         return UnitResult(key=key, value=value, seconds=time.process_time() - start)
 
 
+def _throttle(
+    on_unit: Callable[[int, int], None] | None, total: int
+) -> Callable[[int, int], None] | None:
+    """At most :data:`PROGRESS_STEPS` calls over the whole stage."""
+    if on_unit is None or total <= PROGRESS_STEPS:
+        return on_unit
+    every = max(1, total // PROGRESS_STEPS)
+
+    def throttled(done: int, of: int) -> None:
+        if done % every == 0 or done == of:
+            on_unit(done, of)
+
+    return throttled
+
+
 def run_stage(
     fn: Callable[[Any, Any], Any],
     jobs: Sequence[tuple[str, Any]],
@@ -444,6 +480,7 @@ def run_stage(
     report.requested = workers
     report.unit_count = len(jobs)
     report.unit_seconds.clear()
+    on_unit = _throttle(on_unit, len(jobs))
 
     if not jobs:
         report.started = 1
@@ -682,3 +719,96 @@ def canonical_jsonl_many(
         out[name] = "".join(f"{row}\n" for _, row in pairs)
         del pairs
     return out
+
+
+# ---------------------------------------------------------------------------
+# stage-level overlap -- two whole stages that do not read each other
+# ---------------------------------------------------------------------------
+
+
+class BackgroundUnit:
+    """One WHOLE stage, started now and collected later.
+
+    The other kind of parallelism in this pipeline, and the only kind that
+    helps a target which is a single module: two stages that read the same
+    inputs, and neither of which reads the other's output, can run at the same
+    time. Nothing inside either stage is split -- each runs exactly as it does
+    in one process, so its facts cannot differ -- and the consolidation stays
+    the caller's, in its own fixed order.
+
+    Falls back to running the work inline, and says so, whenever a pool cannot
+    start. A failed pool must never become a failed analysis.
+    """
+
+    __slots__ = ("_report", "_pool", "_future", "_fn", "_payload", "_arg", "_started_at")
+
+    def __init__(
+        self,
+        fn: Callable[[Any, Any], Any],
+        payload: Payload | None,
+        arg: Any,
+        workers: int,
+        report: StageReport,
+    ) -> None:
+        self._report = report
+        self._fn = fn
+        self._payload = payload
+        self._arg = arg
+        self._pool: ProcessPoolExecutor | None = None
+        self._future: Any = None
+        self._started_at = time.perf_counter()
+        report.requested = workers
+        report.unit_count = 1
+        report.started = 1
+        if workers <= 1:
+            report.overlapped_with = ""
+            report.skipped_reason = (
+                "in-process: one worker was asked for, so there is no second "
+                "process to overlap with"
+            )
+            return
+        try:
+            self._pool = ProcessPoolExecutor(
+                max_workers=1, initializer=_init_worker, initargs=(payload,)
+            )
+            self._future = self._pool.submit(_Task(fn), ("unit", arg))
+        except Exception as exc:  # pragma: no cover - platform dependent
+            self._pool = None
+            self._future = None
+            report.overlapped_with = ""
+            report.skipped_reason = (
+                f"pool unavailable ({type(exc).__name__}); ran inline"
+            )
+
+    def result(self) -> Any:
+        """Collect. Blocks until the stage has finished, which it usually has
+        already: it was started alongside a longer one."""
+        if self._future is None:
+            started = time.perf_counter()
+            global _OPENED
+            previous = _OPENED
+            _OPENED = None if self._payload is None else self._payload.open()
+            try:
+                unit = _Task(self._fn)(("unit", self._arg))
+            finally:
+                _OPENED = previous
+            self._record(unit, time.perf_counter() - started)
+            return unit.value
+        waited_from = time.perf_counter()
+        try:
+            unit = self._future.result()
+        finally:
+            if self._pool is not None:
+                self._pool.shutdown(wait=True)
+                self._pool = None
+        self._record(unit, time.perf_counter() - waited_from)
+        return unit.value
+
+    def _record(self, unit: UnitResult, waited: float) -> None:
+        self._report.wall_seconds = time.perf_counter() - self._started_at
+        self._report.serial_seconds = unit.seconds
+        # What the stage cost the RUN: only the part the caller had to wait
+        # for after it stopped having other work to do.
+        self._report.total_seconds = waited
+        self._report.unit_seconds[unit.key] = unit.seconds
+        _record_largest(self._report)

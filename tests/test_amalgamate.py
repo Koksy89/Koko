@@ -19,6 +19,7 @@ output. So these tests diff the output.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -244,13 +245,37 @@ def test_trace_output_matches_the_package(single_file: Path, tmp_path: Path) -> 
 #: The lines that do not carry a timing are still compared exactly.
 _TIMING_LINE_PREFIXES = ("parallel gain", "why", "recommendation")
 
+#: The per-stage worker-effectiveness block. Every line of it is a wall-clock
+#: measurement of the run that just happened, so comparing it across two runs
+#: is comparing a clock. That the block is PRESENT in both shapes is asserted
+#: separately, below, so blanking it cannot hide it going missing from one.
+_WORKER_REPORT_HEADING = "worker effectiveness"
+_STAGE_LINE_PREFIXES = (
+    "inventory", "resolve", "cascade", "order", "dependencies", "lineage",
+    "records", "write", "sequential", "note",
+)
+
 
 def _without_timings(text: str) -> str:
     out = []
+    in_worker_report = False
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith(_TIMING_LINE_PREFIXES):
             out.append(stripped.split()[0] + " <timing-dependent>")
+        elif stripped.startswith(_WORKER_REPORT_HEADING):
+            out.append(_WORKER_REPORT_HEADING + " <timing-dependent>")
+            in_worker_report = True
+        elif in_worker_report and stripped.startswith(_STAGE_LINE_PREFIXES):
+            out.append(stripped.split()[0] + " <timing-dependent>")
+        elif "NEW   analysed in " in line:
+            # `track`'s per-version status carries how long THIS machine took
+            # to analyse that version, to a tenth of a second. Two runs on a
+            # loaded box land either side of a rounding boundary and differ by
+            # a digit; the version it names and the order it lists are
+            # content-determined and are compared, because only the duration
+            # is blanked.
+            out.append(re.sub(r"analysed in [0-9.]+s", "analysed in <timing>", line))
         elif stripped.startswith("disk "):
             # The workspace's disk figure MEASURES the directory, and the
             # directory holds `run_meta.json`, which this project deliberately
@@ -261,6 +286,7 @@ def _without_timings(text: str) -> str:
             # it is content-determined and IS compared, below.
             out.append("disk <measured>")
         else:
+            in_worker_report = False
             out.append(line)
     return "\n".join(out)
 
@@ -330,3 +356,7 @@ def test_track_builds_the_same_ledger(single_file: Path, tmp_path: Path) -> None
     for run in (package_run, single_run):
         assert "parallel gain" in run.stdout
         assert "recommendation" in run.stdout
+        # And the per-stage block, which is the answer to "what did the
+        # workers buy" for every stage rather than for ingestion alone.
+        assert _WORKER_REPORT_HEADING in run.stdout
+        assert "sequential by nature" in run.stdout

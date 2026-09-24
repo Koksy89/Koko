@@ -861,7 +861,7 @@ def test_track_mode_two_runs_each_sport_as_its_own_scenario(tmp_path: Path) -> N
     _version_pair(tmp_path)
     calls: list[tuple[str, str]] = []
 
-    def fake_trace(graph_dir, scenarios, scenario, out_root):
+    def fake_trace(graph_dir, scenarios, scenario, out_root, intents_path=None):
         calls.append((Path(graph_dir).name, scenario))
         return 0, f"ran {scenario}"
 
@@ -895,7 +895,7 @@ def test_track_all_sports_is_one_scenario_per_sport_per_version(tmp_path: Path) 
     _result, ledger = ledger_track(
         settings,
         root=tmp_path,
-        trace=lambda g, s, name, o: (calls.append((Path(g).name, name)), (0, ""))[1],
+        trace=lambda g, s, name, o, i=None: (calls.append((Path(g).name, name)), (0, ""))[1],
     )
     version_ids = sorted({record.id for record in ledger.versions})
     assert sorted(calls) == sorted(

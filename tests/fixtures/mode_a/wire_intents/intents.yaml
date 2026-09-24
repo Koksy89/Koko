@@ -1,0 +1,54 @@
+# Owner-confirmed intents for the wire_intents case.
+#
+# Every CONFIRMED entry here is one the OWNER said. Nothing in this file was
+# derived by CASCADE-MAP; a derived intent is PROPOSED and can never ground an
+# ALIGNED or a MISALIGNED verdict, however obviously true it looks.
+version: 1
+intents:
+  # Statically ALIGNED: `reaches decision` is checked against card 3's
+  # reachability, which `analyze` produces without executing anything.
+  - element_id: wire_intents.engine::helper_on_path
+    status: CONFIRMED
+    statement: "Sits on the path from the inputs to the final decision."
+    invariants:
+      - reaches decision
+
+  # Statically UNVERIFIABLE (a value expectation needs a run), ALIGNED once
+  # the run has happened. An unchecked expectation is never reported as met.
+  - element_id: wire_intents.engine::score
+    status: CONFIRMED
+    statement: "Doubles its argument, and its output reaches the decision."
+    invariants:
+      - returns.value == 6
+      - reaches decision
+
+  # MISALIGNED at runtime: the observation contradicts the expectation.
+  - element_id: wire_intents.engine::gate
+    status: CONFIRMED
+    statement: "Clamps at zero and never returns a negative number."
+    invariants:
+      - returns.value >= 0
+
+  # The whole reason this file exists. The owner declares this strategy LIVE.
+  # Nothing calls it, so no path in the static graph reaches the decision sink
+  # from it, and `analyze` can say so without executing a line.
+  - element_id: wire_intents.engine::declared_live_strategy
+    status: CONFIRMED
+    statement: "A live strategy: its output must reach the final decision."
+    invariants:
+      - reaches decision
+
+  # NOT_EXERCISED at runtime. No scenario here runs it, and unverified is not
+  # the same answer as verified correct.
+  - element_id: wire_intents.engine::never_run
+    status: CONFIRMED
+    statement: "Adds one to its argument."
+    invariants:
+      - returns.value == 2
+
+  # PROPOSED, never CONFIRMED: UNVERIFIABLE whatever the evidence says.
+  - element_id: wire_intents.engine::decide
+    status: PROPOSED
+    statement: "Derived from the docstring, not confirmed by anybody."
+    invariants:
+      - reaches decision

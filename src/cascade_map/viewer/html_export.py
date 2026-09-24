@@ -362,9 +362,54 @@ def _render_element_detail(store: ArtifactStore, element_id: str) -> str:
         f"changes (before): {_refs(store, d['change_ids_before'])}<br>"
         f"changes (after): {_refs(store, d['change_ids_after'])}<br>"
         f"intents: {_refs(store, d['intent_ids'])}</p>"
+        f"{_render_intents(store, d)}"
         f"{_render_doc_record(store, d['doc_record'])}"
     )
     return f"<div class='element-detail'>{header}{body}</div>"
+
+
+def _render_intents(store: ArtifactStore, detail: dict[str, Any]) -> str:
+    """The element's declared purpose and the verdicts on it, side by side.
+
+    A verdict shown without the statement it was judged against is a label
+    the reader cannot check, and card 13's whole rule is that every verdict
+    is checkable by a human.
+    """
+    intents = detail.get("intents") or []
+    verdicts = detail.get("static_verdicts") or []
+    if not intents and not verdicts:
+        return ""
+    parts = ["<h4>intent</h4>"]
+    for intent in intents:
+        status = escape(str(intent.get("status") or ""))
+        note = (
+            "owner-confirmed"
+            if status == "CONFIRMED"
+            else "derived by this tool, NOT owner-confirmed and binding on nothing"
+        )
+        parts.append(
+            f"<p class='intent-{status}'><strong>{status}</strong> &mdash; {note}<br>"
+            f"{escape(str(intent.get('statement') or ''))}"
+        )
+        for label, key in (
+            ("invariant", "invariants"),
+            ("expected read", "expected_reads"),
+            ("expected write", "expected_writes"),
+        ):
+            for text in intent.get(key) or ():
+                parts.append(f"<br><code>{label}: {escape(str(text))}</code>")
+        parts.append("</p>")
+    for verdict in verdicts:
+        parts.append(
+            "<p>"
+            + _verdict_badge(verdict.get("verdict"))
+            + " <em>from static evidence</em><br>"
+            + f"expected: {escape(str(verdict.get('expectation') or ''))}<br>"
+            + f"observed: {escape(str(verdict.get('observation') or ''))}<br>"
+            + f"evidence: {_refs(store, verdict.get('evidence_ids') or ())}"
+            + "</p>"
+        )
+    return "".join(parts)
 
 
 def _render_span(span: dict[str, Any] | None) -> str:

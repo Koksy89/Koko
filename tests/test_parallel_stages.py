@@ -330,7 +330,13 @@ def force_pools(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setattr(parallel_module, "JSONL_MIN_RECORDS_FOR_POOL", 0)
     monkeypatch.setattr(parallel_module, "JSONL_CHUNK_RECORDS", 32)
+    # The two stages measured to LOSE in a pool are off by default. They are
+    # switched on here and nowhere else, because their correctness under a
+    # pool still has to be proven -- a stage switched off is not a stage
+    # allowed to be wrong.
+    monkeypatch.setattr(cascade_module, "_CFG_POOL_ENABLED", True)
     monkeypatch.setattr(cascade_module, "_CFG_MIN_UNITS_PER_WORKER", 1)
+    monkeypatch.setattr(docrecords_module, "_RECORDS_POOL_ENABLED", True)
     monkeypatch.setattr(docrecords_module, "_MIN_RECORDS_PER_CHUNK", 8)
     monkeypatch.setattr(docrecords_module, "_MIN_CHUNKS_PER_WORKER", 1)
 
@@ -442,10 +448,11 @@ def test_every_artifact_is_byte_identical_at_one_two_four_and_eight_workers(
     # parallelisable stage must report a real pool at 4 workers.
     text = runs[4][1]
     for stage in ("cascade", "records", "write"):
-        assert f"{stage}" in text
-    assert "over 4 workers" in text, (
-        "no stage started a pool, so this test proved nothing about one:\n" + text
-    )
+        line = next((one for one in text.splitlines() if one.strip().startswith(stage)), "")
+        assert "over 4 workers" in line, (
+            f"the {stage} stage never started a pool, so this test proved "
+            f"nothing about one:\n{text}"
+        )
     for count in WORKER_COUNTS[1:]:
         assert sorted(digests[count]) == sorted(control), (
             f"{count} workers wrote a different set of artifacts"
@@ -620,3 +627,69 @@ def test_the_cascade_chain_numbering_survives_the_worker_boundary(
     assert any("step 1 of 3" in note for note in steps), steps
     assert any("step 2 of 3" in note for note in steps), steps
     assert any("step 3 of 3" in note for note in steps), steps
+
+
+# ---------------------------------------------------------------------------
+# stage-level overlap
+# ---------------------------------------------------------------------------
+
+
+def _mark_and_wait(_payload: object, path_text: str) -> str:
+    """Writes a marker as soon as it starts, then works for a moment.
+
+    The marker is how a test can tell the stage really ran ALONGSIDE the
+    caller rather than after it: the caller checks for the file while it is
+    still doing its own work.
+    """
+    marker = Path(path_text)
+    marker.write_text("started", encoding="utf-8")
+    time.sleep(0.25)
+    return "done"
+
+
+def test_an_overlapped_stage_returns_the_same_value_at_one_and_many_workers(
+    tmp_path: Path,
+) -> None:
+    from cascade_map.parallel import BackgroundUnit
+
+    for workers in (1, 4):
+        report = StageReport(stage="dependencies", overlapped_with="lineage")
+        job = BackgroundUnit(
+            _double, None, 21, workers, report
+        )
+        assert job.result() == 42, workers
+        assert report.unit_count == 1
+
+
+def test_an_overlapped_stage_really_runs_while_the_caller_is_still_working(
+    tmp_path: Path,
+) -> None:
+    """Two WHOLE stages, neither split, at the same time. This is the only
+    kind of parallelism that helps a target which is a single module."""
+    if cpu_budget() < 2:  # pragma: no cover - single-core CI
+        pytest.skip("overlap needs at least two usable cores")
+    from cascade_map.parallel import BackgroundUnit
+
+    marker = tmp_path / "started.txt"
+    report = StageReport(stage="dependencies", overlapped_with="lineage")
+    job = BackgroundUnit(_mark_and_wait, None, str(marker), 4, report)
+    # The caller's own stage, which knows nothing about the other one.
+    deadline = time.perf_counter() + 5.0
+    while not marker.exists() and time.perf_counter() < deadline:
+        time.sleep(0.01)
+    seen_while_working = marker.exists()
+    assert job.result() == "done"
+    assert seen_while_working, "the overlapped stage had not started before result()"
+    line = render_stage_line(report)
+    assert "overlapped" in line
+    assert "ran alongside lineage" in line
+
+
+def test_one_worker_runs_the_overlapped_stage_inline_and_says_so() -> None:
+    """In-process must stay reachable for every stage, including this one."""
+    from cascade_map.parallel import BackgroundUnit
+
+    report = StageReport(stage="dependencies", overlapped_with="lineage")
+    job = BackgroundUnit(_double, None, 5, 1, report)
+    assert job.result() == 10
+    assert "no second process" in report.skipped_reason

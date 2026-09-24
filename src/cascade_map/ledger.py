@@ -207,6 +207,13 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "FORCE_SLICES": False,
 
     "ENV": ".venv-target",
+
+    # The owner-confirmed intents file. Empty means no spec: every element is
+    # NO_INTENT, which is a reported state and neither a pass nor a failure.
+    # A named file that cannot be read is reported line by line, never
+    # silently ignored.
+    "INTENTS": "",
+
     "ORDER": [],
     "SCENARIOS": "scenarios.json",
     "SCENARIO": "baseline",
@@ -249,6 +256,7 @@ _KEY_TO_FIELD: dict[str, str] = {
     "SLICE_ROOTS": "slice_roots",
     "FORCE_SLICES": "force_slices",
     "ENV": "env",
+    "INTENTS": "intents",
     "ORDER": "order",
     "SCENARIOS": "scenarios",
     "SCENARIO": "scenario",
@@ -295,6 +303,9 @@ class Settings:
     #: obstruction.
     force_slices: bool = False
     env: str = ".venv-target"
+    #: Path to the owner-confirmed intents YAML, relative to the run root.
+    #: Empty means no spec, which is a reported state and not an error.
+    intents: str = ""
     order: tuple[str, ...] = ()
     scenarios: str = "scenarios.json"
     scenario: str = "baseline"
@@ -936,7 +947,10 @@ class _FingerprintedSnapshot(GraphSnapshot):
 # ---------------------------------------------------------------------------
 
 AnalyseFn = Callable[[Path, Path, Settings], dict[str, Any]]
-TraceFn = Callable[[Path, Path, str, Path], tuple[int, str]]
+#: `(graph_dir, scenarios_file, scenario, out_root, intents_path)`. The last is
+#: optional and the owner's own file, so a caller that does not use intents
+#: passes `None` and nothing changes.
+TraceFn = Callable[..., tuple[int, str]]
 
 
 def _default_analyse(
@@ -955,9 +969,14 @@ def _default_analyse(
 
     env = Path(settings.env) if settings.env else None
     prefix = source_root.name
+    # The intents file is the OWNER'S, so it is resolved relative to where
+    # they ran `track` -- not into each version's own tree, where it would
+    # have to be copied per version and would then drift between them.
+    intents_path = Path(settings.intents) if settings.intents else None
     code, summary = analyze(
         source_root,
         out_dir,
+        intents_path=intents_path,
         entry_ids=tuple(qualify_id(i, prefix) for i in settings.entries),
         sink_ids=tuple(qualify_id(i, prefix) for i in settings.sinks),
         config_paths=settings.configs,
@@ -2026,6 +2045,7 @@ def _run_mode_a(
     """
     if settings.mode != 2 or not new_ids:
         return ()
+    intents_path = Path(settings.intents) if settings.intents else None
     if trace is None:
         return (
             "MODE 2 was set but no harness was wired into this Ledger, so nothing "
@@ -2039,7 +2059,9 @@ def _run_mode_a(
         for version_id in sorted(new_ids):
             record = ledger.record(version_id)
             out_dir = ledger.resolve(record.artifact_dir)
-            code, message = trace(out_dir, scenarios, settings.scenario, out_dir)
+            code, message = trace(
+                out_dir, scenarios, settings.scenario, out_dir, intents_path
+            )
             label = record.label
             head = message.splitlines()[0] if message else ""
             notes.append(f"{label}: trace exit {code} -- {head}")
@@ -2075,7 +2097,7 @@ def _run_mode_a(
             newline="\n",
         )
         for sport in sports:
-            code, message = trace(out_dir, derived, sport, out_dir)
+            code, message = trace(out_dir, derived, sport, out_dir, intents_path)
             head = message.splitlines()[0] if message else ""
             notes.append(f"{record.label} [{sport}]: trace exit {code} -- {head}")
     return tuple(notes)

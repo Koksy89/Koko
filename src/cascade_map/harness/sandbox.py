@@ -455,6 +455,22 @@ def _dispatch(event: str, args: tuple[object, ...]) -> None:
     ctx.handle_event(event, args)
 
 
+def record_blocked(kind: str, detail: str) -> BlockedAttempt | None:
+    """Record a refusal made OUTSIDE the audit hook, on the active context.
+
+    A declared client stub stops a call at the client boundary rather than at
+    the socket, so there is no audit event to hang it on -- but it is the same
+    kind of finding and belongs in the same list. Returns ``None`` when no run
+    is active, which the caller must treat as "not recorded", never as
+    "allowed": the stop itself is the caller's own raise, not this function's
+    return value.
+    """
+    ctx = _active_ctx
+    if ctx is None:
+        return None
+    return ctx._record_blocked(kind, detail)
+
+
 def install_hook() -> None:
     """Install the process-wide audit hook, once. Idempotent and permanent:
     Python does not offer a way to remove an audit hook, by design."""

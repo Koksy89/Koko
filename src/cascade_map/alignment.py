@@ -55,6 +55,8 @@ from cascade_map.contracts.interfaces import (
     LineageKind,
     Method,
     Provenance,
+    Reachability,
+    ReachabilityState,
     RunRecord,
     SourceSpan,
     TraceEvent,
@@ -82,6 +84,9 @@ __all__ = [
     "CheckResult",
     "parse_check",
     "Coverage",
+    "PROPOSED_HEADER",
+    "PROPOSED_STATEMENT_LIMIT",
+    "registry_text",
     "AlignmentEngine",
     "AlignmentModel",
     "AnthropicAlignmentModel",
@@ -90,6 +95,7 @@ __all__ = [
     "load_prompt",
     "intents_jsonl",
     "verdicts_jsonl",
+    "coverage_json",
     "issues_jsonl",
 ]
 
@@ -806,6 +812,91 @@ def propose_intents(elements: Sequence[Element]) -> tuple[Intent, ...]:
     return tuple(sorted(proposals, key=lambda intent: intent.id))
 
 
+#: The longest statement a proposed entry carries. A docstring's first line can
+#: be a paragraph; a starter registry the owner cannot read is a starter
+#: registry they will not confirm.
+PROPOSED_STATEMENT_LIMIT = 200
+
+
+def _yaml_scalar(text: str) -> str:
+    """One double-quoted scalar this module's own parser reads back exactly.
+
+    The parser deliberately performs no escape processing (see its header), so
+    the emitter must not produce anything needing it: whitespace is collapsed
+    and a double quote inside the text becomes a single one. Lossy on purpose
+    and only ever applied to PROPOSED text the owner is being asked to rewrite
+    -- owner-confirmed statements are never round-tripped through here.
+    """
+    flat = " ".join(str(text).split()).replace('"', "'")
+    if len(flat) > PROPOSED_STATEMENT_LIMIT:
+        flat = flat[: PROPOSED_STATEMENT_LIMIT - 3].rstrip() + "..."
+    return '"' + flat + '"'
+
+
+PROPOSED_HEADER = """\
+# PROPOSED intents -- NOT owner-confirmed, and binding on nothing.
+#
+# Every entry below was derived by CASCADE-MAP from a docstring or a name. A
+# PROPOSED intent can never produce an ALIGNED or a MISALIGNED verdict: it is
+# reported UNVERIFIABLE until you change its `status` to CONFIRMED, which is
+# you taking responsibility for the statement.
+#
+# What to do with this file:
+#   1. Delete every entry you do not care about. A shorter registry you mean
+#      is worth more than a long one you skimmed.
+#   2. Rewrite each `statement` you keep so it says what the element is MEANT
+#      to do, not what its docstring happens to say.
+#   3. Add `invariants:` that can be checked. The language is:
+#        returns.type == int            arg.NAME.value >= 0
+#        values.KEY.status == FULL      calls <element id>
+#        not calls <element id>         runs before <element id>
+#        runs after <element id>        reaches decision
+#        does not reach decision
+#      `reaches decision` is the one that answers "did I build this and never
+#      plug it in": it is checked against the static call graph, so `analyze`
+#      settles it without running anything.
+#   4. Set `status: CONFIRMED` on the ones you stand behind.
+#   5. Run `metatron analyze <target> --intents <this file>`.
+#
+# Anything this tool cannot parse in here is reported with its line number and
+# is never skipped.
+version: 1
+intents:
+"""
+
+
+def registry_text(intents: Sequence[Intent]) -> str:
+    """A starter intents document, ready for the owner to edit and confirm.
+
+    Every entry is written with the status it actually carries. Nothing is
+    promoted on the way out: a PROPOSED intent that reached a file marked
+    CONFIRMED would be this card lying about who said it.
+    """
+    lines = [PROPOSED_HEADER]
+    for intent in sorted(intents, key=lambda item: (item.element_id, item.id)):
+        lines.append(f"  - element_id: {_yaml_scalar(intent.element_id)}")
+        lines.append(f"    status: {intent.status.value}")
+        lines.append(f"    statement: {_yaml_scalar(intent.statement)}")
+        if intent.invariants:
+            lines.append("    invariants:")
+            lines += [f"      - {_yaml_scalar(text)}" for text in intent.invariants]
+        else:
+            lines.append("    # invariants: []   <- add checkable expectations here")
+        if intent.expected_reads:
+            lines.append("    expected_reads:")
+            lines += [f"      - {_yaml_scalar(text)}" for text in intent.expected_reads]
+        if intent.expected_writes:
+            lines.append("    expected_writes:")
+            lines += [f"      - {_yaml_scalar(text)}" for text in intent.expected_writes]
+    if len(lines) == 1:
+        lines.append(
+            "  # No element carried a docstring or a usable name, so nothing was "
+            "proposed."
+        )
+        lines.append("  []")
+    return "\n".join(lines) + "\n"
+
+
 def _proposed_statement(element: Element) -> tuple[str, str]:
     docstring = (element.docstring or "").strip()
     if docstring:
@@ -839,6 +930,14 @@ class CheckKind(StrEnum):
     NOT_CALLS = "NOT_CALLS"
     RUNS_BEFORE = "RUNS_BEFORE"
     RUNS_AFTER = "RUNS_AFTER"
+    REACHES_DECISION = "REACHES_DECISION"
+    """The owner declares this element live: something reaches a decision sink
+    from it. Checked against card 3's `Reachability`, which is static evidence,
+    so this is the one expectation kind a Mode 1 run can settle on its own."""
+
+    NOT_REACHES_DECISION = "NOT_REACHES_DECISION"
+    """The owner declares this element deliberately off the decision path."""
+
     WRITES = "WRITES"
     READS = "READS"
     UNPARSEABLE = "UNPARSEABLE"
@@ -887,6 +986,13 @@ _CALLS = re.compile(r"^calls\s+(?P<target>\S+)$")
 _NOT_CALLS = re.compile(r"^(?:not\s+calls|does\s+not\s+call)\s+(?P<target>\S+)$")
 _RUNS_BEFORE = re.compile(r"^runs\s+before\s+(?P<target>\S+)$")
 _RUNS_AFTER = re.compile(r"^runs\s+after\s+(?P<target>\S+)$")
+#: "this element is plugged in" / "this element is deliberately not plugged in",
+#: in the owner's own words. `reaches decision` is the invariant that turns
+#: "I declared this strategy live" into something the static map can contradict.
+_REACHES = re.compile(r"^reaches\s+(?:the\s+)?(?:decision|sink)$")
+_NOT_REACHES = re.compile(
+    r"^(?:not\s+reaches|does\s+not\s+reach)\s+(?:the\s+)?(?:decision|sink)$"
+)
 _LHS = re.compile(
     r"^(?:returns|return|arg\.(?P<arg>[A-Za-z_][A-Za-z0-9_]*)|values\.(?P<key>[^.]+))"
     r"\.(?P<attr>type|value|status)$"
@@ -901,6 +1007,13 @@ def parse_check(text: str) -> Check:
     stripped = text.strip()
     if not stripped:
         return Check(kind=CheckKind.UNPARSEABLE, text=text, reason="empty invariant")
+
+    for pattern, kind in (
+        (_NOT_REACHES, CheckKind.NOT_REACHES_DECISION),
+        (_REACHES, CheckKind.REACHES_DECISION),
+    ):
+        if pattern.match(stripped):
+            return Check(kind=kind, text=stripped, subject="")
 
     for pattern, kind in (
         (_NOT_CALLS, CheckKind.NOT_CALLS),
@@ -920,7 +1033,8 @@ def parse_check(text: str) -> Check:
             reason=(
                 "not in the checkable expectation language "
                 "(<returns|arg.NAME|values.KEY>.<type|value|status> <op> <literal>, "
-                "'calls X', 'not calls X', 'runs before X', 'runs after X')"
+                "'calls X', 'not calls X', 'runs before X', 'runs after X', "
+                "'reaches decision', 'does not reach decision')"
             ),
         )
     lhs_match = _LHS.match(match.group("lhs"))
@@ -1145,6 +1259,7 @@ class AlignmentEngine:
         elements: Sequence[Element] = (),
         edges: Sequence[Edge] = (),
         lineage_edges: Sequence[LineageEdge] = (),
+        reachability: Sequence[Reachability] = (),
         run: RunRecord | None = None,
         model: AlignmentModel | None = None,
         prompt_path: str | os.PathLike[str] | None = None,
@@ -1153,6 +1268,12 @@ class AlignmentEngine:
         self._elements = tuple(elements)
         self._edges = tuple(edges)
         self._lineage = tuple(lineage_edges)
+        # Card 3's answer to "does this element drive the final decision". Read,
+        # never derived: deriving a second one here is the exact duplication
+        # `Reachability` was added to the contract to end.
+        self._reachability: dict[str, Reachability] = {}
+        for record in sorted(reachability, key=lambda item: item.id):
+            self._reachability.setdefault(record.element_id, record)
         self._run = run
         self._model = model
         self._prompt_path = prompt_path
@@ -1179,6 +1300,39 @@ class AlignmentEngine:
 
     def judge(
         self, intents: Sequence[Intent], events: Sequence[TraceEvent]
+    ) -> Sequence[AlignmentVerdict]:
+        return self._judge(intents, events, static=False)
+
+    def judge_static(self, intents: Sequence[Intent]) -> Sequence[AlignmentVerdict]:
+        """Verdicts from the STATIC evidence alone -- no run, nothing executed.
+
+        This is what `analyze` can honestly say about an intent before any
+        scenario has been run, and it exists because the owner's question --
+        "which of the things I built are not plugged in?" -- is answerable
+        against their own declaration without executing anything.
+
+        The only expectations settled here are the ones whose evidence is
+        static: ``reaches decision`` against card 3's :class:`Reachability`,
+        ``calls X`` against card 2's edges, and ``expected_reads`` /
+        ``expected_writes`` against card 4's lineage. Every expectation about
+        a *value*, a capture status or an order of execution is
+        ``UNVERIFIABLE`` here and says so, naming ``trace`` as the thing that
+        settles it -- a static run must never report an unchecked expectation
+        as met.
+
+        ``NOT_EXERCISED`` is deliberately NOT produced here. Nothing ran, so
+        "no scenario ran this element" would be true of every element in the
+        target and would say nothing; it is the runtime path's answer, where
+        it means something.
+        """
+        return self._judge(intents, (), static=True)
+
+    def _judge(
+        self,
+        intents: Sequence[Intent],
+        events: Sequence[TraceEvent],
+        *,
+        static: bool,
     ) -> Sequence[AlignmentVerdict]:
         run_ids = sorted({event.run_id for event in events if event.run_id})
         blocker = self._blocking_reason(run_ids)
@@ -1210,12 +1364,20 @@ class AlignmentEngine:
                 events_by_element=events_by_element,
                 run_id=run_id,
                 blocker=blocker,
+                static=static,
             )
             verdicts.append(judged.verdict)
             results.extend(judged.results)
             with_expectations += 1 if judged.had_expectations else 0
             checked += 1 if judged.was_checked else 0
 
+        if static:
+            notes.append(
+                "static judgement: nothing was executed, so only expectations whose "
+                "evidence is the static graph were settled. Every value, capture-status "
+                "and execution-order expectation is UNVERIFIABLE until `metatron trace` "
+                "runs the scenario."
+            )
         if blocker:
             notes.append(blocker)
         if self._registry is not None and not self._registry.present:
@@ -1227,6 +1389,11 @@ class AlignmentEngine:
             notes.append("no static call graph supplied: call expectations degrade to UNVERIFIABLE")
         if not self._lineage:
             notes.append("no lineage edges supplied: read/write expectations degrade to UNVERIFIABLE")
+        if not self._reachability:
+            notes.append(
+                "no reachability records supplied: 'reaches decision' expectations degrade "
+                "to UNVERIFIABLE"
+            )
         if self._model is not None:
             notes.append(
                 f"model escalation active ({MODEL_ID}): proposals only, attached to UNVERIFIABLE "
@@ -1281,6 +1448,7 @@ class AlignmentEngine:
         events_by_element: Mapping[str, tuple[TraceEvent, ...]],
         run_id: str,
         blocker: str,
+        static: bool = False,
     ) -> _Judged:
         own_events = events_by_element.get(element_id, ())
         evidence = tuple(event.event_id for event in own_events)
@@ -1383,7 +1551,7 @@ class AlignmentEngine:
         if intent.status is not IntentStatus.CONFIRMED:
             suffix = (
                 ""
-                if own_events
+                if own_events or static
                 else f"; the element was also not exercised in run {run_id or '<none>'}"
             )
             return _Judged(
@@ -1407,7 +1575,73 @@ class AlignmentEngine:
                 was_checked=False,
             )
 
+        if static:
+            results = self._evaluate(intent, (), events, events_by_element, static=True)
+            if not results:
+                return _Judged(
+                    verdict=self._verdict(
+                        element_id=element_id,
+                        intent_id=intent.id,
+                        verdict=Verdict.UNVERIFIABLE,
+                        expectation=intent.statement,
+                        observation=(
+                            f"the intent states {intent.statement!r} but declares no invariant, "
+                            f"expected read or expected write, so the static map has nothing to "
+                            f"check it against. Prose is not a check."
+                        ),
+                        evidence_ids=(),
+                        method=Method.STRUCTURAL_MATCH,
+                        confidence=Confidence.UNKNOWN,
+                        run_id="",
+                        note="no checkable expectation; static judgement",
+                    ),
+                    results=(),
+                    had_expectations=False,
+                    was_checked=False,
+                )
+            return _Judged(
+                verdict=self._aggregate(
+                    intent, element_id, results, "", method=Method.STRUCTURAL_MATCH
+                ),
+                results=results,
+                had_expectations=True,
+                was_checked=True,
+            )
+
         if not own_events:
+            # A contradiction outranks "it did not run". An element the owner
+            # declared live, that no call path reaches, is MISALIGNED whether
+            # or not this scenario entered it -- and NOT_EXERCISED there would
+            # hide a fact the static map already holds. Only expectations the
+            # static evidence can settle are considered; a value expectation
+            # still needs a run and still leaves this NOT_EXERCISED.
+            static_results = self._evaluate(intent, (), events, events_by_element, static=True)
+            contradicted = [
+                result for result in static_results if result.status is CheckStatus.FAIL
+            ]
+            if contradicted:
+                first = contradicted[0]
+                return _Judged(
+                    verdict=self._verdict(
+                        element_id=element_id,
+                        intent_id=intent.id,
+                        verdict=Verdict.MISALIGNED,
+                        expectation=first.expectation,
+                        observation=(
+                            f"{first.observation}. No event in run {run_id or '<none>'} names "
+                            f"this element either, so nothing this scenario did could settle "
+                            f"the rest of the intent."
+                        ),
+                        evidence_ids=_merge_evidence(contradicted),
+                        method=Method.STRUCTURAL_MATCH,
+                        confidence=combine(*[r.confidence for r in contradicted]),
+                        run_id=run_id,
+                        note="static contradiction; the element was also not exercised",
+                    ),
+                    results=static_results,
+                    had_expectations=True,
+                    was_checked=True,
+                )
             return _Judged(
                 verdict=self._verdict(
                     element_id=element_id,
@@ -1447,18 +1681,194 @@ class AlignmentEngine:
         own_events: Sequence[TraceEvent],
         events: Sequence[TraceEvent],
         events_by_element: Mapping[str, tuple[TraceEvent, ...]],
+        *,
+        static: bool = False,
     ) -> tuple[CheckResult, ...]:
         results: list[CheckResult] = []
         for text in intent.invariants:
             check = parse_check(text)
-            results.append(
-                self._evaluate_check(check, intent, own_events, events, events_by_element)
-            )
+            if static:
+                results.append(self._evaluate_check_static(check, intent))
+            else:
+                results.append(
+                    self._evaluate_check(check, intent, own_events, events, events_by_element)
+                )
         for feature in intent.expected_writes:
-            results.append(self._evaluate_flow(intent, feature, own_events, events, write=True))
+            if static:
+                results.append(self._evaluate_flow_static(intent, feature, write=True))
+            else:
+                results.append(self._evaluate_flow(intent, feature, own_events, events, write=True))
         for feature in intent.expected_reads:
-            results.append(self._evaluate_flow(intent, feature, own_events, events, write=False))
+            if static:
+                results.append(self._evaluate_flow_static(intent, feature, write=False))
+            else:
+                results.append(
+                    self._evaluate_flow(intent, feature, own_events, events, write=False)
+                )
         return tuple(results)
+
+    # -- the static half ---------------------------------------------------
+    #
+    # Everything below decides an expectation from cards 2-4 alone. Nothing
+    # here reads an event, and nothing here executes anything.
+
+    def _evaluate_check_static(self, check: Check, intent: Intent) -> CheckResult:
+        expectation = f"invariant {check.text!r}"
+        if check.kind is CheckKind.UNPARSEABLE:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    f"the invariant could not be parsed ({check.reason}); it was not checked, and "
+                    f"an unchecked expectation is never reported as met"
+                ),
+            )
+        if check.kind in (CheckKind.REACHES_DECISION, CheckKind.NOT_REACHES_DECISION):
+            return self._evaluate_reach(check, intent)
+        if check.kind in (CheckKind.CALLS, CheckKind.NOT_CALLS):
+            return self._evaluate_calls_static(check, intent)
+        return CheckResult(
+            status=CheckStatus.UNVERIFIABLE,
+            expectation=expectation,
+            observation=(
+                f"this expectation is about what happens when the code RUNS, and nothing was "
+                f"executed: the static map cannot settle it. `metatron trace` is what settles "
+                f"it; until then it is unchecked, which is not the same as met"
+            ),
+        )
+
+    def _evaluate_reach(self, check: Check, intent: Intent) -> CheckResult:
+        """`reaches decision` against card 3's Reachability. Static evidence.
+
+        An ``UNKNOWN`` reachability is never a contradiction. Card 3 biases
+        toward REACHES_SINK precisely because a false "unreachable" sends an
+        owner to delete live code, and this card must not undo that bias by
+        reading "I could not tell" as "it does not".
+        """
+        expectation = f"invariant {check.text!r}"
+        wants_reach = check.kind is CheckKind.REACHES_DECISION
+        record = self._reachability.get(intent.element_id)
+        if record is None:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    "no reachability record names this element, so whether anything reaches a "
+                    "decision from it was never measured; run `metatron analyze` with your "
+                    "decision sink declared (--sink) and it will be"
+                ),
+            )
+        if record.state is ReachabilityState.UNKNOWN:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    "reachability for this element is UNKNOWN ("
+                    + (record.reason or "no reason recorded")
+                    + "); 'I could not tell' is never read as 'it does not', and a decision "
+                    "sink may not be declared at all"
+                ),
+                evidence_ids=(record.id,),
+            )
+        reaches = record.state is ReachabilityState.REACHES_SINK
+        if reaches == wants_reach:
+            detail = (
+                f"reachability record {record.id} says {record.state.value}"
+                + (f" via {' -> '.join(record.path_ids)}" if reaches and record.path_ids else "")
+            )
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expectation=expectation,
+                observation=detail,
+                evidence_ids=(record.id,),
+                confidence=record.provenance.confidence,
+            )
+        if wants_reach:
+            observation = (
+                f"the owner declares this element live, and reachability record {record.id} says "
+                f"NO_SINK_PATH: no call path in the static graph reaches a declared decision sink "
+                f"({', '.join(record.sink_ids) or 'none declared'}) from it. This is 'built but "
+                f"never plugged in' measured against the owner's own declaration, not guessed "
+                f"from a name"
+            )
+        else:
+            observation = (
+                f"the owner declares this element off the decision path, and reachability record "
+                f"{record.id} says REACHES_SINK"
+                + (f" via {' -> '.join(record.path_ids)}" if record.path_ids else "")
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expectation=expectation,
+            observation=observation,
+            evidence_ids=(record.id,),
+            confidence=record.provenance.confidence,
+        )
+
+    def _evaluate_calls_static(self, check: Check, intent: Intent) -> CheckResult:
+        expectation = f"invariant {check.text!r}"
+        edge = self._find_call_edge(intent.element_id, check.subject)
+        wants_call = check.kind is CheckKind.CALLS
+        if not self._edges:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    f"no static call graph was supplied, so whether this element calls "
+                    f"{check.subject} was never measured"
+                ),
+            )
+        if edge is not None:
+            return CheckResult(
+                status=CheckStatus.PASS if wants_call else CheckStatus.FAIL,
+                expectation=expectation,
+                observation=(
+                    f"the static call graph has a CALLS edge to {check.subject} ({edge.id}, "
+                    f"{edge.provenance.method.value})"
+                ),
+                evidence_ids=(edge.id,),
+                confidence=edge.provenance.confidence,
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL if wants_call else CheckStatus.PASS,
+            expectation=expectation,
+            observation=(
+                f"the static call graph has no CALLS edge from this element to {check.subject}. "
+                f"Only dynamic dispatch could still make this true, and only a run settles that"
+            ),
+            confidence=Confidence.PROBABLE,
+        )
+
+    def _evaluate_flow_static(self, intent: Intent, feature: str, *, write: bool) -> CheckResult:
+        word = "writes" if write else "reads"
+        expectation = f"expected_{'writes' if write else 'reads'} names {feature!r}"
+        if not self._lineage:
+            return CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                expectation=expectation,
+                observation=(
+                    f"no lineage was supplied, so whether this element {word} {feature} was "
+                    f"never measured"
+                ),
+            )
+        edge = self._find_lineage_edge(intent.element_id, feature, write=write)
+        if edge is not None:
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expectation=expectation,
+                observation=f"lineage edge {edge.id} says this element {word} {feature}",
+                evidence_ids=(edge.id,),
+                confidence=edge.provenance.confidence,
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expectation=expectation,
+            observation=(
+                f"no lineage edge shows this element {word} {feature}; the owner declares it "
+                f"does"
+            ),
+            confidence=Confidence.PROBABLE,
+        )
 
     def _evaluate_check(
         self,
@@ -1478,6 +1888,11 @@ class AlignmentEngine:
                     f"an unchecked expectation is never reported as met"
                 ),
             )
+        if check.kind in (CheckKind.REACHES_DECISION, CheckKind.NOT_REACHES_DECISION):
+            # Static evidence inside a runtime verdict. A trace cannot observe
+            # "nothing reaches this": one run is one path, and card 3 already
+            # holds the answer over the whole graph.
+            return self._evaluate_reach(check, intent)
         if check.kind in (CheckKind.CALLS, CheckKind.NOT_CALLS):
             return self._evaluate_calls(check, intent, own_events, events_by_element)
         if check.kind in (CheckKind.RUNS_BEFORE, CheckKind.RUNS_AFTER):
@@ -1749,7 +2164,13 @@ class AlignmentEngine:
         element_id: str,
         results: Sequence[CheckResult],
         run_id: str,
+        *,
+        method: Method = Method.RUNTIME_OBSERVED,
     ) -> AlignmentVerdict:
+        # `event_ids` is a RUNTIME field. A static verdict's evidence is edge
+        # and reachability IDs, and filing those under `event_ids` would label
+        # static structure as something a run observed.
+        runtime = method is Method.RUNTIME_OBSERVED
         failures = [result for result in results if result.status is CheckStatus.FAIL]
         unverifiable = [result for result in results if result.status is CheckStatus.UNVERIFIABLE]
         passes = [result for result in results if result.status is CheckStatus.PASS]
@@ -1764,11 +2185,11 @@ class AlignmentEngine:
                 expectation=first.expectation,
                 observation=first.observation,
                 evidence_ids=_merge_evidence(failures),
-                method=Method.RUNTIME_OBSERVED,
+                method=method,
                 confidence=combine(*[result.confidence for result in failures]),
                 run_id=run_id,
                 note=note,
-                event_ids=_merge_evidence(failures),
+                event_ids=_merge_evidence(failures) if runtime else (),
             )
         if unverifiable:
             first = unverifiable[0]
@@ -1783,11 +2204,11 @@ class AlignmentEngine:
                     f"intent is not ALIGNED while any expectation is unchecked."
                 ),
                 evidence_ids=_merge_evidence(results),
-                method=Method.RUNTIME_OBSERVED,
+                method=method,
                 confidence=Confidence.UNKNOWN,
                 run_id=run_id,
                 note=note,
-                event_ids=_merge_evidence(results),
+                event_ids=_merge_evidence(results) if runtime else (),
             )
         return self._verdict(
             element_id=element_id,
@@ -1796,11 +2217,11 @@ class AlignmentEngine:
             expectation="; ".join(result.expectation for result in passes),
             observation="; ".join(result.observation for result in passes),
             evidence_ids=_merge_evidence(passes),
-            method=Method.RUNTIME_OBSERVED,
+            method=method,
             confidence=combine(*[result.confidence for result in passes]),
             run_id=run_id,
             note=note,
-            event_ids=_merge_evidence(passes),
+            event_ids=_merge_evidence(passes) if runtime else (),
         )
 
     def _unverifiable_prose(
@@ -1961,6 +2382,7 @@ class AlignmentEngine:
                 "static_edges": len(self._edges),
                 "lineage_edges": len(self._lineage),
                 "static_elements": len(self._elements),
+                "reachability_records": len(self._reachability),
                 "model_proposals": model_proposals,
             },
             registry_issues=len(self._registry.issues) if self._registry else 0,
@@ -2150,6 +2572,14 @@ def intents_jsonl(intents: Sequence[Intent]) -> str:
 def verdicts_jsonl(verdicts: Sequence[AlignmentVerdict]) -> str:
     """``runtime/<run_id>/verdicts.jsonl``."""
     return canonical_jsonl(verdicts, "id")
+
+
+def coverage_json(coverage: Coverage) -> str:
+    """``coverage.json`` -- how much of the intent set was checkable, and against
+    what. Integers only, canonical, byte-identical across runs."""
+    from cascade_map.contracts.interfaces import canonical_dumps
+
+    return canonical_dumps(coverage.to_dict()) + "\n"
 
 
 def issues_jsonl(issues: Sequence[Unresolved]) -> str:

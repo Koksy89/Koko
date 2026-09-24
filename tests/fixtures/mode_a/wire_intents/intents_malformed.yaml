@@ -1,0 +1,34 @@
+# Four different ways an owner's intents file can be wrong, in one file.
+#
+# None of them may be skipped. An intents file that fails to parse and leaves
+# a report reading clean is the worst outcome this feature has: the owner
+# believes their declarations were applied and they were not.
+version: 1
+intents:
+  # 1. Names an element that does not exist. Doing nothing, silently, is
+  #    exactly the failure mode this file exists to forbid.
+  - element_id: wire_intents.engine::no_such_function
+    status: CONFIRMED
+    statement: "Nothing in the target is called this."
+
+  # 2. No status at all. A missing status is never read as owner confirmation.
+  - element_id: wire_intents.engine::score
+    statement: "Who confirmed this?"
+
+  # 3. A second intent for an element that already has one. Picking one would
+  #    be a guess, so both are kept and the element is UNVERIFIABLE.
+  - element_id: wire_intents.engine::gate
+    status: CONFIRMED
+    statement: "One statement."
+  - element_id: wire_intents.engine::gate
+    status: CONFIRMED
+    statement: "A different statement for the same element."
+
+  # 4. An invariant that is not in the checkable language. It is reported as
+  #    unparseable and the element is UNVERIFIABLE -- never quietly checked
+  #    with one expectation fewer than the owner wrote.
+  - element_id: wire_intents.engine::decide
+    status: CONFIRMED
+    statement: "Decides."
+    invariants:
+      - "it should basically be correct most of the time"

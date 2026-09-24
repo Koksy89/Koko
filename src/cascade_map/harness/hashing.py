@@ -70,16 +70,24 @@ def config_fingerprint(
     declared_process_names: frozenset[str],
     client_names: frozenset[str],
     env_passthrough: frozenset[str],
+    client_declarations: str = "",
 ) -> str:
     """A deterministic summary of the parts of a run config that affect what
-    a run is allowed to do, for folding into the run ID."""
-    payload = canonical_dumps(
-        {
-            "declared_process_names": sorted(declared_process_names),
-            "client_names": sorted(client_names),
-            "env_passthrough": sorted(env_passthrough),
-        }
-    )
+    a run is allowed to do, for folding into the run ID.
+
+    ``client_declarations`` is the canonical text of the owner's stub
+    declarations. It is folded in only when it is non-empty, so a run with no
+    declared stub keeps exactly the run ID it had before stub kinds existed --
+    the alternative was silently renaming every recorded run on disk.
+    """
+    body = {
+        "declared_process_names": sorted(declared_process_names),
+        "client_names": sorted(client_names),
+        "env_passthrough": sorted(env_passthrough),
+    }
+    if client_declarations:
+        body["client_declarations"] = client_declarations
+    payload = canonical_dumps(body)
     return hashlib.sha256(payload.encode("ascii")).hexdigest()
 
 

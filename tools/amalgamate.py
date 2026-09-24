@@ -66,7 +66,8 @@ ORDER = [
     "dependencies.py", "ledger.py", "workspace.py", "docrecords.py",
     "enrichment.py",
     "harness/errors.py", "harness/hashing.py", "harness/config.py",
-    "harness/sandbox.py", "harness/harness.py", "harness/scenarios.py",
+    "harness/sandbox.py", "harness/stubs.py", "harness/harness.py",
+    "harness/scenarios.py",
     "tracer/limits.py", "tracer/capture.py", "tracer/static_index.py",
     "tracer/recording.py", "tracer/collector.py", "tracer/nondeterminism.py",
     "tracer/contradictions.py", "tracer/tracer.py",
@@ -103,6 +104,10 @@ compute_target_hashes = _mod.compute_target_hashes
 StaticIndex = _mod.StaticIndex
 Tracer = _mod.Tracer
 build_index = _mod.build_index
+StubDeclarationError = _mod.StubDeclarationError
+build_factories = _mod.build_factories
+declaration_fingerprint = _mod.declaration_fingerprint
+parse_declarations = _mod.parse_declarations
 '''
 
 #: Names the child prologue lifts off the loaded module. Checked against the
@@ -113,8 +118,38 @@ build_index = _mod.build_index
 PROLOGUE_NAMES = (
     "canonical_dumps", "Harness", "HarnessRefusal", "RunConfig", "ScenarioSpec",
     "compute_graph_hash", "compute_target_hashes", "StaticIndex", "Tracer",
-    "build_index",
+    "build_index", "StubDeclarationError", "build_factories",
+    "declaration_fingerprint", "parse_declarations",
 )
+
+
+def _package_prologue_names(cli_source: str) -> list[str]:
+    """Every name `cli.py`'s own `_CHILD_PROLOGUE` puts in the child's scope.
+
+    Derived from the package prologue rather than written down a second time.
+    `PROLOGUE_NAMES` only ever checked that the names the SINGLE-FILE prologue
+    lifts exist in the generated file -- one direction. A name the child
+    *uses* that the single-file prologue never binds passed that check and
+    surfaced as a `NameError` inside a Mode A child process, long after the
+    build said it was fine. Comparing the two prologues closes the loop
+    without anyone having to remember to.
+    """
+    for node in ast.parse(cli_source).body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "_CHILD_PROLOGUE"
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            names: set[str] = set()
+            for child in ast.walk(ast.parse(node.value.value)):
+                if isinstance(child, (ast.Import, ast.ImportFrom)):
+                    for alias in child.names:
+                        names.add(alias.asname or alias.name.split(".")[0])
+            return sorted(names)
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +495,39 @@ def _module_aliases(files: list[Path]) -> dict[str, set[str]]:
 # ---------------------------------------------------------------------------
 
 
+def _check_prologues_agree(cli_source: str) -> None:
+    """The two child prologues must put the SAME names in the child's scope."""
+    wanted = set(_package_prologue_names(cli_source))
+    # `json`, `sys` and `Path` are imported by both prologues outright; the
+    # rest are this tool's own names, which the single file must assign.
+    bound = {
+        node.targets[0].id
+        for node in ast.parse(SINGLE_FILE_PROLOGUE).body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+    }
+    for node in ast.walk(ast.parse(SINGLE_FILE_PROLOGUE)):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                bound.add(alias.asname or alias.name.split(".")[0])
+    missing = sorted(wanted - bound)
+    if missing:
+        raise SystemExit(
+            f"cli.py's `_CHILD_PROLOGUE` gives the Mode A child these names, and "
+            f"SINGLE_FILE_PROLOGUE does not: {missing}. In the single file the "
+            f"child would raise NameError partway through a run. Add them to "
+            f"SINGLE_FILE_PROLOGUE and to PROLOGUE_NAMES."
+        )
+    unlifted = sorted(name for name in wanted if name not in set(PROLOGUE_NAMES) | {"json", "sys", "Path"})
+    if unlifted:
+        raise SystemExit(
+            f"these names cross the child seam but are not in PROLOGUE_NAMES, so "
+            f"the build never checks the generated file still defines them: "
+            f"{unlifted}."
+        )
+
+
 def _check_globals(text: str, aliases: dict[str, set[str]]) -> None:
     """Fail the build on any name the generated file promises but lacks."""
     defined = _top_level_names(ast.parse(text))
@@ -532,6 +600,7 @@ def build() -> str:
     for path in files:
         source = path.read_text(encoding="utf-8")
         if path.name == "cli.py":
+            _check_prologues_agree(source)
             source = _replace_child_prologue(source)
             source, settings_block = _lift_settings(source)
         source = _rename_names(source, renames.get(path, {}))

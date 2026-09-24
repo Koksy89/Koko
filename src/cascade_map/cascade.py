@@ -146,6 +146,37 @@ _BUILTIN_NAMES: frozenset[str] = frozenset(dir(builtins)) | frozenset(
 #: units PER WORKER the stage stays in-process and the report says why.
 _CFG_MIN_UNITS_PER_WORKER = 64
 
+#: WHETHER THE CFG STAGE USES THE POOL AT ALL. `False`, and the reason is a
+#: measurement rather than an opinion.
+#:
+#: A CFG is a per-element unit and it parallelises correctly -- the pool below
+#: is real, and `test_every_artifact_is_byte_identical_at_one_two_four_and_
+#: eight_workers` proves its output is identical at 1, 2, 4 and 8 workers. It
+#: is off because it is SLOWER, on both target shapes measured:
+#:
+#:   owner's engine, 14.6 MB in ONE module, 1,992 CFG units
+#:       1 worker   cascade stage 37.9s
+#:       4 workers  cascade stage 86.2s   (CFG section 30s -> 57s)
+#:   this tool's own source, 22 modules, 1,563 CFG units
+#:       1 worker   CFG section 3.1s
+#:       2 workers  3.9s     4 workers 3.6s     8 workers 4.3s
+#:
+#: Two costs, and the second is structural. (1) Every worker must parse the
+#: files it touches, and `ast.parse` of the owner's 14.6 MB module is 22.05s
+#: measured -- four workers pay it four times. (2) The stage RETURNS far more
+#: than it consumes: 1,992 elements produce 33 MB of blocks and 42 MB of
+#: edges, roughly two million small objects that must be pickled out of the
+#: worker and unpickled back in. The ratio of output to input is a property of
+#: what a CFG *is*, not of this target, which is why the loss shows up on the
+#: multi-module measurement too, where the parse is cheap.
+#:
+#: Left reachable rather than deleted: the correctness is proven and a target
+#: whose per-element bodies are far heavier than their graphs would win. It is
+#: not switched on by a flag an owner could set without a measurement -- the
+#: tests set it, and the report says plainly that this stage runs in one
+#: process and why.
+_CFG_POOL_ENABLED = False
+
 _IMPURE_BUILTINS: frozenset[str] = frozenset(
     {"print", "open", "setattr", "delattr", "exec", "eval", "input", "__import__"}
 )
@@ -1352,16 +1383,52 @@ class _CFGPayload(Payload):
         return _CFGWorker(Path(self.root), self.elements)
 
 
-class _CFGWorker:
-    """One worker's view: parse on demand, cache per file, build per element."""
+class _PreOpened(Payload):
+    """A payload that is already open, for the IN-PROCESS path only.
 
-    def __init__(self, root: Path, elements: Sequence[Element]) -> None:
+    It exists so that running in one process shares that process's parse
+    caches instead of building a second set beside them. `ast.parse` of the
+    owner's 14.6 MB module is 22.05s measured, and parsing it twice in one run
+    -- once to build the CFGs and once to answer the questions asked per FILE,
+    the `__main__` guard and the discarded call sites -- was a measured 22s
+    regression that this removes.
+
+    Never handed to a pool: it holds live caches, and a second process would
+    get a copy of them that diverged silently.
+    """
+
+    __slots__ = ("worker",)
+
+    def __init__(self, worker: "_CFGWorker") -> None:
+        self.worker = worker
+
+    def open(self) -> "_CFGWorker":
+        return self.worker
+
+
+class _CFGWorker:
+    """One worker's view: parse on demand, cache per file, build per element.
+
+    The caches are passed in rather than created here so the in-process path
+    can hand it the analyser's own, and the two never parse one file twice
+    between them.
+    """
+
+    def __init__(
+        self,
+        root: Path,
+        elements: Sequence[Element],
+        *,
+        trees: dict[str, ast.Module | None] | None = None,
+        index_cache: dict[tuple[str, str], dict[str, ast.AST]] | None = None,
+        line_cache: dict[tuple[str, str], dict[int, ast.AST]] | None = None,
+    ) -> None:
         self.root = root
         self.elements = {element.id: element for element in elements}
-        self.trees: dict[str, ast.Module | None] = {}
+        self.trees = {} if trees is None else trees
         self.parse_failures: dict[str, Unresolved] = {}
-        self.index_cache: dict[tuple[str, str], dict[str, ast.AST]] = {}
-        self.line_cache: dict[tuple[str, str], dict[int, ast.AST]] = {}
+        self.index_cache = {} if index_cache is None else index_cache
+        self.line_cache = {} if line_cache is None else line_cache
 
     def parse(self, path: str) -> ast.Module | None:
         if path in self.trees:
@@ -1740,12 +1807,21 @@ class CascadeAnalyzer:
             if element.kind in CFG_ELEMENT_KINDS
         ]
         jobs = [(element_id, element_id) for element_id in ordered]
+        workers = self.workers if _CFG_POOL_ENABLED else 1
+        if not _CFG_POOL_ENABLED and self.workers > 1:
+            self.cfg_report.not_parallelised_reason = (
+                "measured slower in a pool on every target shape tried: a CFG "
+                "returns far more than it consumes (33 MB of blocks and 42 MB "
+                "of edges from 1,992 elements on the owner's engine), and each "
+                "worker must re-parse the files it touches (ast.parse of a "
+                "14.6 MB module is 22.0s). See _CFG_POOL_ENABLED"
+            )
         results: dict[str, _CFGOutcome] = run_stage(
             _cfg_unit,
             jobs,
-            self.workers,
+            workers,
             self.cfg_report,
-            payload=_CFGPayload(str(self.root), tuple(self._elements.values())),
+            payload=self._cfg_payload(workers),
             on_unit=self._on_unit,
             # Below this a pool costs more to start than the CFGs cost to
             # build. Measured, not guessed: `test_small_targets_stay_in_process`.
@@ -2661,6 +2737,22 @@ class CascadeAnalyzer:
                         ),
                     )
                 )
+
+    def _cfg_payload(self, workers: int) -> Payload:
+        """In one process, share this analyser's parse caches; in a pool, send
+        only what is cheap and let each worker build its own."""
+        elements = tuple(self._elements.values())
+        if workers <= 1:
+            return _PreOpened(
+                _CFGWorker(
+                    self.root,
+                    elements,
+                    trees=self._source_cache,
+                    index_cache=self._body_index_cache,
+                    line_cache=self._body_line_index,
+                )
+            )
+        return _CFGPayload(str(self.root), elements)
 
     def _cascade_chain(self, builder: _FlowResult) -> dict[str, tuple[int, int]]:
         """Number the steps of each ``if``/``elif`` chain, for the record.
