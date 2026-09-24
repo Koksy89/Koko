@@ -59,6 +59,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
 
 from .parallel import Payload, StageReport, resolve_workers, run_stage
+from .parsecache import ParseCache
 from .contracts.interfaces import (
     CFGBlock,
     CFGEdge,
@@ -1422,9 +1423,13 @@ class _CFGWorker:
         trees: dict[str, ast.Module | None] | None = None,
         index_cache: dict[tuple[str, str], dict[str, ast.AST]] | None = None,
         line_cache: dict[tuple[str, str], dict[int, ast.AST]] | None = None,
+        parse_cache: "ParseCache | None" = None,
     ) -> None:
         self.root = root
         self.elements = {element.id: element for element in elements}
+        #: None in a pool worker, and that is the point: a `ParseCache` holds
+        #: live trees and is never pickled into another process.
+        self.parse_cache = parse_cache
         self.trees = {} if trees is None else trees
         self.parse_failures: dict[str, Unresolved] = {}
         self.index_cache = {} if index_cache is None else index_cache
@@ -1433,7 +1438,7 @@ class _CFGWorker:
     def parse(self, path: str) -> ast.Module | None:
         if path in self.trees:
             return self.trees[path]
-        tree, failure = _parse_source(self.root, path)
+        tree, failure = _parse_source(self.root, path, self.parse_cache)
         self.trees[path] = tree
         if failure is not None:
             self.parse_failures[path] = failure
@@ -1478,8 +1483,18 @@ def _cfg_unit(worker: "_CFGWorker", element_id: str) -> _CFGOutcome:
     return _CFGOutcome(flow=_flow_result(element, node, path))
 
 
-def _parse_source(root: Path, path: str) -> tuple[ast.Module | None, Unresolved | None]:
-    """Read and parse one file. Never imports, executes or unpickles it."""
+def _parse_source(
+    root: Path, path: str, cache: "ParseCache | None" = None
+) -> tuple[ast.Module | None, Unresolved | None]:
+    """Read and parse one file. Never imports, executes or unpickles it.
+
+    With *cache*, the tree is the run's shared one: resolution parsed this
+    file before this stage started, and on the owner's single-module engine
+    that is 20.8s the CFG stage no longer spends. Without one -- which is
+    every CFG *pool* worker, in its own process -- it parses for itself, as
+    it must: a tree cannot cross a process boundary for less than the parse
+    costs (see `_CFG_POOL_ENABLED`).
+    """
     full = root / path
     try:
         text = full.read_text(encoding="utf-8")
@@ -1508,6 +1523,8 @@ def _parse_source(root: Path, path: str) -> tuple[ast.Module | None, Unresolved 
             attempted=(Method.AST_DIRECT,),
         )
     try:
+        if cache is not None:
+            return cache.parse(path, text), None
         return ast.parse(text, filename=path), None
     except SyntaxError as exc:
         return None, Unresolved(
@@ -1538,8 +1555,14 @@ class CascadeAnalyzer:
         unresolved: Sequence[Unresolved] = (),
         workers: int | None = None,
         on_unit: Callable[[int, int], None] | None = None,
+        parse_cache: ParseCache | None = None,
     ) -> None:
         self.root = Path(root)
+        #: The run's shared trees, when `cli.analyze` passes one: resolution
+        #: has already parsed every module this stage will ask for. Built
+        #: privately otherwise, so a `CascadeAnalyzer` constructed alone -- as
+        #: every test constructs one -- behaves exactly as it did.
+        self._parse_cache = ParseCache() if parse_cache is None else parse_cache
         self._declared_sinks: tuple[str, ...] = tuple(sorted(set(sink_ids)))
         self._input_unresolved: tuple[Unresolved, ...] = tuple(unresolved)
         #: How many child processes the CFG stage may use. `0`/`1` keep
@@ -1742,7 +1765,7 @@ class CascadeAnalyzer:
         """
         if path in self._source_cache:
             return self._source_cache[path]
-        tree, failure = _parse_source(self.root, path)
+        tree, failure = _parse_source(self.root, path, self._parse_cache)
         if failure is not None and failure.id not in self._reported_failures:
             self._reported_failures.add(failure.id)
             self._opaque.add(failure.id)
@@ -2750,6 +2773,7 @@ class CascadeAnalyzer:
                     trees=self._source_cache,
                     index_cache=self._body_index_cache,
                     line_cache=self._body_line_index,
+                    parse_cache=self._parse_cache,
                 )
             )
         return _CFGPayload(str(self.root), elements)

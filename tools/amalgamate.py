@@ -62,6 +62,9 @@ ORDER = [
     "ingest/constants.py", "ingest/hashing.py", "ingest/walker.py",
     "ingest/python_module.py", "ingest/data_files.py", "ingest/cache.py",
     "ingest/parallel.py", "ingest/inventory.py",
+    # The run's shared ASTs. After `ingest/hashing.py`, whose `sha256_text` it
+    # keys on, and before the three stages that share a tree through it.
+    "parsecache.py",
     "resolve.py", "cascade.py", "lineage.py", "findings.py", "diff.py",
     "dependencies.py", "ledger.py", "workspace.py", "docrecords.py",
     "enrichment.py",

@@ -106,6 +106,7 @@ from .contracts.interfaces import (
     make_id,
     param_id,
 )
+from .parsecache import ParseCache
 
 __all__ = [
     "LineageTracer",
@@ -619,10 +620,17 @@ class LineageTracer:
         root: str | Path = ".",
         sink_ids: Sequence[str] = (),
         transparent_modules: Iterable[str] = TRANSPARENT_MODULES,
+        parse_cache: ParseCache | None = None,
     ) -> None:
         self.root = Path(root)
         self.sink_ids: tuple[str, ...] = tuple(sorted(set(sink_ids)))
         self.transparent_modules = frozenset(transparent_modules)
+        #: The run's shared trees. Lineage is the LAST static stage to ask for
+        #: them, so on a single-module target every ask is a hit. Set before
+        #: `_reset`, and deliberately not cleared by it: `_reset` drops what
+        #: this tracer derived, and a parsed tree is not that -- it belongs to
+        #: the run.
+        self._parse_cache = ParseCache() if parse_cache is None else parse_cache
         self._reset()
 
     # -- lifecycle ---------------------------------------------------------
@@ -1067,7 +1075,7 @@ class LineageTracer:
                 )
                 continue
             try:
-                tree = ast.parse(text, filename=str(rel_path))
+                tree = self._parse_cache.parse(str(rel_path), text)
             except SyntaxError as exc:
                 self._unresolved(
                     module, rel_path, UnresolvedReason.SYNTAX_ERROR,

@@ -60,6 +60,7 @@ from cascade_map.parallel import (
     resolve_workers,
 )
 from cascade_map.lineage import LineageTracer
+from cascade_map.parsecache import DEFAULT_BUDGET_BYTES, ParseCache
 from cascade_map.progress import (
     ANALYZE_STAGES,
     NullProgress,
@@ -587,6 +588,7 @@ def analyze(
     worker_report_sink: Callable[[str], None] | None = None,
     progress: Any = None,
     max_source_bytes: int = MAX_SOURCE_BYTES,
+    parse_cache_bytes: int = DEFAULT_BUDGET_BYTES,
     intents_path: Path | None = None,
     propose_intents_path: Path | None = None,
 ) -> tuple[int, dict[str, Any]]:
@@ -638,6 +640,22 @@ def analyze(
     worker_count = resolve_workers(workers)
     pipeline = PipelineReport(requested=worker_count)
 
+    # ONE parse per file per run, shared by every stage that runs in THIS
+    # process. Resolution asks for each module twice, the CFG stage once and
+    # lineage once; before this they were four `ast.parse` calls on the same
+    # bytes, and on the owner's 14.8 MB single-module engine one of those is
+    # 20.8s and 895,811 nodes.
+    #
+    # NOT given to inventory and NOT given to dependencies, and neither is an
+    # oversight. Inventory is the first stage, so it can only ever seed the
+    # cache, never hit it -- and its file units run in a POOL as soon as a
+    # target has more than one file, where a fork would copy every held tree
+    # into every worker. Dependencies travels to its own process inside a
+    # pickled payload; a ParseCache holding live trees must never enter one
+    # (the same trap `cascade._PreOpened` documents). Both parse for
+    # themselves, exactly as they did.
+    parse_cache = ParseCache(parse_cache_bytes)
+
     ingestor = Ingestor(cache_dir=cache_dir, workers=workers)
     elements, unresolved = ingestor.inventory(str(root), on_unit=bar.sub)
     summary["elements"] = len(elements)
@@ -656,7 +674,7 @@ def analyze(
     # one 15 MB module, as the owner's is, there is exactly one unit either
     # way.
     resolve_started = time.time()
-    resolver = Resolver(root, config_paths=tuple(config_paths))
+    resolver = Resolver(root, config_paths=tuple(config_paths), parse_cache=parse_cache)
     edges, resolve_unresolved = resolver.resolve(elements)
     unresolved = list(unresolved) + list(resolve_unresolved)
     summary["edges"] = len(edges)
@@ -682,6 +700,7 @@ def analyze(
         unresolved=unresolved,
         workers=worker_count,
         on_unit=bar.sub,
+        parse_cache=parse_cache,
     )
     (
         blocks,
@@ -734,7 +753,7 @@ def analyze(
     )
 
     lineage_started = time.time()
-    tracer = LineageTracer(root, sink_ids=tuple(sink_ids))
+    tracer = LineageTracer(root, sink_ids=tuple(sink_ids), parse_cache=parse_cache)
     lineage_edges, barriers = tracer.trace_values(elements, edges)
 
     say = worker_report_sink or bar.through
@@ -1148,6 +1167,9 @@ def analyze(
     # never written into an artifact: these are wall-clock timings and
     # constraint 4 says identical input gives identical bytes.
     (worker_report_sink or bar.through)(render_pipeline_report(pipeline))
+    # What the shared trees bought. A run-shaped measurement like the ones
+    # above, so it is printed and never written into an artifact.
+    (worker_report_sink or bar.through)(parse_cache.stats.render())
 
     bar.finish(
         finished_at=finished, elapsed=elapsed_seconds, stage_millis=stage_millis
@@ -2511,6 +2533,15 @@ def _build_parser() -> argparse.ArgumentParser:
                           "requirements skipped, and the skip is recorded against "
                           f"that one file (default {MAX_SOURCE_BYTES // 1_000_000}). "
                           "Every other analysis has its own limits and is unaffected.")
+    run.add_argument("--parse-cache-mb", type=int, default=None, metavar="MB",
+                     help="how much SOURCE the run may hold parsed at once so "
+                          "that resolution, the CFG stage and lineage share one "
+                          "tree per file instead of parsing it four times "
+                          f"(default {DEFAULT_BUDGET_BYTES // 1_000_000}; 0 "
+                          "disables sharing and every stage parses for itself). "
+                          "A tree costs roughly forty times its source in "
+                          "memory, so raising this trades memory for parses; "
+                          "the run reports if the cache thrashed.")
     run.add_argument("--intents", type=Path, default=None, metavar="PATH",
                      help="owner-confirmed intents YAML: what each element is "
                           "MEANT to do. Overrides INTENTS. Every problem in "
@@ -2779,6 +2810,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_source_bytes=(
                 args.max_source_mb * 1_000_000 if args.max_source_mb
                 else MAX_SOURCE_BYTES
+            ),
+            parse_cache_bytes=(
+                args.parse_cache_mb * 1_000_000
+                if args.parse_cache_mb is not None
+                else DEFAULT_BUDGET_BYTES
             ),
         )
         print(_report(summary, args.out, code))

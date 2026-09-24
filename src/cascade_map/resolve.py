@@ -62,6 +62,7 @@ from .contracts.interfaces import (
     config_key_id,
     make_id,
 )
+from .parsecache import ParseCache
 
 __all__ = [
     "Resolver",
@@ -826,8 +827,15 @@ class Resolver:
         include_builtin_calls: bool = False,
         max_traced_targets: int = 4,
         max_candidates: int = 32,
+        parse_cache: ParseCache | None = None,
     ) -> None:
         self.root = Path(root)
+        #: The run's shared trees. Resolution alone asks for every module
+        #: TWICE -- `_summarise` walks it for declarations, `_resolve_module`
+        #: walks it again for call sites -- so even a Resolver built on its
+        #: own, as every test builds one, halves its own parsing. Passed in by
+        #: `cli.analyze` so the CFG and lineage stages get the same trees.
+        self._parse_cache = ParseCache() if parse_cache is None else parse_cache
         self.declared_configs = frozenset(str(p) for p in config_paths)
         self.include_builtin_calls = include_builtin_calls
         self.max_traced_targets = max_traced_targets
@@ -1005,7 +1013,7 @@ class Resolver:
         if source is None:
             return None
         try:
-            return ast.parse(source, filename=summary.path)
+            return self._parse_cache.parse(summary.path, source)
         except SyntaxError as exc:
             self._record_unresolved(
                 owner=summary.element_id,
