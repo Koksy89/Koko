@@ -15,4 +15,4 @@
 # whether a change belongs to the owner's engine or to this tool, so two
 # tools disagreeing about their own version can misattribute an entire
 # engine's worth of change.
-__version__ = "1.1.0"
+__version__ = "1.1.1"

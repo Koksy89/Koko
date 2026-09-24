@@ -225,7 +225,7 @@ class ProgressReporter:
             self._render()
         if self._live:
             self._thread = threading.Thread(
-                target=self._tick, name="cascade-map-progress", daemon=True
+                target=self._tick, name="metatron-progress", daemon=True
             )
             self._thread.start()
 

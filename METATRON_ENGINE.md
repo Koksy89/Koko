@@ -47,10 +47,10 @@ are the same thing.
 | Network | never used, in any command |
 | Writes | only into the `--out` directory you name |
 
-Save `metatron_engine.py` anywhere — Desktop is fine. Check it runs:
+Save `Metatron_Engine_Prototype_v1.py` anywhere — Desktop is fine. Check it runs:
 
 ```
-python3 metatron_engine.py --version
+python3 Metatron_Engine_Prototype_v1.py --version
 ```
 
 Nothing to install, nothing to configure, no virtual environment. That was deliberate:
@@ -61,14 +61,26 @@ a tool you have to set up is a tool you stop using.
 ## 2. Quickstart
 
 ```
-python3 metatron_engine.py analyze C:\code\amun_engine --out out\amun
-python3 metatron_engine.py view out\amun
+python3 Metatron_Engine_Prototype_v1.py analyze C:\code\amun_engine --out out\amun
+python3 Metatron_Engine_Prototype_v1.py view out\amun
 ```
 
-The first command reads Amun and writes the map into `out\amun`. It takes seconds to
-a minute depending on size. **It does not import, execute, evaluate or unpickle a single
-line of your engine** — it reads the text of your files and parses them, the same way
+The first command reads Amun and writes the map into `out\amun`. **It does not import,
+execute, evaluate or unpickle a single line of your engine** — it reads the text of your files and parses them, the same way
 you would read them, just exhaustively.
+
+**How long it takes.** Measured on the real 14.6 MB Amun engine, on a 4-core machine,
+with `--workers 4`:
+
+| | |
+|---|---|
+| First ever run on an engine | about 4 min 48 s |
+| Every run after that | about **4 min 25 s** |
+
+A small engine is seconds. The figures above are for a single 14.6 MB file, which is the
+hard case: most of that time is one unavoidable read of your source, and parallel workers
+cannot split a single file. If your run is much slower than this, read section 7 — the
+`parse cache` line will usually say why.
 
 The second command turns that map into a single self-contained HTML page and tells you
 where it wrote it. Open it in any browser. It needs no internet and no server.
@@ -83,7 +95,7 @@ mixed — that is by design and is what you asked for.
 ### `analyze` — build the map
 
 ```
-python3 metatron_engine.py analyze ROOT --out DIR [options]
+python3 Metatron_Engine_Prototype_v1.py analyze ROOT --out DIR [options]
 ```
 
 | Option | What it does | When you need it |
@@ -113,7 +125,7 @@ can spend on setup.
 ### `view` — read the map
 
 ```
-python3 metatron_engine.py view DIR [--html PATH]
+python3 Metatron_Engine_Prototype_v1.py view DIR [--html PATH]
 ```
 
 Renders the analysed directory into one offline HTML page (default `DIR/index.html`).
@@ -124,7 +136,7 @@ data file, and you can go read the data file.
 ### `blueprint` — the interactive node canvas
 
 ```
-python3 metatron_engine.py blueprint GRAPH_DIR [--html PATH] [--diff DIFF_DIR] [--run RUN_ID]
+python3 Metatron_Engine_Prototype_v1.py blueprint GRAPH_DIR [--html PATH] [--diff DIFF_DIR] [--run RUN_ID]
 ```
 
 The visual one. Default output is `GRAPH_DIR/blueprint.html`. `--diff` takes a
@@ -136,7 +148,7 @@ matching tab says so and names the command that produces it. Full detail in
 ### `diff` — compare two versions
 
 ```
-python3 metatron_engine.py diff BEFORE_DIR AFTER_DIR --out DIR
+python3 Metatron_Engine_Prototype_v1.py diff BEFORE_DIR AFTER_DIR --out DIR
 ```
 
 Both arguments are **analysed output directories**, not source folders. See
@@ -145,7 +157,7 @@ Both arguments are **analysed output directories**, not source folders. See
 ### `track` — the whole history, incrementally
 
 ```
-python3 metatron_engine.py track [--versions DIR] [--report] [flags]
+python3 Metatron_Engine_Prototype_v1.py track [--versions DIR] [--report] [flags]
 ```
 
 Point it at a folder of version folders and it analyses only the ones it has never
@@ -156,8 +168,8 @@ flag that overrides it. See [section 9b](#9b-track--the-version-ledger).
 ### `doctor` -- one file you can send back
 
 ```
-python3 metatron_engine.py doctor --out DIR
-python3 metatron_engine.py doctor --out DIR --target path/to/your/engine
+python3 Metatron_Engine_Prototype_v1.py doctor --out DIR
+python3 Metatron_Engine_Prototype_v1.py doctor --out DIR --target path/to/your/engine
 ```
 
 Measures this machine on this target and writes
@@ -178,8 +190,8 @@ The file says so in its own header. Nothing in the target is executed to produce
 ### `trace` -- watch it actually run (Mode A)
 
 ```
-python3 metatron_engine.py trace GRAPH_DIR --sport basketball --out DIR
-python3 metatron_engine.py trace GRAPH_DIR --scenarios FILE.json --scenario NAME --out DIR
+python3 Metatron_Engine_Prototype_v1.py trace GRAPH_DIR --sport basketball --out DIR
+python3 Metatron_Engine_Prototype_v1.py trace GRAPH_DIR --scenarios FILE.json --scenario NAME --out DIR
 ```
 
 This is the only command that executes your code, it only does so inside a containment
@@ -613,7 +625,7 @@ was never there.
 Run `analyze` with `--env` pointed at the interpreter your engine actually runs under:
 
 ```
-python3 metatron_engine.py analyze C:\code\amun --env C:\code\amun\.venv --out out\amun
+python3 Metatron_Engine_Prototype_v1.py analyze C:\code\amun --env C:\code\amun\.venv --out out\amun
 ```
 
 ### Three answers, kept apart
@@ -673,13 +685,13 @@ This is the workflow you described, and it is what the `diff` command was built 
 
 ```
 :: 1. map the version you have now
-python3 metatron_engine.py analyze C:\code\amun_v1 --out out\amun_v1 --sink amun.execute::final_decision
+python3 Metatron_Engine_Prototype_v1.py analyze C:\code\amun_v1 --out out\amun_v1 --sink amun.execute::final_decision
 
 :: 2. map the new version
-python3 metatron_engine.py analyze C:\code\amun_v2 --out out\amun_v2 --sink amun.execute::final_decision
+python3 Metatron_Engine_Prototype_v1.py analyze C:\code\amun_v2 --out out\amun_v2 --sink amun.execute::final_decision
 
 :: 3. compare the two maps
-python3 metatron_engine.py diff out\amun_v1 out\amun_v2 --out out\amun_changes
+python3 Metatron_Engine_Prototype_v1.py diff out\amun_v1 out\amun_v2 --out out\amun_changes
 ```
 
 Use the **same `--entry` and `--sink` flags on both sides.** Comparing a map built with a
@@ -756,7 +768,7 @@ versions/
 ```
 
 ```
-python3 metatron_engine.py track
+python3 Metatron_Engine_Prototype_v1.py track
 ```
 
 Two of those folders carry a date and two do not, which is exactly the case where the
@@ -1038,7 +1050,7 @@ Write a small JSON file describing what to run:
 Then:
 
 ```
-python3 metatron_engine.py trace out\amun --scenarios scenarios.json --scenario baseline --out out\amun_run
+python3 Metatron_Engine_Prototype_v1.py trace out\amun --scenarios scenarios.json --scenario baseline --out out\amun_run
 ```
 
 **Every one of those collections defaults to empty, and that is the mechanism, not a
@@ -1173,7 +1185,7 @@ If your run is far slower than that, send me a `doctor` log — that is what it 
 
 ## 14. How the file itself is built and maintained
 
-`metatron_engine.py` is ~24,000 lines and is **generated**, not hand-written. The source
+`Metatron_Engine_Prototype_v1.py` is ~24,000 lines and is **generated**, not hand-written. The source
 lives as 35 modules in a repository; a build tool concatenates them into one file in
 dependency order, renaming the handful of names that collide between modules.
 
@@ -1191,10 +1203,10 @@ machinery rather than your engine.
 Confirmed at build time: identical results on Python 3.11, 3.12 and 3.13. Full test
 suite: 1162 passed, 0 failed.
 
-To regenerate it from source: `python3.12 tools/amalgamate.py --out dist/cascade_map.py`.
+To regenerate it from source: `python3.12 tools/amalgamate.py --out dist/Metatron_Engine_Prototype_v1.py`.
 The builder needs 3.12 or newer; the file it writes runs on 3.11+.
 
-**Do not edit `metatron_engine.py` by hand.** Edits are lost on the next regeneration, and
+**Do not edit `Metatron_Engine_Prototype_v1.py` by hand.** Edits are lost on the next regeneration, and
 the byte-identical guarantee no longer holds. Tell me what needs changing instead.
 
 ---

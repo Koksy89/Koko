@@ -14,6 +14,41 @@ Versions before 1.0.0 all reported `0.0.0` and cannot be told apart.
 
 ---
 
+## 1.1.1 — named Metatron_Engine_Prototype_v1
+
+The owner named the tool. The built file is now
+`Metatron_Engine_Prototype_v1.py` and the command it prints is `metatron`.
+
+Three names were in play and they disagreed: `--help` printed `cascade-map`,
+error messages printed `metatron`, and the manual's examples said
+`metatron_engine.py` — none of which was the file's actual name. Every
+user-visible name now comes from the one `_PROG` constant, so they cannot
+drift apart again, and the two tests that pinned the old spelling now assert
+against that constant instead of a literal.
+
+**The rename broke the safety hook, in the safe direction.** `guard_engine.py`
+allowlists the sanctioned Mode A command, and the allowlist still said
+`cascade-map`. Because it is an allowlist, an unknown name falls through to
+the ordinary rules and is blocked — so nothing became executable that was not
+before. But it silently took Mode A away: `metatron trace` would have been
+refused with no explanation connecting it to the rename.
+
+Fixed, and widened while there: the single file run by path
+(`python3 Metatron_Engine_Prototype_v1.py trace ...`) matched neither the
+console-script form nor `-m cascade_map`, so it was never recognised — a gap
+that predates the rename. Both now work. Every shipped spelling is kept, so an
+owner on an older build is not stranded. Nine cases are pinned by tests: five
+that must be allowed, four that must stay blocked.
+
+**A false claim removed from the manual.** The quickstart said a run "takes
+seconds to a minute". On the owner's real 14.6 MB engine it is 4m 25s. The
+measured figures are now in section 2, with the reason: most of the time is
+one unavoidable read of the source, and workers cannot split a single file.
+
+Suite: 1964 tests, 0 failures.
+
+---
+
 ## 1.1.0 — read once, share, consolidate
 
 Measured by the lead on the owner's real 14.6 MB engine, 4-core box, idle,
@@ -75,7 +110,7 @@ half the time. It now takes the fastest of seven runs — minimum, not mean,
 because noise can only add time. Quieter *and* stricter: a true quadratic
 costs 16x in every sample including the fastest.
 
-Suite: **1951 tests, 0 failures.** `dist/cascade_map.py` rebuilds byte-identical
+Suite: **1951 tests, 0 failures.** `dist/Metatron_Engine_Prototype_v1.py` rebuilds byte-identical
 and produces output identical to the package.
 
 ---

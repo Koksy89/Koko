@@ -588,7 +588,11 @@ def test_mode_two_on_trace_without_a_static_map_refuses(
     err = capsys.readouterr().err
     assert "Nothing was executed" in err
     assert "Run mode 1 first" in err
-    assert "cascade-map analyze" in err
+    # Against `cli._PROG`, not a hardcoded name. These two assertions pinned
+    # the OLD name and failed the moment the command was renamed -- a rename
+    # the code had done correctly. A test that breaks on a correct change is
+    # noise; this one now follows the rename.
+    assert f"{cli._PROG} analyze" in err
 
 
 def test_mode_one_on_trace_refuses_to_execute_anything(
@@ -615,7 +619,7 @@ def test_mode_two_on_analyze_builds_the_map_and_names_the_next_command(
     assert (out / "elements.jsonl").is_file()
     printed = capsys.readouterr().out
     assert "never executes anything" in printed
-    assert f"cascade-map trace {out} --mode 2" in printed
+    assert f"{cli._PROG} trace {out} --mode 2" in printed
 
 
 def test_the_mode_flag_overrides_the_setting(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1295,7 +1295,7 @@ def trace(
     if not elements:
         return EXIT_USAGE, (
             f"no Mode B graph in {graph_dir}. Mode A always builds on a completed "
-            f"static graph — run `cascade-map analyze` first."
+            f"static graph — run `{_PROG} analyze` first."
         )
 
     sandbox_root = (out_root / "sandbox").resolve()
@@ -2487,7 +2487,7 @@ def _add_progress_flags(sub_parser: argparse.ArgumentParser) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="cascade-map",
+        prog=_PROG,
         description="Map a Python decision engine. The static commands never "
         "execute the target.",
     )
@@ -2829,7 +2829,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"executes anything, which is the half that just finished. "
                 f"Runtime observation is a separate command, so that executing "
                 f"your engine is always something you asked for by name:\n"
-                f"    cascade-map trace {args.out} --mode 2"
+                f"    {_PROG} trace {args.out} --mode 2"
             )
         return EXIT_OK if args.no_gate else code
 
@@ -3189,7 +3189,7 @@ def _trace_command(args: Any) -> int:
     if getattr(args, "mode", None) == 1:
         print(
             "REFUSED: MODE 1 never executes your engine, and `trace` is the only "
-            "command that does. Nothing was executed. Run `cascade-map analyze` "
+            f"command that does. Nothing was executed. Run `{_PROG} analyze` "
             "for the static map, or drop `--mode 1` to trace.",
             file=sys.stderr,
         )
@@ -3206,7 +3206,7 @@ def _trace_command(args: Any) -> int:
             f"REFUSED: MODE 2 always builds on a completed static map.\n"
             f"{problem}\n"
             f"Run mode 1 first:\n"
-            f"    cascade-map analyze <your target> --out {args.graph_dir}\n"
+            f"    {_PROG} analyze <your target> --out {args.graph_dir}\n"
             f"Nothing was executed.",
             file=sys.stderr,
         )

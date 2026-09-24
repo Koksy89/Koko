@@ -4,7 +4,8 @@
 CASCADE-MAP reads ``target_engine/`` and ``target_versions/`` as text. It must
 never execute, import, exec, eval or unpickle them, and never write to them.
 The only sanctioned execution path is the Mode A harness command
-(``cascade-map trace``), which the owner approves explicitly.
+(``metatron trace``, or the single file run as ``python3 <built file> trace``),
+which the owner approves explicitly.
 
 This runs as a ``PreToolUse`` hook. It reads the hook payload on stdin and
 either stays silent (deferring to the normal permission flow) or prints a
@@ -109,7 +110,30 @@ PREFIX_WRAPPERS: frozenset[str] = frozenset(
 ARG_WRAPPERS: dict[str, int] = {"timeout": 1, "watch": 1, "xargs": 0}
 
 #: Sanctioned Mode A entry point. Only ``trace`` is allowed through.
-HARNESS_HEADS: frozenset[str] = frozenset({"cascade-map", "cascade_map"})
+#:
+#: Every name the tool has shipped under is listed, not just the current one.
+#: This is an ALLOWLIST, so a name missing here fails SAFE -- the command is
+#: judged by the ordinary rules and blocked if it touches the target -- but it
+#: still breaks the owner's only legitimate way to run Mode A. That happened:
+#: the console script was renamed to ``metatron`` while this still said
+#: ``cascade-map``, which silently took Mode A away. Old names are kept so an
+#: owner on an older build is not stranded either.
+HARNESS_HEADS: frozenset[str] = frozenset(
+    {"metatron", "cascade-map", "cascade_map"}
+)
+
+#: The single file is run as ``python3 Metatron_Engine_Prototype_v1.py trace``,
+#: which is an executor plus a SCRIPT PATH -- it matches neither the console
+#: script above nor the ``-m cascade_map`` form. It was recognised by neither
+#: until this was added. Matched on the basename only, so the owner may keep
+#: the file wherever they like; the stem must still look like this tool, and
+#: ``trace`` must still be present.
+HARNESS_SCRIPT_STEMS: tuple[str, ...] = (
+    "metatron_engine_prototype",
+    "metatron_engine",
+    "metatron",
+    "cascade_map",
+)
 
 
 _HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1(?=\s|$|;|&|\|)")
@@ -325,6 +349,11 @@ def _check_segment(
         ["cascade_map"], ["cascade_map.cli"]
     ) and "trace" in argv[3:]:
         return None, base_dir
+    # The single file, run by path: `python3 Metatron_Engine_Prototype_v1.py trace`.
+    if _is_executor(head) and len(argv) > 2 and "trace" in argv[2:]:
+        stem = _basename(argv[1].strip("'\"")).removesuffix(".py").lower()
+        if any(stem.startswith(known) for known in HARNESS_SCRIPT_STEMS):
+            return None, base_dir
 
     in_protected_cwd = _path_is_protected(".", base_dir)
     mentions = _mentions_protected(segment) or in_protected_cwd or inherited_mention

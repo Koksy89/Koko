@@ -1,4 +1,4 @@
-"""Build a single-file `cascade_map.py` from the package.
+"""Build a single-file `Metatron_Engine_Prototype_v1.py` from the package.
 
 An amalgamation, not a rewrite. Every line of the output came from a module
 that passed verification, in the order the imports require, with the handful of
@@ -10,7 +10,7 @@ Comments and docstrings survive, because the file is assembled from source text
 rather than round-tripped through `ast.unparse`, which drops comments. In a file
 this size the explanations are most of what makes it readable.
 
-    python3.12 tools/amalgamate.py --out cascade_map.py
+    python3.12 tools/amalgamate.py --out Metatron_Engine_Prototype_v1.py
 
 Needs 3.12+ to *build* (see `_require_fstring_aware_tokenizer`); the file it
 writes runs on 3.11+, like the package.
@@ -638,13 +638,13 @@ Single file. Generated from the package by `tools/amalgamate.py`; every line
 came from a module that passed independent verification. Regenerate rather than
 editing this file by hand:
 
-    python3.12 tools/amalgamate.py --out cascade_map.py
+    python3.12 tools/amalgamate.py --out Metatron_Engine_Prototype_v1.py
 
 Usage:
 
-    python3 cascade_map.py analyze <target> --out out/first
-    python3 cascade_map.py view out/first
-    python3 cascade_map.py trace out/first --scenarios s.json --scenario name
+    python3 Metatron_Engine_Prototype_v1.py analyze <target> --out out/first
+    python3 Metatron_Engine_Prototype_v1.py view out/first
+    python3 Metatron_Engine_Prototype_v1.py trace out/first --scenarios s.json --scenario name
 
 The static commands never execute the target. `trace` runs it inside the
 harness; read the disclosed limits it prints before pointing it at anything
@@ -682,7 +682,7 @@ __version__ = "{version}"
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", type=Path, default=Path("cascade_map.py"))
+    parser.add_argument("--out", type=Path, default=Path("Metatron_Engine_Prototype_v1.py"))
     args = parser.parse_args()
     text = build()
     ast.parse(text)  # refuse to emit something that will not import

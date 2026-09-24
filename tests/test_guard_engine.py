@@ -314,3 +314,45 @@ def test_malformed_payload_fails_open_otherwise() -> None:
     )
     assert result.returncode == 0
     assert result.stdout.strip() == ""
+
+
+# -- the harness path survives a rename ---------------------------------------
+# HARNESS_HEADS is an allowlist, so a name missing from it fails SAFE: the
+# command is judged by the ordinary rules and blocked if it touches the target.
+# Safe, but it takes Mode A away from the owner entirely -- which is what
+# happened when the console script became `metatron` while the guard still
+# said `cascade-map`. These pin every shipped spelling of the sanctioned path.
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "metatron trace out --mode 2",
+        "cascade-map trace out --mode 2",
+        "python3 Metatron_Engine_Prototype_v1.py trace out --mode 2",
+        "python3 dist/Metatron_Engine_Prototype_v1.py trace out",
+        "python3 -m cascade_map trace out",
+    ],
+)
+def test_every_shipped_spelling_of_the_harness_path_is_allowed(command: str) -> None:
+    assert guard.check_bash(command, PROJECT) is None, (
+        f"{command!r} is the sanctioned Mode A path and must not be blocked; "
+        f"blocking it leaves the owner no way to run Mode A at all."
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # A tool-shaped name is not a licence to run the target.
+        "python3 target_engine/run_m5.py",
+        "python3 metatron.py target_engine/run_m5.py",
+        # `trace` appearing somewhere is not enough on its own.
+        "python3 target_engine/trace_helper.py",
+        "source .venv-target/bin/activate && python run.py",
+    ],
+)
+def test_the_rename_opened_no_hole(command: str) -> None:
+    assert guard.check_bash(command, PROJECT) is not None, (
+        f"{command!r} executes target code and must stay blocked."
+    )
