@@ -2668,7 +2668,7 @@ _BODY = """<div id="app">
 <div id="diagnostics" hidden></div>
 <div id="boot-status" role="status">Decompressing map data&hellip;</div>
 <header id="topbar">
-<h1>CASCADE-MAP &mdash; blueprint canvas</h1>
+<h1>METATRON &mdash; cascade map</h1>
 <div id="tabs">
 <button type="button" class="tab-btn active" data-tab="execution">1 Execution</button>
 <button type="button" class="tab-btn" data-tab="lineage">2 Lineage</button>
@@ -4724,7 +4724,7 @@ def _render_page(data: dict[str, Any], *, compress: bool) -> tuple[str, int]:
         island_text = _safe_json(packed)
     parts = [
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>",
-        "<title>CASCADE-MAP &mdash; blueprint canvas</title>",
+        "<title>Metatron &mdash; cascade map</title>",
         _STYLE,
         "</head><body>",
         _BODY,

@@ -752,9 +752,9 @@ def render_site(store: ArtifactStore, rstore: RuntimeStore | None = None) -> str
         else "no manifest.json found"
     )
     title = (
-        "CASCADE-MAP &mdash; static + runtime view"
+        "METATRON &mdash; static + runtime view"
         if rstore is not None
-        else "CASCADE-MAP &mdash; static view"
+        else "METATRON &mdash; static view"
     )
     runtime_nav = '<a href="#runtime">Runtime overlay</a>' if rstore is not None else ""
     runtime_section = _render_runtime_section(store, rstore) if rstore is not None else ""
@@ -785,6 +785,6 @@ def render_site(store: ArtifactStore, rstore: RuntimeStore | None = None) -> str
 """
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
-        "<title>CASCADE-MAP</title>"
+        "<title>Metatron</title>"
         f"<style>{_STYLE}</style></head><body>{sections}</body></html>"
     )
